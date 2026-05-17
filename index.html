@@ -1729,18 +1729,28 @@ window._fillAlgoSelect=fillSelect;
   <strong style="font-family:Sora,sans-serif">🎯 Vijay's 10-category institutional framework.</strong> Every line item below gets a &#10003; / &#10007; / &#126; / &#8212; marker. Score = 30% Financial + 25% Revenue + 20% Smart Money + 10% Valuation + 10% Industry + 5% Technical. Best multibagger setups score 80+.
 </div>
 <!-- r63.99.18: UNIVERSE SCAN — list of high-conviction stocks via 10-category framework -->
+<!-- r63.99.21: Mode toggle — Quality (existing strict) vs Pre-Discovery (early-stage moonshots) -->
 <div style="margin-bottom:14px;padding:14px 16px;background:linear-gradient(180deg,#dcfce7,#bbf7d0);border:2px solid #22c55e;border-radius:12px">
-  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px">
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:200px">
       <div style="font-size:18px">&#127942;</div>
       <div>
         <div style="font-size:13px;font-weight:900;color:#065f46;font-family:Sora,sans-serif">High-Conviction Stock Discovery</div>
-        <div style="font-size:10px;color:#065f46;margin-top:1px">Run the 10-category framework across a curated universe &middot; ranks by Early Opportunity Score</div>
+        <div style="font-size:10px;color:#065f46;margin-top:1px">Run the 10-category framework across a curated universe</div>
       </div>
     </div>
     <button onclick="window.load360Universe&amp;&amp;window.load360Universe(true)" id="scan360UniverseBtn" style="padding:9px 20px;border-radius:6px;background:linear-gradient(135deg,#22c55e,#059669);color:#fff;border:none;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px;box-shadow:0 2px 6px rgba(34,197,94,0.4)">&#128640; SCAN UNIVERSE</button>
   </div>
-  <div id="scan360UniverseStatus" style="font-size:10px;color:#065f46;font-family:'JetBrains Mono',monospace;margin-top:4px">Click SCAN UNIVERSE to rank 45 small/mid-cap candidates (US) or 65 NSE picks (IN) by Vijay's 10-category framework. ~30-90s scan, cached 30min.</div>
+  <!-- Mode toggle -->
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;background:#fff;border-radius:8px;border:1px solid #86efac;margin-bottom:8px">
+    <div style="font-size:9px;font-weight:800;color:#065f46;letter-spacing:0.5px;white-space:nowrap">MODE:</div>
+    <div style="display:flex;gap:4px;flex:1;flex-wrap:wrap">
+      <button id="mode360Quality" onclick="window._set360Mode&amp;&amp;window._set360Mode('quality')" style="padding:6px 12px;border-radius:5px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128737; Institutional Quality</button>
+      <button id="mode360Predisc" onclick="window._set360Mode&amp;&amp;window._set360Mode('predisc')" style="padding:6px 12px;border-radius:5px;background:#fff;color:#475569;border:1px solid #cbd5e1;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127793; Pre-Discovery Moonshots</button>
+    </div>
+    <div id="mode360Hint" style="font-size:9px;color:#475569;font-style:italic;width:100%;line-height:1.5;margin-top:4px"><strong>Quality mode:</strong> finds established profitable names trading below intrinsic value. Strict — pre-profit names struggle.</div>
+  </div>
+  <div id="scan360UniverseStatus" style="font-size:10px;color:#065f46;font-family:'JetBrains Mono',monospace">Pick a mode, then click SCAN UNIVERSE. ~30-90s scan, cached 30min.</div>
 </div>
 <div id="scan360UniverseResult" style="margin-bottom:18px"></div>
 

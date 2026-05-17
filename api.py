@@ -22520,26 +22520,50 @@ Rules:
 
         _loop = asyncio.get_event_loop()
         def _call_claude():
+            # r63.99.19: Added web_search tool so Claude pulls CURRENT news (NVDA GTC,
+            # earnings, etc.) rather than only training data. Lower max_tokens 12k → 8k
+            # for faster response. Lower timeout 180 → 120 (web_search adds overhead
+            # but should be < 120s for 6 themes × 10 headlines).
             return _http_pool.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                json={"model": "claude-sonnet-4-20250514", "max_tokens": 12000, "messages": [{"role": "user", "content": prompt}]},
-                timeout=180,
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 8000,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 6}],
+                },
+                timeout=120,
             )
 
-        r = await _loop.run_in_executor(None, _call_claude)
+        try:
+            r = await _loop.run_in_executor(None, _call_claude)
+        except Exception as _te:
+            # r63.99.19: timeout-safe fallback — return cached if any, else empty themes
+            if cached:
+                print(f"[NEWS-THEMES] {region}: timeout, returning stale cache from {cached['ts']}")
+                resp = dict(cached["data"])
+                resp["_cached"] = True
+                resp["_stale"] = True
+                resp["_warning"] = "Live AI call timed out — showing previous cached themes"
+                return resp
+            return {"success": False, "error": f"AI call timed out ({type(_te).__name__}). Try again — first call after cold start takes longer."}
         if r.status_code != 200:
             return {"success": False, "error": f"AI API returned {r.status_code}"}
 
         data = r.json()
-        text = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                text += block["text"]
-        text = text.strip()
+        # r63.99.19: With web_search enabled, Claude may emit multiple text blocks
+        # interleaved with tool_use. The FINAL JSON is in the last text block —
+        # concatenating earlier blocks would corrupt the JSON parse.
+        text_blocks = [block["text"] for block in data.get("content", []) if block.get("type") == "text"]
+        text = (text_blocks[-1] if text_blocks else "").strip()
         if text.startswith("```"): text = text.split("\n", 1)[1] if "\n" in text else text[3:]
         if text.endswith("```"): text = text[:-3]
         text = text.strip()
+        # Strip any leading text before the first '{' (sometimes Claude adds a preamble even in JSON mode)
+        if text and text[0] != '{':
+            brace_idx = text.find('{')
+            if brace_idx > 0: text = text[brace_idx:]
 
         analysis = json.loads(text)
         analysis["success"] = True
@@ -30378,198 +30402,685 @@ _universe_360_in = [
 _360_universe_cache = {}  # {region: {"data": list, "ts": float}}
 _360_UNIVERSE_TTL = 1800  # 30 minutes
 
-def _score_360_from_yfinance(sym, region):
-    """Lightweight 360 scoring from yfinance.info — avoids the heavy
-    investor-decide call. Returns dict with score + per-category breakdown
-    + key metrics. Returns None on data failure.
-    """
+# ─── r63.99.20: UNIFIED MULTI-SOURCE FIELD RESOLVER + STRICT SCORER ───
+# Replaces two separate scoring paths (universe scan vs single-ticker render).
+# Both now share _resolve_360_fields + _score_360_strict — same answer for same stock.
+#
+# Resolver: investor-decide → yfinance.info → curated → None
+# Scorer:   unknown = NOT CREDITED (not penalized, not rewarded)
+#           computes data_completeness_pct alongside score
+#           below 50% completeness → INSUFFICIENT_DATA verdict instead of a number
+
+# Curated fundamentals fallback for high-value names where Yahoo coverage may be patchy.
+# Approximations from recent 10-Q / 10-K filings. Mark _source: "curated" so user sees it.
+_360_CURATED_FUNDAMENTALS = {
+    # US small/mid-cap & framework examples — keep conservative, only fields we're confident about
+    "POET":   {"sector": "Technology", "industry": "Semiconductors / Photonics", "cash_usd": 35e6, "debt_usd": 8e6, "gross_margin_pct": 55, "is_hot_sector": True},
+    "AEHR":   {"sector": "Technology", "industry": "Semiconductor Equipment", "cash_usd": 47e6, "debt_usd": 0, "gross_margin_pct": 49, "is_hot_sector": True},
+    "INDI":   {"sector": "Technology", "industry": "Semiconductors / Automotive", "is_hot_sector": True},
+    "AMBA":   {"sector": "Technology", "industry": "Edge AI Semis", "is_hot_sector": True},
+    "ALAB":   {"sector": "Technology", "industry": "Datacenter Connectivity", "is_hot_sector": True},
+    "CRDO":   {"sector": "Technology", "industry": "Datacenter Networking", "is_hot_sector": True},
+    "WULF":   {"sector": "Technology", "industry": "AI Infrastructure / HPC", "is_hot_sector": True},
+    "BTDR":   {"sector": "Technology", "industry": "AI Compute", "is_hot_sector": True},
+    "MU":     {"sector": "Technology", "industry": "Memory Semiconductors", "is_hot_sector": True},
+    "SNDK":   {"sector": "Technology", "industry": "Memory / Storage", "is_hot_sector": True},
+    "WOLF":   {"sector": "Technology", "industry": "Power Semis / SiC", "is_hot_sector": True},
+    "ENVX":   {"sector": "Industrial", "industry": "Battery Tech", "is_hot_sector": True},
+    "QBTS":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True},
+    "RGTI":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True},
+    "IONQ":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True},
+    "KTOS":   {"sector": "Industrials", "industry": "Defense Technology", "is_hot_sector": True},
+    "AVAV":   {"sector": "Industrials", "industry": "Defense / Drones", "is_hot_sector": True},
+    "MRCY":   {"sector": "Industrials", "industry": "Defense Electronics", "is_hot_sector": True},
+    # India small/mid-cap framework examples — approximate sector tags
+    "PERSISTENT": {"sector": "Technology", "industry": "IT Services", "is_hot_sector": True},
+    "KAYNES":     {"sector": "Industrials", "industry": "Electronics Manufacturing", "is_hot_sector": True},
+    "DIXON":      {"sector": "Industrials", "industry": "Electronics Manufacturing", "is_hot_sector": True},
+    "BEL":        {"sector": "Industrials", "industry": "Defense Electronics", "is_hot_sector": True},
+    "HAL":        {"sector": "Industrials", "industry": "Defense Aerospace", "is_hot_sector": True},
+    "BDL":        {"sector": "Industrials", "industry": "Defense Missiles", "is_hot_sector": True},
+    "MAZAGON":    {"sector": "Industrials", "industry": "Defense Shipbuilding", "is_hot_sector": True},
+    "KPITTECH":   {"sector": "Technology", "industry": "Automotive Software", "is_hot_sector": True},
+    "SOLARINDS":  {"sector": "Industrials", "industry": "Defense Explosives", "is_hot_sector": True},
+}
+
+# The full list of fields the 360 framework checks (24 binary checks + sector tag)
+_360_FIELD_KEYS = [
+    "cash_usd", "debt_usd", "current_ratio", "ocf_usd", "gross_margin_pct", "debt_to_equity",
+    "revenue_growth_pct", "earnings_growth_pct", "profit_margin_pct",
+    "inst_ownership_pct", "insider_ownership_pct", "insider_net_flow_4q_usd",
+    "dcf_upside_pct", "peg", "forward_pe", "price_to_sales",
+    "is_hot_sector",
+    "sma_200_above_pct", "rsi", "beta",
+    "price",
+]
+
+def _normalize_pct(v):
+    """Convert decimal (0.31) or percent (31.0) to consistent percent. Return None if not numeric."""
+    if v is None: return None
     try:
-        import yfinance as yf
-        yf_sym = sym if region == "US" else (sym + ".NS" if "." not in sym else sym)
+        v = float(v)
+        if v != v: return None  # NaN
+        # Heuristic: |v| < 5 likely a decimal ratio; multiply by 100. Caps: 5+ is already a percent.
+        if -5 < v < 5 and v != 0: return v * 100
+        return v
+    except Exception: return None
+
+def _resolve_360_fields(symbol, region):
+    """Multi-source field resolver. Returns:
+    {
+      'fields': {name: {value, source}},   # all known fields
+      'completeness_pct': 0-100,
+      'sources_used': [list],
+      'sector': str, 'industry': str, 'name': str,
+    }
+    Source order: yfinance.info → curated fallback. (Investor-decide internal data is
+    pulled separately in the universe-scan path; here we use yfinance for parallelism.)
+    """
+    import yfinance as yf
+    yf_sym = symbol if region == "US" else (symbol + ".NS" if "." not in symbol else symbol)
+    fields = {}
+    sources_used = set()
+    info = {}
+    try: _yahoo_rate_wait()
+    except Exception: pass
+    try:
         tk = yf.Ticker(yf_sym)
-        info = {}
         try: info = tk.info or {}
-        except Exception: pass
-        if not info or not info.get("symbol"):
-            return None
-        # Price + history for technical/RS
+        except Exception as _ie: print(f"[360-RESOLVE] {symbol} info fail: {type(_ie).__name__}"); info = {}
+        # Also pull history for technicals
         hist = None
         try: hist = tk.history(period="1y", interval="1d")
         except Exception: pass
-        price = float(info.get("regularMarketPrice") or info.get("currentPrice") or 0)
-        if not price and hist is not None and not hist.empty:
-            price = float(hist["Close"].iloc[-1])
-        if not price:
-            return None
+    except Exception as _e:
+        print(f"[360-RESOLVE] {symbol} ticker fail: {_e}")
+        info = {}; hist = None
 
-        def _safe(key, default=None):
-            v = info.get(key)
-            try:
-                if v is None: return default
-                return float(v)
-            except Exception: return default
-        def _pct(v, divide=False):
-            """Normalize a possibly-decimal field to percent."""
-            if v is None: return None
-            try:
-                v = float(v)
-                if abs(v) < 5 and divide is False: return v * 100  # 0-1 → 0-100
-                return v
-            except Exception: return None
+    def _put(key, value, source):
+        if value is None: return
+        try:
+            fv = float(value)
+            if fv != fv: return  # NaN guard
+        except Exception:
+            # Boolean / string allowed for some fields
+            if not isinstance(value, (bool, str)): return
+            fv = value
+        fields[key] = {"value": fv, "source": source}
+        sources_used.add(source)
 
-        # ─── DATA EXTRACTION ───
-        cash = _safe("totalCash", 0) or 0
-        debt = _safe("totalDebt", 0) or 0
-        current_ratio = _safe("currentRatio", 0) or 0
-        ocf = _safe("operatingCashflow", 0) or 0
-        gross_margin = _pct(info.get("grossMargins"))
-        profit_margin = _pct(info.get("profitMargins"))
-        rev_growth = _pct(info.get("revenueGrowth"))
-        earn_growth = _pct(info.get("earningsGrowth"))
-        roe = _pct(info.get("returnOnEquity"))
-        debt_eq = _safe("debtToEquity", 0) or 0
-        fwd_pe = _safe("forwardPE")
-        peg = _safe("pegRatio")
-        if (peg is None or peg <= 0) and fwd_pe and fwd_pe > 0 and rev_growth and rev_growth > 0:
-            peg = fwd_pe / rev_growth
-        ps = _safe("priceToSalesTrailing12Months")
-        inst_pct = _pct(info.get("heldPercentInstitutions"))
-        insider_pct = _pct(info.get("heldPercentInsiders"))
-        analyst_count = _safe("numberOfAnalystOpinions", 0) or 0
-        mcap = _safe("marketCap", 0) or 0
-        beta = _safe("beta", 1.0) or 1.0
-        target_mean = _safe("targetMeanPrice", 0) or 0
-        dcf_upside = ((target_mean - price) / price * 100) if (target_mean and price) else None
-        sector = (info.get("sector") or "").lower()
-        industry = (info.get("industry") or "").lower()
-        hot_sectors = ["semiconductor","chip","technology","software","artificial","data","photonic",
-                       "memory","defense","aerospace","cybersecurity","automation","robotics","cloud",
-                       "networking","quantum","biotech","health"]
-        is_hot = any(h in sector or h in industry for h in hot_sectors)
-        # Technicals from history
-        rsi = None; sma_50 = None; sma_200 = None
-        if hist is not None and not hist.empty and len(hist) >= 50:
+    # ─── From yfinance.info ───
+    if info:
+        _put("price", info.get("regularMarketPrice") or info.get("currentPrice"), "yfinance.info")
+        _put("cash_usd", info.get("totalCash"), "yfinance.info")
+        _put("debt_usd", info.get("totalDebt"), "yfinance.info")
+        _put("current_ratio", info.get("currentRatio"), "yfinance.info")
+        _put("ocf_usd", info.get("operatingCashflow"), "yfinance.info")
+        _put("gross_margin_pct", _normalize_pct(info.get("grossMargins")), "yfinance.info")
+        _put("profit_margin_pct", _normalize_pct(info.get("profitMargins")), "yfinance.info")
+        _put("revenue_growth_pct", _normalize_pct(info.get("revenueGrowth")), "yfinance.info")
+        _put("earnings_growth_pct", _normalize_pct(info.get("earningsGrowth")), "yfinance.info")
+        # debtToEquity in yfinance is sometimes raw (e.g. 145.3 meaning 145% of equity)
+        de = info.get("debtToEquity")
+        if de is not None and de < 5: de = de * 100  # rare 0-1 case
+        _put("debt_to_equity", de, "yfinance.info")
+        _put("inst_ownership_pct", _normalize_pct(info.get("heldPercentInstitutions")), "yfinance.info")
+        _put("insider_ownership_pct", _normalize_pct(info.get("heldPercentInsiders")), "yfinance.info")
+        _put("peg", info.get("pegRatio") or info.get("trailingPegRatio"), "yfinance.info")
+        _put("forward_pe", info.get("forwardPE"), "yfinance.info")
+        _put("price_to_sales", info.get("priceToSalesTrailing12Months"), "yfinance.info")
+        _put("beta", info.get("beta"), "yfinance.info")
+        # Sector / industry signal for hot-sector check
+        sec = (info.get("sector") or "").lower()
+        ind = (info.get("industry") or "").lower()
+        hot_keywords = ["semiconductor","chip","technology","software","artificial","data","photonic",
+                        "memory","defense","aerospace","cybersecurity","automation","robotics","cloud",
+                        "networking","quantum","biotech","health"]
+        is_hot = any(h in sec or h in ind for h in hot_keywords)
+        # Use put with a manual override of source-name when present
+        if sec or ind:
+            fields["is_hot_sector"] = {"value": bool(is_hot), "source": "yfinance.info"}
+            sources_used.add("yfinance.info")
+        # Analyst-implied upside as DCF proxy
+        tgt = info.get("targetMeanPrice")
+        price = info.get("regularMarketPrice") or info.get("currentPrice")
+        if tgt and price and price > 0:
+            upside = (float(tgt) - float(price)) / float(price) * 100
+            _put("dcf_upside_pct", upside, "yfinance.info:analyst-target")
+
+    # ─── From price history (technical) ───
+    if hist is not None and not hist.empty and len(hist) >= 30:
+        try:
+            close = hist["Close"]
+            price = float(close.iloc[-1])
+            if "price" not in fields: _put("price", price, "yfinance.history")
+            # 200-SMA distance
+            if len(close) >= 200:
+                sma_200 = float(close.tail(200).mean())
+                if sma_200 > 0:
+                    _put("sma_200_above_pct", (price - sma_200) / sma_200 * 100, "yfinance.history")
+            # RSI 14
+            delta = close.diff()
+            gain = delta.where(delta > 0, 0).rolling(14).mean()
+            loss = -delta.where(delta < 0, 0).rolling(14).mean()
+            rs_v = gain / loss
+            rsi_series = 100 - (100 / (1 + rs_v))
+            rsi_val = float(rsi_series.iloc[-1]) if not rsi_series.empty else None
+            if rsi_val is not None and not (rsi_val != rsi_val):
+                _put("rsi", rsi_val, "yfinance.history")
+        except Exception as _he: print(f"[360-RESOLVE] {symbol} hist calc fail: {_he}")
+
+    # ─── Quarterly insider net flow (yfinance insider_transactions) ───
+    try:
+        if info:
+            tk2 = yf.Ticker(yf_sym)
             try:
-                close = hist["Close"]
-                sma_50 = float(close.tail(50).mean()) if len(close) >= 50 else None
-                sma_200 = float(close.tail(200).mean()) if len(close) >= 200 else None
-                delta = close.diff()
-                gain = delta.where(delta > 0, 0).rolling(14).mean()
-                loss = -delta.where(delta < 0, 0).rolling(14).mean()
-                rs_v = gain / loss
-                rsi_series = 100 - (100 / (1 + rs_v))
-                rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty else None
+                ins_df = tk2.insider_transactions
+                if ins_df is not None and not ins_df.empty:
+                    # Sum last 4 quarters net flow (positive = net buy)
+                    import pandas as pd
+                    df = ins_df.copy()
+                    if "Start Date" in df.columns:
+                        df["Start Date"] = pd.to_datetime(df["Start Date"], errors="coerce")
+                        cutoff = pd.Timestamp.now() - pd.Timedelta(days=365)
+                        df = df[df["Start Date"] >= cutoff]
+                    if not df.empty and "Value" in df.columns and "Text" in df.columns:
+                        net = 0.0
+                        for _, row in df.iterrows():
+                            val = float(row.get("Value", 0) or 0)
+                            txt = str(row.get("Text", "")).lower()
+                            if "buy" in txt or "purchase" in txt or "acquired" in txt: net += val
+                            elif "sale" in txt or "sell" in txt or "disposed" in txt: net -= val
+                        if net != 0:
+                            _put("insider_net_flow_4q_usd", net, "yfinance.insider_transactions")
             except Exception: pass
-        above_50 = (price > sma_50) if sma_50 else False
-        above_200 = (price > sma_200) if sma_200 else False
-        above_200_pct = ((price - sma_200) / sma_200 * 100) if sma_200 else None
+    except Exception: pass
 
-        # ─── 6 WEIGHTED CATEGORIES (each returns 0-1 pass rate) ───
-        def _cat_rate(checks):
-            passed = sum(1 for c in checks if c == 'pass')
-            known = sum(1 for c in checks if c != 'unknown')
-            return (passed / known) if known > 0 else 0.0
+    # ─── From curated fallback (only fills missing fields, never overrides live data) ───
+    curated = _360_CURATED_FUNDAMENTALS.get(symbol, {})
+    for ckey, cval in curated.items():
+        if ckey in ("sector", "industry"): continue
+        if ckey not in fields:
+            _put(ckey, cval, "curated.factsheet")
 
-        # Cat 1: Financial Survival
-        c1 = []
-        c1.append('pass' if (cash > debt and cash > 0) else ('fail' if cash <= debt and debt > 0 else 'unknown'))
-        c1.append('pass' if current_ratio >= 1.5 else ('fail' if 0 < current_ratio < 1.0 else ('unknown' if not current_ratio else 'neutral')))
-        c1.append('pass' if ocf > 0 else ('fail' if ocf < 0 else 'unknown'))
-        c1.append('pass' if (gross_margin and gross_margin >= 30) else ('fail' if (gross_margin and gross_margin < 15) else ('unknown' if not gross_margin else 'neutral')))
-        c1.append('pass' if (0 < debt_eq < 100) else ('fail' if debt_eq > 200 else ('unknown' if not debt_eq else 'neutral')))
-        s1 = _cat_rate(c1)
-        # Cat 2: Revenue Inflection
-        c2 = []
-        c2.append('pass' if (rev_growth and rev_growth > 20) else ('fail' if (rev_growth is not None and rev_growth < 5 and rev_growth != 0) else 'unknown'))
-        c2.append('pass' if (earn_growth and earn_growth > 15) else ('fail' if (earn_growth is not None and earn_growth < 0) else 'unknown'))
-        c2.append('pass' if (gross_margin and gross_margin >= 35) else 'neutral')
-        c2.append('pass' if (profit_margin and profit_margin > 10) else ('fail' if (profit_margin is not None and profit_margin < 0) else 'unknown'))
-        s2 = _cat_rate(c2)
-        # Cat 3: Smart Money / Institutional
-        c3 = []
-        c3.append('pass' if (inst_pct and inst_pct >= 60) else ('fail' if (inst_pct is not None and inst_pct < 30) else 'unknown'))
-        c3.append('pass' if (insider_pct and insider_pct >= 1) else 'neutral')
-        # Without quarterly insider flow, use insider holding % as proxy
-        c3.append('pass' if (insider_pct and insider_pct >= 3) else 'neutral')
-        s3 = _cat_rate(c3)
-        # Cat 4: Valuation Disconnect
-        c4 = []
-        c4.append('pass' if (dcf_upside is not None and dcf_upside > 20) else ('fail' if (dcf_upside is not None and dcf_upside < -10) else 'unknown'))
-        c4.append('pass' if (peg and 0 < peg < 1.0) else ('fail' if (peg and peg > 2.5) else 'unknown'))
-        c4.append('pass' if (fwd_pe and 0 < fwd_pe < 20) else ('fail' if (fwd_pe and fwd_pe > 50) else 'unknown'))
-        c4.append('pass' if (ps and 0 < ps < 5) else ('fail' if (ps and ps > 15) else 'unknown'))
-        s4 = _cat_rate(c4)
-        # Cat 5: Industry Tailwind
-        c5 = []
-        c5.append('pass' if is_hot else 'neutral')
-        s5 = _cat_rate(c5)
-        # Cat 6: Technical Structure
-        c6 = []
-        c6.append('pass' if (above_200_pct is not None and 0 < above_200_pct < 30) else ('fail' if (above_200_pct is not None and above_200_pct > 50) else 'unknown'))
-        c6.append('pass' if (rsi and 40 < rsi < 65) else ('fail' if (rsi and rsi > 75) else 'unknown'))
-        c6.append('pass' if (0 < beta < 1.5) else ('fail' if beta > 2.5 else 'neutral'))
-        s6 = _cat_rate(c6)
+    # Sector/industry/name fallback
+    sector = info.get("sector") or curated.get("sector") or "—"
+    industry = info.get("industry") or curated.get("industry") or "—"
+    name = info.get("longName") or info.get("shortName") or symbol
+    market_cap = info.get("marketCap")
 
-        early_score = round((0.30 * s1 + 0.25 * s2 + 0.20 * s3 + 0.10 * s4 + 0.10 * s5 + 0.05 * s6) * 100)
-        if early_score >= 80: verdict_label = "🚀 STRONG INSTITUTIONAL SETUP"; verdict_color = "#059669"
-        elif early_score >= 65: verdict_label = "✨ EARLY OPPORTUNITY"; verdict_color = "#10b981"
-        elif early_score >= 50: verdict_label = "👀 WATCHLIST CANDIDATE"; verdict_color = "#d97706"
-        elif early_score >= 30: verdict_label = "⚠ MARGINAL"; verdict_color = "#ea580c"
-        else: verdict_label = "❌ AVOID — VALUE TRAP RISK"; verdict_color = "#dc2626"
+    # Completeness = known / total
+    completeness_pct = round(len(fields) / len(_360_FIELD_KEYS) * 100, 1)
 
-        # Generate top reasons (highlight what's strong)
-        reasons = []
-        if rev_growth and rev_growth > 20: reasons.append(f"Revenue +{rev_growth:.0f}%")
-        if earn_growth and earn_growth > 25: reasons.append(f"EPS +{earn_growth:.0f}%")
-        if dcf_upside and dcf_upside > 20: reasons.append(f"DCF upside +{dcf_upside:.0f}%")
-        if cash > debt and cash > 0: reasons.append("Cash > Debt ✓")
-        if peg and 0 < peg < 1.0: reasons.append(f"PEG {peg:.2f}")
-        if inst_pct and inst_pct >= 60: reasons.append(f"Inst own {inst_pct:.0f}%")
-        if roe and roe >= 20: reasons.append(f"ROE {roe:.0f}%")
-        if is_hot: reasons.append("Megatrend sector")
-        if gross_margin and gross_margin >= 50: reasons.append(f"GM {gross_margin:.0f}% (moat)")
+    return {
+        "fields": fields,
+        "completeness_pct": completeness_pct,
+        "sources_used": sorted(sources_used),
+        "sector": sector,
+        "industry": industry,
+        "name": name,
+        "market_cap": market_cap,
+    }
 
+
+def _score_360_strict(resolved):
+    """Strict 360 scorer. Single source of truth used by BOTH universe scan AND
+    inline single-ticker view. Unknowns NOT CREDITED (not pass, not fail — excluded
+    from the denominator). Each category score = passed / TOTAL CHECKS IN CATEGORY,
+    where TOTAL is fixed (not "known"). This penalizes missing data structurally.
+    """
+    f = resolved.get("fields", {})
+    completeness_pct = resolved.get("completeness_pct", 0)
+
+    def fv(k):
+        """Get field value, or None if not resolved."""
+        entry = f.get(k)
+        return entry["value"] if entry else None
+
+    # ─── 6 weighted categories, each with FIXED total checks (unknowns don't reduce denom) ───
+    # Each check returns True (pass), False (fail), or None (unknown). Pass = 1, Fail = 0, Unknown = 0.
+
+    # Cat 1: Financial Survival (5 checks, weight 30%)
+    cash = fv("cash_usd"); debt = fv("debt_usd")
+    c1_checks = [
+        (cash is not None and debt is not None and cash > debt) if (cash is not None and debt is not None) else None,
+        (fv("current_ratio") is not None and fv("current_ratio") >= 1.5) if fv("current_ratio") is not None else None,
+        (fv("ocf_usd") is not None and fv("ocf_usd") > 0) if fv("ocf_usd") is not None else None,
+        (fv("gross_margin_pct") is not None and fv("gross_margin_pct") >= 30) if fv("gross_margin_pct") is not None else None,
+        (fv("debt_to_equity") is not None and fv("debt_to_equity") < 100) if fv("debt_to_equity") is not None else None,
+    ]
+    # Cat 2: Revenue Inflection (4 checks, weight 25%)
+    c2_checks = [
+        (fv("revenue_growth_pct") is not None and fv("revenue_growth_pct") > 20) if fv("revenue_growth_pct") is not None else None,
+        (fv("earnings_growth_pct") is not None and fv("earnings_growth_pct") > 15) if fv("earnings_growth_pct") is not None else None,
+        (fv("gross_margin_pct") is not None and fv("gross_margin_pct") >= 35) if fv("gross_margin_pct") is not None else None,
+        (fv("profit_margin_pct") is not None and fv("profit_margin_pct") > 10) if fv("profit_margin_pct") is not None else None,
+    ]
+    # Cat 3: Institutional Accumulation (4 checks, weight 20%)
+    c3_checks = [
+        (fv("inst_ownership_pct") is not None and fv("inst_ownership_pct") >= 60) if fv("inst_ownership_pct") is not None else None,
+        (fv("insider_net_flow_4q_usd") is not None and fv("insider_net_flow_4q_usd") > 0) if fv("insider_net_flow_4q_usd") is not None else None,
+        (fv("insider_ownership_pct") is not None and fv("insider_ownership_pct") >= 1) if fv("insider_ownership_pct") is not None else None,
+        # SMI verdict proxy: institutional + insider both positive
+        ((fv("inst_ownership_pct") or 0) >= 60 and (fv("insider_net_flow_4q_usd") or 0) >= 0) if (fv("inst_ownership_pct") is not None or fv("insider_net_flow_4q_usd") is not None) else None,
+    ]
+    # Cat 4: Valuation Disconnect (4 checks, weight 10%)
+    c4_checks = [
+        (fv("dcf_upside_pct") is not None and fv("dcf_upside_pct") > 20) if fv("dcf_upside_pct") is not None else None,
+        (fv("peg") is not None and 0 < fv("peg") < 1.0) if fv("peg") is not None else None,
+        (fv("forward_pe") is not None and 0 < fv("forward_pe") < 20) if fv("forward_pe") is not None else None,
+        (fv("price_to_sales") is not None and 0 < fv("price_to_sales") < 5) if fv("price_to_sales") is not None else None,
+    ]
+    # Cat 5: Industry Tailwind (2 checks, weight 10%)
+    c5_checks = [
+        bool(fv("is_hot_sector")) if fv("is_hot_sector") is not None else None,
+        bool(fv("is_hot_sector")) if fv("is_hot_sector") is not None else None,  # 2nd check would be RS vs sector; using same flag conservatively
+    ]
+    # Cat 6: Technical Structure (3 checks, weight 5%)
+    sma_above = fv("sma_200_above_pct")
+    c6_checks = [
+        (sma_above is not None and 0 < sma_above < 30) if sma_above is not None else None,
+        (fv("rsi") is not None and 40 < fv("rsi") < 65) if fv("rsi") is not None else None,
+        (fv("beta") is not None and 0 < fv("beta") < 1.5) if fv("beta") is not None else None,
+    ]
+
+    # Strict scoring: PASS=1, FAIL=0, UNKNOWN=0. Denominator is FIXED (total checks in category).
+    def _cat_score(checks):
+        total = len(checks)
+        if total == 0: return 0.0, 0, 0
+        passed = sum(1 for c in checks if c is True)
+        known = sum(1 for c in checks if c is not None)
+        return (passed / total), passed, known
+
+    s1, p1, k1 = _cat_score(c1_checks)
+    s2, p2, k2 = _cat_score(c2_checks)
+    s3, p3, k3 = _cat_score(c3_checks)
+    s4, p4, k4 = _cat_score(c4_checks)
+    s5, p5, k5 = _cat_score(c5_checks)
+    s6, p6, k6 = _cat_score(c6_checks)
+
+    early_score = round((0.30 * s1 + 0.25 * s2 + 0.20 * s3 + 0.10 * s4 + 0.10 * s5 + 0.05 * s6) * 100)
+
+    # ─── INSUFFICIENT DATA gate ───
+    insufficient = completeness_pct < 50
+    if insufficient:
+        verdict_label = "📊 INSUFFICIENT DATA"
+        verdict_color = "#64748b"
+        verdict_action = f"Only {completeness_pct:.0f}% of framework fields available. Research manually before judging."
+        early_score_display = None
+    else:
+        if early_score >= 80:
+            verdict_label = "🚀 STRONG INSTITUTIONAL SETUP"; verdict_color = "#059669"
+            verdict_action = "High-conviction candidate. Run full 360° deep dive to confirm thesis."
+        elif early_score >= 65:
+            verdict_label = "✨ EARLY OPPORTUNITY"; verdict_color = "#10b981"
+            verdict_action = "Promising setup. 2-3 categories need confirmation before sizing up."
+        elif early_score >= 50:
+            verdict_label = "👀 WATCHLIST CANDIDATE"; verdict_color = "#d97706"
+            verdict_action = "Mixed signals. Monitor for improvement in weak categories."
+        elif early_score >= 30:
+            verdict_label = "⚠ MARGINAL"; verdict_color = "#ea580c"
+            verdict_action = "Multiple structural concerns. Skip unless contrarian thesis."
+        else:
+            verdict_label = "❌ AVOID — VALUE TRAP RISK"; verdict_color = "#dc2626"
+            verdict_action = "Fails most institutional quality checks."
+        early_score_display = early_score
+
+    # Top reasons (highlight what's confirmed positive)
+    reasons = []
+    rev = fv("revenue_growth_pct"); eg = fv("earnings_growth_pct"); dcf = fv("dcf_upside_pct")
+    peg = fv("peg"); inst = fv("inst_ownership_pct"); gm = fv("gross_margin_pct")
+    if rev is not None and rev > 20: reasons.append(f"Rev +{rev:.0f}%")
+    if eg is not None and eg > 25: reasons.append(f"EPS +{eg:.0f}%")
+    if dcf is not None and dcf > 20: reasons.append(f"DCF +{dcf:.0f}%")
+    if cash is not None and debt is not None and cash > debt: reasons.append("Cash > Debt ✓")
+    if peg is not None and 0 < peg < 1.0: reasons.append(f"PEG {peg:.2f}")
+    if inst is not None and inst >= 60: reasons.append(f"Inst {inst:.0f}%")
+    if gm is not None and gm >= 50: reasons.append(f"GM {gm:.0f}% (moat)")
+    if fv("is_hot_sector"): reasons.append("Megatrend sector")
+
+    return {
+        "early_score": early_score_display,
+        "early_score_raw": early_score,
+        "verdict_label": verdict_label,
+        "verdict_color": verdict_color,
+        "verdict_action": verdict_action,
+        "insufficient_data": insufficient,
+        "completeness_pct": completeness_pct,
+        "category_scores": {
+            "financial":   {"score": round(s1 * 100), "passed": p1, "known": k1, "total": 5, "weight_pct": 30},
+            "revenue":     {"score": round(s2 * 100), "passed": p2, "known": k2, "total": 4, "weight_pct": 25},
+            "smart_money": {"score": round(s3 * 100), "passed": p3, "known": k3, "total": 4, "weight_pct": 20},
+            "valuation":   {"score": round(s4 * 100), "passed": p4, "known": k4, "total": 4, "weight_pct": 10},
+            "industry":    {"score": round(s5 * 100), "passed": p5, "known": k5, "total": 2, "weight_pct": 10},
+            "technical":   {"score": round(s6 * 100), "passed": p6, "known": k6, "total": 3, "weight_pct": 5},
+        },
+        "reasons": reasons[:4],
+    }
+
+
+def _score_360_from_yfinance(sym, region):
+    """r63.99.20: Thin wrapper using unified _resolve_360_fields pipeline.
+    r63.99.21: Runs BOTH _score_360_strict (Quality mode) AND _score_360_predisc
+    (Pre-Discovery mode) so the frontend can toggle modes without re-fetching.
+    Returns dict with both score blocks; None only on total resolver failure.
+    """
+    try:
+        resolved = _resolve_360_fields(sym, region)
+        if not resolved or not resolved.get("fields"):
+            return None
+        scored_quality = _score_360_strict(resolved)
+        scored_predisc = _score_360_predisc(resolved)
+        f = resolved["fields"]
+        def fv(k):
+            entry = f.get(k); return entry["value"] if entry else None
         return {
             "symbol": sym,
-            "name": info.get("longName") or info.get("shortName") or sym,
-            "sector": info.get("sector") or "—",
-            "industry": info.get("industry") or "—",
-            "price": round(price, 2),
-            "mcap": int(mcap) if mcap else None,
-            "early_score": early_score,
-            "verdict_label": verdict_label,
-            "verdict_color": verdict_color,
-            "category_scores": {
-                "financial": round(s1 * 100),
-                "revenue":   round(s2 * 100),
-                "smart_money": round(s3 * 100),
-                "valuation": round(s4 * 100),
-                "industry":  round(s5 * 100),
-                "technical": round(s6 * 100),
+            "name": resolved.get("name", sym),
+            "sector": resolved.get("sector", "—"),
+            "industry": resolved.get("industry", "—"),
+            "price": round(float(fv("price") or 0), 2),
+            "mcap": resolved.get("market_cap"),
+            # ─── QUALITY mode (default, existing) ───
+            "early_score": scored_quality.get("early_score"),
+            "early_score_raw": scored_quality.get("early_score_raw"),
+            "verdict_label": scored_quality.get("verdict_label"),
+            "verdict_color": scored_quality.get("verdict_color"),
+            "verdict_action": scored_quality.get("verdict_action"),
+            "insufficient_data": scored_quality.get("insufficient_data", False),
+            "completeness_pct": scored_quality.get("completeness_pct", 0),
+            "category_scores": scored_quality.get("category_scores", {}),
+            "reasons": scored_quality.get("reasons", []),
+            # ─── PRE-DISCOVERY mode (new in r63.99.21) ───
+            "predisc": {
+                "predisc_score": scored_predisc.get("predisc_score"),
+                "predisc_score_raw": scored_predisc.get("predisc_score_raw"),
+                "verdict_label": scored_predisc.get("verdict_label"),
+                "verdict_color": scored_predisc.get("verdict_color"),
+                "verdict_action": scored_predisc.get("verdict_action"),
+                "insufficient_data": scored_predisc.get("insufficient_data", False),
+                "category_scores": scored_predisc.get("category_scores", {}),
+                "reasons": scored_predisc.get("reasons", []),
+                "cash_runway_yr": scored_predisc.get("cash_runway_yr"),
             },
             "metrics": {
-                "revenue_growth_pct": round(rev_growth, 1) if rev_growth is not None else None,
-                "earnings_growth_pct": round(earn_growth, 1) if earn_growth is not None else None,
-                "gross_margin_pct": round(gross_margin, 1) if gross_margin is not None else None,
-                "profit_margin_pct": round(profit_margin, 1) if profit_margin is not None else None,
-                "roe_pct": round(roe, 1) if roe is not None else None,
-                "forward_pe": round(fwd_pe, 1) if fwd_pe else None,
-                "peg": round(peg, 2) if peg else None,
-                "ps": round(ps, 2) if ps else None,
-                "dcf_upside_pct": round(dcf_upside, 1) if dcf_upside is not None else None,
-                "inst_pct": round(inst_pct, 1) if inst_pct is not None else None,
-                "insider_pct": round(insider_pct, 2) if insider_pct is not None else None,
-                "rsi": round(rsi, 0) if rsi else None,
-                "above_200sma_pct": round(above_200_pct, 1) if above_200_pct is not None else None,
-                "beta": round(beta, 2),
-                "cash_usd": int(cash),
-                "debt_usd": int(debt),
+                "revenue_growth_pct": round(fv("revenue_growth_pct"), 1) if fv("revenue_growth_pct") is not None else None,
+                "earnings_growth_pct": round(fv("earnings_growth_pct"), 1) if fv("earnings_growth_pct") is not None else None,
+                "gross_margin_pct": round(fv("gross_margin_pct"), 1) if fv("gross_margin_pct") is not None else None,
+                "profit_margin_pct": round(fv("profit_margin_pct"), 1) if fv("profit_margin_pct") is not None else None,
+                "roe_pct": None,
+                "forward_pe": round(fv("forward_pe"), 1) if fv("forward_pe") is not None else None,
+                "peg": round(fv("peg"), 2) if fv("peg") is not None else None,
+                "ps": round(fv("price_to_sales"), 2) if fv("price_to_sales") is not None else None,
+                "dcf_upside_pct": round(fv("dcf_upside_pct"), 1) if fv("dcf_upside_pct") is not None else None,
+                "inst_pct": round(fv("inst_ownership_pct"), 1) if fv("inst_ownership_pct") is not None else None,
+                "insider_pct": round(fv("insider_ownership_pct"), 2) if fv("insider_ownership_pct") is not None else None,
+                "insider_net_flow_4q_usd": int(fv("insider_net_flow_4q_usd")) if fv("insider_net_flow_4q_usd") is not None else None,
+                "rsi": round(fv("rsi"), 0) if fv("rsi") is not None else None,
+                "above_200sma_pct": round(fv("sma_200_above_pct"), 1) if fv("sma_200_above_pct") is not None else None,
+                "beta": round(fv("beta"), 2) if fv("beta") is not None else None,
+                "cash_usd": int(fv("cash_usd")) if fv("cash_usd") is not None else None,
+                "debt_usd": int(fv("debt_usd")) if fv("debt_usd") is not None else None,
             },
-            "reasons": reasons[:4],
+            "sources_used": resolved.get("sources_used", []),
         }
     except Exception as _e:
         print(f"[360-SCAN] {sym} error: {type(_e).__name__}: {str(_e)[:80]}")
         return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# r63.99.21: PRE-DISCOVERY SCORER — Mode B per Vijay's choice
+#
+# The strict "Institutional Quality" scorer (_score_360_strict) was biased toward
+# already-profitable, already-institutional names — by design. Early-stage moonshots
+# (POET, AEHR-style) fail those gates by definition: pre-profit, low inst ownership,
+# high P/E, sometimes negative OCF.
+#
+# This scorer uses GROWTH-STAGE-APPROPRIATE thresholds to find candidates BEFORE
+# institutions pile in. Same 6 categories, same 30/25/20/10/10/5 weights, same
+# strict denominator discipline — but the checks are tuned for what an early-
+# stage real-business actually looks like.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _score_360_predisc(resolved):
+    """Pre-Discovery scorer. Companion to _score_360_strict — different thresholds
+    appropriate for early-stage moonshots. Same architectural discipline:
+    PASS=1, FAIL=0, UNKNOWN=0, denominator fixed at total per category.
+    """
+    f = resolved.get("fields", {})
+    completeness_pct = resolved.get("completeness_pct", 0)
+    def fv(k):
+        entry = f.get(k); return entry["value"] if entry else None
+
+    cash = fv("cash_usd"); debt = fv("debt_usd"); ocf = fv("ocf_usd")
+    rev_growth = fv("revenue_growth_pct"); earn_growth = fv("earnings_growth_pct")
+    gm = fv("gross_margin_pct"); profit_margin = fv("profit_margin_pct")
+    inst = fv("inst_ownership_pct"); insider = fv("insider_ownership_pct")
+    insider_flow = fv("insider_net_flow_4q_usd")
+    dcf = fv("dcf_upside_pct"); peg = fv("peg"); fpe = fv("forward_pe"); ps = fv("price_to_sales")
+    is_hot = fv("is_hot_sector")
+    sma_above = fv("sma_200_above_pct"); rsi = fv("rsi"); beta = fv("beta")
+
+    # Estimated cash runway (years): cash / |OCF_per_year| if OCF is negative; ∞ if positive
+    cash_runway_yr = None
+    if cash is not None and ocf is not None:
+        if ocf >= 0:
+            cash_runway_yr = float("inf")  # not burning — infinite runway
+        elif ocf < 0:
+            burn_per_year = abs(ocf)
+            cash_runway_yr = cash / burn_per_year if burn_per_year > 0 else None
+
+    # ─── Cat 1: Financial Survival (5 checks, weight 30%) — relaxed for cash-burners ───
+    c1 = [
+        # Cash > Debt (foundational, kept)
+        (cash > debt) if (cash is not None and debt is not None) else None,
+        # ≥ 2 years cash runway OR positive OCF — accepts burn IF runway is solid
+        (cash_runway_yr is not None and cash_runway_yr >= 2) if cash_runway_yr is not None else None,
+        # OCF positive OR runway > 3 years — softens the bar
+        ((ocf is not None and ocf > 0) or (cash_runway_yr is not None and cash_runway_yr > 3)) if (ocf is not None or cash_runway_yr is not None) else None,
+        # Gross margin ≥ 25% (was 30% — lower bar for hardware/industrial)
+        (gm >= 25) if gm is not None else None,
+        # Debt-to-Equity < 150 (was 100 — early stage often levered to grow)
+        (fv("debt_to_equity") is not None and fv("debt_to_equity") < 150) if fv("debt_to_equity") is not None else None,
+    ]
+    # ─── Cat 2: Revenue Inflection (4 checks, weight 25%) — HYPER growth required ───
+    c2 = [
+        # Revenue growth > 30% (RAISED from 20% — early stage requires hyper growth)
+        (rev_growth > 30) if rev_growth is not None else None,
+        # Earnings growth > 25% OR profit margin improving (pre-profit names OK if
+        # margin trajectory is positive — but we only have point-in-time, so use
+        # earn growth > -25% as proxy for "not deeply declining")
+        ((earn_growth is not None and earn_growth > 25) or (earn_growth is not None and earn_growth > -25)) if earn_growth is not None else None,
+        # Gross margin ≥ 30% OR rev growth > 50% — accept lower GM if growth is extreme
+        ((gm is not None and gm >= 30) or (rev_growth is not None and rev_growth > 50)) if (gm is not None or rev_growth is not None) else None,
+        # Profit margin > 0% (just profitable) OR revenue > 50% growth (still scaling) —
+        # accepts pre-profit growth machines
+        ((profit_margin is not None and profit_margin > 0) or (rev_growth is not None and rev_growth > 50)) if (profit_margin is not None or rev_growth is not None) else None,
+    ]
+    # ─── Cat 3: Pre-Discovery Smart Money (4 checks, weight 20%) — INVERTED for inst, look for insiders ───
+    c3 = [
+        # Institutional ownership in the "still undiscovered" sweet spot: 20-60%
+        # (NOT yet >60% — that means already discovered)
+        (inst is not None and 20 <= inst <= 60) if inst is not None else None,
+        # Meaningful insider stake ≥ 3% (founder skin in game) — RAISED from 1%
+        (insider is not None and insider >= 3) if insider is not None else None,
+        # Insider net buying — positive net flow last 4Q
+        (insider_flow is not None and insider_flow > 0) if insider_flow is not None else None,
+        # Insider stake ≥ 5% (very meaningful) OR insider net buying — either signal works
+        ((insider is not None and insider >= 5) or (insider_flow is not None and insider_flow > 0)) if (insider is not None or insider_flow is not None) else None,
+    ]
+    # ─── Cat 4: Valuation Disconnect (4 checks, weight 10%) — softened for growth ───
+    c4 = [
+        # DCF upside > 30% (RAISED — early-stage upside should be huge if real)
+        (dcf > 30) if dcf is not None else None,
+        # PEG < 2.0 (RAISED from 1.0 — high-growth names live in 1-2 PEG range, that's fine)
+        (peg is not None and 0 < peg < 2.0) if peg is not None else None,
+        # Forward P/E < 40 OR PEG < 2.0 — accepts high P/E if growth justifies it
+        ((fpe is not None and 0 < fpe < 40) or (peg is not None and 0 < peg < 2.0)) if (fpe is not None or peg is not None) else None,
+        # P/S < 10 OR rev growth > 50% — accept high P/S if growth is extreme
+        ((ps is not None and 0 < ps < 10) or (rev_growth is not None and rev_growth > 50)) if (ps is not None or rev_growth is not None) else None,
+    ]
+    # ─── Cat 5: Industry Tailwind (2 checks, weight 10%) — REQUIRED for pre-discovery ───
+    c5 = [
+        # Hot sector tag (megatrend)
+        bool(is_hot) if is_hot is not None else None,
+        # In strict mode this was duplicated; here we keep it as a single weight-doubled check
+        bool(is_hot) if is_hot is not None else None,
+    ]
+    # ─── Cat 6: Technical Structure (3 checks, weight 5%) — widened tolerance ───
+    c6 = [
+        # 200-SMA distance: -10% to +50% (was 0-30) — accepts pullback dips too
+        (sma_above is not None and -10 < sma_above < 50) if sma_above is not None else None,
+        # RSI 30-75 (was 40-65) — wider range, early names oscillate more
+        (rsi is not None and 30 < rsi < 75) if rsi is not None else None,
+        # Beta < 2.5 (was 1.5) — early-stage is structurally volatile
+        (beta is not None and 0 < beta < 2.5) if beta is not None else None,
+    ]
+
+    def _cat_score(checks):
+        total = len(checks)
+        if total == 0: return 0.0, 0, 0
+        passed = sum(1 for c in checks if c is True)
+        known = sum(1 for c in checks if c is not None)
+        return (passed / total), passed, known
+
+    s1, p1, k1 = _cat_score(c1)
+    s2, p2, k2 = _cat_score(c2)
+    s3, p3, k3 = _cat_score(c3)
+    s4, p4, k4 = _cat_score(c4)
+    s5, p5, k5 = _cat_score(c5)
+    s6, p6, k6 = _cat_score(c6)
+
+    predisc_score = round((0.30 * s1 + 0.25 * s2 + 0.20 * s3 + 0.10 * s4 + 0.10 * s5 + 0.05 * s6) * 100)
+
+    # Insufficient-data gate (same as strict, but mention it's mode-specific)
+    insufficient = completeness_pct < 50
+    if insufficient:
+        verdict_label = "📊 INSUFFICIENT DATA"; verdict_color = "#64748b"
+        verdict_action = f"Only {completeness_pct:.0f}% of framework fields available. Pre-discovery candidates often have thin coverage — research manually before deciding."
+        score_display = None
+    else:
+        # Tiers for pre-discovery — slightly different language
+        if predisc_score >= 75:
+            verdict_label = "🌱 EARLY MOONSHOT CANDIDATE"; verdict_color = "#059669"
+            verdict_action = "Strong pre-discovery setup. Hyper growth + founder-aligned cap table + sector tailwind. Position-size for asymmetric upside (1-3% conviction-sized bet)."
+        elif predisc_score >= 60:
+            verdict_label = "🚀 EMERGING SETUP"; verdict_color = "#10b981"
+            verdict_action = "Promising pre-institutional setup. Watch for 1-2 more boxes to flip before sizing up. Add quarterly results to calendar."
+        elif predisc_score >= 45:
+            verdict_label = "👀 TOO EARLY"; verdict_color = "#d97706"
+            verdict_action = "Either too early in the lifecycle or some key signals missing. Track quarterly; revisit if growth re-accelerates or insider activity picks up."
+        elif predisc_score >= 25:
+            verdict_label = "⚠ WEAK SETUP"; verdict_color = "#ea580c"
+            verdict_action = "Pre-discovery framework is finding too many concerns. Likely a falling-knife or structurally challenged business — not an undiscovered gem."
+        else:
+            verdict_label = "❌ NOT A MOONSHOT"; verdict_color = "#dc2626"
+            verdict_action = "Fails most pre-discovery quality checks. Better candidates exist in the same megatrend sector."
+        score_display = predisc_score
+
+    # Reasons highlighting pre-discovery positives
+    reasons = []
+    if rev_growth is not None and rev_growth > 50: reasons.append(f"Hyper-growth +{rev_growth:.0f}%")
+    elif rev_growth is not None and rev_growth > 30: reasons.append(f"Rev +{rev_growth:.0f}%")
+    if dcf is not None and dcf > 30: reasons.append(f"DCF +{dcf:.0f}%")
+    if insider is not None and insider >= 5: reasons.append(f"Founder stake {insider:.1f}%")
+    elif insider is not None and insider >= 3: reasons.append(f"Insider {insider:.1f}%")
+    if insider_flow is not None and insider_flow > 0:
+        reasons.append(f"Insider buying ${abs(insider_flow)/1e6:.1f}M")
+    if inst is not None and 20 <= inst <= 60: reasons.append(f"Pre-discovery inst {inst:.0f}%")
+    if cash_runway_yr is not None and cash_runway_yr != float("inf") and cash_runway_yr >= 2:
+        reasons.append(f"{cash_runway_yr:.1f}yr cash runway")
+    elif ocf is not None and ocf > 0:
+        reasons.append("Cash-flow positive ✓")
+    if is_hot: reasons.append("Megatrend sector")
+    if peg is not None and 0 < peg < 1.5: reasons.append(f"PEG {peg:.2f}")
+
+    return {
+        "predisc_score": score_display,
+        "predisc_score_raw": predisc_score,
+        "verdict_label": verdict_label,
+        "verdict_color": verdict_color,
+        "verdict_action": verdict_action,
+        "insufficient_data": insufficient,
+        "completeness_pct": completeness_pct,
+        "cash_runway_yr": (round(cash_runway_yr, 2) if cash_runway_yr is not None and cash_runway_yr != float("inf") else ("∞" if cash_runway_yr == float("inf") else None)),
+        "category_scores": {
+            "financial":   {"score": round(s1 * 100), "passed": p1, "known": k1, "total": 5, "weight_pct": 30},
+            "revenue":     {"score": round(s2 * 100), "passed": p2, "known": k2, "total": 4, "weight_pct": 25},
+            "smart_money": {"score": round(s3 * 100), "passed": p3, "known": k3, "total": 4, "weight_pct": 20},
+            "valuation":   {"score": round(s4 * 100), "passed": p4, "known": k4, "total": 4, "weight_pct": 10},
+            "industry":    {"score": round(s5 * 100), "passed": p5, "known": k5, "total": 2, "weight_pct": 10},
+            "technical":   {"score": round(s6 * 100), "passed": p6, "known": k6, "total": 3, "weight_pct": 5},
+        },
+        "reasons": reasons[:4],
+    }
+
+
+@app.get("/api/360-score")
+async def score_360_single(symbol: str = "", region: str = "US", refresh: int = 0):
+    """r63.99.20: Single-ticker 360 strict scorer endpoint. Uses SAME pipeline
+    as /api/360-universe-scan so universe-rank and single-ticker-deep-dive
+    return identical scores for the same ticker.
+    """
+    if not symbol:
+        return {"success": False, "error": "Missing symbol parameter"}
+    sym = symbol.strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    try:
+        resolved = _resolve_360_fields(sym, region)
+        if not resolved or not resolved.get("fields"):
+            return {"success": False, "error": f"No data resolvable for '{sym}'. Ticker may not exist or be very thinly covered."}
+        # r63.99.21: Run BOTH scorers — frontend can toggle modes without re-fetch
+        scored_quality = _score_360_strict(resolved)
+        scored_predisc = _score_360_predisc(resolved)
+        # Build per-field detail for the UI to render the ✓/✗/— rows
+        f = resolved["fields"]
+        field_detail = {}
+        for key in _360_FIELD_KEYS:
+            entry = f.get(key)
+            field_detail[key] = {
+                "value": entry["value"] if entry else None,
+                "source": entry["source"] if entry else None,
+                "known": entry is not None,
+            }
+        return {
+            "success": True,
+            "symbol": sym, "region": region,
+            "name": resolved.get("name"),
+            "sector": resolved.get("sector"),
+            "industry": resolved.get("industry"),
+            "market_cap": resolved.get("market_cap"),
+            # ─── QUALITY mode (existing strict) ───
+            "early_score": scored_quality.get("early_score"),
+            "early_score_raw": scored_quality.get("early_score_raw"),
+            "verdict_label": scored_quality.get("verdict_label"),
+            "verdict_color": scored_quality.get("verdict_color"),
+            "verdict_action": scored_quality.get("verdict_action"),
+            "insufficient_data": scored_quality.get("insufficient_data", False),
+            "completeness_pct": scored_quality.get("completeness_pct", 0),
+            "category_scores": scored_quality.get("category_scores", {}),
+            "reasons": scored_quality.get("reasons", []),
+            # ─── PRE-DISCOVERY mode (new) — parallel block ───
+            "predisc": {
+                "predisc_score": scored_predisc.get("predisc_score"),
+                "predisc_score_raw": scored_predisc.get("predisc_score_raw"),
+                "verdict_label": scored_predisc.get("verdict_label"),
+                "verdict_color": scored_predisc.get("verdict_color"),
+                "verdict_action": scored_predisc.get("verdict_action"),
+                "insufficient_data": scored_predisc.get("insufficient_data", False),
+                "category_scores": scored_predisc.get("category_scores", {}),
+                "reasons": scored_predisc.get("reasons", []),
+                "cash_runway_yr": scored_predisc.get("cash_runway_yr"),
+            },
+            "field_detail": field_detail,
+            "sources_used": resolved.get("sources_used", []),
+            "ts": time.time(),
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)[:200]}
 
 
 @app.get("/api/360-universe-scan")
@@ -30602,13 +31113,17 @@ async def universe_scan_360(region: str = "US", refresh: int = 0):
                     if res: scored.append(res)
                 except Exception as _fe:
                     print(f"[360-SCAN] future error: {_fe}")
-        scored.sort(key=lambda x: x.get("early_score", 0), reverse=True)
+        # r63.99.20: sort with rankable scores first (early_score not None), insufficient at bottom.
+        # Use early_score_raw for sorting so insufficient-data stocks still order amongst themselves.
+        scored.sort(key=lambda x: (x.get("insufficient_data") is True, -(x.get("early_score_raw") or 0)))
         elapsed = round(time.time() - t0, 1)
-        # Bucket by verdict tier
-        strong = [s for s in scored if s["early_score"] >= 80]
-        early  = [s for s in scored if 65 <= s["early_score"] < 80]
-        watch  = [s for s in scored if 50 <= s["early_score"] < 65]
-        marginal = [s for s in scored if s["early_score"] < 50]
+        # Tier buckets — exclude insufficient-data from rankings
+        rankable = [s for s in scored if not s.get("insufficient_data")]
+        strong = [s for s in rankable if (s.get("early_score") or 0) >= 80]
+        early  = [s for s in rankable if 65 <= (s.get("early_score") or 0) < 80]
+        watch  = [s for s in rankable if 50 <= (s.get("early_score") or 0) < 65]
+        marginal = [s for s in rankable if (s.get("early_score") or 0) < 50]
+        insufficient = [s for s in scored if s.get("insufficient_data")]
         out = {
             "success": True,
             "region": region,
@@ -30622,14 +31137,16 @@ async def universe_scan_360(region: str = "US", refresh: int = 0):
                 "early_count": len(early),
                 "watch_count": len(watch),
                 "marginal_count": len(marginal),
-                "top_pick": scored[0]["symbol"] if scored else None,
-                "top_score": scored[0]["early_score"] if scored else None,
+                "insufficient_count": len(insufficient),
+                "top_pick": rankable[0]["symbol"] if rankable else None,
+                "top_score": rankable[0]["early_score"] if rankable else None,
+                "avg_completeness_pct": round(sum((s.get("completeness_pct") or 0) for s in scored) / max(1, len(scored)), 1),
             },
             "ts": time.time(),
         }
         _360_universe_cache[region] = {"data": out, "ts": time.time()}
-        top_summary = f"top: {scored[0]['symbol']}@{scored[0]['early_score']}" if scored else "no results"
-        print(f"[360-SCAN] {len(scored)}/{len(universe)} scored in {elapsed}s | strong={len(strong)} early={len(early)} watch={len(watch)} | {top_summary}")
+        top_str = (f"top: {rankable[0]['symbol']}@{rankable[0]['early_score']}" if rankable else "no rankable")
+        print(f"[360-SCAN] {len(scored)}/{len(universe)} scored in {elapsed}s | strong={len(strong)} early={len(early)} watch={len(watch)} marginal={len(marginal)} insufficient={len(insufficient)} | {top_str}")
         return out
     except Exception as e:
         import traceback; traceback.print_exc()

@@ -61,9 +61,45 @@
 // ranked table by Early Opportunity Score with tier breakdown (STRONG/EARLY/
 // WATCH/MARGINAL). Click any row → expand to per-category scores + 14-metric
 // grid + "Full 360° Deep-Dive" button that triggers single-ticker scanner.
-window.CELESYS_VERSION = "r63.99.18";
-window.CELESYS_BUILD_TIME = 1779170400;
-window.CELESYS_BUILD_DATE = "2026-05-19 04:00:00 UTC";
+// r63.99.19: THREE FIXES
+//   (1) 360° single-ticker reader: field-name mismatch — investor-decide returns
+//       `d.fundamentals` (PLURAL) with `deRatio` (not debtEquity), and dollar
+//       amounts (totalCash/totalDebt/OCF) aren't on that dict. Renderer now
+//       reads both `d.fundamentals` AND `d.fundamental`, normalizes
+//       decimal-vs-percent for ROE/margins/growth, falls through to top-level
+//       d.* paths. MU should no longer score 10/100.
+//   (2) News-themes timeout: added web_search tool so themes pull CURRENT news
+//       (NVDA GTC Summit, FOMC, etc.) not just training data. max_tokens 12k→8k,
+//       timeout 180s→120s. On timeout returns stale cache if available with
+//       _stale flag + warning banner instead of failing entirely. Robust last-
+//       text-block parsing for tool-interleaved responses.
+//   (3) Better frontend error display for news-themes failures: actionable
+//       retry button + explanation instead of raw HTTPSConnectionPool trace.
+// r63.99.20: UNIFIED 360° SCORING ENGINE — single source of truth across the
+// universe scan and single-ticker views. New backend pipeline:
+//   • _resolve_360_fields(symbol, region): multi-source field resolver
+//     (yfinance.info → curated factsheet fallback) returning {fields: {key:
+//     {value, source}}, completeness_pct, sources_used}.
+//   • _score_360_strict(resolved): strict scorer — unknowns NOT CREDITED
+//     (denominator is fixed total checks per category, not "known" only).
+//     Replaces the gameable "passed/known" formula that gave PATH 100/100.
+//   • Below 50% data completeness → INSUFFICIENT_DATA verdict instead of a
+//     score, so opaque tickers can't game their way to the top.
+//   • New /api/360-score endpoint — single-ticker strict scorer that the
+//     inline scanner now calls. Score matches the universe ranking exactly.
+//   • Universe table adds DATA column + INSUFFICIENT tier card +
+//     avg-completeness summary. Single-ticker header shows data-completeness
+//     badge under the score.
+// r63.99.21: MODE B — Pre-Discovery scorer added alongside Quality scorer.
+// New /api/360-* responses include BOTH score blocks. Frontend mode toggle
+// (🛡 Institutional Quality vs 🌱 Pre-Discovery Moonshots) re-renders without
+// re-fetch. Pre-Discovery thresholds tuned for early-stage names: accepts
+// cash burn (if runway ≥ 2yr), high P/E (if PEG < 2 or rev growth > 40%),
+// low inst ownership (treats 20-60% as sweet spot, not red flag), megatrend
+// sector REQUIRED. Different tier labels (MOONSHOT/EMERGING/TOO EARLY/WEAK).
+window.CELESYS_VERSION = "r63.99.21";
+window.CELESYS_BUILD_TIME = 1779210000;
+window.CELESYS_BUILD_DATE = "2026-05-19 15:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -10248,7 +10284,10 @@ window._piCcy = function(value, fieldName, S) {
 // ═══════════════════════════════════════════════════════════════════════════
 window._render360Scanner = function(d) {
   if (!d) return '<div style="padding:20px;color:#94a3b8;font-size:11px">No data — analyze a stock first.</div>';
-  var _f0 = d.fundamental || {};
+  // r63.99.19: read both d.fundamentals (plural, from /api/investor-decide) AND
+  // d.fundamental (singular, legacy/some other endpoints). Also fall through to
+  // top-level d.* since some fields live there directly.
+  var _f0 = d.fundamentals || d.fundamental || {};
   var _b0 = d.business || {};
   var _i0 = d.institutional || {};
   var _vd0 = d.valuation_detail || {};
@@ -10271,28 +10310,41 @@ window._render360Scanner = function(d) {
   }
 
   var _price = parseFloat(d.price) || 0;
-  var _cash = parseFloat(_f0.totalCash || _b0.cash || 0);
-  var _debt = parseFloat(_f0.totalDebt || _b0.debt || 0);
-  var _currentRatio = parseFloat(_f0.currentRatio || _b0.currentRatio || 0);
-  var _ocf = parseFloat(_f0.operatingCashflow || _f0.ocf || _b0.ocf || 0);
-  var _grossMargin = parseFloat(_f0.grossMargin || _b0.grossMargin || 0);
-  var _profitMargin = parseFloat(_f0.profitMargin || _b0.profitMargin || 0);
-  var _revGrowth = parseFloat(_f0.revGrowth || _b0.revGrowth || 0);
-  var _earnGrowth = parseFloat(_f0.earnGrowth || _b0.earnGrowth || 0);
-  var _roe = parseFloat(_f0.roe || _b0.roe || 0);
-  var _debtEq = parseFloat(_f0.debtEquity || _b0.debtEquity || 0);
-  var _fwdPe = parseFloat(_f0.forwardPE || d.forward_pe || d.forwardPE || 0);
-  var _peg = parseFloat(_f0.pegRatio || d.pegRatio || 0);
+  // r63.99.19: field paths corrected for /api/investor-decide actual response shape.
+  // d.fundamentals (plural) returns: revGrowth, earnGrowth, grossMargin, opMargin,
+  // profitMargin, deRatio (NOT debtEquity), currentRatio, roe, roa.
+  // Raw dollar amounts (totalCash/totalDebt/operatingCashflow) and forwardPE/PEG/PS
+  // come from top-level d or d.business / d.valuation_detail.
+  var _cash = parseFloat(_f0.totalCash || _b0.cash || d.totalCash || d.cash || 0);
+  var _debt = parseFloat(_f0.totalDebt || _b0.debt || d.totalDebt || d.debt || 0);
+  var _currentRatio = parseFloat(_f0.currentRatio || _b0.currentRatio || d.currentRatio || 0);
+  var _ocf = parseFloat(_f0.operatingCashflow || _f0.ocf || _b0.ocf || d.operatingCashflow || d.ocf || 0);
+  var _grossMargin = parseFloat(_f0.grossMargin || _b0.grossMargin || d.grossMargin || 0);
+  var _profitMargin = parseFloat(_f0.profitMargin || _b0.profitMargin || d.profitMargin || 0);
+  var _revGrowth = parseFloat(_f0.revGrowth || _b0.revGrowth || d.revGrowth || 0);
+  var _earnGrowth = parseFloat(_f0.earnGrowth || _f0.earningsGrowth || _b0.earnGrowth || d.earnGrowth || d.earningsGrowth || 0);
+  var _roe = parseFloat(_f0.roe || _b0.roe || d.roe || 0);
+  // ROE may come back as decimal (0.31) or percent (31.0) — normalize to percent
+  if (_roe > 0 && _roe < 1) _roe = _roe * 100;
+  // Margins same — yfinance returns decimals, our endpoint returns percents
+  if (_grossMargin > 0 && _grossMargin < 1) _grossMargin = _grossMargin * 100;
+  if (_profitMargin > 0 && _profitMargin < 1) _profitMargin = _profitMargin * 100;
+  if (_revGrowth > 0 && _revGrowth < 1 && _revGrowth !== 0) _revGrowth = _revGrowth * 100;
+  if (_earnGrowth > 0 && _earnGrowth < 1 && _earnGrowth !== 0) _earnGrowth = _earnGrowth * 100;
+  // Debt-to-Equity: investor-decide uses 'deRatio', yfinance uses 'debtToEquity' or 'debtEquity'
+  var _debtEq = parseFloat(_f0.deRatio || _f0.debtEquity || _f0.debtToEquity || _b0.debtEquity || d.deRatio || d.debtEquity || 0);
+  var _fwdPe = parseFloat(_f0.forwardPE || _f0.forward_pe || d.forward_pe || d.forwardPE || (d.valuation_detail||{}).forward_pe || 0);
+  var _peg = parseFloat(_f0.pegRatio || _f0.peg || d.pegRatio || d.peg || (d.valuation_detail||{}).peg || 0);
   if (!_peg && _fwdPe > 0 && _revGrowth > 0) _peg = _fwdPe / _revGrowth;
-  var _ps = parseFloat(_f0.priceToSalesTrailing12Months || _f0.priceToSales || 0);
-  var _instPct = parseFloat((_i0.institutional_holders||{}).total_pct_outstanding || _i0.institutional_pct || _f0.institutionalOwnership || 0);
+  var _ps = parseFloat(_f0.priceToSalesTrailing12Months || _f0.priceToSales || _f0.ps || d.priceToSales || (d.valuation_detail||{}).price_to_sales || 0);
+  var _instPct = parseFloat((_i0.institutional_holders||{}).total_pct_outstanding || _i0.institutional_pct || _f0.institutionalOwnership || _f0.heldPercentInstitutions || d.institutionalOwnership || 0);
   if (_instPct > 0 && _instPct < 1) _instPct = _instPct * 100;
-  var _insiderPct = parseFloat(_f0.insiderOwnership || _i0.insider_pct || 0);
+  var _insiderPct = parseFloat(_f0.insiderOwnership || _f0.heldPercentInsiders || _i0.insider_pct || d.insiderOwnership || 0);
   if (_insiderPct > 0 && _insiderPct < 1) _insiderPct = _insiderPct * 100;
   var _insQ = _i0.insider_quarterly_history || ((_i0.insider_activity||{}).quarterly_history) || [];
   var _insNetSum = 0;
   _insQ.slice(-4).forEach(function(q){ _insNetSum += (q.net_flow_usd || ((q.buy_value_usd||0) - (q.sell_value_usd||0))); });
-  var _dcfUpside = parseFloat(_vd0.upside_pct || _t0.fair_value_upside_pct || d.upside || 0);
+  var _dcfUpside = parseFloat(_vd0.upside_pct || _t0.fair_value_upside_pct || d.upside || d.fair_value_upside_pct || 0);
   var _rsi = parseFloat(d.rsi || _f0.rsi || 0);
   var _price50sma = parseFloat(d.sma50 || d.sma_50 || 0);
   var _price200sma = parseFloat(d.sma200 || d.sma_200 || 0);
@@ -10367,23 +10419,45 @@ window._render360Scanner = function(d) {
   }
   var _s1 = _catPassRate(c1), _s2 = _catPassRate(c2), _s3 = _catPassRate(c3);
   var _s4 = _catPassRate(c4), _s5 = _catPassRate(c5), _s6 = _catPassRate(c6);
-  var _earlyScore = Math.round((0.30 * _s1 + 0.25 * _s2 + 0.20 * _s3 + 0.10 * _s4 + 0.10 * _s5 + 0.05 * _s6) * 100);
-  var _verdictColor, _verdictLabel, _verdictAction;
-  if (_earlyScore >= 80) {
-    _verdictColor = '#059669'; _verdictLabel = '🚀 STRONG INSTITUTIONAL SETUP';
-    _verdictAction = 'All key boxes checked. This profile matches early-stage 5-10x setups. Build position in 2-3 tranches over 2-4 weeks.';
-  } else if (_earlyScore >= 65) {
-    _verdictColor = '#10b981'; _verdictLabel = '✨ EARLY OPPORTUNITY';
-    _verdictAction = 'Strong setup with a few gaps. Starter position OK; verify the failing checks before going full size.';
-  } else if (_earlyScore >= 50) {
-    _verdictColor = '#d97706'; _verdictLabel = '👀 WATCHLIST CANDIDATE';
-    _verdictAction = 'Mixed signals. Wait for 2-3 more checks to flip green before initiating. Set price alerts and monitor quarterly results.';
-  } else if (_earlyScore >= 30) {
-    _verdictColor = '#ea580c'; _verdictLabel = '⚠ MARGINAL';
-    _verdictAction = 'Doesn\'t meet the institutional 360° threshold. Better opportunities likely exist in the same sector.';
+  var _earlyScoreLocal = Math.round((0.30 * _s1 + 0.25 * _s2 + 0.20 * _s3 + 0.10 * _s4 + 0.10 * _s5 + 0.05 * _s6) * 100);
+
+  // r63.99.20: OVERRIDE with canonical strict score from /api/360-score when present.
+  // This makes the single-ticker view's score MATCH the universe-scan ranking exactly.
+  // Local score retained for visual ✓/✗ row rendering (different question).
+  // r63.99.21: select quality vs predisc block from strict response per active mode
+  var _mode = window._360Mode || 'quality';
+  var _strict = d._strict_score || null;
+  // For predisc mode, use the predisc sub-block (score key is predisc_score, not early_score)
+  var _scoreBlock = _strict;
+  if (_strict && _mode === 'predisc' && _strict.predisc) {
+    _scoreBlock = Object.assign({}, _strict.predisc, {
+      early_score: _strict.predisc.predisc_score,
+      early_score_raw: _strict.predisc.predisc_score_raw,
+      completeness_pct: _strict.completeness_pct,
+      success: true,
+    });
+  }
+  var _earlyScore, _verdictColor, _verdictLabel, _verdictAction, _insufficientData = false, _completenessPct = null;
+  if (_scoreBlock && _scoreBlock.success !== false) {
+    _earlyScore = _scoreBlock.early_score; // may be null when insufficient
+    _earlyScoreRaw = _scoreBlock.early_score_raw;
+    _verdictColor = _scoreBlock.verdict_color;
+    _verdictLabel = _scoreBlock.verdict_label;
+    _verdictAction = _scoreBlock.verdict_action;
+    _insufficientData = _scoreBlock.insufficient_data === true;
+    _completenessPct = _scoreBlock.completeness_pct;
   } else {
-    _verdictColor = '#dc2626'; _verdictLabel = '❌ AVOID — VALUE TRAP RISK';
-    _verdictAction = 'Multiple structural concerns. Skip this name unless you have a specific contrarian thesis.';
+    _earlyScore = _earlyScoreLocal;
+    if (_earlyScore >= 80) { _verdictColor = '#059669'; _verdictLabel = '🚀 STRONG INSTITUTIONAL SETUP';
+      _verdictAction = 'All key boxes checked. This profile matches early-stage 5-10x setups. Build position in 2-3 tranches over 2-4 weeks.'; }
+    else if (_earlyScore >= 65) { _verdictColor = '#10b981'; _verdictLabel = '✨ EARLY OPPORTUNITY';
+      _verdictAction = 'Strong setup with a few gaps. Starter position OK; verify the failing checks before going full size.'; }
+    else if (_earlyScore >= 50) { _verdictColor = '#d97706'; _verdictLabel = '👀 WATCHLIST CANDIDATE';
+      _verdictAction = 'Mixed signals. Wait for 2-3 more checks to flip green before initiating. Set price alerts and monitor quarterly results.'; }
+    else if (_earlyScore >= 30) { _verdictColor = '#ea580c'; _verdictLabel = '⚠ MARGINAL';
+      _verdictAction = 'Doesn\'t meet the institutional 360° threshold. Better opportunities likely exist in the same sector.'; }
+    else { _verdictColor = '#dc2626'; _verdictLabel = '❌ AVOID — VALUE TRAP RISK';
+      _verdictAction = 'Multiple structural concerns. Skip this name unless you have a specific contrarian thesis.'; }
   }
 
   var _sym = (d.company||{}).symbol || d.symbol || d.ticker || '';
@@ -10392,11 +10466,19 @@ window._render360Scanner = function(d) {
   h += '<div style="display:flex;align-items:center;gap:10px">';
   h += '<div style="width:38px;height:38px;border-radius:10px;background:' + _verdictColor + '15;display:flex;align-items:center;justify-content:center;font-size:20px">🎯</div>';
   h += '<div><div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Institutional 360° Undervalued Scanner' + (_sym ? ' — ' + _sym : '') + '</div>';
-  h += '<div style="font-size:10px;color:#64748b;margin-top:1px">10-category framework — every line checked</div></div>';
+  h += '<div style="font-size:10px;color:#64748b;margin-top:1px">10-category framework — every line checked';
+  if (_completenessPct !== null) h += ' &middot; data ' + _completenessPct + '% complete';
+  h += '</div></div>';
   h += '</div>';
   h += '<div style="text-align:right">';
   h += '<div style="font-size:9px;font-weight:800;color:' + _verdictColor + ';letter-spacing:0.5px">EARLY OPPORTUNITY SCORE</div>';
-  h += '<div style="font-size:28px;font-weight:900;color:' + _verdictColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + _earlyScore + '<span style="font-size:13px;color:#94a3b8">/100</span></div>';
+  if (_insufficientData) {
+    h += '<div style="font-size:24px;font-weight:900;color:' + _verdictColor + ';font-family:Sora,sans-serif;line-height:1">N/A</div>';
+    h += '<div style="font-size:9px;color:#64748b;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">data ' + _completenessPct + '% &lt; 50%</div>';
+  } else {
+    h += '<div style="font-size:28px;font-weight:900;color:' + _verdictColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + (_earlyScore != null ? _earlyScore : _earlyScoreLocal) + '<span style="font-size:13px;color:#94a3b8">/100</span></div>';
+    if (_completenessPct !== null) h += '<div style="font-size:9px;color:#64748b;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">data ' + _completenessPct + '% complete</div>';
+  }
   h += '</div></div>';
   h += '<div style="padding:11px 14px;background:' + _verdictColor + '08;border:1px solid ' + _verdictColor + '30;border-left:4px solid ' + _verdictColor + ';border-radius:8px;margin-bottom:14px">';
   h += '<div style="font-size:13px;font-weight:900;color:' + _verdictColor + ';font-family:Sora,sans-serif;margin-bottom:4px">' + _verdictLabel + '</div>';
@@ -10480,24 +10562,31 @@ window.load360Scanner = function(sym, reg) {
     return;
   }
   el.innerHTML = '<div style="padding:30px;text-align:center"><div style="display:inline-block;width:16px;height:16px;border:2px solid #1A3A78;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:#5E6F8E">Running 360° scan on <strong>' + sym + '</strong>...</span></div>';
-  fetch('/api/investor-decide?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).then(function(d){
+  // r63.99.20: fetch BOTH investor-decide (rich data for ✓/✗ rendering) AND
+  // /api/360-score (canonical strict score + completeness) so the score shown
+  // here MATCHES the universe-scan ranking exactly.
+  Promise.all([
+    fetch('/api/investor-decide?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch('/api/investor-due-diligence?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch('/api/360-score?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(){return null;})
+  ]).then(function(results){
+    var d = results[0], dd = results[1], strict = results[2];
     if (!d || !d.success) {
       el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:11px">Scan failed: ' + ((d && d.error) || 'unknown error') + '<br><button onclick="load360Scanner()" style="margin-top:8px;padding:6px 14px;border-radius:6px;background:#1A3A78;color:#fff;border:none;cursor:pointer;font-size:10px">↻ Retry</button></div>';
       return;
     }
-    // Optionally enrich with DD sidecar so SMI verdict + insider history populates
-    fetch('/api/investor-due-diligence?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).then(function(dd){
-      if (dd && dd.success && dd.institutional) {
-        d.institutional = d.institutional || {};
-        Object.keys(dd.institutional).forEach(function(k){
-          if (d.institutional[k] === undefined || d.institutional[k] === null) d.institutional[k] = dd.institutional[k];
-        });
-      }
-      el.innerHTML = window._render360Scanner(d);
-    }).catch(function(){
-      // Render anyway with primary data
-      el.innerHTML = window._render360Scanner(d);
-    });
+    if (dd && dd.success && dd.institutional) {
+      d.institutional = d.institutional || {};
+      Object.keys(dd.institutional).forEach(function(k){
+        if (d.institutional[k] === undefined || d.institutional[k] === null) d.institutional[k] = dd.institutional[k];
+      });
+    }
+    // Attach strict score data so renderer can use canonical values
+    if (strict && strict.success) {
+      d._strict_score = strict;
+    }
+    window._360SingleData = d;  // r63.99.21: cache for mode-toggle re-render
+    el.innerHTML = window._render360Scanner(d);
   }).catch(function(e){
     el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:11px">Network error: ' + e.message + '</div>';
   });
@@ -10508,6 +10597,44 @@ window.load360Scanner = function(sym, reg) {
 // Runs the 10-category framework across a curated universe per region.
 // Honors global region toggle (window._deRegion).
 // ═══════════════════════════════════════════════════════════════════════════
+// r63.99.21: Mode state — 'quality' or 'predisc'. Set by toggle buttons.
+window._360Mode = window._360Mode || 'quality';
+window._360UniverseData = null;  // cached scan response
+
+window._set360Mode = function(mode) {
+  if (mode !== 'quality' && mode !== 'predisc') return;
+  window._360Mode = mode;
+  // Update toggle button visuals
+  var qBtn = document.getElementById('mode360Quality');
+  var pBtn = document.getElementById('mode360Predisc');
+  if (qBtn) {
+    qBtn.style.background = mode === 'quality' ? 'linear-gradient(135deg,#1A3A78,#1e40af)' : '#fff';
+    qBtn.style.color = mode === 'quality' ? '#fff' : '#475569';
+    qBtn.style.border = mode === 'quality' ? 'none' : '1px solid #cbd5e1';
+  }
+  if (pBtn) {
+    pBtn.style.background = mode === 'predisc' ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : '#fff';
+    pBtn.style.color = mode === 'predisc' ? '#fff' : '#475569';
+    pBtn.style.border = mode === 'predisc' ? 'none' : '1px solid #cbd5e1';
+  }
+  var hint = document.getElementById('mode360Hint');
+  if (hint) {
+    hint.innerHTML = mode === 'quality'
+      ? '<strong>Quality mode:</strong> finds established profitable names trading below intrinsic value. Strict thresholds — pre-profit names struggle.'
+      : '<strong>Pre-Discovery mode:</strong> finds early-stage names BEFORE institutions pile in. Accepts cash burn (if runway >2yr), high P/E (if growth justifies), low inst ownership (treats as opportunity). Tuned for moonshots like POET, AEHR, IONQ.';
+  }
+  // Re-render universe results if we have cached data (no re-fetch)
+  if (window._360UniverseData) {
+    var resultEl = document.getElementById('scan360UniverseResult');
+    if (resultEl) resultEl.innerHTML = window._render360Universe(window._360UniverseData);
+  }
+  // Also re-render single-ticker scanner if it has data
+  if (window._360SingleData) {
+    var sEl = document.getElementById('scan360Result');
+    if (sEl) sEl.innerHTML = window._render360Scanner(window._360SingleData);
+  }
+};
+
 window.load360Universe = function(forceRefresh) {
   var statusEl = document.getElementById('scan360UniverseStatus');
   var resultEl = document.getElementById('scan360UniverseResult');
@@ -10518,8 +10645,9 @@ window.load360Universe = function(forceRefresh) {
   var region = globalReg || (regSel && regSel.value) || 'US';
   if (regSel && regSel.value !== region) regSel.value = region;
   if (btnEl) { btnEl.disabled = true; btnEl.style.opacity = '0.6'; btnEl.innerHTML = '⏳ SCANNING…'; }
-  if (statusEl) statusEl.textContent = 'Scanning ' + (region === 'US' ? '45 US small/mid-caps' : '65 NSE picks') + ' across 10 categories... ~30-90s.';
-  resultEl.innerHTML = '<div style="padding:40px;text-align:center;background:#fff;border:1px solid #bbf7d0;border-radius:10px"><div style="display:inline-block;width:18px;height:18px;border:3px solid #22c55e;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:10px"></div><span style="font-size:12px;color:#065f46;font-weight:700">Running 10-category Early Opportunity scoring across the ' + (region === 'US' ? 'US small/mid-cap' : 'NSE mid/small-cap') + ' universe (parallel, ~30-90s)…</span></div>';
+  var modeLabel = window._360Mode === 'predisc' ? 'Pre-Discovery (early-stage)' : 'Institutional Quality';
+  if (statusEl) statusEl.textContent = 'Scanning ' + (region === 'US' ? '45 US small/mid-caps' : '65 NSE picks') + ' in ' + modeLabel + ' mode... ~30-90s.';
+  resultEl.innerHTML = '<div style="padding:40px;text-align:center;background:#fff;border:1px solid #bbf7d0;border-radius:10px"><div style="display:inline-block;width:18px;height:18px;border:3px solid #22c55e;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:10px"></div><span style="font-size:12px;color:#065f46;font-weight:700">Running 10-category scoring (both modes) across ' + (region === 'US' ? 'US small/mid-cap' : 'NSE mid/small-cap') + ' universe (parallel, ~30-90s)…</span></div>';
   var url = '/api/360-universe-scan?region=' + region + (forceRefresh ? '&refresh=1' : '');
   fetch(url, {cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
     if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; btnEl.innerHTML = '🚀 SCAN UNIVERSE'; }
@@ -10528,10 +10656,10 @@ window.load360Universe = function(forceRefresh) {
       resultEl.innerHTML = '<div style="padding:18px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px"><strong>Scan failed:</strong> ' + ((d && d.error) || 'unknown error') + '<br><button onclick="window.load360Universe(true)" style="margin-top:10px;padding:6px 14px;border-radius:6px;background:#22c55e;color:#fff;border:none;cursor:pointer;font-size:10px;font-weight:700">↻ Retry</button></div>';
       return;
     }
+    window._360UniverseData = d;  // cache for mode-toggle re-render
     if (statusEl) {
       var msg = (d._cached ? '↻ Cached · ' + d._cache_age_sec + 's old · ' : 'Fresh scan in ' + (d.elapsed_sec || '?') + 's · ') +
-                d.scanned_count + '/' + d.universe_size + ' scored · region: ' + d.region;
-      if (d.summary) msg += ' · STRONG:' + d.summary.strong_count + ' · EARLY:' + d.summary.early_count + ' · WATCH:' + d.summary.watch_count;
+                d.scanned_count + '/' + d.universe_size + ' scored · region: ' + d.region + ' · mode: ' + (window._360Mode === 'predisc' ? 'Pre-Discovery' : 'Quality');
       statusEl.textContent = msg;
     }
     resultEl.innerHTML = window._render360Universe(d);
@@ -10546,30 +10674,83 @@ window._render360Universe = function(d) {
   if (!d || !d.stocks || !d.stocks.length) {
     return '<div style="padding:30px;color:#94a3b8;font-size:11px;text-align:center">No stocks scored. Try refresh.</div>';
   }
-  var stocks = d.stocks;
-  var s = d.summary || {};
+  // r63.99.21: Project each stock through the active scoring mode.
+  // 'quality' = top-level fields (existing strict).
+  // 'predisc' = pull from stock.predisc sub-block (pre-discovery scorer).
+  var mode = window._360Mode || 'quality';
+  var stocks = d.stocks.map(function(st){
+    if (mode === 'predisc' && st.predisc) {
+      // Merge predisc fields into top-level, overriding quality fields for display
+      return Object.assign({}, st, {
+        early_score: st.predisc.predisc_score,
+        early_score_raw: st.predisc.predisc_score_raw,
+        verdict_label: st.predisc.verdict_label,
+        verdict_color: st.predisc.verdict_color,
+        verdict_action: st.predisc.verdict_action,
+        insufficient_data: st.predisc.insufficient_data,
+        category_scores: st.predisc.category_scores,
+        reasons: st.predisc.reasons,
+        cash_runway_yr: st.predisc.cash_runway_yr,
+        _mode: 'predisc',
+      });
+    }
+    return Object.assign({}, st, {_mode: 'quality'});
+  });
+  // Re-sort according to active mode's score
+  stocks.sort(function(a, b){
+    if (a.insufficient_data === true && b.insufficient_data !== true) return 1;
+    if (b.insufficient_data === true && a.insufficient_data !== true) return -1;
+    return (b.early_score_raw || 0) - (a.early_score_raw || 0);
+  });
+  // Recompute tier counts for active mode
+  var rankable = stocks.filter(function(s){return !s.insufficient_data;});
+  var s = (mode === 'predisc') ? {
+    strong_count: rankable.filter(function(x){return (x.early_score||0) >= 75;}).length,
+    early_count:  rankable.filter(function(x){return (x.early_score||0) >= 60 && (x.early_score||0) < 75;}).length,
+    watch_count:  rankable.filter(function(x){return (x.early_score||0) >= 45 && (x.early_score||0) < 60;}).length,
+    marginal_count: rankable.filter(function(x){return (x.early_score||0) < 45;}).length,
+    insufficient_count: stocks.filter(function(x){return x.insufficient_data;}).length,
+    avg_completeness_pct: d.summary && d.summary.avg_completeness_pct,
+  } : (d.summary || {});
   var h = '';
   // Summary tier counts
+  var modeLabel = mode === 'predisc' ? '🌱 Pre-Discovery Moonshots' : '🛡 Institutional Quality';
+  var modeBadgeColor = mode === 'predisc' ? '#7c3aed' : '#1A3A78';
   h += '<div style="margin-bottom:14px;padding:14px 16px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+  h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
   h += '<div style="font-size:13px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">🏆 Universe Rankings · ' + (d.region || 'US') + '</div>';
+  h += '<div style="padding:3px 10px;border-radius:5px;background:' + modeBadgeColor + '15;color:' + modeBadgeColor + ';font-size:10px;font-weight:800;letter-spacing:0.3px">' + modeLabel + '</div>';
+  h += '</div>';
   h += '<div style="font-size:10px;color:#64748b">Scanned ' + d.scanned_count + '/' + d.universe_size + ' in ' + (d.elapsed_sec || '?') + 's</div>';
   h += '</div>';
-  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px">';
-  var tiers = [
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:6px">';
+  // Mode-aware tier labels and thresholds
+  var tiers = (mode === 'predisc') ? [
+    {l:'🌱 MOONSHOT', count: s.strong_count || 0, color:'#059669', range:'75+'},
+    {l:'🚀 EMERGING', count: s.early_count || 0, color:'#10b981', range:'60-74'},
+    {l:'👀 TOO EARLY', count: s.watch_count || 0, color:'#d97706', range:'45-59'},
+    {l:'⚠ WEAK', count: s.marginal_count || 0, color:'#dc2626', range:'<45'},
+    {l:'📊 INSUFFICIENT', count: s.insufficient_count || 0, color:'#64748b', range:'< 50% data'},
+  ] : [
     {l:'🚀 STRONG', count: s.strong_count || 0, color:'#059669', range:'80+'},
     {l:'✨ EARLY', count: s.early_count || 0, color:'#10b981', range:'65-79'},
     {l:'👀 WATCH', count: s.watch_count || 0, color:'#d97706', range:'50-64'},
     {l:'⚠ MARGINAL', count: s.marginal_count || 0, color:'#dc2626', range:'<50'},
+    {l:'📊 INSUFFICIENT', count: s.insufficient_count || 0, color:'#64748b', range:'< 50% data'},
   ];
   tiers.forEach(function(t){
     h += '<div style="padding:9px 10px;border:1px solid ' + t.color + '40;border-radius:8px;background:' + t.color + '08;text-align:center">';
     h += '<div style="font-size:9px;font-weight:800;color:' + t.color + ';letter-spacing:0.3px">' + t.l + '</div>';
     h += '<div style="font-size:22px;font-weight:900;color:' + t.color + ';font-family:\'IBM Plex Mono\',monospace;line-height:1;margin-top:4px">' + t.count + '</div>';
-    h += '<div style="font-size:8px;color:#94a3b8;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">Score ' + t.range + '</div>';
+    h += '<div style="font-size:8px;color:#94a3b8;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">' + t.range + '</div>';
     h += '</div>';
   });
-  h += '</div></div>';
+  h += '</div>';
+  if (s.avg_completeness_pct !== undefined && s.avg_completeness_pct !== null) {
+    h += '<div style="margin-top:8px;font-size:9px;color:#64748b;text-align:right;font-family:\'JetBrains Mono\',monospace">Avg data completeness across universe: <strong style="color:#475569">' + s.avg_completeness_pct + '%</strong></div>';
+  }
+  h += '</div>';
 
   // Main ranked table
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">';
@@ -10580,7 +10761,7 @@ window._render360Universe = function(d) {
   h += '</div>';
   h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Inter,sans-serif">';
   h += '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">';
-  ['#', 'TICKER', 'SECTOR', 'SCORE', 'VERDICT', 'TOP REASONS', 'REV GR', 'DCF UP', 'PEG'].forEach(function(col){
+  ['#', 'TICKER', 'SECTOR', 'SCORE', 'DATA', 'VERDICT', 'TOP REASONS', 'REV GR', 'DCF UP', 'PEG'].forEach(function(col){
     var align = col === 'TICKER' || col === 'SECTOR' || col === 'VERDICT' || col === 'TOP REASONS' ? 'left' : col === '#' ? 'center' : 'right';
     h += '<th style="padding:9px 8px;text-align:' + align + ';font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;white-space:nowrap">' + col + '</th>';
   });
@@ -10594,13 +10775,21 @@ window._render360Universe = function(d) {
     var revColor = revG == null ? '#94a3b8' : revG > 20 ? '#059669' : revG > 5 ? '#10b981' : revG < 0 ? '#dc2626' : '#475569';
     var dcfColor = dcfU == null ? '#94a3b8' : dcfU > 20 ? '#059669' : dcfU > 0 ? '#10b981' : '#dc2626';
     var pegColor = peg == null ? '#94a3b8' : (peg > 0 && peg < 1.0) ? '#059669' : peg > 2.5 ? '#dc2626' : '#475569';
-    h += '<tr style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="(function(){var p=document.getElementById(\'detU_' + st.symbol + '\');if(p)p.style.display=p.style.display===\'none\'?\'table-row\':\'none\';})()">';
+    var isInsufficient = st.insufficient_data === true;
+    // r63.99.20: Insufficient-data rows: muted styling + N/A score + completeness badge in DATA col
+    var compPct = st.completeness_pct != null ? st.completeness_pct : 0;
+    var compColor = compPct >= 80 ? '#059669' : compPct >= 60 ? '#10b981' : compPct >= 50 ? '#d97706' : '#dc2626';
+    var scoreDisplay = isInsufficient ? 'N/A' : (st.early_score != null ? st.early_score : (st.early_score_raw != null ? st.early_score_raw : '?'));
+    if (isInsufficient) rowBg = i % 2 === 0 ? '#f8fafc' : '#f1f5f9';
+    h += '<tr style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;cursor:pointer;opacity:' + (isInsufficient ? '0.7' : '1') + '" onclick="(function(){var p=document.getElementById(\'detU_' + st.symbol + '\');if(p)p.style.display=p.style.display===\'none\'?\'table-row\':\'none\';})()">';
     h += '<td style="padding:9px 8px;text-align:center;font-family:\'IBM Plex Mono\',monospace;font-weight:800;color:#94a3b8">' + (i + 1) + '</td>';
     h += '<td style="padding:9px 8px"><div style="font-weight:900;color:#0f172a;font-family:\'IBM Plex Mono\',monospace;font-size:12px">' + st.symbol + '</div>';
     h += '<div style="font-size:9px;color:#64748b;margin-top:1px">' + (st.name || '').slice(0, 30) + ((st.name||'').length>30?'…':'') + '</div></td>';
     h += '<td style="padding:9px 8px;font-size:10px;color:#475569;font-weight:600">' + (st.sector || '—').slice(0, 22) + '</td>';
     h += '<td style="padding:9px 8px;text-align:right">';
-    h += '<div style="display:inline-block;padding:4px 12px;border-radius:6px;background:' + scoreColor + '15;border:1px solid ' + scoreColor + '40;color:' + scoreColor + ';font-weight:900;font-family:\'IBM Plex Mono\',monospace;font-size:14px">' + st.early_score + '</div></td>';
+    h += '<div style="display:inline-block;padding:4px 12px;border-radius:6px;background:' + scoreColor + '15;border:1px solid ' + scoreColor + '40;color:' + scoreColor + ';font-weight:900;font-family:\'IBM Plex Mono\',monospace;font-size:' + (isInsufficient ? '12' : '14') + 'px">' + scoreDisplay + '</div></td>';
+    // DATA completeness column
+    h += '<td style="padding:9px 8px;text-align:right"><span style="display:inline-block;padding:3px 8px;border-radius:4px;background:' + compColor + '15;color:' + compColor + ';font-weight:800;font-family:\'IBM Plex Mono\',monospace;font-size:10px">' + compPct.toFixed(0) + '%</span></td>';
     h += '<td style="padding:9px 8px;font-size:10px;color:' + scoreColor + ';font-weight:800;white-space:nowrap">' + (st.verdict_label || '') + '</td>';
     h += '<td style="padding:9px 8px"><div style="display:flex;flex-wrap:wrap;gap:3px">';
     (st.reasons || []).slice(0, 3).forEach(function(r){
@@ -10613,19 +10802,31 @@ window._render360Universe = function(d) {
     h += '</tr>';
     // Expandable detail
     h += '<tr id="detU_' + st.symbol + '" style="display:none;background:#f8fafc">';
-    h += '<td colspan="9" style="padding:14px 18px">';
-    // Category scores grid
+    h += '<td colspan="10" style="padding:14px 18px">';
+    // Show verdict action banner (insufficient gets the manual-research hint)
+    if (st.verdict_action) {
+      h += '<div style="padding:8px 12px;background:' + scoreColor + '10;border-left:3px solid ' + scoreColor + ';border-radius:4px;margin-bottom:12px;font-size:10px;color:#475569;line-height:1.5">' + st.verdict_action + '</div>';
+    }
+    // Category scores grid (handle both legacy flat structure and new nested {score, passed, known, total, weight_pct})
     var cs = st.category_scores || {};
     h += '<div style="font-size:10px;font-weight:800;color:#475569;letter-spacing:0.4px;margin-bottom:6px;font-family:Sora,sans-serif">📊 CATEGORY SCORES (weighted contribution to Early Opportunity)</div>';
     h += '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:12px">';
     [{l:'Financial',k:'financial',w:30},{l:'Revenue',k:'revenue',w:25},{l:'Smart Money',k:'smart_money',w:20},
      {l:'Valuation',k:'valuation',w:10},{l:'Industry',k:'industry',w:10},{l:'Technical',k:'technical',w:5}].forEach(function(cat){
-      var v = cs[cat.k] || 0;
+      var raw = cs[cat.k] || 0;
+      var v = typeof raw === 'object' ? (raw.score || 0) : raw;
+      var passed = typeof raw === 'object' ? raw.passed : null;
+      var known = typeof raw === 'object' ? raw.known : null;
+      var total = typeof raw === 'object' ? raw.total : null;
       var cc = v >= 70 ? '#059669' : v >= 40 ? '#d97706' : '#dc2626';
-      h += '<div style="text-align:center;padding:6px 4px;border:1px solid ' + cc + '30;border-radius:5px;background:' + cc + '06">';
+      h += '<div style="text-align:center;padding:6px 4px;border:1px solid ' + cc + '30;border-radius:5px;background:' + cc + '06" title="' + (passed !== null && total !== null ? passed + ' of ' + total + ' checks passed (' + (known || 0) + ' known)' : '') + '">';
       h += '<div style="font-size:8px;color:#64748b;font-weight:700">' + cat.l + '</div>';
       h += '<div style="font-size:14px;color:' + cc + ';font-weight:900;font-family:\'IBM Plex Mono\',monospace;margin-top:2px">' + v + '%</div>';
-      h += '<div style="font-size:7px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">w' + cat.w + '%</div>';
+      if (passed !== null && total !== null) {
+        h += '<div style="font-size:7px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">' + passed + '/' + total + ' &middot; w' + cat.w + '%</div>';
+      } else {
+        h += '<div style="font-size:7px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">w' + cat.w + '%</div>';
+      }
       h += '</div>';
     });
     h += '</div>';
@@ -14226,8 +14427,23 @@ function loadNewsThemes(region) {
 
   fetch('/api/news-themes?region=' + region).then(function(r){return r.json();}).then(function(d){
     if (!d.success) {
-      themeWrap.innerHTML = '<div style="padding:14px;border-radius:10px;background:#fef3c7;color:#78350f;font-size:11px">Theme-wise news not available: ' + (d.error || 'unknown') + '</div>';
+      // r63.99.19: actionable error instead of raw stack
+      var errMsg = d.error || 'unknown';
+      var isTimeout = errMsg.indexOf('timed out') >= 0 || errMsg.indexOf('Timeout') >= 0 || errMsg.indexOf('Read tim') >= 0;
+      themeWrap.innerHTML =
+        '<div style="padding:14px 16px;border-radius:10px;background:linear-gradient(180deg,#fef3c7,#fde68a);border:1px solid #fbbf24;color:#78350f;font-size:11px;line-height:1.6">' +
+          '<div style="font-weight:800;font-size:12px;margin-bottom:6px;font-family:Sora,sans-serif">' + (isTimeout ? '⏱ Theme analysis timed out' : '⚠ Theme-wise news unavailable') + '</div>' +
+          '<div>' + (isTimeout
+            ? 'The AI call to fetch + analyze current news (incl. web search for events like NVDA GTC, FOMC, earnings) exceeded the 120s budget. This usually happens on cold-start or when web_search hits rate limits. The breaking-news above is unaffected.'
+            : errMsg) +
+          '</div>' +
+          '<button onclick="loadNewsThemes(\'' + region + '\')" style="margin-top:10px;padding:6px 14px;border-radius:6px;background:#92400e;color:#fff;border:none;cursor:pointer;font-size:10px;font-weight:700">↻ Retry</button>' +
+        '</div>';
       return;
+    }
+    // r63.99.19: stale-cache banner if backend returned stale data after timeout
+    if (d._stale) {
+      themeWrap.innerHTML = '<div style="padding:10px 14px;border-radius:8px;background:#fef3c7;border:1px solid #fbbf24;color:#78350f;font-size:10px;margin-bottom:10px;font-weight:700">⏱ ' + (d._warning || 'Showing cached themes (live call timed out)') + ' — <a onclick="loadNewsThemes(\'' + region + '\')" style="color:#92400e;cursor:pointer;text-decoration:underline">retry live</a></div>';
     }
     var h = '';
     // Header
