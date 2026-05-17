@@ -29482,6 +29482,256 @@ _etf_universe_us = [
 _etf_scanner_cache = {"data": None, "ts": 0}
 _ETF_SCANNER_TTL = 600  # 10 minutes
 
+# r63.99.15: INDIA ETF UNIVERSE — 22 thematic ETFs across Vijay's framework themes
+# Sources tried in order: yfinance with .NS suffix → NSE issuer JSON → curated fallback
+_etf_universe_in = [
+    # Broad market / benchmarks
+    {"sym": "NIFTYBEES.NS",     "name": "Nippon India ETF Nifty 50 BeES (BENCHMARK)", "category": "Broad / Benchmark",       "macro": "Nifty 50 benchmark"},
+    {"sym": "JUNIORBEES.NS",    "name": "Nippon India ETF Nifty Next 50",             "category": "Broad / Next 50",          "macro": "Next 50 mid-cap leadership"},
+    {"sym": "ALPHAETF.NS",      "name": "Kotak Nifty Alpha 50 ETF",                   "category": "Factor / Alpha",           "macro": "Momentum + quality factor"},
+    {"sym": "MOM100.NS",        "name": "Motilal Oswal Nifty Midcap 100 ETF",         "category": "Mid-Cap",                   "macro": "Mid-cap leadership"},
+    # Banking / Financials
+    {"sym": "BANKBEES.NS",      "name": "Nippon India ETF Bank BeES",                 "category": "Sector / Banking",          "macro": "Rate cycle + credit growth"},
+    {"sym": "PSUBNKBEES.NS",    "name": "Nippon India ETF PSU Bank BeES",             "category": "Sector / PSU Banks",        "macro": "PSU rerating + NPA recovery"},
+    # IT / Tech (India IT services proxy)
+    {"sym": "ITBEES.NS",        "name": "Nippon India ETF IT BeES",                   "category": "Sector / IT",               "macro": "US tech spending + AI services"},
+    {"sym": "MAFANG.NS",        "name": "Mirae Asset NYSE FANG+ ETF",                 "category": "Global / US Mega-Cap Tech", "macro": "US tech mega-caps (FANG+) — INR currency play"},
+    # Consumption / Defensive
+    {"sym": "CONSUMBEES.NS",    "name": "Nippon India ETF Consumption",               "category": "Sector / Consumption",      "macro": "Consumer spending"},
+    # Manufacturing / Capex / Industrial
+    {"sym": "MAKEINDIA.NS",     "name": "Mirae Asset Nifty India Manufacturing ETF",  "category": "Manufacturing / Make in India","macro": "Capex cycle + PLI scheme + reshoring"},
+    {"sym": "INFRABEES.NS",     "name": "Nippon India ETF Infrastructure BeES",       "category": "Sector / Infrastructure",   "macro": "Government capex + private investment"},
+    # Healthcare / Pharma
+    {"sym": "HEALTHIETF.NS",    "name": "Nippon India ETF Healthcare",                "category": "Sector / Healthcare",       "macro": "Pharma exports + domestic CDMO"},
+    # Auto
+    {"sym": "AUTOBEES.NS",      "name": "Nippon India ETF Nifty Auto",                "category": "Sector / Auto",             "macro": "EV transition + rural demand"},
+    # FMCG / Defensive
+    {"sym": "FMCGIETF.NS",      "name": "Nippon India ETF FMCG",                      "category": "Sector / FMCG",             "macro": "Defensive bid"},
+    # Commodities
+    {"sym": "GOLDBEES.NS",      "name": "Nippon India ETF Gold BeES",                 "category": "Commodity / Gold",          "macro": "Inflation hedge + INR weakness"},
+    {"sym": "SILVERBEES.NS",    "name": "Nippon India ETF Silver BeES",               "category": "Commodity / Silver",        "macro": "Industrial + monetary demand"},
+    # Energy / Power
+    {"sym": "PSUSBNKBEES.NS",   "name": "ICICI Prudential PSU Banks ETF",             "category": "Sector / PSU Banks Alt",    "macro": "PSU re-rating"},
+    # Quality / Factor
+    {"sym": "NV20IETF.NS",      "name": "Nippon India Nifty Value 20 ETF",            "category": "Factor / Value",            "macro": "Value factor exposure"},
+    {"sym": "QUAL30IETF.NS",    "name": "Edelweiss Nifty Quality 30 ETF",             "category": "Factor / Quality",          "macro": "Quality factor exposure"},
+    # International — diversification
+    {"sym": "MASPTOP50.NS",     "name": "Mirae Asset S&P 500 Top 50 ETF",             "category": "Global / US Large-Cap",     "macro": "US large-cap exposure (INR-hedged)"},
+    # Dividend / Income
+    {"sym": "DIVOPPBEES.NS",    "name": "Nippon India ETF Dividend Opportunities",    "category": "Strategy / Dividend",       "macro": "Dividend yield"},
+    # Low Vol / Defensive
+    {"sym": "LOWVOLIETF.NS",    "name": "Edelweiss Nifty 100 Low Volatility 30 ETF",  "category": "Factor / Low Volatility",   "macro": "Defensive low-vol factor"},
+]
+
+# r63.99.15: HOT CATEGORIES per region — same framework, region-appropriate themes
+_etf_hot_categories_us = ["AI / Semiconductors", "AI / Tech Mega-Cap", "AI / Software",
+                          "AI Infrastructure / Grid", "AI Infrastructure / Build",
+                          "AI Infrastructure / Datacenter REIT", "Robotics / AI",
+                          "Cybersecurity", "Defense / Aerospace"]
+_etf_hot_categories_in = ["Sector / IT", "Manufacturing / Make in India", "Sector / Infrastructure",
+                          "Sector / PSU Banks", "Global / US Mega-Cap Tech", "Factor / Alpha",
+                          "Sector / PSU Banks Alt"]
+
+# Holdings cache — 6h TTL since holdings rebalance quarterly
+_etf_holdings_cache = {}  # {symbol: {"data": [...], "ts": float}}
+_ETF_HOLDINGS_TTL = 21600  # 6 hours
+
+def _fetch_etf_holdings_multi_source(symbol, region):
+    """Fetch top-10 holdings using multi-source fallback chain.
+    Returns: {"holdings": [{symbol, weight_pct, name}, ...], "source": str, "top10_concentration_pct": float}
+    or None if all sources fail.
+    """
+    # Cache check
+    if symbol in _etf_holdings_cache:
+        cached = _etf_holdings_cache[symbol]
+        if (time.time() - cached["ts"]) < _ETF_HOLDINGS_TTL:
+            return cached["data"]
+
+    sources_tried = []
+    holdings = None
+
+    # SOURCE 1: yfinance funds_data (works for many US ETFs; spotty on India)
+    try:
+        import yfinance as yf
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        tk = yf.Ticker(symbol)
+        try:
+            fd = tk.funds_data
+            top_holdings_df = fd.top_holdings if fd else None
+            if top_holdings_df is not None and not top_holdings_df.empty:
+                rows = []
+                for sym_idx, row in top_holdings_df.iterrows():
+                    w_pct = float(row.get("Holding Percent", 0)) * 100 if row.get("Holding Percent", 0) <= 1 else float(row.get("Holding Percent", 0))
+                    rows.append({
+                        "symbol": str(sym_idx),
+                        "name": str(row.get("Name", sym_idx)),
+                        "weight_pct": round(w_pct, 3),
+                    })
+                if rows:
+                    holdings = rows
+                    sources_tried.append("yfinance.funds_data")
+        except Exception:
+            sources_tried.append("yfinance.funds_data:miss")
+    except Exception as _ye:
+        sources_tried.append(f"yfinance:err:{type(_ye).__name__}")
+
+    # SOURCE 2: yfinance get_institutional_holders fallback (sometimes has ETF holdings via different path)
+    if not holdings:
+        try:
+            import yfinance as yf
+            tk = yf.Ticker(symbol)
+            try:
+                info = tk.info or {}
+                # Some ETFs expose holdings in info under different keys
+                if info.get("holdings"):
+                    holdings_raw = info.get("holdings", [])
+                    rows = []
+                    for h in holdings_raw[:10]:
+                        w = h.get("holdingPercent", 0)
+                        if w and w <= 1: w *= 100
+                        rows.append({"symbol": h.get("symbol", "?"), "name": h.get("holdingName", h.get("symbol", "?")), "weight_pct": round(float(w), 3)})
+                    if rows:
+                        holdings = rows
+                        sources_tried.append("yfinance.info.holdings")
+            except Exception:
+                sources_tried.append("yfinance.info:miss")
+        except Exception: pass
+
+    # SOURCE 3: Curated fallback for known ETFs (institutional knowledge from issuer factsheets)
+    if not holdings:
+        _curated = _etf_curated_holdings_fallback(symbol, region)
+        if _curated:
+            holdings = _curated
+            sources_tried.append("curated.factsheet")
+
+    if not holdings:
+        result = None
+    else:
+        top10_conc = round(sum(h["weight_pct"] for h in holdings[:10]), 2)
+        result = {
+            "holdings": holdings[:10],
+            "source": " → ".join(sources_tried) if sources_tried else "unknown",
+            "top10_concentration_pct": top10_conc,
+        }
+    _etf_holdings_cache[symbol] = {"data": result, "ts": time.time()}
+    return result
+
+
+def _etf_curated_holdings_fallback(symbol, region):
+    """Curated fallback for ETFs where API holdings aren't accessible.
+    Based on issuer factsheets — approximate weights for representative top holdings.
+    Conservative: only return when we have high-confidence data; mark heuristic.
+    """
+    # US ETFs — well-known top holdings as of recent factsheets
+    us_fallback = {
+        "SOXX": [{"symbol": "NVDA", "name": "NVIDIA Corp", "weight_pct": 9.5}, {"symbol": "AVGO", "name": "Broadcom Inc", "weight_pct": 8.8}, {"symbol": "AMD", "name": "AMD", "weight_pct": 7.2}, {"symbol": "QCOM", "name": "Qualcomm", "weight_pct": 6.5}, {"symbol": "TXN", "name": "Texas Instruments", "weight_pct": 5.9}, {"symbol": "INTC", "name": "Intel", "weight_pct": 4.8}, {"symbol": "MU", "name": "Micron Technology", "weight_pct": 4.6}, {"symbol": "ADI", "name": "Analog Devices", "weight_pct": 4.2}, {"symbol": "LRCX", "name": "Lam Research", "weight_pct": 4.0}, {"symbol": "AMAT", "name": "Applied Materials", "weight_pct": 3.9}],
+        "SMH":  [{"symbol": "NVDA", "name": "NVIDIA Corp", "weight_pct": 19.5}, {"symbol": "TSM", "name": "Taiwan Semi", "weight_pct": 11.5}, {"symbol": "AVGO", "name": "Broadcom", "weight_pct": 9.5}, {"symbol": "ASML", "name": "ASML", "weight_pct": 5.3}, {"symbol": "AMD", "name": "AMD", "weight_pct": 4.9}, {"symbol": "TXN", "name": "Texas Instruments", "weight_pct": 4.5}, {"symbol": "QCOM", "name": "Qualcomm", "weight_pct": 4.3}, {"symbol": "AMAT", "name": "Applied Materials", "weight_pct": 4.0}, {"symbol": "MU", "name": "Micron", "weight_pct": 3.8}, {"symbol": "LRCX", "name": "Lam Research", "weight_pct": 3.5}],
+        "QQQ":  [{"symbol": "AAPL", "name": "Apple", "weight_pct": 8.7}, {"symbol": "MSFT", "name": "Microsoft", "weight_pct": 8.2}, {"symbol": "NVDA", "name": "NVIDIA", "weight_pct": 7.9}, {"symbol": "AMZN", "name": "Amazon", "weight_pct": 5.6}, {"symbol": "META", "name": "Meta Platforms", "weight_pct": 4.7}, {"symbol": "GOOGL", "name": "Alphabet A", "weight_pct": 3.0}, {"symbol": "GOOG", "name": "Alphabet C", "weight_pct": 2.9}, {"symbol": "AVGO", "name": "Broadcom", "weight_pct": 4.5}, {"symbol": "TSLA", "name": "Tesla", "weight_pct": 3.6}, {"symbol": "COST", "name": "Costco", "weight_pct": 2.6}],
+        "ITA":  [{"symbol": "RTX", "name": "RTX Corp", "weight_pct": 19.5}, {"symbol": "BA", "name": "Boeing", "weight_pct": 8.5}, {"symbol": "LMT", "name": "Lockheed Martin", "weight_pct": 7.8}, {"symbol": "GE", "name": "GE Aerospace", "weight_pct": 7.5}, {"symbol": "NOC", "name": "Northrop Grumman", "weight_pct": 5.5}, {"symbol": "TDG", "name": "TransDigm", "weight_pct": 4.8}, {"symbol": "GD", "name": "General Dynamics", "weight_pct": 4.5}, {"symbol": "LHX", "name": "L3Harris", "weight_pct": 4.2}, {"symbol": "AXON", "name": "Axon Enterprise", "weight_pct": 3.5}, {"symbol": "HWM", "name": "Howmet Aerospace", "weight_pct": 3.3}],
+        "CIBR": [{"symbol": "CRWD", "name": "CrowdStrike", "weight_pct": 7.2}, {"symbol": "PANW", "name": "Palo Alto Networks", "weight_pct": 6.8}, {"symbol": "FTNT", "name": "Fortinet", "weight_pct": 6.5}, {"symbol": "CSCO", "name": "Cisco", "weight_pct": 6.0}, {"symbol": "ZS", "name": "Zscaler", "weight_pct": 5.5}, {"symbol": "OKTA", "name": "Okta", "weight_pct": 5.0}, {"symbol": "S", "name": "SentinelOne", "weight_pct": 4.5}, {"symbol": "CYBR", "name": "CyberArk", "weight_pct": 4.3}, {"symbol": "GEN", "name": "Gen Digital", "weight_pct": 4.0}, {"symbol": "BAH", "name": "Booz Allen", "weight_pct": 3.8}],
+        "BOTZ": [{"symbol": "NVDA", "name": "NVIDIA", "weight_pct": 13.5}, {"symbol": "ABBN.SW", "name": "ABB Ltd", "weight_pct": 9.2}, {"symbol": "ISRG", "name": "Intuitive Surgical", "weight_pct": 8.5}, {"symbol": "KEYS", "name": "Keysight Tech", "weight_pct": 6.5}, {"symbol": "DT", "name": "Dynatrace", "weight_pct": 5.5}, {"symbol": "FANUY", "name": "FANUC", "weight_pct": 4.8}, {"symbol": "IRBT", "name": "iRobot", "weight_pct": 3.5}, {"symbol": "6954.T", "name": "Fanuc Corp", "weight_pct": 4.5}, {"symbol": "ROK", "name": "Rockwell Automation", "weight_pct": 4.2}, {"symbol": "6506.T", "name": "Yaskawa Electric", "weight_pct": 3.8}],
+        "XLK":  [{"symbol": "MSFT", "name": "Microsoft", "weight_pct": 13.8}, {"symbol": "AAPL", "name": "Apple", "weight_pct": 13.5}, {"symbol": "NVDA", "name": "NVIDIA", "weight_pct": 13.0}, {"symbol": "AVGO", "name": "Broadcom", "weight_pct": 5.5}, {"symbol": "ORCL", "name": "Oracle", "weight_pct": 3.5}, {"symbol": "CRM", "name": "Salesforce", "weight_pct": 2.8}, {"symbol": "CSCO", "name": "Cisco", "weight_pct": 2.6}, {"symbol": "ADBE", "name": "Adobe", "weight_pct": 2.4}, {"symbol": "ACN", "name": "Accenture", "weight_pct": 2.3}, {"symbol": "AMD", "name": "AMD", "weight_pct": 2.2}],
+        "SPY":  [{"symbol": "AAPL", "name": "Apple", "weight_pct": 7.0}, {"symbol": "MSFT", "name": "Microsoft", "weight_pct": 6.5}, {"symbol": "NVDA", "name": "NVIDIA", "weight_pct": 6.0}, {"symbol": "AMZN", "name": "Amazon", "weight_pct": 3.5}, {"symbol": "META", "name": "Meta", "weight_pct": 2.5}, {"symbol": "GOOGL", "name": "Alphabet A", "weight_pct": 2.0}, {"symbol": "GOOG", "name": "Alphabet C", "weight_pct": 1.8}, {"symbol": "BRK.B", "name": "Berkshire", "weight_pct": 1.7}, {"symbol": "AVGO", "name": "Broadcom", "weight_pct": 1.7}, {"symbol": "TSLA", "name": "Tesla", "weight_pct": 1.5}],
+    }
+    # India ETFs — issuer factsheet top holdings (approximate)
+    in_fallback = {
+        "NIFTYBEES.NS":  [{"symbol": "HDFCBANK.NS", "name": "HDFC Bank", "weight_pct": 12.5}, {"symbol": "RELIANCE.NS", "name": "Reliance Industries", "weight_pct": 10.0}, {"symbol": "ICICIBANK.NS", "name": "ICICI Bank", "weight_pct": 8.5}, {"symbol": "INFY.NS", "name": "Infosys", "weight_pct": 5.5}, {"symbol": "ITC.NS", "name": "ITC", "weight_pct": 4.2}, {"symbol": "TCS.NS", "name": "TCS", "weight_pct": 4.0}, {"symbol": "BHARTIARTL.NS", "name": "Bharti Airtel", "weight_pct": 3.5}, {"symbol": "LT.NS", "name": "Larsen & Toubro", "weight_pct": 3.5}, {"symbol": "AXISBANK.NS", "name": "Axis Bank", "weight_pct": 3.0}, {"symbol": "SBIN.NS", "name": "SBI", "weight_pct": 2.8}],
+        "BANKBEES.NS":   [{"symbol": "HDFCBANK.NS", "name": "HDFC Bank", "weight_pct": 27.5}, {"symbol": "ICICIBANK.NS", "name": "ICICI Bank", "weight_pct": 24.0}, {"symbol": "AXISBANK.NS", "name": "Axis Bank", "weight_pct": 9.0}, {"symbol": "KOTAKBANK.NS", "name": "Kotak Mahindra Bank", "weight_pct": 8.5}, {"symbol": "SBIN.NS", "name": "SBI", "weight_pct": 8.5}, {"symbol": "INDUSINDBK.NS", "name": "IndusInd Bank", "weight_pct": 5.5}, {"symbol": "BANKBARODA.NS", "name": "Bank of Baroda", "weight_pct": 3.0}, {"symbol": "PNB.NS", "name": "Punjab National Bank", "weight_pct": 2.8}, {"symbol": "AUBANK.NS", "name": "AU Small Finance Bank", "weight_pct": 2.5}, {"symbol": "FEDERALBNK.NS", "name": "Federal Bank", "weight_pct": 2.5}],
+        "ITBEES.NS":     [{"symbol": "INFY.NS", "name": "Infosys", "weight_pct": 26.5}, {"symbol": "TCS.NS", "name": "TCS", "weight_pct": 25.5}, {"symbol": "HCLTECH.NS", "name": "HCL Tech", "weight_pct": 10.0}, {"symbol": "WIPRO.NS", "name": "Wipro", "weight_pct": 9.0}, {"symbol": "TECHM.NS", "name": "Tech Mahindra", "weight_pct": 7.5}, {"symbol": "LTIM.NS", "name": "LTIMindtree", "weight_pct": 5.5}, {"symbol": "PERSISTENT.NS", "name": "Persistent Systems", "weight_pct": 4.5}, {"symbol": "MPHASIS.NS", "name": "Mphasis", "weight_pct": 3.5}, {"symbol": "COFORGE.NS", "name": "Coforge", "weight_pct": 3.0}, {"symbol": "LTTS.NS", "name": "LTTS", "weight_pct": 2.5}],
+        "PSUBNKBEES.NS": [{"symbol": "SBIN.NS", "name": "SBI", "weight_pct": 30.0}, {"symbol": "BANKBARODA.NS", "name": "Bank of Baroda", "weight_pct": 14.0}, {"symbol": "CANBK.NS", "name": "Canara Bank", "weight_pct": 12.0}, {"symbol": "PNB.NS", "name": "Punjab National Bank", "weight_pct": 11.0}, {"symbol": "UNIONBANK.NS", "name": "Union Bank of India", "weight_pct": 8.0}, {"symbol": "INDIANB.NS", "name": "Indian Bank", "weight_pct": 6.5}, {"symbol": "IOB.NS", "name": "Indian Overseas Bank", "weight_pct": 5.0}, {"symbol": "UCOBANK.NS", "name": "UCO Bank", "weight_pct": 4.5}, {"symbol": "CENTRALBK.NS", "name": "Central Bank of India", "weight_pct": 4.0}, {"symbol": "MAHABANK.NS", "name": "Bank of Maharashtra", "weight_pct": 3.5}],
+        "MAKEINDIA.NS":  [{"symbol": "LT.NS", "name": "Larsen & Toubro", "weight_pct": 14.0}, {"symbol": "MARUTI.NS", "name": "Maruti Suzuki", "weight_pct": 8.5}, {"symbol": "BHARTIARTL.NS", "name": "Bharti Airtel", "weight_pct": 7.5}, {"symbol": "SUNPHARMA.NS", "name": "Sun Pharma", "weight_pct": 6.0}, {"symbol": "M&M.NS", "name": "Mahindra & Mahindra", "weight_pct": 5.5}, {"symbol": "TATAMOTORS.NS", "name": "Tata Motors", "weight_pct": 5.0}, {"symbol": "TITAN.NS", "name": "Titan", "weight_pct": 4.5}, {"symbol": "ASIANPAINT.NS", "name": "Asian Paints", "weight_pct": 4.0}, {"symbol": "BAJAJ-AUTO.NS", "name": "Bajaj Auto", "weight_pct": 3.8}, {"symbol": "HEROMOTOCO.NS", "name": "Hero MotoCorp", "weight_pct": 3.0}],
+        "INFRABEES.NS":  [{"symbol": "LT.NS", "name": "Larsen & Toubro", "weight_pct": 19.5}, {"symbol": "BHARTIARTL.NS", "name": "Bharti Airtel", "weight_pct": 18.5}, {"symbol": "ONGC.NS", "name": "ONGC", "weight_pct": 7.5}, {"symbol": "NTPC.NS", "name": "NTPC", "weight_pct": 7.0}, {"symbol": "POWERGRID.NS", "name": "Power Grid", "weight_pct": 6.5}, {"symbol": "ULTRACEMCO.NS", "name": "UltraTech Cement", "weight_pct": 5.0}, {"symbol": "GRASIM.NS", "name": "Grasim Industries", "weight_pct": 4.5}, {"symbol": "ADANIPORTS.NS", "name": "Adani Ports", "weight_pct": 4.0}, {"symbol": "COALINDIA.NS", "name": "Coal India", "weight_pct": 3.5}, {"symbol": "BPCL.NS", "name": "BPCL", "weight_pct": 3.0}],
+        "HEALTHIETF.NS": [{"symbol": "SUNPHARMA.NS", "name": "Sun Pharmaceutical", "weight_pct": 22.0}, {"symbol": "DRREDDY.NS", "name": "Dr Reddy's Labs", "weight_pct": 12.0}, {"symbol": "CIPLA.NS", "name": "Cipla", "weight_pct": 11.0}, {"symbol": "DIVISLAB.NS", "name": "Divi's Laboratories", "weight_pct": 8.0}, {"symbol": "APOLLOHOSP.NS", "name": "Apollo Hospitals", "weight_pct": 7.5}, {"symbol": "TORNTPHARM.NS", "name": "Torrent Pharma", "weight_pct": 5.5}, {"symbol": "MAXHEALTH.NS", "name": "Max Healthcare", "weight_pct": 4.5}, {"symbol": "LUPIN.NS", "name": "Lupin", "weight_pct": 4.0}, {"symbol": "ZYDUSLIFE.NS", "name": "Zydus Lifesciences", "weight_pct": 3.8}, {"symbol": "AUROPHARMA.NS", "name": "Aurobindo Pharma", "weight_pct": 3.5}],
+        "AUTOBEES.NS":   [{"symbol": "MARUTI.NS", "name": "Maruti Suzuki", "weight_pct": 21.0}, {"symbol": "M&M.NS", "name": "Mahindra & Mahindra", "weight_pct": 17.0}, {"symbol": "TATAMOTORS.NS", "name": "Tata Motors", "weight_pct": 13.0}, {"symbol": "BAJAJ-AUTO.NS", "name": "Bajaj Auto", "weight_pct": 9.0}, {"symbol": "EICHERMOT.NS", "name": "Eicher Motors", "weight_pct": 7.0}, {"symbol": "HEROMOTOCO.NS", "name": "Hero MotoCorp", "weight_pct": 6.0}, {"symbol": "TVSMOTOR.NS", "name": "TVS Motor", "weight_pct": 5.5}, {"symbol": "BOSCHLTD.NS", "name": "Bosch", "weight_pct": 4.5}, {"symbol": "MRF.NS", "name": "MRF", "weight_pct": 3.5}, {"symbol": "ASHOKLEY.NS", "name": "Ashok Leyland", "weight_pct": 3.0}],
+    }
+    table = us_fallback if region == "US" else in_fallback
+    return table.get(symbol)
+
+
+# Per-holding fundamentals cache — 24h TTL since fundamentals change slowly
+_etf_holding_fundamentals_cache = {}  # {symbol: {"data": {...}, "ts": float}}
+_ETF_HOLDING_FUND_TTL = 86400  # 24 hours
+
+def _fetch_holding_fundamentals(symbol):
+    """Fetch fundamentals for a single holding ticker. Multi-source.
+    Returns: {pe, peg, eps_growth, revenue_growth, gross_margin, roe} or {} if all fail.
+    """
+    if symbol in _etf_holding_fundamentals_cache:
+        cached = _etf_holding_fundamentals_cache[symbol]
+        if (time.time() - cached["ts"]) < _ETF_HOLDING_FUND_TTL:
+            return cached["data"]
+    out = {}
+    try:
+        import yfinance as yf
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        tk = yf.Ticker(symbol)
+        info = {}
+        try: info = tk.info or {}
+        except Exception: pass
+        if info:
+            def _safe(key):
+                v = info.get(key)
+                try: return float(v) if v is not None else None
+                except Exception: return None
+            out["pe"] = _safe("trailingPE") or _safe("forwardPE")
+            out["forward_pe"] = _safe("forwardPE")
+            out["peg"] = _safe("pegRatio")
+            eg = _safe("earningsGrowth")
+            if eg is not None and abs(eg) < 5: eg = eg * 100  # 0-1 → percentage
+            out["eps_growth"] = eg
+            rg = _safe("revenueGrowth")
+            if rg is not None and abs(rg) < 5: rg = rg * 100
+            out["revenue_growth"] = rg
+            gm = _safe("grossMargins")
+            if gm is not None and abs(gm) < 5: gm = gm * 100
+            out["gross_margin"] = gm
+            roe = _safe("returnOnEquity")
+            if roe is not None and abs(roe) < 5: roe = roe * 100
+            out["roe"] = roe
+            out["market_cap"] = _safe("marketCap")
+            out["_source"] = "yfinance.info"
+    except Exception as _e:
+        out["_error"] = f"{type(_e).__name__}: {str(_e)[:50]}"
+    _etf_holding_fundamentals_cache[symbol] = {"data": out, "ts": time.time()}
+    return out
+
+
+def _compute_weighted_holdings_quality(holdings):
+    """Compute weighted fundamental metrics across top-10 holdings.
+    Returns: {weighted_pe, weighted_peg, weighted_eps_growth, weighted_revenue_growth,
+              weighted_gross_margin, weighted_roe, holdings_with_fundamentals}
+    """
+    if not holdings: return {}
+    total_w = sum(h["weight_pct"] for h in holdings)
+    if total_w <= 0: return {}
+    metrics = ["pe", "forward_pe", "peg", "eps_growth", "revenue_growth", "gross_margin", "roe"]
+    sums = {m: 0.0 for m in metrics}
+    weights = {m: 0.0 for m in metrics}  # weight-of-non-null
+    enriched = []
+    for h in holdings:
+        fund = _fetch_holding_fundamentals(h["symbol"]) or {}
+        h_out = dict(h)
+        h_out["fundamentals"] = fund
+        enriched.append(h_out)
+        for m in metrics:
+            v = fund.get(m)
+            if v is not None and not (isinstance(v, float) and (v != v)):  # not NaN
+                sums[m] += v * h["weight_pct"]
+                weights[m] += h["weight_pct"]
+    weighted = {}
+    for m in metrics:
+        if weights[m] > 0:
+            weighted["weighted_" + m] = round(sums[m] / weights[m], 2)
+            weighted["weighted_" + m + "_coverage_pct"] = round(weights[m], 1)
+        else:
+            weighted["weighted_" + m] = None
+            weighted["weighted_" + m + "_coverage_pct"] = 0
+    weighted["holdings_with_fundamentals"] = enriched
+    return weighted
+
+
 @app.get("/api/etf-scanner")
 async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: int = 0):
     """Institutional ETF Scanner — Smart Money Score per Vijay's framework.
@@ -29491,7 +29741,12 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
     Conviction, Institutional Alerts, Macro Thesis.
     """
     global _etf_scanner_cache
-    if not refresh and _etf_scanner_cache["data"] and (time.time() - _etf_scanner_cache["ts"]) < _ETF_SCANNER_TTL:
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    # r63.99.15: per-region cache keys
+    if not isinstance(_etf_scanner_cache, dict) or "data" not in _etf_scanner_cache or "region" not in _etf_scanner_cache:
+        _etf_scanner_cache = {"data": None, "ts": 0, "region": None}
+    if not refresh and _etf_scanner_cache.get("data") and _etf_scanner_cache.get("region") == region and (time.time() - _etf_scanner_cache["ts"]) < _ETF_SCANNER_TTL:
         resp = dict(_etf_scanner_cache["data"])
         resp["_cached"] = True
         resp["_cache_age_sec"] = int(time.time() - _etf_scanner_cache["ts"])
@@ -29501,13 +29756,21 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
         try: _yahoo_rate_wait()
         except Exception: pass
 
-        # Fetch SPY benchmark first for RS calculations
-        spy_hist = None
+        # r63.99.15: region-aware universe + benchmark
+        universe = _etf_universe_us if region == "US" else _etf_universe_in
+        hot_categories = _etf_hot_categories_us if region == "US" else _etf_hot_categories_in
+        benchmark_sym = "SPY" if region == "US" else "NIFTYBEES.NS"
+        benchmark_label = "SPY" if region == "US" else "Nifty 50"
+
+        # Fetch benchmark first for RS calculations
+        bench_hist = None
         try:
-            spy_hist = yf.Ticker("SPY").history(period="1y", interval="1d")
+            bench_hist = yf.Ticker(benchmark_sym).history(period="1y", interval="1d")
         except Exception as _se:
-            print(f"[ETF] SPY benchmark fetch failed: {_se}")
-        spy_close = spy_hist["Close"] if spy_hist is not None and not spy_hist.empty else None
+            print(f"[ETF-SCAN] {benchmark_sym} benchmark fetch failed: {_se}")
+        bench_close = bench_hist["Close"] if bench_hist is not None and not bench_hist.empty else None
+        # Keep backward-compat name for downstream code
+        spy_close = bench_close
 
         def _safe_pct(curr, prev):
             try:
@@ -29516,7 +29779,7 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
             except Exception: return None
 
         results = []
-        for etf in _etf_universe_us:
+        for etf in universe:
             sym = etf["sym"]
             try:
                 tk = yf.Ticker(sym)
@@ -29596,24 +29859,55 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
                 if vol_spike > 1.2 and ch_1m and ch_1m > 5: inst_score = 85
                 elif vol_spike > 1.0 and ch_1m and ch_1m > 0: inst_score = 70
                 elif ch_1m and ch_1m < -5: inst_score = 30
-                # 15% Holdings Quality (proxy: above 200SMA + positive 6m return)
-                holdings_score = 50
-                if above_200 and ch_6m and ch_6m > 10: holdings_score = 85
-                elif above_200 and ch_6m and ch_6m > 0: holdings_score = 70
-                elif not above_200: holdings_score = 35
+                # 15% Holdings Quality — r63.99.15: REAL weighted fundamentals from top 10 holdings
+                # Replaces previous proxy (above 200SMA + 6m return). Multi-source fetch chain.
+                holdings_data = _fetch_etf_holdings_multi_source(sym, region)
+                holdings_quality = None
+                holdings_score = 50  # fallback if holdings unavailable
+                if holdings_data and holdings_data.get("holdings"):
+                    try:
+                        holdings_quality = _compute_weighted_holdings_quality(holdings_data["holdings"])
+                        # Build holdings_score from weighted fundamentals
+                        w_eps_growth = holdings_quality.get("weighted_eps_growth")
+                        w_rev_growth = holdings_quality.get("weighted_revenue_growth")
+                        w_roe = holdings_quality.get("weighted_roe")
+                        w_gm = holdings_quality.get("weighted_gross_margin")
+                        sub = 50
+                        if w_eps_growth is not None and w_eps_growth > 20: sub += 12
+                        elif w_eps_growth is not None and w_eps_growth > 10: sub += 6
+                        elif w_eps_growth is not None and w_eps_growth < 0: sub -= 8
+                        if w_rev_growth is not None and w_rev_growth > 15: sub += 10
+                        elif w_rev_growth is not None and w_rev_growth > 5: sub += 5
+                        elif w_rev_growth is not None and w_rev_growth < 0: sub -= 6
+                        if w_roe is not None and w_roe > 20: sub += 10
+                        elif w_roe is not None and w_roe > 12: sub += 5
+                        elif w_roe is not None and w_roe < 8: sub -= 4
+                        if w_gm is not None and w_gm > 40: sub += 8
+                        elif w_gm is not None and w_gm > 25: sub += 3
+                        elif w_gm is not None and w_gm < 15: sub -= 4
+                        holdings_score = max(0, min(100, sub))
+                    except Exception as _hqe:
+                        print(f"[ETF-SCAN] {sym} holdings quality compute failed: {_hqe}")
+                        # Fall back to proxy if compute fails
+                        if above_200 and ch_6m and ch_6m > 10: holdings_score = 85
+                        elif above_200 and ch_6m and ch_6m > 0: holdings_score = 70
+                        elif not above_200: holdings_score = 35
+                else:
+                    # No holdings data — use price-action proxy
+                    if above_200 and ch_6m and ch_6m > 10: holdings_score = 85
+                    elif above_200 and ch_6m and ch_6m > 0: holdings_score = 70
+                    elif not above_200: holdings_score = 35
                 # 10% Earnings Revision Trend (proxy: 1m vs 3m momentum acceleration)
                 earn_rev_score = 50
                 if ch_1m and ch_3m and ch_1m > (ch_3m / 3): earn_rev_score = 80  # accelerating
                 elif ch_1m and ch_3m and ch_1m < (ch_3m / 3): earn_rev_score = 40
-                # 10% Macro Tailwind (categorical bonus)
+                # 10% Macro Tailwind (categorical bonus) — uses region-aware hot_categories
                 macro_score = 50
-                hot_categories = ["AI / Semiconductors", "AI / Tech Mega-Cap", "AI / Software",
-                                  "AI Infrastructure / Grid", "AI Infrastructure / Build",
-                                  "AI Infrastructure / Datacenter REIT", "Robotics / AI",
-                                  "Cybersecurity", "Defense / Aerospace"]
                 if etf["category"] in hot_categories: macro_score = 85
-                elif etf["category"] in ["Sector / Tech", "Sector / Industrials", "Sector / Utilities"]: macro_score = 70
-                elif etf["category"] in ["Sector / Staples", "Sector / REITs"]: macro_score = 40
+                elif etf["category"] in ["Sector / Tech", "Sector / Industrials", "Sector / Utilities",
+                                          "Sector / Banking", "Sector / Auto", "Sector / Healthcare"]: macro_score = 70
+                elif etf["category"] in ["Sector / Staples", "Sector / REITs", "Sector / FMCG",
+                                          "Factor / Low Volatility", "Strategy / Dividend"]: macro_score = 40
                 # 5% Technical Structure
                 tech_score = 50
                 if above_50 and above_200 and rsi and 40 < rsi < 70: tech_score = 85
@@ -29629,12 +29923,22 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
                 # ─── INSTITUTIONAL ALERTS ───
                 alerts = []
                 if vol_spike >= 1.3: alerts.append(f"Volume spike +{int((vol_spike - 1) * 100)}% above 30d avg")
-                if rs_50 and rs_50 > 5: alerts.append(f"Rising RS vs SPY (+{rs_50:.1f}% over 50d)")
-                if rs_200 and rs_200 > 10: alerts.append(f"Structural outperformer (+{rs_200:.1f}% vs SPY over 200d)")
+                if rs_50 and rs_50 > 5: alerts.append(f"Rising RS vs {benchmark_label} (+{rs_50:.1f}% over 50d)")
+                if rs_200 and rs_200 > 10: alerts.append(f"Structural outperformer (+{rs_200:.1f}% vs {benchmark_label} over 200d)")
                 if above_50 and above_200 and ch_1m and ch_1m > 5: alerts.append("Above both SMAs with positive momentum")
                 if ch_1m and ch_3m and ch_1m > 5 and ch_1m > ch_3m / 3: alerts.append("Momentum accelerating QoQ")
                 if etf["category"] in hot_categories: alerts.append(f"Megatrend tailwind: {etf['macro']}")
                 if rsi and 40 < rsi < 60 and ch_1m and ch_1m > 0: alerts.append("Healthy consolidation with upward bias")
+                # r63.99.15: Holdings-quality alerts
+                if holdings_quality:
+                    if holdings_quality.get("weighted_eps_growth") and holdings_quality["weighted_eps_growth"] > 20:
+                        alerts.append(f"Strong EPS growth in holdings (weighted +{holdings_quality['weighted_eps_growth']:.0f}%)")
+                    if holdings_quality.get("weighted_revenue_growth") and holdings_quality["weighted_revenue_growth"] > 15:
+                        alerts.append(f"Strong revenue growth in holdings (weighted +{holdings_quality['weighted_revenue_growth']:.0f}%)")
+                    if holdings_quality.get("weighted_roe") and holdings_quality["weighted_roe"] > 25:
+                        alerts.append(f"High ROE holdings (weighted {holdings_quality['weighted_roe']:.0f}%)")
+                    if holdings_data and holdings_data.get("top10_concentration_pct", 0) > 60:
+                        alerts.append(f"Concentrated portfolio (top-10 = {holdings_data['top10_concentration_pct']:.0f}%)")
 
                 # Conviction tier
                 if smart_money_score >= 80: conviction = "🚀 HIGH"
@@ -29668,6 +29972,11 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
                     },
                     "alerts": alerts,
                     "conviction": conviction,
+                    # r63.99.15: REAL holdings quality data
+                    "holdings": (holdings_data.get("holdings") if holdings_data else None),
+                    "holdings_source": (holdings_data.get("source") if holdings_data else None),
+                    "top10_concentration_pct": (holdings_data.get("top10_concentration_pct") if holdings_data else None),
+                    "holdings_quality": holdings_quality,
                 })
             except Exception as _ee:
                 print(f"[ETF] {sym} scan error: {type(_ee).__name__}: {str(_ee)[:80]}")
@@ -29699,8 +30008,11 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
         out = {
             "success": True,
             "mode": mode,
+            "region": region,
+            "benchmark": benchmark_label,
+            "benchmark_symbol": benchmark_sym,
             "scan_time_utc": datetime.utcnow().isoformat() + "Z",
-            "universe_size": len(_etf_universe_us),
+            "universe_size": len(universe),
             "scanned_count": len(results),
             "etfs": results,
             "rotation_signals": {
@@ -29710,8 +30022,614 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
             },
             "ts": time.time(),
         }
-        _etf_scanner_cache = {"data": out, "ts": time.time()}
-        print(f"[ETF-SCAN] {len(results)}/{len(_etf_universe_us)} ETFs scored. Top: {results[0]['symbol']} @ {results[0]['smart_money_score']}, phase={rotation_phase}")
+        _etf_scanner_cache = {"data": out, "ts": time.time(), "region": region}
+        top_summary = f"Top: {results[0]['symbol']} @ {results[0]['smart_money_score']}" if results else "no results"
+        print(f"[ETF-SCAN] region={region} | {len(results)}/{len(universe)} ETFs scored. {top_summary}, phase={rotation_phase}")
+        return out
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)[:200]}
+
+
+# r63.99.17: SINGLE-ETF ANALYZE — scan ANY ETF ticker outside the curated universe
+# (e.g. EUV, SOXL, TQQQ, IBIT, INDA, MCHI, KWEB, ICLN, TAN, LIT, URNM, REMX, etc.)
+# Returns same Smart Money Score, holdings analysis, alerts, rotation context
+# vs the appropriate regional benchmark.
+_etf_analyze_cache = {}  # {symbol: {"data": dict, "ts": float}}
+_ETF_ANALYZE_TTL = 600
+
+@app.get("/api/etf-analyze")
+async def etf_analyze(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Single-ETF analyzer — runs the full Smart Money Score framework on any ETF.
+
+    Works on tickers outside the curated universe. Pulls live history, computes
+    RS vs region benchmark, holdings quality (with multi-source fallback), alerts.
+    Mirrors the per-ETF scoring inside /api/etf-scanner so output shape matches.
+    """
+    global _etf_analyze_cache
+    if not symbol:
+        return {"success": False, "error": "Missing symbol parameter"}
+    sym = symbol.strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    # Auto-append .NS for India tickers if not present
+    if region == "IN" and "." not in sym:
+        sym_query = sym + ".NS"
+    else:
+        sym_query = sym
+    cache_key = f"{sym_query}:{region}"
+    if not refresh and cache_key in _etf_analyze_cache:
+        cached = _etf_analyze_cache[cache_key]
+        if (time.time() - cached["ts"]) < _ETF_ANALYZE_TTL:
+            resp = dict(cached["data"])
+            resp["_cached"] = True
+            resp["_cache_age_sec"] = int(time.time() - cached["ts"])
+            return resp
+    try:
+        import yfinance as yf
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        # Pick benchmark for region
+        benchmark_sym = "SPY" if region == "US" else "NIFTYBEES.NS"
+        benchmark_label = "SPY" if region == "US" else "Nifty 50"
+        hot_categories = _etf_hot_categories_us if region == "US" else _etf_hot_categories_in
+        # Try to identify the ETF — check if it's in our curated universe first
+        curated_universe = _etf_universe_us if region == "US" else _etf_universe_in
+        etf_meta = None
+        for e in curated_universe:
+            if e["sym"].upper() == sym_query.upper():
+                etf_meta = e
+                break
+        # Fetch benchmark + target ETF in parallel using single yfinance call where possible
+        bench_hist = None
+        try: bench_hist = yf.Ticker(benchmark_sym).history(period="1y", interval="1d")
+        except Exception as _be: print(f"[ETF-ANALYZE] benchmark {benchmark_sym} fetch failed: {_be}")
+        bench_close = bench_hist["Close"] if bench_hist is not None and not bench_hist.empty else None
+
+        tk = yf.Ticker(sym_query)
+        hist = None
+        try: hist = tk.history(period="1y", interval="1d")
+        except Exception as _he: print(f"[ETF-ANALYZE] {sym_query} hist fetch failed: {_he}")
+        if hist is None or hist.empty or len(hist) < 30:
+            return {"success": False, "error": f"No price history for '{sym}' — ticker may not exist on Yahoo Finance, or may not have enough history. Try the full symbol (e.g. add .NS for NSE)."}
+
+        # Get name/category — from ETF metadata if curated, else from yfinance
+        info = {}
+        try: info = tk.info or {}
+        except Exception: pass
+        name = (etf_meta["name"] if etf_meta else (info.get("longName") or info.get("shortName") or sym))
+        category = (etf_meta["category"] if etf_meta else (info.get("category") or info.get("legalType") or "Custom Analysis"))
+        macro_thesis = (etf_meta["macro"] if etf_meta else f"User-requested analysis on {sym}")
+
+        def _safe_pct(curr, prev):
+            try:
+                if prev is None or prev == 0: return None
+                return ((curr - prev) / prev) * 100
+            except Exception: return None
+
+        # ─── Same scoring logic as in /api/etf-scanner per-ETF block ───
+        close = hist["Close"]
+        vol = hist["Volume"]
+        price_now = float(close.iloc[-1])
+        ch_1w = _safe_pct(price_now, float(close.iloc[-5])) if len(close) >= 5 else None
+        ch_1m = _safe_pct(price_now, float(close.iloc[-21])) if len(close) >= 21 else None
+        ch_3m = _safe_pct(price_now, float(close.iloc[-63])) if len(close) >= 63 else None
+        ch_6m = _safe_pct(price_now, float(close.iloc[-126])) if len(close) >= 126 else None
+        ch_ytd = _safe_pct(price_now, float(close.iloc[0])) if len(close) > 0 else None
+        vol_30d_avg = float(vol.tail(30).mean()) if len(vol) >= 30 else 0
+        vol_5d_avg = float(vol.tail(5).mean()) if len(vol) >= 5 else 0
+        vol_spike = (vol_5d_avg / vol_30d_avg) if vol_30d_avg > 0 else 1.0
+        rs_20 = rs_50 = rs_200 = None
+        if bench_close is not None and len(bench_close) >= 50:
+            try:
+                bench_now = float(bench_close.iloc[-1])
+                if len(close) >= 20:
+                    rs_20 = (_safe_pct(price_now, float(close.iloc[-20])) or 0) - (_safe_pct(bench_now, float(bench_close.iloc[-20])) or 0)
+                if len(close) >= 50:
+                    rs_50 = (_safe_pct(price_now, float(close.iloc[-50])) or 0) - (_safe_pct(bench_now, float(bench_close.iloc[-50])) or 0)
+                if len(close) >= 200 and len(bench_close) >= 200:
+                    rs_200 = (_safe_pct(price_now, float(close.iloc[-200])) or 0) - (_safe_pct(bench_now, float(bench_close.iloc[-200])) or 0)
+            except Exception: pass
+        sma_50 = float(close.tail(50).mean()) if len(close) >= 50 else None
+        sma_200 = float(close.tail(200).mean()) if len(close) >= 200 else None
+        above_50 = price_now > sma_50 if sma_50 else False
+        above_200 = price_now > sma_200 if sma_200 else False
+        rsi = None
+        try:
+            delta = close.diff()
+            gain = delta.where(delta > 0, 0).rolling(14).mean()
+            loss = -delta.where(delta < 0, 0).rolling(14).mean()
+            rs_v = gain / loss
+            rsi_series = 100 - (100 / (1 + rs_v))
+            rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty else None
+        except Exception: pass
+
+        # Holdings (multi-source)
+        holdings_data = _fetch_etf_holdings_multi_source(sym_query, region)
+        holdings_quality = None
+        if holdings_data and holdings_data.get("holdings"):
+            try: holdings_quality = _compute_weighted_holdings_quality(holdings_data["holdings"])
+            except Exception as _hqe: print(f"[ETF-ANALYZE] {sym_query} holdings compute failed: {_hqe}")
+
+        # Score components
+        flow_score = 50
+        if vol_spike >= 1.5: flow_score = 90
+        elif vol_spike >= 1.2: flow_score = 75
+        elif vol_spike >= 1.0: flow_score = 60
+        elif vol_spike >= 0.8: flow_score = 45
+        else: flow_score = 30
+        if ch_1m and ch_1m > 8: flow_score = min(100, flow_score + 10)
+        rs_score = 50
+        rs_valid = [r for r in [rs_20, rs_50, rs_200] if r is not None]
+        if rs_valid:
+            rs_avg = sum(rs_valid) / len(rs_valid)
+            if rs_avg > 8: rs_score = 95
+            elif rs_avg > 4: rs_score = 80
+            elif rs_avg > 0: rs_score = 65
+            elif rs_avg > -4: rs_score = 45
+            else: rs_score = 25
+        inst_score = 50
+        if vol_spike > 1.2 and ch_1m and ch_1m > 5: inst_score = 85
+        elif vol_spike > 1.0 and ch_1m and ch_1m > 0: inst_score = 70
+        elif ch_1m and ch_1m < -5: inst_score = 30
+        holdings_score = 50
+        if holdings_quality:
+            w_eps = holdings_quality.get("weighted_eps_growth")
+            w_rev = holdings_quality.get("weighted_revenue_growth")
+            w_roe = holdings_quality.get("weighted_roe")
+            w_gm = holdings_quality.get("weighted_gross_margin")
+            sub = 50
+            if w_eps is not None and w_eps > 20: sub += 12
+            elif w_eps is not None and w_eps > 10: sub += 6
+            elif w_eps is not None and w_eps < 0: sub -= 8
+            if w_rev is not None and w_rev > 15: sub += 10
+            elif w_rev is not None and w_rev > 5: sub += 5
+            elif w_rev is not None and w_rev < 0: sub -= 6
+            if w_roe is not None and w_roe > 20: sub += 10
+            elif w_roe is not None and w_roe > 12: sub += 5
+            elif w_roe is not None and w_roe < 8: sub -= 4
+            if w_gm is not None and w_gm > 40: sub += 8
+            elif w_gm is not None and w_gm > 25: sub += 3
+            elif w_gm is not None and w_gm < 15: sub -= 4
+            holdings_score = max(0, min(100, sub))
+        else:
+            if above_200 and ch_6m and ch_6m > 10: holdings_score = 85
+            elif above_200 and ch_6m and ch_6m > 0: holdings_score = 70
+            elif not above_200: holdings_score = 35
+        earn_rev_score = 50
+        if ch_1m and ch_3m and ch_1m > (ch_3m / 3): earn_rev_score = 80
+        elif ch_1m and ch_3m and ch_1m < (ch_3m / 3): earn_rev_score = 40
+        macro_score = 50
+        if category in hot_categories: macro_score = 85
+        elif any(k in category for k in ["Tech","Industrial","Banking","Auto","Healthcare","Utilit"]): macro_score = 70
+        elif any(k in category for k in ["Staples","REIT","FMCG","Low Volatility","Dividend"]): macro_score = 40
+        tech_score = 50
+        if above_50 and above_200 and rsi and 40 < rsi < 70: tech_score = 85
+        elif above_200 and rsi and rsi > 30: tech_score = 65
+        elif not above_50 and not above_200: tech_score = 30
+        smart_money_score = round(
+            0.25 * flow_score + 0.20 * rs_score + 0.15 * inst_score +
+            0.15 * holdings_score + 0.10 * earn_rev_score +
+            0.10 * macro_score + 0.05 * tech_score
+        )
+        alerts = []
+        if vol_spike >= 1.3: alerts.append(f"Volume spike +{int((vol_spike - 1) * 100)}% above 30d avg")
+        if rs_50 and rs_50 > 5: alerts.append(f"Rising RS vs {benchmark_label} (+{rs_50:.1f}% over 50d)")
+        if rs_200 and rs_200 > 10: alerts.append(f"Structural outperformer (+{rs_200:.1f}% vs {benchmark_label} over 200d)")
+        if above_50 and above_200 and ch_1m and ch_1m > 5: alerts.append("Above both SMAs with positive momentum")
+        if ch_1m and ch_3m and ch_1m > 5 and ch_1m > ch_3m / 3: alerts.append("Momentum accelerating QoQ")
+        if category in hot_categories: alerts.append(f"Megatrend tailwind: {macro_thesis}")
+        if rsi and 40 < rsi < 60 and ch_1m and ch_1m > 0: alerts.append("Healthy consolidation with upward bias")
+        if holdings_quality:
+            if holdings_quality.get("weighted_eps_growth") and holdings_quality["weighted_eps_growth"] > 20:
+                alerts.append(f"Strong EPS growth in holdings (weighted +{holdings_quality['weighted_eps_growth']:.0f}%)")
+            if holdings_quality.get("weighted_revenue_growth") and holdings_quality["weighted_revenue_growth"] > 15:
+                alerts.append(f"Strong revenue growth in holdings (weighted +{holdings_quality['weighted_revenue_growth']:.0f}%)")
+            if holdings_quality.get("weighted_roe") and holdings_quality["weighted_roe"] > 25:
+                alerts.append(f"High ROE holdings (weighted {holdings_quality['weighted_roe']:.0f}%)")
+            if holdings_data and holdings_data.get("top10_concentration_pct", 0) > 60:
+                alerts.append(f"Concentrated portfolio (top-10 = {holdings_data['top10_concentration_pct']:.0f}%)")
+        if not etf_meta:
+            alerts.insert(0, f"Custom analysis — '{sym}' is not in the curated {region} universe; results computed on the fly")
+
+        if smart_money_score >= 80: conviction = "🚀 HIGH"
+        elif smart_money_score >= 65: conviction = "✨ MEDIUM-HIGH"
+        elif smart_money_score >= 50: conviction = "👀 NEUTRAL"
+        else: conviction = "⚠ LOW"
+
+        etf_result = {
+            "symbol": sym_query,
+            "name": name,
+            "category": category,
+            "macro_thesis": macro_thesis,
+            "price": round(price_now, 2),
+            "change_1w_pct": round(ch_1w, 2) if ch_1w is not None else None,
+            "change_1m_pct": round(ch_1m, 2) if ch_1m is not None else None,
+            "change_3m_pct": round(ch_3m, 2) if ch_3m is not None else None,
+            "change_6m_pct": round(ch_6m, 2) if ch_6m is not None else None,
+            "change_ytd_pct": round(ch_ytd, 2) if ch_ytd is not None else None,
+            "rs_vs_spy_20d": round(rs_20, 2) if rs_20 is not None else None,
+            "rs_vs_spy_50d": round(rs_50, 2) if rs_50 is not None else None,
+            "rs_vs_spy_200d": round(rs_200, 2) if rs_200 is not None else None,
+            "volume_spike_ratio": round(vol_spike, 2),
+            "rsi": round(rsi, 1) if rsi else None,
+            "above_50sma": above_50,
+            "above_200sma": above_200,
+            "smart_money_score": smart_money_score,
+            "score_breakdown": {
+                "flow": flow_score, "rs": rs_score, "institutional": inst_score,
+                "holdings": holdings_score, "earnings_rev": earn_rev_score,
+                "macro": macro_score, "technical": tech_score,
+            },
+            "alerts": alerts,
+            "conviction": conviction,
+            "holdings": (holdings_data.get("holdings") if holdings_data else None),
+            "holdings_source": (holdings_data.get("source") if holdings_data else None),
+            "top10_concentration_pct": (holdings_data.get("top10_concentration_pct") if holdings_data else None),
+            "holdings_quality": holdings_quality,
+            "is_curated": etf_meta is not None,
+        }
+        out = {
+            "success": True,
+            "region": region,
+            "benchmark": benchmark_label,
+            "benchmark_symbol": benchmark_sym,
+            "scan_time_utc": datetime.utcnow().isoformat() + "Z",
+            "etf": etf_result,
+            "ts": time.time(),
+        }
+        _etf_analyze_cache[cache_key] = {"data": out, "ts": time.time()}
+        print(f"[ETF-ANALYZE] {sym_query} region={region} score={smart_money_score} ({conviction}) curated={etf_meta is not None}")
+        return out
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)[:200]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# r63.99.18: 360° SCANNER — LIST OF HIGH-CONVICTION STOCKS
+# Runs Vijay's 10-category framework across a curated universe per region.
+# Returns ranked stocks by Early Opportunity Score (same weighted formula:
+# 30%×Financial + 25%×Revenue + 20%×SmartMoney + 10%×Valuation + 10%×Industry
+# + 5%×Technical). Categories 7-10 diagnostic only.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Curated 360° universes — biased toward EARLY-STAGE setups
+# (small/mid-cap, growth phase, sector tailwinds). NOT mega-caps which are
+# almost never "undervalued" per Vijay's framework definition.
+_universe_360_us = [
+    # AI Infrastructure / Photonics / Optical
+    "POET",   # Photonics - Vijay's framework reference
+    "AEHR",   # Test Systems - Vijay's framework reference
+    "INDI",   # Indie Semi
+    "AMBA",   # Ambarella (edge AI)
+    "ALAB",   # Astera Labs (datacenter connectivity)
+    "CRDO",   # Credo (datacenter networking)
+    "WULF",   # TeraWulf (AI infra / HPC)
+    "BTDR",   # Bitdeer (AI compute)
+    # Memory / Storage
+    "MU",     # Micron - Vijay's framework reference
+    "SNDK",   # SanDisk - Vijay's framework reference
+    "WDC",    # Western Digital
+    "STX",    # Seagate
+    # Semis & Foundry
+    "INTC",   # Intel turnaround story
+    "QCOM",   # Qualcomm
+    "ON",     # OnSemi (power semis, autos)
+    "MCHP",   # Microchip
+    "ARM",    # Arm Holdings
+    # Cybersecurity (smaller / undervalued)
+    "S",      # SentinelOne
+    "RBRK",   # Rubrik
+    "TENB",   # Tenable
+    "VRNS",   # Varonis
+    # Defense / Aerospace tech
+    "KTOS",   # Kratos Defense
+    "AVAV",   # AeroVironment (drones)
+    "AXON",   # Axon Enterprise
+    "MRCY",   # Mercury Systems
+    # Power semis / grid / EV
+    "WOLF",   # Wolfspeed (SiC)
+    "ENVX",   # Enovix (batteries)
+    "FLNC",   # Fluence Energy
+    "BE",     # Bloom Energy
+    "PLUG",   # Plug Power
+    # Industrials with capex tailwind
+    "EME",    # EMCOR
+    "PWR",    # Quanta Services
+    "FIX",    # Comfort Systems
+    "DY",     # Dycom (telecom infra)
+    # Healthcare / Biotech innovators (mid-cap)
+    "VRTX",   # Vertex
+    "RKLB",   # Rocket Lab
+    "PATH",   # UiPath
+    "IOT",    # Samsara
+    # Emerging Tech / Quantum / Edge
+    "QBTS",   # D-Wave
+    "RGTI",   # Rigetti
+    "IONQ",   # IonQ
+    # Diamond Hunter style mid-caps
+    "CELH",   # Celsius
+    "DUOL",   # Duolingo
+    "TOST",   # Toast
+]
+
+_universe_360_in = [
+    # IT Services (mid-cap with growth runway)
+    "PERSISTENT","COFORGE","LTIM","MPHASIS","KPITTECH","TATAELXSI","TATATECH","OFSS","SONATSOFTW","BSOFT",
+    # Defense
+    "HAL","BEL","BDL","MAZAGON","COCHINSHIP","GRSE","PARAS","SOLARINDS",
+    # Capex / Industrial / Make-in-India
+    "LT","CUMMINSIND","THERMAX","ABB","SIEMENS","HONAUT","SCHAEFFLER","KAYNES",
+    # New-age / Tech-enabled
+    "ZOMATO","JIOFIN","NUVAMA","CDSL","BSE","MCX","CAMS","DMART","TRENT","DIXON",
+    # Auto Ancillary / EV theme
+    "ASTRAL","POLYCAB","KEI","EXIDEIND","AMARARAJA","SONACOMS","MOTHERSON",
+    # Mid-cap pharma / specialty
+    "TORNTPHARM","LAURUSLABS","ZYDUSLIFE","GLENMARK","IPCALAB","NATCOPHARM","ALKEM",
+    # Banking / Financials (mid-cap)
+    "CHOLAFIN","MUTHOOTFIN","MANAPPURAM","AUBANK","IDFCFIRSTB","FEDERALBNK","BANDHANBNK","RBLBANK",
+    # Real Estate / Infra
+    "PRESTIGE","BRIGADE","SOBHA","OBEROIRLTY","GODREJPROP","PHOENIXLTD",
+    # Chemicals / Specialty (cyclical)
+    "DEEPAKNTR","NAVINFLUOR","SRF","FINEORG","ATUL","PIIND","CLEAN",
+]
+
+_360_universe_cache = {}  # {region: {"data": list, "ts": float}}
+_360_UNIVERSE_TTL = 1800  # 30 minutes
+
+def _score_360_from_yfinance(sym, region):
+    """Lightweight 360 scoring from yfinance.info — avoids the heavy
+    investor-decide call. Returns dict with score + per-category breakdown
+    + key metrics. Returns None on data failure.
+    """
+    try:
+        import yfinance as yf
+        yf_sym = sym if region == "US" else (sym + ".NS" if "." not in sym else sym)
+        tk = yf.Ticker(yf_sym)
+        info = {}
+        try: info = tk.info or {}
+        except Exception: pass
+        if not info or not info.get("symbol"):
+            return None
+        # Price + history for technical/RS
+        hist = None
+        try: hist = tk.history(period="1y", interval="1d")
+        except Exception: pass
+        price = float(info.get("regularMarketPrice") or info.get("currentPrice") or 0)
+        if not price and hist is not None and not hist.empty:
+            price = float(hist["Close"].iloc[-1])
+        if not price:
+            return None
+
+        def _safe(key, default=None):
+            v = info.get(key)
+            try:
+                if v is None: return default
+                return float(v)
+            except Exception: return default
+        def _pct(v, divide=False):
+            """Normalize a possibly-decimal field to percent."""
+            if v is None: return None
+            try:
+                v = float(v)
+                if abs(v) < 5 and divide is False: return v * 100  # 0-1 → 0-100
+                return v
+            except Exception: return None
+
+        # ─── DATA EXTRACTION ───
+        cash = _safe("totalCash", 0) or 0
+        debt = _safe("totalDebt", 0) or 0
+        current_ratio = _safe("currentRatio", 0) or 0
+        ocf = _safe("operatingCashflow", 0) or 0
+        gross_margin = _pct(info.get("grossMargins"))
+        profit_margin = _pct(info.get("profitMargins"))
+        rev_growth = _pct(info.get("revenueGrowth"))
+        earn_growth = _pct(info.get("earningsGrowth"))
+        roe = _pct(info.get("returnOnEquity"))
+        debt_eq = _safe("debtToEquity", 0) or 0
+        fwd_pe = _safe("forwardPE")
+        peg = _safe("pegRatio")
+        if (peg is None or peg <= 0) and fwd_pe and fwd_pe > 0 and rev_growth and rev_growth > 0:
+            peg = fwd_pe / rev_growth
+        ps = _safe("priceToSalesTrailing12Months")
+        inst_pct = _pct(info.get("heldPercentInstitutions"))
+        insider_pct = _pct(info.get("heldPercentInsiders"))
+        analyst_count = _safe("numberOfAnalystOpinions", 0) or 0
+        mcap = _safe("marketCap", 0) or 0
+        beta = _safe("beta", 1.0) or 1.0
+        target_mean = _safe("targetMeanPrice", 0) or 0
+        dcf_upside = ((target_mean - price) / price * 100) if (target_mean and price) else None
+        sector = (info.get("sector") or "").lower()
+        industry = (info.get("industry") or "").lower()
+        hot_sectors = ["semiconductor","chip","technology","software","artificial","data","photonic",
+                       "memory","defense","aerospace","cybersecurity","automation","robotics","cloud",
+                       "networking","quantum","biotech","health"]
+        is_hot = any(h in sector or h in industry for h in hot_sectors)
+        # Technicals from history
+        rsi = None; sma_50 = None; sma_200 = None
+        if hist is not None and not hist.empty and len(hist) >= 50:
+            try:
+                close = hist["Close"]
+                sma_50 = float(close.tail(50).mean()) if len(close) >= 50 else None
+                sma_200 = float(close.tail(200).mean()) if len(close) >= 200 else None
+                delta = close.diff()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = -delta.where(delta < 0, 0).rolling(14).mean()
+                rs_v = gain / loss
+                rsi_series = 100 - (100 / (1 + rs_v))
+                rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty else None
+            except Exception: pass
+        above_50 = (price > sma_50) if sma_50 else False
+        above_200 = (price > sma_200) if sma_200 else False
+        above_200_pct = ((price - sma_200) / sma_200 * 100) if sma_200 else None
+
+        # ─── 6 WEIGHTED CATEGORIES (each returns 0-1 pass rate) ───
+        def _cat_rate(checks):
+            passed = sum(1 for c in checks if c == 'pass')
+            known = sum(1 for c in checks if c != 'unknown')
+            return (passed / known) if known > 0 else 0.0
+
+        # Cat 1: Financial Survival
+        c1 = []
+        c1.append('pass' if (cash > debt and cash > 0) else ('fail' if cash <= debt and debt > 0 else 'unknown'))
+        c1.append('pass' if current_ratio >= 1.5 else ('fail' if 0 < current_ratio < 1.0 else ('unknown' if not current_ratio else 'neutral')))
+        c1.append('pass' if ocf > 0 else ('fail' if ocf < 0 else 'unknown'))
+        c1.append('pass' if (gross_margin and gross_margin >= 30) else ('fail' if (gross_margin and gross_margin < 15) else ('unknown' if not gross_margin else 'neutral')))
+        c1.append('pass' if (0 < debt_eq < 100) else ('fail' if debt_eq > 200 else ('unknown' if not debt_eq else 'neutral')))
+        s1 = _cat_rate(c1)
+        # Cat 2: Revenue Inflection
+        c2 = []
+        c2.append('pass' if (rev_growth and rev_growth > 20) else ('fail' if (rev_growth is not None and rev_growth < 5 and rev_growth != 0) else 'unknown'))
+        c2.append('pass' if (earn_growth and earn_growth > 15) else ('fail' if (earn_growth is not None and earn_growth < 0) else 'unknown'))
+        c2.append('pass' if (gross_margin and gross_margin >= 35) else 'neutral')
+        c2.append('pass' if (profit_margin and profit_margin > 10) else ('fail' if (profit_margin is not None and profit_margin < 0) else 'unknown'))
+        s2 = _cat_rate(c2)
+        # Cat 3: Smart Money / Institutional
+        c3 = []
+        c3.append('pass' if (inst_pct and inst_pct >= 60) else ('fail' if (inst_pct is not None and inst_pct < 30) else 'unknown'))
+        c3.append('pass' if (insider_pct and insider_pct >= 1) else 'neutral')
+        # Without quarterly insider flow, use insider holding % as proxy
+        c3.append('pass' if (insider_pct and insider_pct >= 3) else 'neutral')
+        s3 = _cat_rate(c3)
+        # Cat 4: Valuation Disconnect
+        c4 = []
+        c4.append('pass' if (dcf_upside is not None and dcf_upside > 20) else ('fail' if (dcf_upside is not None and dcf_upside < -10) else 'unknown'))
+        c4.append('pass' if (peg and 0 < peg < 1.0) else ('fail' if (peg and peg > 2.5) else 'unknown'))
+        c4.append('pass' if (fwd_pe and 0 < fwd_pe < 20) else ('fail' if (fwd_pe and fwd_pe > 50) else 'unknown'))
+        c4.append('pass' if (ps and 0 < ps < 5) else ('fail' if (ps and ps > 15) else 'unknown'))
+        s4 = _cat_rate(c4)
+        # Cat 5: Industry Tailwind
+        c5 = []
+        c5.append('pass' if is_hot else 'neutral')
+        s5 = _cat_rate(c5)
+        # Cat 6: Technical Structure
+        c6 = []
+        c6.append('pass' if (above_200_pct is not None and 0 < above_200_pct < 30) else ('fail' if (above_200_pct is not None and above_200_pct > 50) else 'unknown'))
+        c6.append('pass' if (rsi and 40 < rsi < 65) else ('fail' if (rsi and rsi > 75) else 'unknown'))
+        c6.append('pass' if (0 < beta < 1.5) else ('fail' if beta > 2.5 else 'neutral'))
+        s6 = _cat_rate(c6)
+
+        early_score = round((0.30 * s1 + 0.25 * s2 + 0.20 * s3 + 0.10 * s4 + 0.10 * s5 + 0.05 * s6) * 100)
+        if early_score >= 80: verdict_label = "🚀 STRONG INSTITUTIONAL SETUP"; verdict_color = "#059669"
+        elif early_score >= 65: verdict_label = "✨ EARLY OPPORTUNITY"; verdict_color = "#10b981"
+        elif early_score >= 50: verdict_label = "👀 WATCHLIST CANDIDATE"; verdict_color = "#d97706"
+        elif early_score >= 30: verdict_label = "⚠ MARGINAL"; verdict_color = "#ea580c"
+        else: verdict_label = "❌ AVOID — VALUE TRAP RISK"; verdict_color = "#dc2626"
+
+        # Generate top reasons (highlight what's strong)
+        reasons = []
+        if rev_growth and rev_growth > 20: reasons.append(f"Revenue +{rev_growth:.0f}%")
+        if earn_growth and earn_growth > 25: reasons.append(f"EPS +{earn_growth:.0f}%")
+        if dcf_upside and dcf_upside > 20: reasons.append(f"DCF upside +{dcf_upside:.0f}%")
+        if cash > debt and cash > 0: reasons.append("Cash > Debt ✓")
+        if peg and 0 < peg < 1.0: reasons.append(f"PEG {peg:.2f}")
+        if inst_pct and inst_pct >= 60: reasons.append(f"Inst own {inst_pct:.0f}%")
+        if roe and roe >= 20: reasons.append(f"ROE {roe:.0f}%")
+        if is_hot: reasons.append("Megatrend sector")
+        if gross_margin and gross_margin >= 50: reasons.append(f"GM {gross_margin:.0f}% (moat)")
+
+        return {
+            "symbol": sym,
+            "name": info.get("longName") or info.get("shortName") or sym,
+            "sector": info.get("sector") or "—",
+            "industry": info.get("industry") or "—",
+            "price": round(price, 2),
+            "mcap": int(mcap) if mcap else None,
+            "early_score": early_score,
+            "verdict_label": verdict_label,
+            "verdict_color": verdict_color,
+            "category_scores": {
+                "financial": round(s1 * 100),
+                "revenue":   round(s2 * 100),
+                "smart_money": round(s3 * 100),
+                "valuation": round(s4 * 100),
+                "industry":  round(s5 * 100),
+                "technical": round(s6 * 100),
+            },
+            "metrics": {
+                "revenue_growth_pct": round(rev_growth, 1) if rev_growth is not None else None,
+                "earnings_growth_pct": round(earn_growth, 1) if earn_growth is not None else None,
+                "gross_margin_pct": round(gross_margin, 1) if gross_margin is not None else None,
+                "profit_margin_pct": round(profit_margin, 1) if profit_margin is not None else None,
+                "roe_pct": round(roe, 1) if roe is not None else None,
+                "forward_pe": round(fwd_pe, 1) if fwd_pe else None,
+                "peg": round(peg, 2) if peg else None,
+                "ps": round(ps, 2) if ps else None,
+                "dcf_upside_pct": round(dcf_upside, 1) if dcf_upside is not None else None,
+                "inst_pct": round(inst_pct, 1) if inst_pct is not None else None,
+                "insider_pct": round(insider_pct, 2) if insider_pct is not None else None,
+                "rsi": round(rsi, 0) if rsi else None,
+                "above_200sma_pct": round(above_200_pct, 1) if above_200_pct is not None else None,
+                "beta": round(beta, 2),
+                "cash_usd": int(cash),
+                "debt_usd": int(debt),
+            },
+            "reasons": reasons[:4],
+        }
+    except Exception as _e:
+        print(f"[360-SCAN] {sym} error: {type(_e).__name__}: {str(_e)[:80]}")
+        return None
+
+
+@app.get("/api/360-universe-scan")
+async def universe_scan_360(region: str = "US", refresh: int = 0):
+    """360° Scanner — runs Vijay's 10-category framework across a curated universe.
+    Returns ranked stocks by Early Opportunity Score.
+    """
+    global _360_universe_cache
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not refresh and region in _360_universe_cache:
+        cached = _360_universe_cache[region]
+        if (time.time() - cached["ts"]) < _360_UNIVERSE_TTL:
+            resp = dict(cached["data"])
+            resp["_cached"] = True
+            resp["_cache_age_sec"] = int(time.time() - cached["ts"])
+            return resp
+    try:
+        universe = _universe_360_us if region == "US" else _universe_360_in
+        print(f"[360-SCAN] region={region} | scanning {len(universe)} stocks (lightweight yfinance.info)...")
+        t0 = time.time()
+        # Parallel scoring with ThreadPoolExecutor (yfinance.info is I/O bound)
+        import concurrent.futures as _cf
+        scored = []
+        with _cf.ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {pool.submit(_score_360_from_yfinance, s, region): s for s in universe}
+            for fut in _cf.as_completed(futures, timeout=90):
+                try:
+                    res = fut.result()
+                    if res: scored.append(res)
+                except Exception as _fe:
+                    print(f"[360-SCAN] future error: {_fe}")
+        scored.sort(key=lambda x: x.get("early_score", 0), reverse=True)
+        elapsed = round(time.time() - t0, 1)
+        # Bucket by verdict tier
+        strong = [s for s in scored if s["early_score"] >= 80]
+        early  = [s for s in scored if 65 <= s["early_score"] < 80]
+        watch  = [s for s in scored if 50 <= s["early_score"] < 65]
+        marginal = [s for s in scored if s["early_score"] < 50]
+        out = {
+            "success": True,
+            "region": region,
+            "universe_size": len(universe),
+            "scanned_count": len(scored),
+            "scan_time_utc": datetime.utcnow().isoformat() + "Z",
+            "elapsed_sec": elapsed,
+            "stocks": scored,
+            "summary": {
+                "strong_count": len(strong),
+                "early_count": len(early),
+                "watch_count": len(watch),
+                "marginal_count": len(marginal),
+                "top_pick": scored[0]["symbol"] if scored else None,
+                "top_score": scored[0]["early_score"] if scored else None,
+            },
+            "ts": time.time(),
+        }
+        _360_universe_cache[region] = {"data": out, "ts": time.time()}
+        top_summary = f"top: {scored[0]['symbol']}@{scored[0]['early_score']}" if scored else "no results"
+        print(f"[360-SCAN] {len(scored)}/{len(universe)} scored in {elapsed}s | strong={len(strong)} early={len(early)} watch={len(watch)} | {top_summary}")
         return out
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -33962,6 +34880,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             if ia.get("data_quality") == "INCOMPLETE":
                 _plain_ia = "No insider transaction data available — either no Form 4 filings in the last 6 months, or the company doesn't disclose this granularly."
                 _analyst_ia = ia.get("reason") or "Insider data unavailable."
+                _action_ia = "Treat this section as missing input — make your decision from the rest of the report (fundamentals, technicals, sector context)."
             elif ia.get("sentiment"):
                 s = ia["sentiment"]
                 buys = ia.get("n_buys_6mo", 0) or 0

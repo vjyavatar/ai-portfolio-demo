@@ -1,3 +1,239 @@
+## r63.99.18 (2026-05-19) — 360° Scanner now LISTS high-conviction stocks
+
+**Vijay's request from screenshot:** *"THIS 360 list of stocks which is highest conviction and more promising along with search"*
+
+Previously the 360° Scanner only worked on a single ticker you typed in. Now it does BOTH:
+1. **NEW**: Universe scan that returns a RANKED LIST of high-conviction stocks
+2. **PRESERVED**: Single-ticker search for deep-dive analysis
+
+### What lands at the top of the 360° tab
+
+A new green panel **🏆 High-Conviction Stock Discovery** with a single SCAN UNIVERSE button. Click it → backend runs Vijay's 10-category Early Opportunity Score across a curated universe (45 US small/mid-caps or 65 NSE picks), returns ranked table.
+
+### Curated universes — biased toward EARLY-STAGE setups
+
+Per the framework's own definition ("undervalued stocks before the crowd notices"), mega-caps like AAPL/MSFT aren't candidates. The 360° universe is intentionally small/mid-cap with sector tailwind alignment:
+
+**US universe (45 stocks)** spans Vijay's hot 2026 themes:
+- AI Infrastructure / Photonics: **POET, AEHR, INDI, AMBA, ALAB, CRDO, WULF, BTDR** (POET and AEHR are direct framework examples)
+- Memory / Storage: **MU, SNDK, WDC, STX** (MU and SNDK are framework examples)
+- Semis: **INTC, QCOM, ON, MCHP, ARM**
+- Cybersecurity (mid-caps): **S, RBRK, TENB, VRNS**
+- Defense tech: **KTOS, AVAV, AXON, MRCY**
+- Power semis / Grid / EV: **WOLF, ENVX, FLNC, BE, PLUG**
+- Industrial capex: **EME, PWR, FIX, DY**
+- Healthcare / Space: **VRTX, RKLB, PATH, IOT**
+- Quantum / Edge: **QBTS, RGTI, IONQ**
+- Mid-cap growth: **CELH, DUOL, TOST**
+
+**India universe (65 stocks)** focused on mid/small-cap with structural tailwinds:
+- IT mid-caps: PERSISTENT, COFORGE, LTIM, MPHASIS, KPITTECH, TATAELXSI, etc.
+- Defense: HAL, BEL, BDL, MAZAGON, COCHINSHIP, GRSE, PARAS, SOLARINDS
+- Capex / Make-in-India: LT, CUMMINSIND, THERMAX, ABB, SIEMENS, KAYNES, DIXON
+- New-age tech: ZOMATO, JIOFIN, NUVAMA, CDSL, BSE, MCX, CAMS
+- EV theme: SONACOMS, MOTHERSON, EXIDEIND, AMARARAJA
+- Mid-cap pharma, BFSI, real estate, specialty chemicals
+
+### Backend — `/api/360-universe-scan?region=X`
+
+Lightweight scoring path: uses `yfinance.info` per stock instead of the heavy `/api/investor-decide` chain. That keeps the universe scan tractable (~30-90s for 45-65 names parallel-fetched).
+
+Per-stock scorer `_score_360_from_yfinance(sym, region)`:
+- 6 weighted categories (same as inline 360 — 30/25/20/10/10/5 weights)
+- Cash > Debt, Current Ratio, OCF, GM, D/E for Financial Survival
+- Revenue/EPS growth, GM expansion, profit margin for Revenue Inflection
+- Institutional %, insider stake for Smart Money
+- DCF upside (from analyst target), PEG, Fwd P/E, P/S for Valuation Disconnect
+- Hot sector match for Industry Tailwind
+- SMAs + RSI + beta for Technical Structure
+- Auto-appends `.NS` for India tickers
+- Generates "top reasons" chips (Rev +35%, DCF +28%, PEG 0.6, Megatrend sector, etc.) for at-a-glance reading
+- ThreadPoolExecutor with 8 parallel workers
+- 30-min cache per region
+
+Returns ranked stocks + summary tier counts (STRONG/EARLY/WATCH/MARGINAL).
+
+### Frontend — what renders after scan
+
+**Tier summary** (4 colored cards):
+- 🚀 STRONG (80+) · ✨ EARLY (65-79) · 👀 WATCH (50-64) · ⚠ MARGINAL (<50)
+- Each shows count of stocks in that tier
+
+**Ranked table** sorted by Early Opportunity Score desc:
+
+| # | TICKER | SECTOR | SCORE | VERDICT | TOP REASONS | REV GR | DCF UP | PEG |
+|---|---|---|---|---|---|---|---|---|
+| 1 | POET | Tech | 84 | 🚀 STRONG | [Rev +35%][PEG 0.4][Megatrend] | +35% | +42% | 0.41 |
+| 2 | AEHR | Semiconductors | 78 | ✨ EARLY | [Rev +28%][DCF +25%][Inst 65%] | +28% | +25% | 0.65 |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
+
+**Click any row** → expands to:
+1. **6-category score grid** — see exactly which categories pass vs fail
+2. **14-metric grid** — Rev Growth, EPS Growth, GM, Net Margin, ROE, Fwd PE, PEG, P/S, DCF Upside, Inst Own, Insider Own, RSI, Above 200SMA, Beta — color-coded
+3. **🔍 Full 360° Deep-Dive button** — clicks fill the single-ticker input below and trigger the existing inline scanner with full ✓/✗ per-line checklist
+
+This is the bridge to the single-ticker view: rankings let you SCAN broadly, then drill deep on the best candidates.
+
+### Workflow per Vijay's framework
+
+1. **Stage 1** (macro): Pick region (global MARKET toggle)
+2. **Stage 2** (scan): Click SCAN UNIVERSE → see 45-65 ranked candidates
+3. **Stage 3** (filter): Focus on STRONG (🚀) and EARLY (✨) tiers
+4. **Stage 4** (deep dive): Click any row → 14 metrics + 6 categories → click "Full 360° Deep-Dive" → see complete 10-category ✓/✗ checklist with score breakdown
+
+### Files changed
+
+`api.py`:
+- New `_universe_360_us` (45 stocks) and `_universe_360_in` (65 stocks)
+- New `_360_universe_cache` (per-region, 30-min TTL)
+- New `_score_360_from_yfinance(sym, region)` helper — ~150 lines
+- New `/api/360-universe-scan` endpoint — parallel ThreadPoolExecutor scoring
+- Logs `[360-SCAN]`
+
+`static/app.js`:
+- New `window.load360Universe(forceRefresh)` loader — honors `window._deRegion`
+- New `window._render360Universe(d)` renderer — tier cards + ranked table + expand rows
+- Existing `window.load360Scanner` (single-ticker) and `window._render360Scanner` untouched
+- Drill-into-360 button calls existing single-ticker scanner
+- Version → r63.99.18
+
+`index.html`:
+- New green panel "🏆 High-Conviction Stock Discovery" above the existing search row
+- Existing single-ticker search row labeled "OR ANALYZE SINGLE TICKER" for clarity
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.18. `CHANGELOG.md`.
+
+### Testing — 21 regression suites all green (566 total assertions)
+
+- 6/6 Movers · 8/8 Insider buckets · 38/38 Insider classifier · 11/11 Intradayopt · 7/7 Returns snapshot · 25/25 Insider charts · 19/19 r63.99.4 · 23/23 SMI+Premium · 27/27 r63.99.6 · 28/28 r63.99.7 · 26/26 r63.99.8 · 20/20 r63.99.9 · 14/14 r63.99.10 · 16/16 r63.99.11 · 35/35 r63.99.12 · 29/29 r63.99.13 · 36/36 r63.99.14 · 72/72 r63.99.15 · 28/28 r63.99.16 · 40/40 r63.99.17 · **57/57 r63.99.18 (new)**
+
+### Post-deploy verification
+
+1. Click top nav 🎯 **360°**
+2. See the new green **🏆 High-Conviction Stock Discovery** panel at the top
+3. Click **🚀 SCAN UNIVERSE** — ~30-90s scan
+4. See 4 tier cards (STRONG count, EARLY count, etc.)
+5. See ranked table with POET, AEHR, MU, etc. likely near the top (depending on current data)
+6. Click any row → expand shows 6 category scores + 14 metrics
+7. Click "Full 360° Deep-Dive on POET" → existing single-ticker scanner runs below
+8. Flip global MARKET to IN → click SCAN UNIVERSE → see India mid/small-caps ranked
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js index.html build_version.txt CHANGELOG.md
+git commit -m "r63.99.18: 360° universe scan — ranked list of high-conviction stocks (45 US + 65 IN)"
+git push origin main
+```
+
+Then **Render → Clear build cache → Deploy** + hard refresh. Badge should flip to purple `⚙ r63.99.18 · 2026-05-19`.
+
+### Known caveats
+
+- **Lightweight scoring** uses `yfinance.info` only — fewer fields than the full investor-decide pipeline. Smart Money category lacks quarterly insider net-flow (uses insider holding % as proxy). For the FULL 10-category checklist with per-line ✓/✗, use the single-ticker view (already wired via the drill-down button).
+- **Cold scan ~30-90s** depending on yfinance latency. Cached 30min so subsequent opens are instant.
+- **Universe is curated, not exhaustive** — built around Vijay's framework examples + 2026 megatrend themes. Tickers can be added/removed in `_universe_360_us` / `_universe_360_in` in api.py.
+
+---
+
+## r63.99.17 (2026-05-18) — ETF Search/Analyze any ticker + IPGP UnboundLocalError fix
+
+Two fixes from Vijay's report:
+
+### Fix 1 — IPGP `UnboundLocalError: cannot access local variable '_action_ia'`
+
+Backend bug in the Deep DD layman-summary code (insider activity section). Three code paths set `_plain_ia`, `_analyst_ia`, AND `_action_ia` — but the `data_quality == "INCOMPLETE"` branch was setting only `_plain_ia` and `_analyst_ia`. When that path executed (any ticker with missing insider Form 4 data — IPGP being one), the final line packing the layman dict crashed:
+
+```python
+ia["layman"] = {"plain": _plain_ia, "analyst": _analyst_ia, "action": _action_ia}  # ← crash
+```
+
+**Fix**: Added `_action_ia = "Treat this section as missing input — make your decision from the rest of the report (fundamentals, technicals, sector context)."` to the INCOMPLETE branch. IPGP Deep DD now renders.
+
+### Fix 2 — ETF Scanner can now analyze ANY ETF, not just the curated universe
+
+Vijay's request: *"I would like to search for EUV"* — EUV (or any thematic ETF outside the 30 US / 22 India curated universe) wasn't in the scanner. Required new functionality.
+
+**New backend endpoint**: `/api/etf-analyze?symbol=X&region=Y`
+
+- Pulls full 1y price history from yfinance
+- Computes 7-factor Smart Money Score (same formula as bulk scanner)
+- Computes Holdings Quality via the same multi-source fetch chain (`yfinance.funds_data` → `yfinance.info` → curated fallback)
+- Auto-appends `.NS` for India tickers without suffix
+- Returns `is_curated: false` flag if the ETF isn't in our universe — frontend shows yellow chip warning
+- Helpful error if ticker doesn't exist on Yahoo
+- Per-symbol cache (10min TTL)
+- Logs as `[ETF-ANALYZE]`
+
+**New frontend UI**: Inline search box in the ETF Scanner subtab (teal panel, above the bulk scan controls):
+
+```
+🔍 ANALYZE ANY ETF   [Ticker (e.g. EUV, SOXL, IBIT...)]   [⚡ ANALYZE]
+Scans ANY ETF outside the curated universe. Examples:
+EUV (lithography), URNM (uranium), IBIT (Bitcoin), KWEB (China internet),
+INDA (India broad), TAN (solar), LIT (lithium).
+```
+
+Result renders as a single-ETF card with:
+- **Header**: ticker, name, category, conviction tier, Smart Money Score badge
+- **Quick metrics strip**: PRICE / 1M / 3M / YTD / RS vs benchmark / Vol Spike / RSI — color-coded
+- **7-component score breakdown grid** (Flow/RS/Inst/Holdings/EarnRev/Macro/Tech) with weights
+- **Institutional alerts chips** — including a yellow "Custom analysis" badge when the ETF isn't curated
+- **Holdings Quality breakdown** — 6-cell weighted fundamentals grid (EPS/Rev/GM/ROE/PE/PEG)
+- **Top 10 Holdings drill-down** — per-stock Fwd P/E, EPS growth, Revenue growth, GM, ROE
+- **Macro thesis** footer
+
+Same renderer logic as the bulk-scan expand row but laid out as a standalone card.
+
+### Files changed
+
+`api.py`:
+- Fixed `_action_ia` UnboundLocalError in INCOMPLETE branch
+- New `/api/etf-analyze` endpoint (~190 lines) — mirrors per-ETF scoring from `/api/etf-scanner`
+- New `_etf_analyze_cache` dict (per-symbol, 10min TTL)
+- Reuses `_fetch_etf_holdings_multi_source` + `_compute_weighted_holdings_quality` from r63.99.15
+
+`static/app.js`:
+- New `window.loadEtfAnalyze(sym)` — reads from input, calls `/api/etf-analyze`
+- New `window._renderEtfAnalyze(d)` — single-ETF card renderer
+- Honors global `window._deRegion`
+- Version → r63.99.17
+
+`index.html`:
+- New teal "🔍 ANALYZE ANY ETF" panel below the bulk scan controls
+- Result container `#etfAnalyzeResult`
+- Enter-to-submit on input field
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.17. `CHANGELOG.md`.
+
+### Testing — 20 regression suites all green (509 total assertions)
+
+- 6/6 Movers · 8/8 Insider buckets · 38/38 Insider classifier · 11/11 Intradayopt · 7/7 Returns snapshot · 25/25 Insider charts · 19/19 r63.99.4 · 23/23 SMI+Premium · 27/27 r63.99.6 · 28/28 r63.99.7 · 26/26 r63.99.8 · 20/20 r63.99.9 · 14/14 r63.99.10 · 16/16 r63.99.11 · 35/35 r63.99.12 · 29/29 r63.99.13 · 36/36 r63.99.14 · 72/72 r63.99.15 · 28/28 r63.99.16 · **40/40 r63.99.17 (new)**
+
+### Post-deploy verification
+
+**For Fix 1 (IPGP)**: Go to Decide → Analyze Stock → enter IPGP → Investor mode → Deep DD should now render without the red error banner.
+
+**For Fix 2 (ETF analyze)**: 
+1. Go to **Decide → 📊 ETF Scanner**
+2. See new teal "🔍 ANALYZE ANY ETF" panel
+3. Type **EUV** → click ⚡ ANALYZE → ~10-30s → see Smart Money score for EUV (VanEck Semiconductor ETF if Yahoo recognizes it, otherwise yfinance metadata)
+4. Try **URNM** (uranium miners), **IBIT** (Bitcoin), **KWEB** (China internet), **TAN** (solar), **LIT** (lithium), **INDA** (India broad)
+5. For India: type **GOLDBEES.NS** with region=IN (or just GOLDBEES if global MARKET=IN, .NS auto-appended)
+6. Result card shows score + breakdown + alerts + holdings table
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js index.html build_version.txt CHANGELOG.md
+git commit -m "r63.99.17: ETF analyze any ticker (EUV/URNM/IBIT/KWEB/etc.) + IPGP _action_ia bugfix"
+git push origin main
+```
+
+Then **Render → Clear build cache → Deploy** + hard refresh. Badge should flip to purple `⚙ r63.99.17 · 2026-05-18`.
+
+---
+
 ## r63.99.16 (2026-05-18) — Global region propagation + Intraday Options NSE-block guidance
 
 **Vijay's screenshots:** (1) Intraday Options Scanner showing **"Scanned 0/50 F&O symbols"** because NSE blocks Render IP, (2) Region toggle exists but isn't propagated — ETF Scanner / 360° Scanner have separate region selectors instead of honoring the global MARKET toggle.
