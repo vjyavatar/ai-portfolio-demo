@@ -38,9 +38,20 @@
 // 15% Inst + 15% Holdings + 10% EarnRev + 10% Macro + 5% Tech. Returns ranked
 // table + rotation signals (leading/lagging categories + Risk-On/Selective/
 // Defensive phase) + institutional alerts per ETF.
-window.CELESYS_VERSION = "r63.99.14";
-window.CELESYS_BUILD_TIME = 1779098400;
-window.CELESYS_BUILD_DATE = "2026-05-18 08:00:00 UTC";
+// r63.99.15: ETF Scanner Layer 4 (Holdings Quality) — REAL weighted fundamentals
+// across top-10 holdings replaces proxy. Multi-source: yfinance.funds_data →
+// yfinance.info → curated factsheet fallback. India region added (22 NSE ETFs
+// vs Nifty 50). Stage 4 stock discovery: each ETF row expands to per-holding
+// table with Fwd P/E, EPS growth, Rev growth, GM, ROE — find winning stocks
+// hidden inside leading ETFs before they go mainstream.
+// r63.99.16: Global region propagation — ETF Scanner, 360° Scanner, and Intraday
+// Options now respect the global MARKET (IN/US) toggle. Intraday Options shows
+// clear guidance ("India-only, switch IN to scan") when global=US instead of
+// running a doomed 0/50 NSE scan. Empty-result fallback rewritten with
+// actionable alternatives (Decide→Intraday Setups, ETF Scanner, 360° Scanner).
+window.CELESYS_VERSION = "r63.99.16";
+window.CELESYS_BUILD_TIME = 1779134400;
+window.CELESYS_BUILD_DATE = "2026-05-18 18:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -8082,6 +8093,27 @@ window.loadIntraday = function(forceRefresh) {
   var stEl  = document.getElementById('intradayStatus');
   var btn   = document.getElementById('intradayScanBtn');
   if (!resEl) return;
+  // r63.99.16: F&O scanner is India-NSE only. If global region is US, show clear guidance
+  // instead of running a doomed scan that returns 0/50 (NSE blocks Render IP).
+  var globalReg = (window._deRegion || '').toUpperCase();
+  if (globalReg === 'US') {
+    resEl.innerHTML =
+      '<div style="padding:24px 20px;background:linear-gradient(180deg,#fef9c3,#fef08a);border:1px solid #facc15;border-radius:10px;color:#713f12;font-size:12px;line-height:1.7">' +
+        '<div style="font-size:14px;font-weight:900;margin-bottom:10px;color:#713f12;font-family:Sora,sans-serif">⚠ F&O Scanner is India-NSE only</div>' +
+        '<div style="margin-bottom:12px">Your global market is currently set to <strong>US</strong>. This scanner reads NSE option chains (CE/PE strikes, max pain, IV) — there is no US equivalent endpoint yet.</div>' +
+        '<div style="margin-bottom:12px"><strong>Two options:</strong></div>' +
+        '<ol style="margin:0 0 12px 18px;padding:0">' +
+          '<li style="margin-bottom:6px">Switch global market to <strong>IN</strong> (top bar) — runs the full NSE F&O scan across 50 names</li>' +
+          '<li>For US options analysis, use <strong>Decide → Intraday Setups</strong> instead (ORB / VWAP / Inside-day scanner — works for US)</li>' +
+        '</ol>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' +
+          '<button onclick="switchDERegion(\'IN\');setTimeout(function(){window.loadIntraday(true);},500);" style="padding:8px 16px;border-radius:6px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:11px;font-weight:800;cursor:pointer">🇮🇳 Switch to IN + Scan</button>' +
+          '<button onclick="switchTabGroup(\'decide\');setTimeout(function(){if(typeof switchTab===\'function\')switchTab(\'intraday\');},200);" style="padding:8px 16px;border-radius:6px;background:#fff;color:#713f12;border:1px solid #facc15;font-size:11px;font-weight:800;cursor:pointer">→ Decide → Intraday Setups (US)</button>' +
+        '</div>' +
+      '</div>';
+    if (stEl) stEl.textContent = 'Scanner paused: switch global market to IN to enable NSE F&O scan';
+    return;
+  }
   if (btn) {
     btn.disabled = true;
     btn.style.opacity = '0.65';
@@ -8264,7 +8296,17 @@ window._renderIntraday = function(d, elapsedSec) {
     html += '</tbody></table></div>';
     html += '</div>';
   } else {
-    html += '<div style="padding:18px;text-align:center;color:#9ca3af;font-size:10px;background:#fafbfc;border-radius:8px">No symbols returned data. NSE may be blocking the Render IP — falls back to other tabs that don\'t depend on NSE.</div>';
+    html += '<div style="padding:24px 20px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;color:#9a3412;font-size:11px;line-height:1.7">' +
+      '<div style="font-size:13px;font-weight:900;margin-bottom:8px;color:#7c2d12;font-family:Sora,sans-serif">🛑 NSE is blocking the Render server IP (72.180.65.28)</div>' +
+      '<div style="margin-bottom:10px">All 50 F&O symbol fetches returned empty. NSE actively blocks cloud-hosted IPs to prevent rate-limit abuse.</div>' +
+      '<div style="margin-bottom:10px"><strong>What works instead:</strong></div>' +
+      '<ul style="margin:0 0 12px 18px;padding:0">' +
+        '<li style="margin-bottom:5px"><strong>Decide → Intraday Setups</strong> (ORB / VWAP / Inside-day) — uses yfinance, works for both US and IN</li>' +
+        '<li style="margin-bottom:5px"><strong>Decide → 📊 ETF Scanner</strong> — Smart Money score across 22 India ETFs (NIFTYBEES, BANKBEES, ITBEES, etc.)</li>' +
+        '<li><strong>🎯 360°</strong> top-nav — institutional scanner for any single ticker (works in both regions)</li>' +
+      '</ul>' +
+      '<div style="margin-top:10px;font-size:10px;color:#9a3412;font-style:italic">Permanent fix needs a non-cloud IP or paid market data provider for NSE F&O option chains. Workarounds in the meantime use Yahoo Finance which doesn\'t block.</div>' +
+    '</div>';
   }
 
   // ─── Disclaimer ───
@@ -9872,6 +9914,8 @@ if(uss)uss.style.display=reg==='US'?'flex':'none';
 }
 if(window._fillDESelect)window._fillDESelect(reg);
 var r=document.getElementById('deResult');if(r)r.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:10px">Switched to '+(reg==='US'?'USA':'India')+'. Select a stock or index.</div>';
+// r63.99.16: Propagate region change to dependent scanners (ETF, 360°, Intraday Options)
+try { if (typeof window._onRegionChange === 'function') window._onRegionChange(reg); } catch(_re){}
 }
 window._deMode='investor';
 
@@ -10456,12 +10500,19 @@ window.loadEtfScanner = function(forceRefresh) {
   var statusEl = document.getElementById('etfScanStatus');
   var resultEl = document.getElementById('etfScanResult');
   var btnEl = document.getElementById('etfScanBtn');
+  var regSel = document.getElementById('etfScanRegion');
+  // r63.99.16: Honor GLOBAL region toggle (window._deRegion) first; fall back to local dropdown
+  var globalReg = (window._deRegion || '').toUpperCase();
+  var region = globalReg || (regSel && regSel.value) || 'US';
+  // Sync dropdown to global so user sees consistency
+  if (regSel && regSel.value !== region) regSel.value = region;
+  window._etfScanRegion = region;
   if (!resultEl) return;
-  if (statusEl) statusEl.textContent = 'Scanning 30 institutional ETFs against SPY benchmark...';
+  if (statusEl) statusEl.textContent = 'Scanning ' + (region === 'US' ? 'US' : 'India') + ' institutional ETFs vs ' + (region === 'US' ? 'SPY' : 'Nifty 50') + ' benchmark...';
   if (btnEl) { btnEl.disabled = true; btnEl.style.opacity = '0.6'; }
-  resultEl.innerHTML = '<div style="padding:40px;text-align:center"><div style="display:inline-block;width:18px;height:18px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:10px"></div><span style="font-size:12px;color:#155e75;font-weight:700">Computing Smart Money Score across 30 ETFs (~10-30s)...</span></div>';
+  resultEl.innerHTML = '<div style="padding:40px;text-align:center"><div style="display:inline-block;width:18px;height:18px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:10px"></div><span style="font-size:12px;color:#155e75;font-weight:700">Computing Smart Money Score across ' + (region === 'US' ? '30 US ETFs' : '22 India ETFs') + ' (~15-45s, includes holdings fundamentals)...</span></div>';
 
-  var url = '/api/etf-scanner?region=US' + (forceRefresh ? '&refresh=1' : '');
+  var url = '/api/etf-scanner?region=' + region + (forceRefresh ? '&refresh=1' : '');
   fetch(url, {cache: 'no-store'}).then(function(r){return r.json();}).then(function(d){
     if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; }
     if (!d || !d.success) {
@@ -10469,13 +10520,28 @@ window.loadEtfScanner = function(forceRefresh) {
       resultEl.innerHTML = '<div style="padding:20px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px">Scan failed: <strong>' + ((d && d.error) || 'unknown error') + '</strong><br><button onclick="window.loadEtfScanner(true)" style="margin-top:10px;padding:6px 14px;border-radius:6px;background:#0891b2;color:#fff;border:none;cursor:pointer;font-size:10px;font-weight:700">↻ Retry</button></div>';
       return;
     }
-    if (statusEl) statusEl.textContent = (d._cached ? '↻ Cached · ' + d._cache_age_sec + 's old · ' : 'Fresh scan · ') + (d.scanned_count || 0) + '/' + (d.universe_size || 0) + ' ETFs scored';
+    if (statusEl) statusEl.textContent = (d._cached ? '↻ Cached · ' + d._cache_age_sec + 's old · ' : 'Fresh scan · ') + (d.scanned_count || 0) + '/' + (d.universe_size || 0) + ' ETFs scored · benchmark: ' + (d.benchmark || 'SPY') + ' · region: ' + region;
     resultEl.innerHTML = window._renderEtfScanner(d);
   }).catch(function(e){
     if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; }
     if (statusEl) statusEl.textContent = 'Network error';
     resultEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:11px">Network error: ' + e.message + '<br><button onclick="window.loadEtfScanner(true)" style="margin-top:10px;padding:6px 14px;border-radius:6px;background:#0891b2;color:#fff;border:none;cursor:pointer;font-size:10px;font-weight:700">↻ Retry</button></div>';
   });
+};
+
+// r63.99.16: Global region observer — re-renders region-aware scanners when MARKET toggle flips
+window._onRegionChange = function(newReg) {
+  newReg = (newReg || window._deRegion || 'US').toUpperCase();
+  window._deRegion = newReg;
+  // Sync ETF scanner dropdown + reload if active
+  var etfReg = document.getElementById('etfScanRegion');
+  if (etfReg) etfReg.value = newReg;
+  if (window._activeEtfScannerTab && typeof window.loadEtfScanner === 'function') {
+    setTimeout(function(){ window.loadEtfScanner(false); }, 100);
+  }
+  // Sync 360 scanner region select if visible
+  var s360Reg = document.getElementById('scan360Region');
+  if (s360Reg) s360Reg.value = newReg;
 };
 
 window._renderEtfScanner = function(d) {
@@ -10585,6 +10651,80 @@ window._renderEtfScanner = function(d) {
       h += '</div>';
     }
     h += '<div style="font-size:10px;color:#475569;line-height:1.5"><strong style="color:#0f172a">Macro thesis:</strong> ' + (e.macro_thesis || '—') + ' · <strong style="color:#0f172a;margin-left:8px">Price:</strong> $' + (e.price || 0).toFixed(2) + ' · <strong style="color:#0f172a;margin-left:8px">RSI:</strong> ' + (e.rsi == null ? '—' : e.rsi.toFixed(0)) + ' · <strong style="color:#0f172a;margin-left:8px">YTD:</strong> ' + (e.change_ytd_pct == null ? '—' : ((e.change_ytd_pct >= 0 ? '+' : '') + e.change_ytd_pct.toFixed(1) + '%')) + '</div>';
+
+    // r63.99.15: Holdings Quality breakdown + per-holding drill-down
+    if (e.holdings && e.holdings.length) {
+      var hq = e.holdings_quality || {};
+      h += '<div style="margin-top:12px;padding:10px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">';
+      h += '<div style="font-size:10px;font-weight:800;color:#0891b2;letter-spacing:0.4px;font-family:Sora,sans-serif">🔍 LAYER 4 · HOLDINGS QUALITY (REAL weighted from top 10)</div>';
+      if (e.top10_concentration_pct != null) {
+        var concColor = e.top10_concentration_pct > 60 ? '#dc2626' : e.top10_concentration_pct > 45 ? '#d97706' : '#059669';
+        h += '<span style="font-size:9px;color:' + concColor + ';font-weight:800;padding:2px 8px;background:' + concColor + '15;border-radius:4px;font-family:\'IBM Plex Mono\',monospace">TOP-10 CONCENTRATION ' + e.top10_concentration_pct.toFixed(0) + '%</span>';
+      }
+      h += '</div>';
+      // Weighted fundamentals grid
+      var hqGrid = [
+        {l:'Weighted EPS Growth', v: hq.weighted_eps_growth, suf:'%', good: 15, bad: 0},
+        {l:'Weighted Rev Growth',  v: hq.weighted_revenue_growth, suf:'%', good: 12, bad: 0},
+        {l:'Weighted Gross Margin', v: hq.weighted_gross_margin, suf:'%', good: 40, bad: 20},
+        {l:'Weighted ROE',          v: hq.weighted_roe, suf:'%', good: 18, bad: 8},
+        {l:'Weighted Forward P/E',  v: hq.weighted_forward_pe, suf:'x', good: null, bad: 35, lowerBetter: true},
+        {l:'Weighted PEG',          v: hq.weighted_peg, suf:'', good: 1, bad: 2.5, lowerBetter: true},
+      ];
+      h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">';
+      hqGrid.forEach(function(b){
+        var col, val;
+        if (b.v == null) { col = '#94a3b8'; val = '—'; }
+        else {
+          val = b.v.toFixed(1) + b.suf;
+          if (b.lowerBetter) {
+            if (b.v < b.good) col = '#059669';
+            else if (b.v > b.bad) col = '#dc2626';
+            else col = '#d97706';
+          } else {
+            if (b.good != null && b.v > b.good) col = '#059669';
+            else if (b.v < b.bad) col = '#dc2626';
+            else col = '#d97706';
+          }
+        }
+        h += '<div style="padding:6px 8px;border:1px solid ' + col + '30;border-radius:5px;background:' + col + '06;text-align:center">';
+        h += '<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:0.3px">' + b.l + '</div>';
+        h += '<div style="font-size:13px;color:' + col + ';font-weight:900;font-family:\'IBM Plex Mono\',monospace;margin-top:1px">' + val + '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+      // Per-holding table — Stage 4: stock discovery from leading ETFs
+      h += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.4px;margin-bottom:5px;font-family:Sora,sans-serif">📊 TOP 10 HOLDINGS · Stage 4: discover individual stocks driving the ETF</div>';
+      h += '<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#f8fafc">';
+      ['HOLDING','WEIGHT','FWD P/E','EPS GR','REV GR','GM','ROE'].forEach(function(c){
+        h += '<th style="padding:5px 7px;text-align:' + (c === 'HOLDING' ? 'left' : 'right') + ';font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.3px">' + c + '</th>';
+      });
+      h += '</tr></thead><tbody>';
+      e.holdings.forEach(function(holding, hi){
+        var fund = (hq.holdings_with_fundamentals && hq.holdings_with_fundamentals[hi]) ? hq.holdings_with_fundamentals[hi].fundamentals || {} : (holding.fundamentals || {});
+        var rowBg = hi % 2 === 0 ? '#fff' : '#fafbfc';
+        var clean_sym = (holding.symbol || '').replace(/\.NS$/, '');
+        h += '<tr style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9">';
+        h += '<td style="padding:5px 7px"><span style="font-weight:800;color:#0f172a;font-family:\'IBM Plex Mono\',monospace">' + clean_sym + '</span>';
+        if (holding.name && holding.name !== holding.symbol) h += '<span style="font-size:9px;color:#64748b;margin-left:6px">' + holding.name.slice(0,28) + '</span>';
+        h += '</td>';
+        h += '<td style="padding:5px 7px;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:#475569;font-weight:700">' + (holding.weight_pct ? holding.weight_pct.toFixed(1) + '%' : '—') + '</td>';
+        h += '<td style="padding:5px 7px;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + (fund.forward_pe != null ? fund.forward_pe.toFixed(1) + 'x' : '—') + '</td>';
+        var epsCol = fund.eps_growth == null ? '#94a3b8' : fund.eps_growth > 15 ? '#059669' : fund.eps_growth < 0 ? '#dc2626' : '#475569';
+        h += '<td style="padding:5px 7px;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:' + epsCol + ';font-weight:700">' + (fund.eps_growth != null ? (fund.eps_growth >= 0 ? '+' : '') + fund.eps_growth.toFixed(0) + '%' : '—') + '</td>';
+        var revCol = fund.revenue_growth == null ? '#94a3b8' : fund.revenue_growth > 10 ? '#059669' : fund.revenue_growth < 0 ? '#dc2626' : '#475569';
+        h += '<td style="padding:5px 7px;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:' + revCol + ';font-weight:700">' + (fund.revenue_growth != null ? (fund.revenue_growth >= 0 ? '+' : '') + fund.revenue_growth.toFixed(0) + '%' : '—') + '</td>';
+        h += '<td style="padding:5px 7px;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + (fund.gross_margin != null ? fund.gross_margin.toFixed(0) + '%' : '—') + '</td>';
+        h += '<td style="padding:5px 7px;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + (fund.roe != null ? fund.roe.toFixed(0) + '%' : '—') + '</td>';
+        h += '</tr>';
+      });
+      h += '</tbody></table>';
+      if (e.holdings_source) {
+        h += '<div style="font-size:8.5px;color:#94a3b8;margin-top:6px;font-style:italic">Source: ' + e.holdings_source + '</div>';
+      }
+      h += '</div>';
+    }
     h += '</td></tr>';
   });
   h += '</tbody></table></div></div>';

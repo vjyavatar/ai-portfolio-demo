@@ -2010,8 +2010,12 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <strong style="font-family:Sora,sans-serif">📊 Where is smart money structurally allocating capital?</strong> Scans 30 institutional-grade thematic ETFs (AI/Semis, Cybersecurity, Defense, Robotics, AI Infrastructure, Datacenter REITs, sector SPDRs). Each gets a Smart Money Score: 25% Flow + 20% RS vs SPY + 15% Institutional + 15% Holdings Quality + 10% Earnings Revisions + 10% Macro + 5% Technical.
 </div>
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;padding:12px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">
+  <select id="etfScanRegion" onchange="window.loadEtfScanner&amp;&amp;window.loadEtfScanner(true)" title="Tracks the global MARKET toggle at the top of the page. Change either to switch region." style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;font-family:Sora,sans-serif;font-weight:700;cursor:pointer">
+    <option value="US">&#127482;&#127480; US Market (30 ETFs &middot; vs SPY)</option>
+    <option value="IN">&#127470;&#127475; India NSE (22 ETFs &middot; vs Nifty 50)</option>
+  </select>
   <button onclick="window.loadEtfScanner&amp;&amp;window.loadEtfScanner(true)" id="etfScanBtn" style="padding:8px 18px;border-radius:6px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px">&#128640; SCAN ETFs</button>
-  <div id="etfScanStatus" style="flex:1;font-size:10px;color:#155e75;font-family:'JetBrains Mono',monospace">Click SCAN to fetch live price + volume across 30 institutional ETFs (~10-30s scan, cached 10min).</div>
+  <div id="etfScanStatus" style="flex:1;min-width:200px;font-size:10px;color:#155e75;font-family:'JetBrains Mono',monospace">Region follows the global MARKET toggle (top bar) &middot; or change it here. Cached 10min after scan.</div>
 </div>
 <div id="etfScanResult" style="min-height:240px"><div style="text-align:center;padding:40px;color:var(--text3);font-size:11px">No scan yet. Click <strong>&#128640; SCAN ETFs</strong> above to populate rankings, rotation signals, and institutional alerts.</div></div>
 <div style="margin-top:14px;padding:11px 13px;border-radius:8px;background:#f0f9ff;border:1px solid #bae6fd;font-size:10px;color:#155e75;line-height:1.6">
