@@ -18,9 +18,13 @@
 // r63.99.9: Theme-wise news expanded from 2-3 headlines per theme to 10+
 // headlines per theme. Added stats summary (bullish/bearish/high-impact counts)
 // and pagination (first 5 visible, Show N more button for rest).
-window.CELESYS_VERSION = "r63.99.9";
-window.CELESYS_BUILD_TIME = 1779010800;
-window.CELESYS_BUILD_DATE = "2026-05-17 09:00:00 UTC";
+// r63.99.10: Premium Intel synthesizes from primary `d` response when backend
+// returns null analyst_estimates/forward_multiples. 3-layer fallback now —
+// yfinance → Finnhub → frontend synthesis. "Data pending" never shows when
+// /api/investor-decide has even basic data (price + EPS).
+window.CELESYS_VERSION = "r63.99.10";
+window.CELESYS_BUILD_TIME = 1779030000;
+window.CELESYS_BUILD_DATE = "2026-05-17 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -10143,6 +10147,80 @@ window._renderPremiumIntelligence = function(d, S, reg) {
   }
 
   var groupBody = _piBanner;  // r63.99.5: prepend the source banner
+
+  // ═══ r63.99.10: SYNTHESIZE analyst_estimates from primary `d` response ═══
+  // Even when /api/premium-intel returns NO analyst_estimates (yfinance AND Finnhub
+  // both failed), the primary /api/investor-decide response usually has enough on
+  // d.price + d.eps_forward + d.fundamental.* + d.thesis to derive a useful view.
+  // We synthesize a minimal analyst_estimates object so the section never goes empty.
+  if (!d.analyst_estimates || (typeof d.analyst_estimates === 'object' &&
+      !d.analyst_estimates.target_mean && !d.analyst_estimates.forward_eps &&
+      !d.analyst_estimates.analyst_count && !d.analyst_estimates.recommendation)) {
+    try {
+      var _price = parseFloat(d.price) || 0;
+      var _f = d.fundamental || {};
+      // Forward EPS — try many possible field names
+      var _fwdEps = parseFloat(d.eps_forward || d.forwardEps || _f.forwardEps || _f.eps_forward || _f.epsForward || 0);
+      var _trailEps = parseFloat(d.eps || _f.eps || _f.trailingEps || _f.trailing_eps || 0);
+      // Forward PE — backend often returns this directly
+      var _fwdPE = parseFloat(d.forward_pe || d.forwardPE || _f.forwardPE || _f.forward_pe || 0);
+      if (!_fwdPE && _price > 0 && _fwdEps > 0) _fwdPE = _price / _fwdEps;
+      // Target price — derived from r63.99.6 fair value engine (5-method blend)
+      var _vd = d.valuation_detail || {};
+      var _fairValue = parseFloat(_vd.fair_value || (d.thesis||{}).fair_value || d.fair_value || 0);
+      // Recommendation — derived from primary decision verdict
+      var _dec = (d.decision || d.verdict || '').toString().toUpperCase();
+      var _recMap = {
+        'STRONG BUY': 'STRONG BUY',  'STRONG_BUY': 'STRONG BUY',
+        'BUY': 'BUY',                'STRONG SELL': 'STRONG SELL',
+        'STRONG_SELL': 'STRONG SELL', 'SELL': 'SELL',
+        'HOLD': 'HOLD',              'WAIT': 'HOLD',  'ANALYZING': '',
+      };
+      var _recDisp = _recMap[_dec] || (_dec.indexOf('BUY') >= 0 ? 'BUY' : _dec.indexOf('SELL') >= 0 ? 'SELL' : _dec.indexOf('HOLD') >= 0 ? 'HOLD' : '');
+      // Build the synthesized object — only emit if we have AT LEAST one usable field
+      if (_fwdEps > 0 || _fairValue > 0 || _recDisp || _fwdPE > 0) {
+        d.analyst_estimates = d.analyst_estimates || {};
+        if (!d.analyst_estimates.target_mean && _fairValue > 0) d.analyst_estimates.target_mean = _fairValue;
+        if (!d.analyst_estimates.forward_eps && _fwdEps > 0) d.analyst_estimates.forward_eps = _fwdEps;
+        if (!d.analyst_estimates.forward_pe && _fwdPE > 0) d.analyst_estimates.forward_pe = _fwdPE;
+        if (!d.analyst_estimates.trailing_eps && _trailEps > 0) d.analyst_estimates.trailing_eps = _trailEps;
+        if (!d.analyst_estimates.recommendation && _recDisp) d.analyst_estimates.recommendation = _recDisp;
+        // Revenue growth from primary
+        var _revGr = parseFloat(d.revGrowth || (d.business||{}).revGrowth || _f.revenueGrowth || 0);
+        if (_revGr && !d.analyst_estimates.revenue_growth_yoy) d.analyst_estimates.revenue_growth_yoy = _revGr;
+        d.analyst_estimates.source = 'Synthesized from primary data (yfinance/Finnhub failed)';
+        d.analyst_estimates._synthesized = true;
+        d.analyst_estimates._note = 'Estimates derived from current price, fundamental ratios, and Celesys fair-value engine. Original analyst consensus unavailable.';
+      }
+    } catch (_synthErr) { console.warn('Premium Intel synthesis failed:', _synthErr); }
+  }
+  // r63.99.10: SYNTHESIZE forward_multiples from `d` too — Forward P/E + PEG + P/S
+  // computable from price + EPS + revenue, even when forward_multiples is null
+  if (!d.forward_multiples || (typeof d.forward_multiples === 'object' &&
+      !d.forward_multiples.forward_pe && !d.forward_multiples.peg && !d.forward_multiples.price_to_sales)) {
+    try {
+      var _p2 = parseFloat(d.price) || 0;
+      var _f2 = d.fundamental || {};
+      var _b2 = d.business || {};
+      var _fwdEps2 = parseFloat(d.eps_forward || d.forwardEps || _f2.forwardEps || _f2.eps_forward || 0);
+      var _fwdPE2 = parseFloat(d.forward_pe || d.forwardPE || _f2.forwardPE || _f2.forward_pe || 0);
+      if (!_fwdPE2 && _p2 > 0 && _fwdEps2 > 0) _fwdPE2 = _p2 / _fwdEps2;
+      var _revGr2 = parseFloat(d.revGrowth || _b2.revGrowth || _f2.revenueGrowth || 0);
+      if (_revGr2 && Math.abs(_revGr2) < 1) _revGr2 = _revGr2 * 100;  // normalize to %
+      var _peg = (_fwdPE2 > 0 && _revGr2 > 0) ? (_fwdPE2 / _revGr2) : null;
+      var _ps = parseFloat(d.priceToSales || _f2.priceToSalesTrailing12Months || 0);
+      var _evEbitda = parseFloat(d.evToEbitda || _f2.enterpriseToEbitda || _f2.ev_ebitda || 0);
+      if (_fwdPE2 > 0 || _peg !== null || _ps > 0 || _evEbitda > 0) {
+        d.forward_multiples = d.forward_multiples || {};
+        if (_fwdPE2 > 0 && !d.forward_multiples.forward_pe) d.forward_multiples.forward_pe = _fwdPE2;
+        if (_peg !== null && !d.forward_multiples.peg) d.forward_multiples.peg = _peg;
+        if (_ps > 0 && !d.forward_multiples.price_to_sales) d.forward_multiples.price_to_sales = _ps;
+        if (_evEbitda > 0 && !d.forward_multiples.ev_to_ebitda) d.forward_multiples.ev_to_ebitda = _evEbitda;
+        d.forward_multiples._synthesized = true;
+        d.forward_multiples.source = 'Synthesized from price/EPS/revenue (5Y median requires premium data feed)';
+      }
+    } catch (_fmErr) { console.warn('Forward multiples synthesis failed:', _fmErr); }
+  }
 
   // ═══ 1. FISCAL PERIOD ENDING — ANALYSTS EXPECT ═══
   var est = pick(d, ['analyst_estimates', 'estimates', 'consensus_estimates']);

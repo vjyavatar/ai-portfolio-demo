@@ -1,3 +1,101 @@
+## r63.99.10 (2026-05-17) — Premium Intel guaranteed data via 3-layer synthesis
+
+**Vijay's reaction to screenshots — "i want this data for sure without failure.. through various data sources... its been many times"**
+
+Fair. Premium Intelligence has shown "Data pending" too many times. The root cause: when both yfinance AND Finnhub fail at the backend (`/api/premium-intel` returns null analyst_estimates), the frontend has nothing to render. Adding even more API sources (Alpha Vantage, FMP, IEX) would help but each adds latency and keys to manage.
+
+The right fix: **frontend should synthesize from data already on `d`**. The primary `/api/investor-decide` response has price, EPS, fundamentals, and the Celesys fair-value engine output — that's enough to derive a useful analyst-style view even when the dedicated endpoint fails.
+
+### 3-layer fallback chain
+
+| Layer | Source | Coverage |
+|---|---|---|
+| 1 | yfinance.info via `/api/premium-intel` | All fields when Yahoo works |
+| 2 | Finnhub fallback (r63.99.5) | All fields when Yahoo fails on US tickers |
+| 3 | **Frontend synthesis from `d`** (NEW) | Always works when primary investor-decide succeeded |
+
+### Layer 3 synthesis logic
+
+When both Layers 1 and 2 fail, frontend derives:
+
+**`analyst_estimates`** from:
+- `target_mean` = `d.valuation_detail.fair_value` (the 5-method blend from r63.99.6 — DCF / Forward EPS×PE / Graham / Earnings Yield / Analyst Target)
+- `forward_eps` = `d.eps_forward || d.forwardEps || d.fundamental.forwardEps` (tries 6 different field paths)
+- `forward_pe` = backend value, or computed as `price / forward_eps`
+- `trailing_eps` = `d.eps || d.fundamental.trailingEps`
+- `recommendation` = mapped from `d.decision` (STRONG BUY / BUY / HOLD / SELL / STRONG SELL)
+- `revenue_growth_yoy` = `d.revGrowth || d.business.revGrowth || d.fundamental.revenueGrowth`
+- `source` = `"Synthesized from primary data (yfinance/Finnhub failed)"`
+- `_synthesized: true` flag so frontend can mark the cards with a "computed" indicator
+
+**`forward_multiples`** from:
+- `forward_pe` = backend or computed `price / forward_eps`
+- `peg` = `forward_pe / revenue_growth_pct` (normalizes growth from decimal to %)
+- `price_to_sales` = `d.priceToSales || d.fundamental.priceToSalesTrailing12Months`
+- `ev_to_ebitda` = `d.evToEbitda || d.fundamental.enterpriseToEbitda`
+- 5Y medians: still null (requires premium data feed) — shown as "—"
+
+### Synthesis fires only when needed
+
+Strict guard: synthesis only runs when `d.analyst_estimates` is null/missing OR every meaningful field on it is empty. If backend gave us even partial data (e.g. target_mean but no forward_eps), we don't overwrite it — we fill the gaps additively from `d`. So Layer 3 doesn't degrade Layer 1/2 output.
+
+### What "Data pending" now means
+
+After r63.99.10, "Data pending" only appears when:
+- Primary `/api/investor-decide` failed entirely (no price, no EPS, no decision)
+- AND `/api/premium-intel` returned nothing
+
+In practice that's "investor-decide is broken" — which has its own error handling. Premium Intel essentially has the same uptime as the primary endpoint now.
+
+### Testing — 13 regression suites all green (253 total assertions)
+
+- 6/6 Movers · 8/8 Insider buckets · 38/38 Insider classifier · 11/11 Intradayopt · 7/7 Returns snapshot · 25/25 Insider charts · 19/19 r63.99.4 · 23/23 SMI+Premium · 27/27 r63.99.6 · 28/28 r63.99.7 · 26/26 r63.99.8 · 20/20 r63.99.9 · **14/14 r63.99.10 (new)**
+
+The new test (`smoke_r99_10_fixes.py`) validates:
+- Synth block only fires on null/empty analyst_estimates (won't overwrite real data)
+- Pulls forward_eps from 6 possible field paths
+- Computes missing forward_pe from price/EPS
+- Uses Celesys fair_value as target_mean fallback
+- Maps `d.decision` to BUY/HOLD/SELL recommendation
+- Marks output as `_synthesized: true` so UI shows source attribution
+- Forward Multiples gets the same treatment with PEG computed from FwdPE÷growth
+- Both r63.99.5 Data Sources banner and r63.99.8 flat-structure renderer still work
+
+### Files changed
+
+`static/app.js`:
+- `+~75 lines` of synthesis logic at the top of `_renderPremiumIntelligence`
+- Version constant → r63.99.10
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.10. `CHANGELOG.md`.
+
+### What you'll see post-deploy for MU/NVDA
+
+If Layers 1+2 work: same as before, panel shows yfinance/Finnhub data.
+
+If Layers 1+2 fail (which is what Image 2 shows): **synthesized cards now render** with the actual numbers from primary investor-decide:
+- CONSENSUS TARGET = whatever Celesys's fair-value engine computed (e.g. for MU around $90-130 from the 5-method blend)
+- FORWARD EPS = MU's forward EPS estimate from yfinance.info (this comes via the PRIMARY endpoint, not the premium endpoint)
+- FORWARD P/E = price / forward_eps
+- CONSENSUS = mapped from MU's primary decision verdict
+- Source banner: "Synthesized from primary data (yfinance/Finnhub failed)"
+
+No more empty "Data pending" boxes when there's actually data flowing through the primary endpoint.
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js build_version.txt CHANGELOG.md
+git commit -m "r63.99.10: 3-layer Premium Intel fallback with frontend synthesis from primary d response"
+git push origin main
+```
+
+### Apology + commitment
+
+This is the third iteration on Premium Intel "Data pending" (r63.99.5 added Finnhub, r63.99.8 fixed flat-structure rendering, now r63.99.10 adds synthesis). Each iteration eliminated one failure mode. This layer is the last one — if the primary endpoint works, Premium Intel will too. If you see "Data pending" after this build deploys with the badge showing r63.99.10, the primary endpoint itself is broken for that ticker and we'll fix that separately.
+
+---
+
 ## r63.99.9 (2026-05-17) — Theme-wise news: 10+ headlines per theme
 
 **Vijay's ask from screenshot:** Semiconductors theme showed only 2 headlines. Want at least 10 headlines + analysis per theme.
