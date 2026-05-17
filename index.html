@@ -1380,6 +1380,9 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 <button class="tab-btn" onclick="switchTabGroup('trading')" id="tabBtnTrading" data-color="red" title="Execution Engine — Entry, SL, Targets, Charts"><span class="tab-icon">&#9889;</span> Trader</button>
 <button class="tab-btn" onclick="switchTabGroup('markets')" id="tabBtnMarkets" data-color="cyan" title="Market Intelligence &amp; Rankings"><span class="tab-icon">&#128200;</span> Markets</button>
 <button class="tab-btn" onclick="switchTabGroup('movers')" id="tabBtnMovers" data-color="purple" title="Top 5 gainers &amp; losers across 1D / 1W / 1M / 3M / 1Y"><span class="tab-icon">&#128640;</span> Movers</button>
+<button class="tab-btn" onclick="switchTabGroup('moat')" id="tabBtnMoat" data-color="amber" title="Competitive Moat Analysis &mdash; Porter&apos;s Five Forces, Brand &amp; Scale Advantages"><span class="tab-icon">&#127984;</span> Moat</button>
+<button class="tab-btn" onclick="switchTabGroup('structural')" id="tabBtnStructural" data-color="indigo" title="Structural Change Signal &mdash; Capital Structure, Business Model, Ownership, Strategic Pivot, Balance Sheet Reset"><span class="tab-icon">&#127959;</span> Structural</button>
+<button class="tab-btn" onclick="switchTabGroup('intradayopt')" id="tabBtnIntradayopt" data-color="rose" title="Intraday Options Scanner &mdash; CE/PE Buy/Sell setups for top 50 F&amp;O names. Institutional 3-signal framework: option chain pressure, price vs max pain, IV trend."><span class="tab-icon">&#127919;</span> Intraday</button>
 <button class="tab-btn" onclick="switchTabGroup('tools')" id="tabBtnTools" data-color="emerald" title="Calculators, Education &amp; Comparison"><span class="tab-icon">&#128176;</span> Tools</button>
 </div>
 <div id="groupSubNav" style="display:none;padding:6px 16px;background:#fff;border-bottom:1px solid #e2e5ea;position:sticky;top:calc(var(--ticker-h,0px) + var(--nav-h,54px) + var(--rh-h,36px) + var(--tab-h,38px));z-index:190;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,.04)"></div>
@@ -1628,6 +1631,92 @@ window._fillAlgoSelect=fillSelect;
 <!-- Footnote -->
 <div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:#f8fafc;border:1px solid var(--border);font-size:9px;color:var(--text3);line-height:1.5">
   Universe: LARGE-cap + ETF (~100&ndash;140 tickers per region). 5-minute cached snapshot. Click any row to deep-dive that ticker.
+</div>
+</div></div>
+
+<!-- ═══ TAB: MOAT — r63.93.0: Competitive moat analysis (Porter's Five Forces + scoring) ═══ -->
+<div class="sc" data-tab="moat" style="border-left:3px solid #d97706;display:none">
+<div class="sh"><div class="si" style="background:rgba(217,119,6,.1)">&#127984;</div><div class="st" style="color:#d97706" id="sec-moat">Competitive Moat Analysis &mdash; Porter&apos;s Five Forces &amp; Moat Strength</div></div>
+<div class="sbody">
+<!-- Control row: symbol + region + analyze -->
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:14px;padding:10px 12px;background:linear-gradient(180deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:10px">
+  <span style="font-size:8px;font-weight:800;color:#92400e;letter-spacing:0.7px">SYMBOL</span>
+  <input id="moatSym" type="text" placeholder="e.g. AAPL or RELIANCE" style="padding:6px 10px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #fde68a;background:#fff;color:#451a03;font-family:'JetBrains Mono',monospace;width:160px">
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:8px;font-weight:800;color:#92400e;letter-spacing:0.7px">MARKET</span>
+    <div style="display:flex;border:1px solid #fde68a;border-radius:6px;overflow:hidden;background:#fff">
+      <button id="moatRegIN" onclick="window._setMoatRegion('IN')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#d97706,#92400e);color:#fff">IN</button>
+      <button id="moatRegUS" onclick="window._setMoatRegion('US')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;border-left:1px solid #fde68a;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#92400e">US</button>
+    </div>
+  </div>
+  <button onclick="window.loadMoat&amp;&amp;window.loadMoat()" style="padding:5px 14px;border-radius:6px;background:linear-gradient(135deg,#d97706,#92400e);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px">&#9889; ANALYZE MOAT</button>
+  <div style="flex:1"></div>
+</div>
+<div id="moatStatus" style="font-size:9px;color:var(--text3);margin-bottom:10px;font-family:'JetBrains Mono',monospace"></div>
+<div id="moatResult" style="min-height:240px"><div style="text-align:center;padding:40px;color:var(--text3);font-size:11px">Enter a symbol above and click <strong>ANALYZE MOAT</strong> to see Porter&apos;s Five Forces, brand strength, scale advantages, and switching-cost analysis.</div></div>
+<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:#fffbeb;border:1px solid #fde68a;font-size:9px;color:#92400e;line-height:1.5">
+  Moat scoring uses Porter&apos;s Five Forces framework (Buyer Power, Supplier Power, Competitive Rivalry, Threat of New Entrants, Substitution Risk) combined with quantitative measures (ROE persistence, gross margin stability, market share concentration). Qualitative items are heuristic interpretations from real financial data &mdash; clearly labeled.
+</div>
+</div></div>
+
+<!-- ═══ TAB: STRUCTURAL — r63.94.0: Structural Change Signal (SCS) institutional-grade detector ═══ -->
+<div class="sc" data-tab="structural" style="border-left:3px solid #4f46e5;display:none">
+<div class="sh"><div class="si" style="background:rgba(79,70,229,.1)">&#127959;</div><div class="st" style="color:#4f46e5" id="sec-structural">Structural Change Signal &mdash; Is this the same company it was 12 months ago?</div></div>
+<div class="sbody">
+<!-- Control row: symbol + region + analyze -->
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:14px;padding:10px 12px;background:linear-gradient(180deg,#f5f3ff,#ede9fe);border:1px solid #c7d2fe;border-radius:10px">
+  <span style="font-size:8px;font-weight:800;color:#3730a3;letter-spacing:0.7px">SYMBOL</span>
+  <input id="scsSym" type="text" placeholder="e.g. AAPL or RELIANCE" style="padding:6px 10px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #c7d2fe;background:#fff;color:#1e1b4b;font-family:'JetBrains Mono',monospace;width:160px">
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:8px;font-weight:800;color:#3730a3;letter-spacing:0.7px">MARKET</span>
+    <div style="display:flex;border:1px solid #c7d2fe;border-radius:6px;overflow:hidden;background:#fff">
+      <button id="scsRegIN" onclick="window._setScsRegion('IN')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#4f46e5,#3730a3);color:#fff">IN</button>
+      <button id="scsRegUS" onclick="window._setScsRegion('US')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c7d2fe;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#3730a3">US</button>
+    </div>
+  </div>
+  <button onclick="window.loadStructural&amp;&amp;window.loadStructural()" style="padding:5px 14px;border-radius:6px;background:linear-gradient(135deg,#4f46e5,#3730a3);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px">&#9889; ANALYZE STRUCTURAL CHANGE</button>
+  <div style="flex:1"></div>
+</div>
+<div id="scsStatus" style="font-size:9px;color:var(--text3);margin-bottom:10px;font-family:'JetBrains Mono',monospace"></div>
+<div id="scsResult" style="min-height:240px"><div style="text-align:center;padding:40px;color:var(--text3);font-size:11px">Enter a symbol and click <strong>ANALYZE STRUCTURAL CHANGE</strong>. The SCS detector tracks corporate transformation across 5 institutional categories &mdash; capital structure, business model, ownership, strategic pivot, balance sheet reset &mdash; using 8 quarters of real financials.</div></div>
+<!-- Methodology footer -->
+<div style="margin-top:14px;padding:10px 12px;border-radius:6px;background:#f5f3ff;border:1px solid #c7d2fe;font-size:9px;color:#3730a3;line-height:1.6">
+  <div style="font-weight:800;margin-bottom:4px">METHODOLOGY &middot; INSTITUTIONAL FRAMEWORK</div>
+  <div style="margin-bottom:6px">Composite score (0&ndash;100) is weighted: <strong>25%</strong> Capital Structure &middot; <strong>25%</strong> Business Model &middot; <strong>20%</strong> Ownership &middot; <strong>15%</strong> Strategic Pivot &middot; <strong>15%</strong> Balance Sheet Reset. Verdict thresholds: &ge;65 Structural Breakout, 45&ndash;64 Transition, &lt;45 No Change.</div>
+  <div><strong>Data status badges:</strong> &#9989; available = directly measured from real financials &middot; &#9888;&#65039; partial = derived heuristic or limited window &middot; &#10060; missing = data source not in free tier (e.g. SEC EDGAR scraping, segment-level revenue, qualitative filings parsing). Frontend renders explicit badges per sub-signal &mdash; no black box.</div>
+</div>
+</div></div>
+
+<!-- ═══ TAB: INTRADAY OPTIONS — r63.96.0: Vijay's institutional intraday F&O framework ═══ -->
+<!-- r63.98.0: data-tab is intradayopt (NOT intraday) to disambiguate from legacy decide.intraday -->
+<div class="sc" data-tab="intradayopt" style="border-left:3px solid #e11d48;display:none">
+<div class="sh"><div class="si" style="background:rgba(225,29,72,.1)">&#127919;</div><div class="st" style="color:#e11d48" id="sec-intraday">Intraday Options Scanner &mdash; CE/PE Buy/Sell setups across top 50 F&amp;O names</div></div>
+<div class="sbody">
+<!-- Control row: scan button + status -->
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:14px;padding:10px 12px;background:linear-gradient(180deg,#fff1f2,#ffe4e6);border:1px solid #fecdd3;border-radius:10px">
+  <button onclick="window.loadIntraday&amp;&amp;window.loadIntraday(true)" id="intradayScanBtn" style="padding:7px 18px;border-radius:6px;background:linear-gradient(135deg,#e11d48,#9f1239);color:#fff;border:none;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px">&#128640; SCAN NOW</button>
+  <div id="intradayStatus" style="flex:1;font-size:10px;color:#881337;font-family:'JetBrains Mono',monospace">Click SCAN NOW to fetch live NSE option chain data for top 50 F&amp;O names (~30&ndash;60s scan time).</div>
+</div>
+<div id="intradayResult" style="min-height:240px"><div style="text-align:center;padding:40px;color:var(--text3);font-size:11px">No scan yet. Click <strong>🚀 SCAN NOW</strong> above to populate the 4 setup buckets.</div></div>
+<!-- Methodology footer -->
+<div style="margin-top:14px;padding:11px 13px;border-radius:8px;background:#fff1f2;border:1px solid #fecdd3;font-size:10px;color:#881337;line-height:1.6">
+  <div style="font-weight:800;margin-bottom:6px;letter-spacing:0.3px">METHODOLOGY &middot; INSTITUTIONAL INTRADAY FRAMEWORK</div>
+  <div style="margin-bottom:6px"><strong>3 Alignment Signals</strong> (each carries a ✅/⚠️/❌ status badge):</div>
+  <ol style="margin:0 0 8px 18px;padding:0">
+    <li><strong>Option Chain Pressure</strong> &mdash; heavy CE OI = resistance, heavy PE OI = support. Intraday OI change detects writers covering (unwinding = breakout starting).</li>
+    <li><strong>Price vs Max Pain</strong> &mdash; above max pain = bullish tilt, below = bearish, at = range/theta regime.</li>
+    <li><strong>IV Trend</strong> &mdash; rising IV = option BUYING edge (breakout), falling IV = option SELLING edge (theta decay).</li>
+  </ol>
+  <div style="margin-bottom:6px"><strong>4 Setup Buckets:</strong></div>
+  <ul style="margin:0 0 8px 18px;padding:0">
+    <li>🟢 <strong>CE BUY</strong> &mdash; breakout: above max pain + CE unwinding + IV expanding</li>
+    <li>🔴 <strong>PE BUY</strong> &mdash; breakdown: below max pain + PE unwinding + IV expanding</li>
+    <li>🟡 <strong>CE SELL</strong> &mdash; <em>highest win-rate intraday strategy</em>: heavy call wall + price near/below + IV falling</li>
+    <li>🟡 <strong>PE SELL</strong> &mdash; support defense: heavy put wall + price holding + high IV (premium-rich)</li>
+  </ul>
+  <div style="padding:8px 10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:5px;margin-top:8px;color:#7f1d1d">
+    <strong>⚠ SEBI DISCLAIMER:</strong> Research signal only. NOT trading advice. Intraday options are high-risk &mdash; use stop-losses, size appropriately, consult a registered advisor. Past setup patterns do NOT guarantee future outcomes.
+  </div>
 </div>
 </div></div>
 

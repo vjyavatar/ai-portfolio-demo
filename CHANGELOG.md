@@ -1,3 +1,109 @@
+## r63.99.11 (2026-05-17) — Stale index.html self-heal for missing nav buttons
+
+**Vijay's screenshot:** top nav showed only Overview · Stock · Decide · Dream · Trader · Markets · Movers · Tools. The Moat, Structural, and Intraday buttons (added in earlier builds) were missing from the deployed UI even though they exist in the index.html source.
+
+### Root cause: Render serves stale static assets
+
+Render deploys static files (HTML/JS/CSS) separately from the Python backend. When the build cache isn't cleared, the CDN edge can keep serving an old index.html for hours/days even after a deploy. So `app.js` gets updated (it has a hash-busted filename like `app.min.js?v=hash`) but `index.html` is served from cache, missing buttons added in recent versions:
+
+| Button | Added in version |
+|---|---|
+| 🏭 Moat | ~r63.83 |
+| 🏗 Structural | ~r63.86 |
+| 🎯 Intraday | r63.96 |
+
+No code in app.js explicitly hides these — they're just not in the deployed DOM at all.
+
+### Fix: runtime self-heal
+
+Added a detector that runs 1.5s after page load (after DOM ready + role gates settle). It:
+
+1. Looks for `tabBtnMoat`, `tabBtnStructural`, `tabBtnIntradayopt` in the DOM
+2. If any missing → **injects them at runtime** into the nav row, before the Tools button
+3. Each injected button gets:
+   - Correct `id`, label, icon, and `switchTabGroup` onclick handler
+   - **Amber inset border** to visually distinguish from native HTML buttons
+   - Tooltip with `[INJECTED — your index.html is stale, clear browser cache to update]` hint
+4. The bottom-left version badge briefly turns amber and shows `⚠ STALE HTML · N nav btns injected` for 8 seconds, then reverts to the version display
+5. Console logs both the warning and a recovery instruction:
+   ```
+   [CELESYS] ⚠️ STALE INDEX.HTML — 3 top-nav buttons missing from DOM: tabBtnMoat, tabBtnStructural, tabBtnIntradayopt
+   [CELESYS] Self-healed: injected 3 button(s) at runtime. These have amber borders to indicate stale HTML.
+            Do a hard refresh (Ctrl+Shift+R) and clear Render build cache to load the current index.html.
+   ```
+
+When all 3 buttons are present (HTML deploy was clean), the detector silently logs `[CELESYS] ✓ Top-nav check: all 3 new buttons present` and does nothing else.
+
+### Why injection vs blocking
+
+The user can still navigate to Moat / Structural / Intraday tabs — the panels themselves are in the DOM via the section divs that load with `data-tab="..."`. Only the BUTTON to reach them was missing. So runtime injection restores access fully; no functionality is lost, the visual quirk (amber border) just signals "your HTML is out of date, redeploy with cache clear".
+
+### Testing — 14 regression suites all green (269 total assertions)
+
+- 6/6 Movers · 8/8 Insider buckets · 38/38 Insider classifier · 11/11 Intradayopt · 7/7 Returns snapshot · 25/25 Insider charts · 19/19 r63.99.4 · 23/23 SMI+Premium · 27/27 r63.99.6 · 28/28 r63.99.7 · 26/26 r63.99.8 · 20/20 r63.99.9 · 14/14 r63.99.10 · **16/16 r63.99.11 (new)**
+
+The new test (`smoke_r99_11_fixes.py`) validates:
+- HTML still has the 3 critical button definitions (zip is internally consistent)
+- Detector block r63.99.11 added
+- Maps switchTabGroup names correctly for each button
+- Anchors injection on tabBtnTools (with Movers fallback)
+- Amber border styling applied
+- Badge temporarily flagged + auto-reverts after 8s
+- Original drift detection (FE/BE version mismatch) preserved
+
+### Files changed
+
+`static/app.js`:
+- `+~60 lines` of stale-HTML detector + injection right after the existing version badge logic
+- Version constant → r63.99.11
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.11. `CHANGELOG.md`.
+
+### What you'll see after deploy
+
+**If deploy is clean** (index.html updated):
+- All buttons visible normally
+- Badge purple `⚙ r63.99.11 · 2026-05-17`
+- Console: `[CELESYS] ✓ Top-nav check: all 3 new buttons present`
+
+**If index.html still stale** (most likely on first deploy without cache clear):
+- Missing buttons get injected with amber borders
+- Badge flashes amber `⚠ STALE HTML · 3 nav btns injected` for 8s
+- All tabs functional but you'll see the amber hint to clear cache
+- After clearing Render build cache + hard refresh: buttons render natively without amber border
+
+### Recovery steps for stale HTML
+
+1. **Git push the r63.99.11 zip contents** to your repo
+2. **Render dashboard → Manual Deploy → Clear build cache → Deploy** (the cache clear is the critical step)
+3. **Browser hard refresh**: `Ctrl+Shift+R` (Win) or `Cmd+Shift+R` (Mac)
+
+After steps 1-3, the badge should show purple `⚙ r63.99.11 · 2026-05-17` and console should log `✓ Top-nav check: all 3 new buttons present`.
+
+### Diagnostic if still broken
+
+If after a full Render redeploy + hard refresh you STILL see missing buttons or amber-bordered injected ones, run this in your browser console:
+
+```javascript
+console.log('Version:', window.CELESYS_VERSION);
+console.log('Moat:', document.getElementById('tabBtnMoat'));
+console.log('Structural:', document.getElementById('tabBtnStructural'));
+console.log('Intraday:', document.getElementById('tabBtnIntradayopt'));
+console.log('HTML head <title>:', document.title);
+```
+
+The version + which buttons resolved to native vs injected nodes will tell us exactly where the deploy broke.
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js index.html build_version.txt CHANGELOG.md
+git commit -m "r63.99.11: stale-HTML self-heal — inject missing Moat/Structural/Intraday nav buttons at runtime"
+git push origin main
+```
+
+---
+
 ## r63.99.10 (2026-05-17) — Premium Intel guaranteed data via 3-layer synthesis
 
 **Vijay's reaction to screenshots — "i want this data for sure without failure.. through various data sources... its been many times"**

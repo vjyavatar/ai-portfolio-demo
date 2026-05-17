@@ -22,9 +22,12 @@
 // returns null analyst_estimates/forward_multiples. 3-layer fallback now —
 // yfinance → Finnhub → frontend synthesis. "Data pending" never shows when
 // /api/investor-decide has even basic data (price + EPS).
-window.CELESYS_VERSION = "r63.99.10";
-window.CELESYS_BUILD_TIME = 1779030000;
-window.CELESYS_BUILD_DATE = "2026-05-17 14:00:00 UTC";
+// r63.99.11: STALE INDEX.HTML self-heal — detects when Moat/Structural/Intraday
+// nav buttons are missing from the DOM (stale Render static cache), injects
+// them at runtime with amber border + flags the badge so user knows to clear cache.
+window.CELESYS_VERSION = "r63.99.11";
+window.CELESYS_BUILD_TIME = 1779046800;
+window.CELESYS_BUILD_DATE = "2026-05-17 18:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -90,6 +93,72 @@ document.addEventListener('DOMContentLoaded', function() {
       stamp.textContent = '⚙ ' + window.CELESYS_VERSION + ' · backend unreachable';
       stamp.title = 'Backend version probe failed: ' + e.message;
     });
+
+    // ═══ r63.99.11: STALE INDEX.HTML DETECTOR + SELF-HEALING NAV INJECTION ═══
+    // Recent versions (r63.83+ Moat, r63.86+ Structural, r63.96+ Intraday) added
+    // new top-nav buttons. If Render's CDN serves a stale index.html, these
+    // buttons are missing from the DOM even though app.js is current. This
+    // detector finds the missing buttons, INJECTS them at runtime so the user
+    // can still access those tabs, and flags the badge so they know to clear cache.
+    setTimeout(function(){
+      try {
+        var _expectedButtons = [
+          {id: 'tabBtnMoat',        group: 'moat',        icon: '🏭', label: 'Moat',       color: '#d97706',
+           title: 'Competitive Moat Analysis — Porter\'s Five Forces, Brand & Scale Advantages'},
+          {id: 'tabBtnStructural',  group: 'structural',  icon: '🏗', label: 'Structural', color: '#4f46e5',
+           title: 'Structural Change Signal — Capital Structure, Business Model, Ownership, Strategic Pivot, Balance Sheet Reset'},
+          {id: 'tabBtnIntradayopt', group: 'intradayopt', icon: '🎯', label: 'Intraday',   color: '#e11d48',
+           title: 'Intraday Options Scanner — CE/PE Buy/Sell setups for top 50 F&O names. Institutional 3-signal framework.'},
+        ];
+        var _missing = _expectedButtons.filter(function(b){ return !document.getElementById(b.id); });
+        if (_missing.length === 0) {
+          console.log('[CELESYS] ✓ Top-nav check: all ' + _expectedButtons.length + ' new buttons present');
+          return;
+        }
+        console.warn('[CELESYS] ⚠️ STALE INDEX.HTML — ' + _missing.length + ' top-nav buttons missing from DOM:',
+                     _missing.map(function(b){return b.id;}).join(', '));
+        // Find the nav row — should be the parent of tabBtnTools (always present)
+        var _toolsBtn = document.getElementById('tabBtnTools') || document.getElementById('tabBtnMovers');
+        if (!_toolsBtn) {
+          console.error('[CELESYS] Cannot self-heal — no anchor button (tabBtnTools/tabBtnMovers) found');
+          return;
+        }
+        var _navRow = _toolsBtn.parentElement;
+        if (!_navRow) return;
+        // Inject each missing button BEFORE the anchor (Tools), so order is Movers → Moat → Structural → Intraday → Tools
+        _missing.forEach(function(b){
+          var btn = document.createElement('button');
+          btn.id = b.id;
+          btn.className = _toolsBtn.className;   // copy nav button styling
+          btn.setAttribute('title', b.title + ' [INJECTED — your index.html is stale, clear browser cache to update]');
+          btn.innerHTML = '<span class="tab-icon">' + b.icon + '</span> ' + b.label;
+          btn.onclick = function(){
+            try {
+              if (typeof switchTabGroup === 'function') switchTabGroup(b.group);
+              else alert('Tab routing not ready yet, please reload the page.');
+            } catch(_e){ console.error('switchTabGroup failed:', _e); }
+          };
+          // Visual mark — pulsing amber border so user sees these are injected fallbacks
+          btn.style.boxShadow = 'inset 0 0 0 1px #f59e0b';
+          _navRow.insertBefore(btn, _toolsBtn);
+        });
+        console.warn('[CELESYS] Self-healed: injected ' + _missing.length + ' button(s) at runtime. ' +
+                     'These have amber borders to indicate stale HTML. Do a hard refresh (Ctrl+Shift+R) ' +
+                     'and clear Render build cache to load the current index.html.');
+        // Flag the badge so user sees it visually
+        var existingBadge = document.getElementById('celesys-build-stamp');
+        if (existingBadge) {
+          var _origText = existingBadge.textContent;
+          existingBadge.textContent = '⚠ STALE HTML · ' + _missing.length + ' nav btns injected';
+          existingBadge.style.background = 'linear-gradient(135deg,#d97706,#92400e)';
+          existingBadge.title = 'Index.html is older than app.js. ' + _missing.length +
+                                ' top-nav button(s) were injected at runtime. ' +
+                                'Hard-refresh (Ctrl+Shift+R) and force a Render redeploy with cleared build cache.';
+          // Revert badge after 8 seconds so version info isn't permanently obscured
+          setTimeout(function(){ existingBadge.textContent = _origText; }, 8000);
+        }
+      } catch(_navErr) { console.error('[CELESYS] Stale-HTML detector failed:', _navErr); }
+    }, 1500);  // wait 1.5s for DOM ready, app boot, role gates to settle
   } catch(e) {}
 });
 // ═════════════════════════════════════
