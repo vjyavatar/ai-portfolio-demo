@@ -2002,6 +2002,30 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 </div></div>
 
 <!-- ═══ TAB: WEALTH ENGINE PRO — Institutional Deep Scan ═══ -->
+<!-- ═══ TAB: ETF SCANNER — r63.99.14 Vijay's institutional ETF framework ═══ -->
+<div class="sc" data-tab="etfscanner" style="border-left:3px solid #0891b2;display:none">
+<div class="sh"><div class="si" style="background:rgba(8,145,178,.1)">&#128202;</div><div class="st" style="color:#0891b2">Institutional ETF Scanner &mdash; Smart Money Score &amp; Rotation Signals</div></div>
+<div class="sbody">
+<div style="padding:11px 13px;background:linear-gradient(180deg,#ecfeff,#cffafe);border:1px solid #67e8f9;border-radius:10px;margin-bottom:14px;font-size:11px;color:#155e75;line-height:1.6">
+  <strong style="font-family:Sora,sans-serif">📊 Where is smart money structurally allocating capital?</strong> Scans 30 institutional-grade thematic ETFs (AI/Semis, Cybersecurity, Defense, Robotics, AI Infrastructure, Datacenter REITs, sector SPDRs). Each gets a Smart Money Score: 25% Flow + 20% RS vs SPY + 15% Institutional + 15% Holdings Quality + 10% Earnings Revisions + 10% Macro + 5% Technical.
+</div>
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;padding:12px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">
+  <button onclick="window.loadEtfScanner&amp;&amp;window.loadEtfScanner(true)" id="etfScanBtn" style="padding:8px 18px;border-radius:6px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px">&#128640; SCAN ETFs</button>
+  <div id="etfScanStatus" style="flex:1;font-size:10px;color:#155e75;font-family:'JetBrains Mono',monospace">Click SCAN to fetch live price + volume across 30 institutional ETFs (~10-30s scan, cached 10min).</div>
+</div>
+<div id="etfScanResult" style="min-height:240px"><div style="text-align:center;padding:40px;color:var(--text3);font-size:11px">No scan yet. Click <strong>&#128640; SCAN ETFs</strong> above to populate rankings, rotation signals, and institutional alerts.</div></div>
+<div style="margin-top:14px;padding:11px 13px;border-radius:8px;background:#f0f9ff;border:1px solid #bae6fd;font-size:10px;color:#155e75;line-height:1.6">
+  <div style="font-weight:800;margin-bottom:6px;letter-spacing:0.3px;font-family:Sora,sans-serif">METHODOLOGY &middot; SMART MONEY ETF FRAMEWORK</div>
+  <div><strong>Flow Strength (25%)</strong> &mdash; volume spike vs 30d avg + 1m momentum. Proxy for ETF creation/redemption activity.<br>
+  <strong>Relative Strength (20%)</strong> &mdash; avg of 20d / 50d / 200d outperformance vs SPY. Catches structural leadership.<br>
+  <strong>Institutional Activity (15%)</strong> &mdash; volume + price strength combo. Distinguishes professional buying from retail churn.<br>
+  <strong>Holdings Quality (15%)</strong> &mdash; above 200SMA + positive 6m. Proxy for underlying earnings quality.<br>
+  <strong>Earnings Revisions (10%)</strong> &mdash; 1m vs 3m momentum acceleration. Catches positive analyst revisions before reported earnings.<br>
+  <strong>Macro Tailwind (10%)</strong> &mdash; categorical bonus for 2026 megatrend exposure (AI, defense, cyber, robotics, grid).<br>
+  <strong>Technical Structure (5%)</strong> &mdash; above both SMAs + healthy RSI (40-70).</div>
+</div>
+</div></div>
+
 <div class="sc" data-tab="proscan" style="border-left:3px solid #1A3A78;display:none">
 <div class="sh"><div class="si" style="background:rgba(124,58,237,.1)">&#128300;</div><div class="st" style="color:#1A3A78">Wealth Engine Pro — Institutional Deep Scan</div></div>
 <div class="sbody" id="proScanBody">

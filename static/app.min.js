@@ -32,9 +32,15 @@
 // Extracted into reusable window._render360Scanner. New tab has ticker input,
 // region toggle, and SCAN button — works on any ticker without going through
 // full Decide-Investor analysis first.
-window.CELESYS_VERSION = "r63.99.13";
-window.CELESYS_BUILD_TIME = 1779080400;
-window.CELESYS_BUILD_DATE = "2026-05-18 03:00:00 UTC";
+// r63.99.14: Institutional ETF Scanner — separate subtab under Decide. Scans
+// 30 thematic ETFs (AI/Semis, Cybersecurity, Defense, Robotics, AI Infra,
+// sector SPDRs) with Smart Money Score formula: 25% Flow + 20% RS vs SPY +
+// 15% Inst + 15% Holdings + 10% EarnRev + 10% Macro + 5% Tech. Returns ranked
+// table + rotation signals (leading/lagging categories + Risk-On/Selective/
+// Defensive phase) + institutional alerts per ETF.
+window.CELESYS_VERSION = "r63.99.14";
+window.CELESYS_BUILD_TIME = 1779098400;
+window.CELESYS_BUILD_DATE = "2026-05-18 08:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -2701,7 +2707,7 @@ var TAB_GROUPS = {
   // institutional terminals are text-first; saturated emojis (🧠 pink, 🎯 red,
   // ⚡ yellow, 🔥 orange, 💎 cyan, 📊 blue) make the nav visually noisy. Removing
   // them. The tab content already self-identifies via its own header.
-  decide:   {tabs: ['decision','toptrades','topinvest','smv3','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🧠 Smart Money v3','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','Reports','PMS'], default: 'decision'},
+  decide:   {tabs: ['decision','toptrades','topinvest','smv3','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','etfscanner','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🧠 Smart Money v3','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','📊 ETF Scanner','Reports','PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -4350,6 +4356,12 @@ if(tab==='intraday'){
   if(!window._isDreamUser){var _is0=document.getElementById('deResult');if(_is0)_is0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Intraday Setups is exclusive. Contact support for access.</div></div>';return;}
   window._activeIntradaySetupsTab=true;
   if(typeof loadIntradaySetups==='function')setTimeout(loadIntradaySetups,100);
+  return;
+}
+// r63.99.14: Institutional ETF Scanner
+if(tab==='etfscanner'){
+  window._activeEtfScannerTab=true;
+  if(typeof window.loadEtfScanner==='function')setTimeout(function(){window.loadEtfScanner(false);},100);
   return;
 }
 // r63.72: Institutional Positioning Scanner
@@ -10434,6 +10446,151 @@ window.load360Scanner = function(sym, reg) {
     el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:11px">Network error: ' + e.message + '</div>';
   });
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// r63.99.14: INSTITUTIONAL ETF SCANNER — loader + renderer
+// Calls /api/etf-scanner, displays rotation signals + ranked ETF table with
+// Smart Money Score, RS vs SPY, volume spike, alerts, and conviction tier.
+// ═══════════════════════════════════════════════════════════════════════════
+window.loadEtfScanner = function(forceRefresh) {
+  var statusEl = document.getElementById('etfScanStatus');
+  var resultEl = document.getElementById('etfScanResult');
+  var btnEl = document.getElementById('etfScanBtn');
+  if (!resultEl) return;
+  if (statusEl) statusEl.textContent = 'Scanning 30 institutional ETFs against SPY benchmark...';
+  if (btnEl) { btnEl.disabled = true; btnEl.style.opacity = '0.6'; }
+  resultEl.innerHTML = '<div style="padding:40px;text-align:center"><div style="display:inline-block;width:18px;height:18px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:10px"></div><span style="font-size:12px;color:#155e75;font-weight:700">Computing Smart Money Score across 30 ETFs (~10-30s)...</span></div>';
+
+  var url = '/api/etf-scanner?region=US' + (forceRefresh ? '&refresh=1' : '');
+  fetch(url, {cache: 'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; }
+    if (!d || !d.success) {
+      if (statusEl) statusEl.textContent = 'Scan failed: ' + ((d && d.error) || 'unknown error');
+      resultEl.innerHTML = '<div style="padding:20px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px">Scan failed: <strong>' + ((d && d.error) || 'unknown error') + '</strong><br><button onclick="window.loadEtfScanner(true)" style="margin-top:10px;padding:6px 14px;border-radius:6px;background:#0891b2;color:#fff;border:none;cursor:pointer;font-size:10px;font-weight:700">↻ Retry</button></div>';
+      return;
+    }
+    if (statusEl) statusEl.textContent = (d._cached ? '↻ Cached · ' + d._cache_age_sec + 's old · ' : 'Fresh scan · ') + (d.scanned_count || 0) + '/' + (d.universe_size || 0) + ' ETFs scored';
+    resultEl.innerHTML = window._renderEtfScanner(d);
+  }).catch(function(e){
+    if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; }
+    if (statusEl) statusEl.textContent = 'Network error';
+    resultEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:11px">Network error: ' + e.message + '<br><button onclick="window.loadEtfScanner(true)" style="margin-top:10px;padding:6px 14px;border-radius:6px;background:#0891b2;color:#fff;border:none;cursor:pointer;font-size:10px;font-weight:700">↻ Retry</button></div>';
+  });
+};
+
+window._renderEtfScanner = function(d) {
+  if (!d || !d.etfs || !d.etfs.length) {
+    return '<div style="padding:30px;color:#94a3b8;font-size:11px;text-align:center">No ETFs scanned. Try refresh.</div>';
+  }
+  var etfs = d.etfs;
+  var rot = d.rotation_signals || {};
+  var h = '';
+
+  // ─── ROTATION SIGNALS HEADER ───────────────────────────────────────
+  var phase = rot.rotation_phase || 'Unknown';
+  var phaseColor = phase === 'Risk-On' ? '#059669' : phase === 'Selective' ? '#d97706' : phase === 'Defensive' ? '#dc2626' : '#64748b';
+  var phaseEmoji = phase === 'Risk-On' ? '🚀' : phase === 'Selective' ? '⚖' : phase === 'Defensive' ? '🛡' : '◯';
+  h += '<div style="background:#fff;border:2px solid ' + phaseColor + '40;border-radius:12px;padding:14px 18px;margin-bottom:14px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;gap:10px">';
+  h += '<div style="width:36px;height:36px;border-radius:9px;background:' + phaseColor + '15;display:flex;align-items:center;justify-content:center;font-size:18px">' + phaseEmoji + '</div>';
+  h += '<div><div style="font-size:13px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Rotation Signals</div>';
+  h += '<div style="font-size:10px;color:#64748b;margin-top:1px">Where institutions are tilting capital right now</div></div></div>';
+  h += '<div style="text-align:right"><div style="font-size:8px;font-weight:800;color:#94a3b8;letter-spacing:0.5px">CURRENT PHASE</div>';
+  h += '<div style="font-size:18px;font-weight:900;color:' + phaseColor + ';font-family:Sora,sans-serif;letter-spacing:0.4px">' + phase + '</div></div></div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  // Leading
+  h += '<div style="padding:10px 12px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px">';
+  h += '<div style="font-size:9px;font-weight:800;color:#065f46;letter-spacing:0.4px;margin-bottom:6px;font-family:Sora,sans-serif">📈 LEADING (avg RS vs SPY ↑)</div>';
+  (rot.leading_categories || []).slice(0, 5).forEach(function(c){
+    h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px dashed #d1fae5">';
+    h += '<span style="color:#065f46;font-weight:600">' + c.category + '</span>';
+    h += '<span style="color:#059669;font-weight:900;font-family:\'IBM Plex Mono\',monospace">+' + (c.avg_rs_vs_spy_50d || 0).toFixed(1) + '%</span>';
+    h += '</div>';
+  });
+  h += '</div>';
+  // Lagging
+  h += '<div style="padding:10px 12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px">';
+  h += '<div style="font-size:9px;font-weight:800;color:#991b1b;letter-spacing:0.4px;margin-bottom:6px;font-family:Sora,sans-serif">📉 LAGGING (avg RS vs SPY ↓)</div>';
+  (rot.lagging_categories || []).forEach(function(c){
+    h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px dashed #fecaca">';
+    h += '<span style="color:#991b1b;font-weight:600">' + c.category + '</span>';
+    var rsv = c.avg_rs_vs_spy_50d || 0;
+    h += '<span style="color:#dc2626;font-weight:900;font-family:\'IBM Plex Mono\',monospace">' + (rsv >= 0 ? '+' : '') + rsv.toFixed(1) + '%</span>';
+    h += '</div>';
+  });
+  h += '</div>';
+  h += '</div></div>';
+
+  // ─── RANKED ETF TABLE ───────────────────────────────────────────────
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">';
+  h += '<div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;background:#fafbfc;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+  h += '<div><div style="font-size:13px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">📊 Ranked ETFs by Smart Money Score</div>';
+  h += '<div style="font-size:10px;color:#64748b;margin-top:2px">Click any row to see the score breakdown and institutional alerts</div></div>';
+  h += '<button onclick="window.loadEtfScanner(true)" style="padding:6px 12px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;color:#475569;font-size:10px;font-weight:700;cursor:pointer">↻ Refresh</button>';
+  h += '</div>';
+  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Inter,sans-serif">';
+  h += '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">';
+  ['#', 'ETF', 'CATEGORY', 'SCORE', '1M', '3M', 'RS vs SPY 50d', 'VOL SPIKE', 'CONVICTION'].forEach(function(col){
+    var align = col === 'ETF' || col === 'CATEGORY' || col === 'CONVICTION' ? 'left' : col === '#' ? 'center' : 'right';
+    h += '<th style="padding:9px 8px;text-align:' + align + ';font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;white-space:nowrap">' + col + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+  etfs.forEach(function(e, i){
+    var scoreColor = e.smart_money_score >= 80 ? '#059669' : e.smart_money_score >= 65 ? '#10b981' : e.smart_money_score >= 50 ? '#d97706' : '#dc2626';
+    var rs50 = e.rs_vs_spy_50d;
+    var rsColor = rs50 == null ? '#94a3b8' : rs50 > 5 ? '#059669' : rs50 > 0 ? '#10b981' : rs50 > -5 ? '#d97706' : '#dc2626';
+    var rsStr = rs50 == null ? '—' : (rs50 >= 0 ? '+' : '') + rs50.toFixed(1) + '%';
+    var ch1mColor = (e.change_1m_pct || 0) > 0 ? '#059669' : '#dc2626';
+    var ch3mColor = (e.change_3m_pct || 0) > 0 ? '#059669' : '#dc2626';
+    var volColor = e.volume_spike_ratio >= 1.3 ? '#059669' : e.volume_spike_ratio >= 1.0 ? '#10b981' : '#94a3b8';
+    var rowBg = i % 2 === 0 ? '#fff' : '#fafbfc';
+    var rowId = 'etfRow_' + e.symbol;
+    h += '<tr id="' + rowId + '" style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="(function(){var p=document.getElementById(\'etfDet_' + e.symbol + '\');if(p)p.style.display=p.style.display===\'none\'?\'table-row\':\'none\';})()">';
+    h += '<td style="padding:9px 8px;text-align:center;font-family:\'IBM Plex Mono\',monospace;font-weight:800;color:#94a3b8">' + (i + 1) + '</td>';
+    h += '<td style="padding:9px 8px"><div style="font-weight:900;color:#0f172a;font-family:\'IBM Plex Mono\',monospace">' + e.symbol + '</div>';
+    h += '<div style="font-size:9px;color:#64748b;margin-top:1px">' + (e.name || '').slice(0, 38) + (e.name && e.name.length > 38 ? '…' : '') + '</div></td>';
+    h += '<td style="padding:9px 8px;font-size:10px;color:#475569;font-weight:600">' + e.category + '</td>';
+    h += '<td style="padding:9px 8px;text-align:right">';
+    h += '<div style="display:inline-block;padding:3px 10px;border-radius:5px;background:' + scoreColor + '15;border:1px solid ' + scoreColor + '40;color:' + scoreColor + ';font-weight:900;font-family:\'IBM Plex Mono\',monospace;font-size:13px">' + e.smart_money_score + '</div></td>';
+    h += '<td style="padding:9px 8px;text-align:right;color:' + ch1mColor + ';font-weight:800;font-family:\'IBM Plex Mono\',monospace">' + (e.change_1m_pct == null ? '—' : ((e.change_1m_pct >= 0 ? '+' : '') + e.change_1m_pct.toFixed(1) + '%')) + '</td>';
+    h += '<td style="padding:9px 8px;text-align:right;color:' + ch3mColor + ';font-weight:800;font-family:\'IBM Plex Mono\',monospace">' + (e.change_3m_pct == null ? '—' : ((e.change_3m_pct >= 0 ? '+' : '') + e.change_3m_pct.toFixed(1) + '%')) + '</td>';
+    h += '<td style="padding:9px 8px;text-align:right;color:' + rsColor + ';font-weight:900;font-family:\'IBM Plex Mono\',monospace">' + rsStr + '</td>';
+    h += '<td style="padding:9px 8px;text-align:right;color:' + volColor + ';font-weight:800;font-family:\'IBM Plex Mono\',monospace">' + (e.volume_spike_ratio || 0).toFixed(2) + 'x</td>';
+    h += '<td style="padding:9px 8px;font-size:10px;font-weight:800;white-space:nowrap">' + (e.conviction || '—') + '</td>';
+    h += '</tr>';
+    // Expandable detail row
+    h += '<tr id="etfDet_' + e.symbol + '" style="display:none;background:#f8fafc">';
+    h += '<td colspan="9" style="padding:12px 16px">';
+    if (e.alerts && e.alerts.length) {
+      h += '<div style="font-size:10px;font-weight:800;color:#155e75;letter-spacing:0.4px;margin-bottom:6px;font-family:Sora,sans-serif">📢 INSTITUTIONAL ALERTS</div>';
+      h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">';
+      e.alerts.forEach(function(a){
+        h += '<span style="font-size:10px;color:#155e75;padding:4px 10px;background:#ecfeff;border:1px solid #67e8f9;border-radius:14px;font-weight:600">✓ ' + a + '</span>';
+      });
+      h += '</div>';
+    }
+    if (e.score_breakdown) {
+      h += '<div style="font-size:10px;font-weight:800;color:#475569;letter-spacing:0.4px;margin-bottom:6px;font-family:Sora,sans-serif">SCORE BREAKDOWN (weighted)</div>';
+      h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px">';
+      [{l:'Flow',w:25,k:'flow'},{l:'RS',w:20,k:'rs'},{l:'Inst',w:15,k:'institutional'},{l:'Holdings',w:15,k:'holdings'},{l:'EarnRev',w:10,k:'earnings_rev'},{l:'Macro',w:10,k:'macro'},{l:'Tech',w:5,k:'technical'}].forEach(function(b){
+        var v = e.score_breakdown[b.k] || 0;
+        var cc = v >= 75 ? '#059669' : v >= 55 ? '#d97706' : '#dc2626';
+        h += '<div style="text-align:center;padding:6px 4px;border:1px solid ' + cc + '30;border-radius:5px;background:' + cc + '06">';
+        h += '<div style="font-size:8px;color:#64748b;font-weight:700">' + b.l + '</div>';
+        h += '<div style="font-size:12px;color:' + cc + ';font-weight:900;font-family:\'IBM Plex Mono\',monospace">' + v + '</div>';
+        h += '<div style="font-size:7px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">w' + b.w + '%</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+    h += '<div style="font-size:10px;color:#475569;line-height:1.5"><strong style="color:#0f172a">Macro thesis:</strong> ' + (e.macro_thesis || '—') + ' · <strong style="color:#0f172a;margin-left:8px">Price:</strong> $' + (e.price || 0).toFixed(2) + ' · <strong style="color:#0f172a;margin-left:8px">RSI:</strong> ' + (e.rsi == null ? '—' : e.rsi.toFixed(0)) + ' · <strong style="color:#0f172a;margin-left:8px">YTD:</strong> ' + (e.change_ytd_pct == null ? '—' : ((e.change_ytd_pct >= 0 ? '+' : '') + e.change_ytd_pct.toFixed(1) + '%')) + '</div>';
+    h += '</td></tr>';
+  });
+  h += '</tbody></table></div></div>';
+  return h;
+};
+
 
 
 // Main render function — returns HTML string for entire collapsible group

@@ -29434,6 +29434,290 @@ def _detect_inside_day_continuation(hist_df_daily):
         return None
 
 
+# r63.99.14: INSTITUTIONAL ETF SCANNER — Vijay's framework
+# Detects: capital flows, leadership (RS vs SPY), macro alignment, holdings quality,
+# rotation signals. Returns ranked ETFs by Smart Money Score with institutional alerts.
+_etf_universe_us = [
+    # AI / Semiconductors
+    {"sym": "SOXX", "name": "iShares Semiconductor ETF", "category": "AI / Semiconductors", "macro": "AI capex + chip cycle"},
+    {"sym": "SMH",  "name": "VanEck Semiconductor ETF",  "category": "AI / Semiconductors", "macro": "AI capex + chip cycle"},
+    {"sym": "XSD",  "name": "SPDR S&P Semiconductor ETF","category": "AI / Semiconductors", "macro": "Equal-weight semi exposure"},
+    # AI / Tech infrastructure
+    {"sym": "QQQ",  "name": "Invesco QQQ (NASDAQ-100)",   "category": "AI / Tech Mega-Cap", "macro": "Mega-cap tech leadership"},
+    {"sym": "IGV",  "name": "iShares Expanded Tech-Software ETF","category": "AI / Software","macro": "Enterprise SaaS + AI software"},
+    {"sym": "IGM",  "name": "iShares U.S. Technology ETF","category": "AI / Tech Broad",   "macro": "Broad US tech"},
+    # AI Infrastructure - Power/Grid/Datacenter
+    {"sym": "GRID", "name": "First Trust NASDAQ Clean Edge Smart Grid","category": "AI Infrastructure / Grid","macro": "Power demand + grid modernization"},
+    {"sym": "PAVE", "name": "Global X U.S. Infrastructure Development","category": "AI Infrastructure / Build","macro": "Reshoring + data center buildout"},
+    {"sym": "SRVR", "name": "Pacer Data & Infrastructure Real Estate","category": "AI Infrastructure / Datacenter REIT","macro": "Datacenter capacity tightness"},
+    # Robotics & AI
+    {"sym": "BOTZ", "name": "Global X Robotics & AI ETF",       "category": "Robotics / AI",      "macro": "Automation + robotics"},
+    {"sym": "ROBO", "name": "ROBO Global Robotics & Automation","category": "Robotics / AI",      "macro": "Industrial robotics"},
+    # Cybersecurity
+    {"sym": "CIBR", "name": "First Trust NASDAQ Cybersecurity ETF","category": "Cybersecurity",    "macro": "Cyber spending growth"},
+    {"sym": "HACK", "name": "ETFMG Prime Cyber Security ETF",   "category": "Cybersecurity",      "macro": "Cyber spending growth"},
+    # Defense / Aerospace
+    {"sym": "ITA",  "name": "iShares U.S. Aerospace & Defense", "category": "Defense / Aerospace","macro": "Global defense spending"},
+    {"sym": "XAR",  "name": "SPDR S&P Aerospace & Defense ETF", "category": "Defense / Aerospace","macro": "Equal-weight defense"},
+    # Sector ETFs - SPDR
+    {"sym": "XLK",  "name": "Technology Select Sector SPDR",    "category": "Sector / Tech",      "macro": "Tech earnings cycle"},
+    {"sym": "XLE",  "name": "Energy Select Sector SPDR",        "category": "Sector / Energy",    "macro": "Oil prices + capex"},
+    {"sym": "XLF",  "name": "Financial Select Sector SPDR",     "category": "Sector / Financials","macro": "Rates + credit cycle"},
+    {"sym": "XLV",  "name": "Health Care Select Sector SPDR",   "category": "Sector / Healthcare","macro": "Defensive + biotech"},
+    {"sym": "XLI",  "name": "Industrial Select Sector SPDR",    "category": "Sector / Industrials","macro": "Reshoring + capex"},
+    {"sym": "XLY",  "name": "Consumer Discretionary SPDR",      "category": "Sector / Consumer Disc","macro": "Consumer spending"},
+    {"sym": "XLP",  "name": "Consumer Staples Select SPDR",     "category": "Sector / Staples",   "macro": "Defensive bid"},
+    {"sym": "XLU",  "name": "Utilities Select Sector SPDR",     "category": "Sector / Utilities", "macro": "Power demand + rate cuts"},
+    {"sym": "XLB",  "name": "Materials Select Sector SPDR",     "category": "Sector / Materials", "macro": "Commodities + China"},
+    {"sym": "XLRE", "name": "Real Estate Select Sector SPDR",   "category": "Sector / REITs",     "macro": "Rate environment"},
+    {"sym": "XLC",  "name": "Communication Services SPDR",      "category": "Sector / Comm",      "macro": "Mega-cap comm"},
+    # Innovation / Small Cap
+    {"sym": "ARKK", "name": "ARK Innovation ETF",                "category": "Innovation",         "macro": "Disruptive tech"},
+    {"sym": "ARKQ", "name": "ARK Autonomous Tech & Robotics",    "category": "Innovation",         "macro": "Robotics + AV"},
+    {"sym": "IWM",  "name": "iShares Russell 2000 ETF",          "category": "Small Cap",          "macro": "Small-cap risk-on"},
+    # Broad market reference
+    {"sym": "SPY",  "name": "SPDR S&P 500 ETF (BENCHMARK)",      "category": "Broad Market",       "macro": "Benchmark"},
+    {"sym": "VTI",  "name": "Vanguard Total Stock Market",       "category": "Broad Market",       "macro": "Total market"},
+]
+_etf_scanner_cache = {"data": None, "ts": 0}
+_ETF_SCANNER_TTL = 600  # 10 minutes
+
+@app.get("/api/etf-scanner")
+async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: int = 0):
+    """Institutional ETF Scanner — Smart Money Score per Vijay's framework.
+
+    Modes: smart_money | early_rotation | flow_explosion | momentum | undervalued
+    Returns ranked ETFs with: Smart Money Score, Flow Trend, RS vs SPY, Breadth,
+    Conviction, Institutional Alerts, Macro Thesis.
+    """
+    global _etf_scanner_cache
+    if not refresh and _etf_scanner_cache["data"] and (time.time() - _etf_scanner_cache["ts"]) < _ETF_SCANNER_TTL:
+        resp = dict(_etf_scanner_cache["data"])
+        resp["_cached"] = True
+        resp["_cache_age_sec"] = int(time.time() - _etf_scanner_cache["ts"])
+        return resp
+    try:
+        import yfinance as yf
+        try: _yahoo_rate_wait()
+        except Exception: pass
+
+        # Fetch SPY benchmark first for RS calculations
+        spy_hist = None
+        try:
+            spy_hist = yf.Ticker("SPY").history(period="1y", interval="1d")
+        except Exception as _se:
+            print(f"[ETF] SPY benchmark fetch failed: {_se}")
+        spy_close = spy_hist["Close"] if spy_hist is not None and not spy_hist.empty else None
+
+        def _safe_pct(curr, prev):
+            try:
+                if prev is None or prev == 0: return None
+                return ((curr - prev) / prev) * 100
+            except Exception: return None
+
+        results = []
+        for etf in _etf_universe_us:
+            sym = etf["sym"]
+            try:
+                tk = yf.Ticker(sym)
+                hist = tk.history(period="1y", interval="1d")
+                if hist is None or hist.empty or len(hist) < 50:
+                    continue
+                close = hist["Close"]
+                vol = hist["Volume"]
+                price_now = float(close.iloc[-1])
+                # Price changes
+                ch_1w = _safe_pct(price_now, float(close.iloc[-5])) if len(close) >= 5 else None
+                ch_1m = _safe_pct(price_now, float(close.iloc[-21])) if len(close) >= 21 else None
+                ch_3m = _safe_pct(price_now, float(close.iloc[-63])) if len(close) >= 63 else None
+                ch_6m = _safe_pct(price_now, float(close.iloc[-126])) if len(close) >= 126 else None
+                ch_ytd = _safe_pct(price_now, float(close.iloc[0])) if len(close) > 0 else None
+                # Volume metrics
+                vol_30d_avg = float(vol.tail(30).mean()) if len(vol) >= 30 else 0
+                vol_today = float(vol.iloc[-1])
+                vol_5d_avg = float(vol.tail(5).mean()) if len(vol) >= 5 else 0
+                vol_spike = (vol_5d_avg / vol_30d_avg) if vol_30d_avg > 0 else 1.0
+                # RS vs SPY (multi-timeframe)
+                rs_20 = rs_50 = rs_200 = None
+                if spy_close is not None and len(spy_close) >= 200:
+                    try:
+                        spy_now = float(spy_close.iloc[-1])
+                        if len(close) >= 20:
+                            etf_ret_20 = _safe_pct(price_now, float(close.iloc[-20])) or 0
+                            spy_ret_20 = _safe_pct(spy_now, float(spy_close.iloc[-20])) or 0
+                            rs_20 = etf_ret_20 - spy_ret_20
+                        if len(close) >= 50:
+                            etf_ret_50 = _safe_pct(price_now, float(close.iloc[-50])) or 0
+                            spy_ret_50 = _safe_pct(spy_now, float(spy_close.iloc[-50])) or 0
+                            rs_50 = etf_ret_50 - spy_ret_50
+                        if len(close) >= 200:
+                            etf_ret_200 = _safe_pct(price_now, float(close.iloc[-200])) or 0
+                            spy_ret_200 = _safe_pct(spy_now, float(spy_close.iloc[-200])) or 0
+                            rs_200 = etf_ret_200 - spy_ret_200
+                    except Exception: pass
+                # Technical structure
+                sma_50 = float(close.tail(50).mean()) if len(close) >= 50 else None
+                sma_200 = float(close.tail(200).mean()) if len(close) >= 200 else None
+                above_50 = price_now > sma_50 if sma_50 else False
+                above_200 = price_now > sma_200 if sma_200 else False
+                # RSI
+                rsi = None
+                try:
+                    delta = close.diff()
+                    gain = delta.where(delta > 0, 0).rolling(14).mean()
+                    loss = -delta.where(delta < 0, 0).rolling(14).mean()
+                    rs = gain / loss
+                    rsi_series = 100 - (100 / (1 + rs))
+                    rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty else None
+                except Exception: pass
+
+                # ─── SMART MONEY SCORE (per Vijay's framework) ───
+                # 25% Flow Strength (proxied by volume spike + recent momentum)
+                flow_score = 50
+                if vol_spike >= 1.5: flow_score = 90
+                elif vol_spike >= 1.2: flow_score = 75
+                elif vol_spike >= 1.0: flow_score = 60
+                elif vol_spike >= 0.8: flow_score = 45
+                else: flow_score = 30
+                if ch_1m and ch_1m > 8: flow_score = min(100, flow_score + 10)
+                # 20% Relative Strength
+                rs_score = 50
+                rs_signals = [rs_20, rs_50, rs_200]
+                rs_valid = [r for r in rs_signals if r is not None]
+                if rs_valid:
+                    rs_avg = sum(rs_valid) / len(rs_valid)
+                    if rs_avg > 8: rs_score = 95
+                    elif rs_avg > 4: rs_score = 80
+                    elif rs_avg > 0: rs_score = 65
+                    elif rs_avg > -4: rs_score = 45
+                    else: rs_score = 25
+                # 15% Institutional Activity (volume + price strength combo)
+                inst_score = 50
+                if vol_spike > 1.2 and ch_1m and ch_1m > 5: inst_score = 85
+                elif vol_spike > 1.0 and ch_1m and ch_1m > 0: inst_score = 70
+                elif ch_1m and ch_1m < -5: inst_score = 30
+                # 15% Holdings Quality (proxy: above 200SMA + positive 6m return)
+                holdings_score = 50
+                if above_200 and ch_6m and ch_6m > 10: holdings_score = 85
+                elif above_200 and ch_6m and ch_6m > 0: holdings_score = 70
+                elif not above_200: holdings_score = 35
+                # 10% Earnings Revision Trend (proxy: 1m vs 3m momentum acceleration)
+                earn_rev_score = 50
+                if ch_1m and ch_3m and ch_1m > (ch_3m / 3): earn_rev_score = 80  # accelerating
+                elif ch_1m and ch_3m and ch_1m < (ch_3m / 3): earn_rev_score = 40
+                # 10% Macro Tailwind (categorical bonus)
+                macro_score = 50
+                hot_categories = ["AI / Semiconductors", "AI / Tech Mega-Cap", "AI / Software",
+                                  "AI Infrastructure / Grid", "AI Infrastructure / Build",
+                                  "AI Infrastructure / Datacenter REIT", "Robotics / AI",
+                                  "Cybersecurity", "Defense / Aerospace"]
+                if etf["category"] in hot_categories: macro_score = 85
+                elif etf["category"] in ["Sector / Tech", "Sector / Industrials", "Sector / Utilities"]: macro_score = 70
+                elif etf["category"] in ["Sector / Staples", "Sector / REITs"]: macro_score = 40
+                # 5% Technical Structure
+                tech_score = 50
+                if above_50 and above_200 and rsi and 40 < rsi < 70: tech_score = 85
+                elif above_200 and rsi and rsi > 30: tech_score = 65
+                elif not above_50 and not above_200: tech_score = 30
+
+                smart_money_score = round(
+                    0.25 * flow_score + 0.20 * rs_score + 0.15 * inst_score +
+                    0.15 * holdings_score + 0.10 * earn_rev_score +
+                    0.10 * macro_score + 0.05 * tech_score
+                )
+
+                # ─── INSTITUTIONAL ALERTS ───
+                alerts = []
+                if vol_spike >= 1.3: alerts.append(f"Volume spike +{int((vol_spike - 1) * 100)}% above 30d avg")
+                if rs_50 and rs_50 > 5: alerts.append(f"Rising RS vs SPY (+{rs_50:.1f}% over 50d)")
+                if rs_200 and rs_200 > 10: alerts.append(f"Structural outperformer (+{rs_200:.1f}% vs SPY over 200d)")
+                if above_50 and above_200 and ch_1m and ch_1m > 5: alerts.append("Above both SMAs with positive momentum")
+                if ch_1m and ch_3m and ch_1m > 5 and ch_1m > ch_3m / 3: alerts.append("Momentum accelerating QoQ")
+                if etf["category"] in hot_categories: alerts.append(f"Megatrend tailwind: {etf['macro']}")
+                if rsi and 40 < rsi < 60 and ch_1m and ch_1m > 0: alerts.append("Healthy consolidation with upward bias")
+
+                # Conviction tier
+                if smart_money_score >= 80: conviction = "🚀 HIGH"
+                elif smart_money_score >= 65: conviction = "✨ MEDIUM-HIGH"
+                elif smart_money_score >= 50: conviction = "👀 NEUTRAL"
+                else: conviction = "⚠ LOW"
+
+                results.append({
+                    "symbol": sym,
+                    "name": etf["name"],
+                    "category": etf["category"],
+                    "macro_thesis": etf["macro"],
+                    "price": round(price_now, 2),
+                    "change_1w_pct": round(ch_1w, 2) if ch_1w is not None else None,
+                    "change_1m_pct": round(ch_1m, 2) if ch_1m is not None else None,
+                    "change_3m_pct": round(ch_3m, 2) if ch_3m is not None else None,
+                    "change_6m_pct": round(ch_6m, 2) if ch_6m is not None else None,
+                    "change_ytd_pct": round(ch_ytd, 2) if ch_ytd is not None else None,
+                    "rs_vs_spy_20d": round(rs_20, 2) if rs_20 is not None else None,
+                    "rs_vs_spy_50d": round(rs_50, 2) if rs_50 is not None else None,
+                    "rs_vs_spy_200d": round(rs_200, 2) if rs_200 is not None else None,
+                    "volume_spike_ratio": round(vol_spike, 2),
+                    "rsi": round(rsi, 1) if rsi else None,
+                    "above_50sma": above_50,
+                    "above_200sma": above_200,
+                    "smart_money_score": smart_money_score,
+                    "score_breakdown": {
+                        "flow": flow_score, "rs": rs_score, "institutional": inst_score,
+                        "holdings": holdings_score, "earnings_rev": earn_rev_score,
+                        "macro": macro_score, "technical": tech_score,
+                    },
+                    "alerts": alerts,
+                    "conviction": conviction,
+                })
+            except Exception as _ee:
+                print(f"[ETF] {sym} scan error: {type(_ee).__name__}: {str(_ee)[:80]}")
+                continue
+        # Sort by Smart Money Score desc
+        results.sort(key=lambda x: x.get("smart_money_score", 0), reverse=True)
+
+        # Rotation signals: aggregate by category
+        cat_perf = {}
+        for r in results:
+            cat = r["category"]
+            if cat not in cat_perf: cat_perf[cat] = {"sum_rs": 0, "n": 0, "avg_score": 0}
+            cat_perf[cat]["sum_rs"] += (r.get("rs_vs_spy_50d") or 0)
+            cat_perf[cat]["n"] += 1
+            cat_perf[cat]["avg_score"] += r.get("smart_money_score", 0)
+        for cat in cat_perf:
+            n = cat_perf[cat]["n"]
+            cat_perf[cat]["avg_rs"] = cat_perf[cat]["sum_rs"] / n if n > 0 else 0
+            cat_perf[cat]["avg_score"] = cat_perf[cat]["avg_score"] / n if n > 0 else 0
+        cat_sorted = sorted(cat_perf.items(), key=lambda x: x[1]["avg_rs"], reverse=True)
+        leading = [{"category": c, "avg_rs_vs_spy_50d": round(v["avg_rs"], 2), "avg_score": round(v["avg_score"])} for c, v in cat_sorted[:5]]
+        lagging = [{"category": c, "avg_rs_vs_spy_50d": round(v["avg_rs"], 2), "avg_score": round(v["avg_score"])} for c, v in cat_sorted[-3:]]
+        # Risk phase
+        if leading and leading[0]["avg_rs_vs_spy_50d"] > 5:
+            rotation_phase = "Risk-On" if "AI" in leading[0]["category"] or "Tech" in leading[0]["category"] else "Selective"
+        else:
+            rotation_phase = "Defensive"
+
+        out = {
+            "success": True,
+            "mode": mode,
+            "scan_time_utc": datetime.utcnow().isoformat() + "Z",
+            "universe_size": len(_etf_universe_us),
+            "scanned_count": len(results),
+            "etfs": results,
+            "rotation_signals": {
+                "leading_categories": leading,
+                "lagging_categories": lagging,
+                "rotation_phase": rotation_phase,
+            },
+            "ts": time.time(),
+        }
+        _etf_scanner_cache = {"data": out, "ts": time.time()}
+        print(f"[ETF-SCAN] {len(results)}/{len(_etf_universe_us)} ETFs scored. Top: {results[0]['symbol']} @ {results[0]['smart_money_score']}, phase={rotation_phase}")
+        return out
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)[:200]}
+
+
 @app.get("/api/intraday-setups")
 async def intraday_setups(
     email: str = "",

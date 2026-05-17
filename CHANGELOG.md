@@ -1,3 +1,134 @@
+## r63.99.14 (2026-05-18) — Institutional ETF Scanner under Decide
+
+**Vijay's framework document:** ETF Scanner should detect *"where smart money is structurally allocating capital before broad market recognition"* — not just rank by performance. 7-layer architecture: Capital Flow Engine, Leadership Detection, Macro Alignment, Holdings Quality, Smart Money Score, Hidden Rotation Detection, plus categorical alerts.
+
+### Where it lives
+
+**Decide → 📊 ETF Scanner** — separate subtab in the Decide tab group, between Pro Scan and Reports. Auto-loads on first open, manual SCAN button for forced refresh.
+
+### Backend — `/api/etf-scanner`
+
+**30-ETF curated universe** covering Vijay's required categories:
+
+| Category | ETFs |
+|---|---|
+| AI / Semiconductors | SOXX, SMH, XSD |
+| AI / Tech | QQQ, IGV, IGM |
+| AI Infrastructure (Power/Grid/Datacenter) | GRID, PAVE, SRVR |
+| Robotics / AI | BOTZ, ROBO |
+| Cybersecurity | CIBR, HACK |
+| Defense / Aerospace | ITA, XAR |
+| Sector SPDRs | XLK, XLE, XLF, XLV, XLI, XLY, XLP, XLU, XLB, XLRE, XLC |
+| Innovation / Small Cap | ARKK, ARKQ, IWM |
+| Broad Benchmark | SPY, VTI |
+
+**Smart Money Score formula** (per framework rubric):
+
+```
+Score = 0.25×Flow + 0.20×RS_vs_SPY + 0.15×Institutional +
+        0.15×Holdings_Quality + 0.10×EarnRev + 0.10×Macro + 0.05×Tech
+```
+
+Each subcomponent:
+- **Flow Strength (25%)**: Volume spike (5d avg / 30d avg) + 1m momentum
+- **Relative Strength (20%)**: Average RS vs SPY across 20d / 50d / 200d
+- **Institutional Activity (15%)**: Volume + price strength combo
+- **Holdings Quality (15%)**: Above 200SMA + positive 6m return
+- **Earnings Revisions (10%)**: 1m vs 3m momentum acceleration (proxy)
+- **Macro Tailwind (10%)**: Categorical bonus for hot 2026 themes (AI, defense, cyber, robotics, grid)
+- **Technical Structure (5%)**: Above both SMAs + healthy RSI (40-70)
+
+**Rotation signals** computed from category aggregates:
+- **Leading categories**: Top 5 by avg RS vs SPY 50d
+- **Lagging categories**: Bottom 3 by avg RS vs SPY 50d
+- **Rotation phase**: `Risk-On` (top category is AI/Tech and RS > +5%), `Selective` (top category leading but not AI), `Defensive` (top RS < +5%)
+
+**Per-ETF institutional alerts** generated when triggered:
+- "Volume spike +N% above 30d avg"
+- "Rising RS vs SPY (+N% over 50d)"
+- "Structural outperformer (+N% vs SPY over 200d)"
+- "Above both SMAs with positive momentum"
+- "Momentum accelerating QoQ"
+- "Megatrend tailwind: AI capex + chip cycle"
+- "Healthy consolidation with upward bias"
+
+**Caching**: 10-minute TTL via `_etf_scanner_cache`. Logging prefix `[ETF-SCAN]`.
+
+### Frontend — Decide → 📊 ETF Scanner
+
+**Rotation signals header card** (top):
+- Phase emoji + label (🚀 Risk-On / ⚖ Selective / 🛡 Defensive) color-coded
+- Two side-by-side panels: 📈 LEADING categories (green) vs 📉 LAGGING categories (red), each with the average RS vs SPY 50d
+- Reads at a glance: "what theme are institutions tilting toward right now"
+
+**Ranked ETF table**:
+| Col | Content |
+|---|---|
+| # | Rank by Smart Money Score |
+| ETF | Symbol + full name |
+| Category | Thematic bucket |
+| Score | Smart Money Score badge (color-coded: green ≥80, light green ≥65, amber ≥50, red <50) |
+| 1M | 1-month price change, color-coded |
+| 3M | 3-month price change, color-coded |
+| RS vs SPY 50d | Relative strength badge, green if positive |
+| Vol Spike | Volume spike ratio (e.g. 1.4x = 40% above 30d avg) |
+| Conviction | 🚀 HIGH / ✨ MEDIUM-HIGH / 👀 NEUTRAL / ⚠ LOW |
+
+**Click any row to expand** → full institutional alerts (cyan chips) + 7-component score breakdown grid + macro thesis + RSI + YTD return.
+
+**Methodology footer** explains all 7 factors so the score isn't a black box.
+
+### Files changed
+
+`api.py`:
+- New `_etf_universe_us` constant (30 ETFs with name + category + macro thesis)
+- New `_etf_scanner_cache` global with 10-min TTL
+- New `@app.get("/api/etf-scanner")` endpoint (~190 lines) — fetches yfinance history per ETF, computes all metrics, returns ranked results + rotation signals
+
+`static/app.js`:
+- Added `'etfscanner'` to `decide.tabs` and `'📊 ETF Scanner'` to labels
+- Added `if(tab==='etfscanner')` auto-load handler
+- Added `window.loadEtfScanner(forceRefresh)` loader function with spinner + retry
+- Added `window._renderEtfScanner(d)` renderer (~80 lines) — rotation card + ranked table + expandable detail rows
+- Version constant → r63.99.14
+
+`index.html`:
+- New `<div class="sc" data-tab="etfscanner">` section before proscan
+- Framework explanation banner (cyan #0891b2 theme)
+- SCAN button wired to `window.loadEtfScanner(true)`
+- Methodology footer explaining 7-factor formula
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.14. `CHANGELOG.md`.
+
+### Testing — 17 regression suites all green (369 total assertions)
+
+- 6/6 Movers · 8/8 Insider buckets · 38/38 Insider classifier · 11/11 Intradayopt · 7/7 Returns snapshot · 25/25 Insider charts · 19/19 r63.99.4 · 23/23 SMI+Premium · 27/27 r63.99.6 · 28/28 r63.99.7 · 26/26 r63.99.8 · 20/20 r63.99.9 · 14/14 r63.99.10 · 16/16 r63.99.11 · 35/35 r63.99.12 · 29/29 r63.99.13 · **36/36 r63.99.14 (new)**
+
+### Post-deploy verification
+
+1. Navigate to **Decide** (top nav)
+2. Look for **📊 ETF Scanner** subtab between Pro Scan and Reports
+3. Click it — should auto-trigger first scan (~10-30s for cold start, instant on cache hit)
+4. Verify:
+   - Rotation phase pill shows (Risk-On / Selective / Defensive)
+   - Leading categories panel shows top 5 (probably AI / Semis / Defense if market is healthy)
+   - Lagging categories shows bottom 3 (often Staples / REITs / Utilities in risk-on phases)
+   - Ranked table shows 30 ETFs sorted by Smart Money Score desc
+   - SOXX/SMH/QQQ should be near the top in current market (AI tailwind)
+   - Click any row → score breakdown grid + alerts expand
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js index.html build_version.txt CHANGELOG.md
+git commit -m "r63.99.14: Institutional ETF Scanner under Decide — Smart Money Score + Rotation Signals across 30 thematic ETFs"
+git push origin main
+```
+
+After git push: in Render dashboard do **Clear build cache → Deploy**, then hard-refresh browser. Badge should flip to purple `⚙ r63.99.14 · 2026-05-18`.
+
+---
+
 ## r63.99.13 (2026-05-18) — 360° Scanner as standalone top-level menu item
 
 **Vijay:** "does it have separate menu item.. institutional undervalue scanner"
