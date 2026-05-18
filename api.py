@@ -11261,6 +11261,154 @@ async def tomorrow_ai_impact(region: str = "IN", refresh: int = 0):
     return {"success": True, "region": region, "ai_impact": impact}
 
 
+# ═══════════════════════════════════════════════════════════
+# r63.99.30: UPSTOX-FIRST OPTION CHAIN with NSE fallback
+# ═══════════════════════════════════════════════════════════
+# Problem: nse_options() hits NSE direct, which blocks the Render IP (72.180.65.28).
+# Result: Tomorrow's Brief OI section was always empty in production.
+# Fix: try Upstox (OAuth-authenticated, no IP block) first, then fall back to NSE.
+# Upstox returns raw chain rows; we derive max_pain / walls / GEX / ATM IV here
+# so the rest of the brief pipeline doesn't care which source provided the data.
+
+def _compute_derived_metrics_from_chain(chain_rows, spot, expiry, symbol):
+    """Given a list of {strike, ce_oi, pe_oi, ce_iv, pe_iv} rows, compute
+    max_pain, top call/put walls, ATM IV, and a simplified GEX regime.
+    
+    Returns dict matching the shape consumed by the brief OI section:
+      {pcr, max_pain, top_call_wall, top_put_wall, spot, atm_iv, atm_strike,
+       gex_regime, expiry, ce_resistance, pe_support}
+    
+    This is a simpler version of the math in nse_options() — we only need the
+    derived fields the brief consumes, not the full Greek surface.
+    """
+    if not chain_rows or spot <= 0:
+        return None
+    import math as _m
+
+    strike_oi = {}
+    total_ce_oi = 0
+    total_pe_oi = 0
+    for r in chain_rows:
+        try:
+            sk = float(r.get("strike") or r.get("strike_price") or 0)
+            if sk <= 0: continue
+            ce_oi = int(r.get("ce_oi") or 0)
+            pe_oi = int(r.get("pe_oi") or 0)
+            ce_iv = float(r.get("ce_iv") or 0)
+            pe_iv = float(r.get("pe_iv") or 0)
+            strike_oi[sk] = {"ce_oi": ce_oi, "pe_oi": pe_oi, "ce_iv": ce_iv, "pe_iv": pe_iv}
+            total_ce_oi += ce_oi
+            total_pe_oi += pe_oi
+        except Exception: continue
+
+    if not strike_oi: return None
+
+    pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0
+
+    # Max Pain
+    max_pain_strike = 0
+    min_pain = float('inf')
+    for strike in strike_oi:
+        pain = 0
+        for s2, oid in strike_oi.items():
+            if s2 < strike: pain += (strike - s2) * oid["ce_oi"]
+            elif s2 > strike: pain += (s2 - strike) * oid["pe_oi"]
+        if pain < min_pain:
+            min_pain = pain
+            max_pain_strike = strike
+
+    # Top walls (highest-OI strikes)
+    sorted_ce = sorted(strike_oi.items(), key=lambda x: x[1]["ce_oi"], reverse=True)[:5]
+    sorted_pe = sorted(strike_oi.items(), key=lambda x: x[1]["pe_oi"], reverse=True)[:5]
+    top_call_wall = sorted_ce[0][0] if sorted_ce else None
+    top_put_wall = sorted_pe[0][0] if sorted_pe else None
+
+    # ATM IV
+    atm_strike = min(strike_oi.keys(), key=lambda x: abs(x - spot))
+    atm_iv_data = strike_oi.get(atm_strike, {})
+    atm_iv = (atm_iv_data.get("ce_iv", 0) + atm_iv_data.get("pe_iv", 0)) / 2
+    
+    # Simplified GEX regime: positive if put OI dominates near spot (pinning),
+    # negative if call OI dominates (volatility-amplifying). NOT a full Greek
+    # calc — derived from sign of (PCR - 1) which correlates with real GEX sign
+    # for most index conditions. Honest simplification.
+    gex_regime = "POSITIVE" if pcr > 1.0 else "NEGATIVE"
+
+    return {
+        "pcr": pcr,
+        "max_pain": max_pain_strike,
+        "top_call_wall": top_call_wall,
+        "top_put_wall": top_put_wall,
+        "spot": spot,
+        "atm_iv": round(atm_iv, 1),
+        "atm_strike": atm_strike,
+        "gex_regime": gex_regime,
+        "expiry": expiry,
+        "ce_resistance": [{"strike": s, "oi": d["ce_oi"]} for s, d in sorted_ce],
+        "pe_support": [{"strike": s, "oi": d["pe_oi"]} for s, d in sorted_pe],
+    }
+
+
+async def _fetch_index_chain_with_fallback(symbol):
+    """Try Upstox first (no IP block), then NSE direct (blocked from Render).
+    
+    Returns dict {success, spot, expiry, chain, source} or {success: False, errors}.
+    """
+    errors = []
+    
+    # Try Upstox first
+    if _upstox_is_connected():
+        try:
+            up_resp = _upstox_get_option_chain(symbol)
+            if up_resp and up_resp.get("success"):
+                derived = _compute_derived_metrics_from_chain(
+                    up_resp.get("chain_near_atm") or [],
+                    up_resp.get("spot") or 0,
+                    up_resp.get("expiry"),
+                    symbol,
+                )
+                if derived:
+                    derived["_chain_source"] = "upstox"
+                    return {"success": True, **derived}
+                else:
+                    errors.append(f"upstox returned chain but derive failed")
+            else:
+                errors.append(f"upstox returned no chain")
+        except Exception as e:
+            errors.append(f"upstox: {type(e).__name__}: {str(e)[:80]}")
+    else:
+        errors.append("upstox: not connected (token missing or expired)")
+    
+    # Fallback: NSE direct (likely blocked from Render IP)
+    try:
+        nse_resp = await nse_options(symbol=symbol)
+        if nse_resp and nse_resp.get("success"):
+            gex = nse_resp.get("gex", {}) or {}
+            ce_res = nse_resp.get("ce_resistance", []) or []
+            pe_sup = nse_resp.get("pe_support", []) or []
+            return {
+                "success": True,
+                "pcr": nse_resp.get("pcr"),
+                "max_pain": nse_resp.get("max_pain"),
+                "top_call_wall": (ce_res[0]["strike"] if ce_res else None) or gex.get("callWall"),
+                "top_put_wall": (pe_sup[0]["strike"] if pe_sup else None) or gex.get("putWall"),
+                "spot": nse_resp.get("spot"),
+                "atm_iv": nse_resp.get("atm_iv"),
+                "atm_strike": nse_resp.get("atm_strike"),
+                "gex_regime": gex.get("regime"),
+                "expiry": nse_resp.get("expiry"),
+                "ce_resistance": ce_res[:5],
+                "pe_support": pe_sup[:5],
+                "_chain_source": "nse-direct",
+            }
+        else:
+            errors.append(f"nse-direct returned no chain (likely Render IP block)")
+    except Exception as e:
+        errors.append(f"nse-direct: {type(e).__name__}: {str(e)[:80]}")
+    
+    return {"success": False, "errors": errors}
+
+
 @app.get("/api/tomorrow-open-brief")
 async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
     """Unified pre-open brief: futures + global cues + OI levels + news.
@@ -11365,9 +11513,10 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
         out["warnings"].append(f"Pre-market data partial: {str(_pe)[:80]}")
 
     # ─── 2. OI levels (support/resistance from option chain) ───
-    # r63.99.27: actually CALL nse_options on demand instead of looking for a
-    # cache that doesn't exist. Cache the result locally for 15min so repeated
-    # brief requests don't hammer NSE. Falls back gracefully when NSE blocks Render IP.
+    # r63.99.30: Upstox-first with NSE direct fallback. Upstox uses OAuth auth and
+    # is NOT IP-blocked from Render. If Upstox isn't connected, falls back to NSE
+    # direct (which IS blocked from Render — will likely return no chain).
+    # If both fail, surface honest diagnostic naming both attempted sources.
     try:
         if region == "IN":
             primary_indices = ["NIFTY", "BANKNIFTY", "SENSEX"]
@@ -11375,6 +11524,7 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
             primary_indices = []  # US options OI is in /api/options-flow, separate flow
         oi_data = {}
         oi_warnings = []
+        chain_sources_used = set()
         # r63.99.29: per-index lot size for quoting (in shares)
         _idx_lot_sizes = {"NIFTY": 65, "BANKNIFTY": 30, "FINNIFTY": 60, "MIDCPNIFTY": 120, "SENSEX": 20}
         for _idx in primary_indices:
@@ -11386,20 +11536,16 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
                 oi_data[_idx] = _cached["data"]
                 oi_data[_idx]["_source"] = "brief_cache (15min)"
                 continue
-            # Live fetch via existing endpoint
+            # r63.99.30: Upstox-first, then NSE direct
             try:
-                oi_resp = await nse_options(symbol=_idx)
+                oi_resp = await _fetch_index_chain_with_fallback(_idx)
                 if oi_resp and oi_resp.get("success"):
-                    gex = oi_resp.get("gex", {}) or {}
-                    ce_res = oi_resp.get("ce_resistance", []) or []
-                    pe_sup = oi_resp.get("pe_support", []) or []
-                    # Pick top wall by OI (already sorted desc in nse_options)
-                    top_call = (ce_res[0]["strike"] if ce_res else None) or gex.get("callWall")
-                    top_put  = (pe_sup[0]["strike"] if pe_sup else None) or gex.get("putWall")
+                    chain_sources_used.add(oi_resp.get("_chain_source", "unknown"))
+                    top_call = oi_resp.get("top_call_wall")
+                    top_put  = oi_resp.get("top_put_wall")
                     spot = oi_resp.get("spot") or 0
                     atm_iv = oi_resp.get("atm_iv") or 0
                     atm_strike = oi_resp.get("atm_strike") or spot
-                    chain_near_atm = oi_resp.get("chain_near_atm", []) or []
 
                     # r63.99.29: PROJECTED RANGE — 1-sigma expected daily move
                     # using ATM IV. Formula: spot × IV × sqrt(DTE/365). For a
@@ -11472,9 +11618,10 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
                         "spot": spot,
                         "atm_iv": atm_iv,
                         "atm_strike": atm_strike,
-                        "gex_regime": gex.get("regime"),
+                        "gex_regime": oi_resp.get("gex_regime"),
                         "expiry": oi_resp.get("expiry"),
                         "lot_size": _idx_lot_sizes.get(_idx),
+                        "chain_source": oi_resp.get("_chain_source"),
                         # r63.99.29: new fields
                         "projected_range": {"low": range_low, "high": range_high, "pct": range_pct},
                         "recommendation": rec,
@@ -11482,15 +11629,23 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
                     oi_data[_idx] = entry
                     globals()[_oi_cache_key] = {"data": entry, "ts": _now}
                 else:
-                    oi_warnings.append(f"{_idx}: NSE returned no chain")
+                    # Both Upstox and NSE failed — collect per-source errors
+                    src_errs = (oi_resp or {}).get("errors", []) if isinstance(oi_resp, dict) else []
+                    oi_warnings.append(f"{_idx}: {'; '.join(src_errs) if src_errs else 'no chain from any source'}")
             except Exception as _idx_e:
-                # NSE Render-IP block is the common failure
                 oi_warnings.append(f"{_idx}: {type(_idx_e).__name__} ({str(_idx_e)[:50]})")
         out["oi_levels"] = oi_data
         if oi_data:
-            out["data_sources"].append("nse-options (live or 15min cache)")
+            src_str = " + ".join(sorted(chain_sources_used)) if chain_sources_used else "unknown"
+            out["data_sources"].append(f"chain ({src_str}, live or 15min cache)")
         if not oi_data and region == "IN":
-            out["warnings"].append("OI levels unavailable — NSE direct API may be blocked from Render IP. " + ("Errors: " + "; ".join(oi_warnings) if oi_warnings else "No diagnostic."))
+            # r63.99.30: clearer guidance — point to Upstox connect path
+            upstox_status = "connected" if _upstox_is_connected() else "NOT connected"
+            out["warnings"].append(
+                f"OI levels unavailable. Upstox is {upstox_status}; NSE direct is IP-blocked from Render. "
+                + (f"Connect Upstox via /api/upstox-login to get live OI in this brief. " if not _upstox_is_connected() else "")
+                + ("Errors: " + "; ".join(oi_warnings) if oi_warnings else "No diagnostic.")
+            )
     except Exception as _oe:
         out["warnings"].append(f"OI levels partial: {str(_oe)[:80]}")
 

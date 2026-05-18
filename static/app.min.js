@@ -208,9 +208,35 @@
 //   tickets. User must size + risk-manage independently.
 //   NSE constraint: Render IP still blocked. Brief now surfaces honest per-index
 //   errors when NSE returns no chain. Fix needs paid feed/proxy (separate project).
-window.CELESYS_VERSION = "r63.99.29";
-window.CELESYS_BUILD_TIME = 1779290400;
-window.CELESYS_BUILD_DATE = "2026-05-20 12:40:00 UTC";
+// r63.99.30: UPSTOX-FIRST OPTION CHAIN — finally fixes the NSE-blocked OI gap.
+//   Vijay's screenshot at r99.29 showed all three indices returning "no chain"
+//   from NSE. Root cause: NSE blocks the Render outbound IP (72.180.65.28).
+//   Fix: Codebase already had _upstox_get_option_chain() (line 321) — wired it
+//   into the brief endpoint as FIRST-CHOICE source, with NSE direct as fallback.
+//   Upstox uses Vijay's OAuth token (no IP-block possible). When connected, the
+//   brief will get live chains for NIFTY, BANKNIFTY, SENSEX → projected range +
+//   PE/CE recommendations all populate.
+//   ADDED:
+//   (1) _compute_derived_metrics_from_chain(rows, spot, expiry, symbol) — takes
+//       raw chain rows (any source) and computes PCR, max_pain, top walls,
+//       ATM IV, simplified GEX regime. Simpler than nse_options' full Greek
+//       surface; honest about that simplification.
+//   (2) _fetch_index_chain_with_fallback(symbol) — tries Upstox first (if
+//       _upstox_is_connected()), then NSE direct. Returns unified shape so brief
+//       OI loop doesn't care which source provided the data.
+//   (3) Brief OI loop refactored to use the fallback fetcher. data_sources tag
+//       now shows "chain (upstox, live or 15min cache)" or similar.
+//   (4) Warnings text updated: when both sources fail, surfaces Upstox connection
+//       status explicitly ("Upstox is NOT connected") and points to /api/upstox-login.
+//   (5) Frontend: detects Upstox-not-connected warning string and renders a
+//       prominent amber "🔗 Connect Upstox" CTA banner above the caveats, so user
+//       can fix the OI-empty case in one click.
+//   HONEST: if Upstox is not connected AND NSE is blocked (production state),
+//   OI is still empty. The fix is one Upstox-OAuth click — but it requires the
+//   user to actually click it. The new UI makes that path obvious.
+window.CELESYS_VERSION = "r63.99.30";
+window.CELESYS_BUILD_TIME = 1779294600;
+window.CELESYS_BUILD_DATE = "2026-05-20 13:50:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11019,7 +11045,23 @@ window._renderTomorrowBrief = function(d) {
   }
 
   // ─── Warnings / data freshness ───
+  // r63.99.30: detect Upstox-not-connected warning and surface a clickable CTA
+  // so the user can fix the OI-empty case in one click.
   if (d.warnings && d.warnings.length) {
+    // Check for the Upstox connection hint in warnings
+    var needsUpstox = d.warnings.some(function(w){ return typeof w === 'string' && w.indexOf('Upstox is NOT connected') >= 0; });
+    if (needsUpstox) {
+      h += '<div style="background:linear-gradient(180deg,#fef3c7,#fde68a);border:2px solid #f59e0b;border-radius:10px;padding:12px 14px;margin-bottom:10px">';
+      h += '<div style="display:flex;align-items:start;gap:10px;flex-wrap:wrap">';
+      h += '<div style="font-size:22px">⚡</div>';
+      h += '<div style="flex:1;min-width:200px">';
+      h += '<div style="font-size:12px;font-weight:800;color:#92400e;font-family:Sora,sans-serif;margin-bottom:4px">Connect Upstox to unlock live OI data</div>';
+      h += '<div style="font-size:10px;color:#78350f;line-height:1.55;margin-bottom:8px">NSE blocks direct API requests from our hosting IP. Upstox bypasses this via your authenticated session — you\'ll see live NIFTY / BANKNIFTY / SENSEX option chains, projected ranges, and PE/CE recommendations once connected.</div>';
+      h += '<a href="/api/upstox-login" style="display:inline-block;padding:7px 14px;background:#d97706;color:#fff;text-decoration:none;border-radius:6px;font-size:11px;font-weight:700;font-family:Sora,sans-serif">🔗 Connect Upstox</a>';
+      h += '</div>';
+      h += '</div>';
+      h += '</div>';
+    }
     h += '<div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:10px 12px;font-size:10px;color:#854d0e;line-height:1.6">';
     h += '<div style="font-weight:800;margin-bottom:4px">⚠ Honest Caveats</div>';
     d.warnings.forEach(function(w){ h += '<div>• ' + w + '</div>'; });

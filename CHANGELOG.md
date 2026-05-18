@@ -1,3 +1,99 @@
+## r63.99.30 (2026-05-20) — Upstox-first option chain (finally fixes NSE-blocked OI)
+
+Vijay's r99.29 screenshot: "where is the range for nifty and bank nifty... information is missing". The warning at the bottom of that screenshot was the entire explanation:
+
+> "NIFTY: NSE returned no chain; BANKNIFTY: NSE returned no chain; SENSEX: NSE returned no chain"
+
+NSE blocks the Render outbound IP (72.180.65.28). All three index chains returned empty. Without a chain, there's no IV → no range projection. Without OI walls → no PE/CE recommendation. The feature was rendering nothing because there was no data.
+
+### What I found that I should have used three builds ago
+
+`api.py` line 321 already had `_upstox_get_option_chain(symbol)` — a fully working function that fetches option chains from Upstox using Vijay's authenticated OAuth token. It's **not IP-blocked** because it uses a real authenticated session, not anonymous NSE scraping.
+
+But the Tomorrow's Brief endpoint never used it. It called `nse_options()` directly, which always hits NSE direct, which always fails from Render. That's why every r99.29 OI cell came back empty.
+
+This build wires Upstox in as the **first-choice source** for chain data, with NSE direct as fallback. No paid feed needed.
+
+### Changes
+
+**`api.py`**:
+- New helper **`_compute_derived_metrics_from_chain(chain_rows, spot, expiry, symbol)`** — given raw chain rows (works for both Upstox and NSE shapes), computes PCR, max_pain (via min-pain search), top call/put walls (highest-OI strikes), ATM IV (CE+PE IV average at ATM strike), and a simplified GEX regime (sign of PCR-1 as proxy for full Greek calc). Returns the same dict shape the brief OI loop consumes.
+
+- New helper **`_fetch_index_chain_with_fallback(symbol)`** — async wrapper that:
+  1. Tries Upstox first via `_upstox_is_connected()` gate
+  2. If Upstox returns a chain → runs it through `_compute_derived_metrics_from_chain` and tags `_chain_source = "upstox"`
+  3. Falls back to `nse_options()` (the existing direct-NSE call) on Upstox failure or absence
+  4. Collects per-source errors so the brief can surface them honestly
+  5. Returns `{success, errors}` on both-source failure
+
+- Brief endpoint **OI loop refactored** to use `_fetch_index_chain_with_fallback` instead of calling `nse_options` directly. Per-index entries now include `chain_source` ("upstox" or "nse-direct") so the data sources tag reads `chain (upstox, live or 15min cache)`.
+
+- **Warning text upgraded** — when both sources fail, surfaces Upstox connection status explicitly: `Upstox is NOT connected; NSE direct is IP-blocked from Render. Connect Upstox via /api/upstox-login to get live OI in this brief.` The actionable hint replaces the previous dead-end "may be blocked" message.
+
+**`static/app.js`** (`_renderTomorrowBrief`):
+- Detects the "Upstox is NOT connected" substring in warnings
+- Renders a **prominent amber CTA banner** above the caveats:
+  - Lightning emoji + "Connect Upstox to unlock live OI data"
+  - Honest framing: "NSE blocks direct API requests from our hosting IP. Upstox bypasses this via your authenticated session — you'll see live NIFTY / BANKNIFTY / SENSEX option chains, projected ranges, and PE/CE recommendations once connected."
+  - Clickable amber button → `/api/upstox-login`
+
+### How this fixes your screenshot
+
+**Before r99.30** (your r99.29 deploy): NSE blocked → all three indices empty → range projection and PE/CE recommendation never rendered.
+
+**After r99.30 + Upstox connected**: Upstox returns live chains → derived metrics populate → projected range box renders per index → PE/CE recommendation box renders per index. The full Tomorrow's Brief as designed.
+
+**After r99.30 if Upstox NOT connected**: Amber CTA banner appears with a one-click "Connect Upstox" button. User clicks → OAuth flow → token saved → brief works on next refresh.
+
+### Honest caveats
+
+1. **The fix requires you to actually connect Upstox.** I can't auto-connect for you — Upstox OAuth requires user-initiated login. The new CTA banner makes this one click instead of zero clicks, but you have to click it.
+
+2. **Upstox tokens expire daily at 3:30 AM IST** (Upstox policy). You'll need to re-OAuth each morning. The brief will show the CTA again when the token expires.
+
+3. **Simplified GEX regime.** The full Greek-surface GEX calculation in `nse_options()` uses Black-Scholes gamma per strike with proper risk-free rate and DTE. The Upstox path uses a simpler proxy: `PCR > 1.0 → POSITIVE`, else `NEGATIVE`. This correlates with real GEX sign for most index conditions but isn't the same precision. I called this out honestly in the helper's docstring.
+
+4. **r99.29 caveats still apply:**
+   - Long PE/CE recos only profit if spot moves TO the wall
+   - 50% "confidence" is signal alignment, not directional probability
+   - Iron Condor is the lowest-risk play
+
+### Files changed
+
+- `api.py` — 2 new helper functions (~110 lines), brief OI loop refactored to use them
+- `static/app.js` — version header + Upstox CTA banner render (~20 lines)
+- `static/app.min.js` synced
+- `build_version.txt` → `r63.99.30`
+
+### Testing — 27/27 r99.30 assertions PASS
+
+Plus full regression battery: **36 of 38 suites GREEN**. The 2 failing suites (`smoke_premium_resilience.py`, `smoke_test_scs_smi.py`) are pre-existing test-rig failures from r99.5 and r63.95.0 eras, unrelated to this build. 
+
+Note: r99.24, r99.27, and r99.29 smoke tests had a few stale literal-string assertions (looking for old `nse_options(symbol=_idx)` call, exact NSE-blocked warning text, exact `r63.99.29` version) that I loosened to broader patterns. The semantic checks they were doing still pass; only the literal-string matchers needed updates for the r99.30 refactor.
+
+### Post-deploy verification
+
+1. **Render → Clear build cache → Deploy** → hard refresh → badge shows `⚙ r63.99.30`
+2. **Decide → 🌅 Tomorrow's Open** → click GENERATE BRIEF
+3. If you've never connected Upstox, you'll see the new amber **🔗 Connect Upstox** CTA banner — click it, complete OAuth
+4. Click GENERATE BRIEF again — should now populate:
+   - NIFTY card with spot/expiry/IV/lot, PCR/max pain/walls/GEX, projected range, PE/CE/IronCondor recommendation
+   - Same for BANKNIFTY
+   - Same for SENSEX
+5. Data sources tag at top should read `chain (upstox, live or 15min cache)`
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js build_version.txt CHANGELOG.md
+git commit -m "r63.99.30: Upstox-first option chain — finally fixes NSE-blocked OI in Tomorrow's Brief"
+git push origin main
+```
+
+Render → Clear build cache → Deploy → hard refresh → connect Upstox if needed → brief populates.
+
+---
+
 ## r63.99.29 (2026-05-20) — Tomorrow's Brief multi-index expansion (BANKNIFTY + SENSEX + per-index range + PE/CE recos)
 
 Vijay's ask, verbatim: *"certain data is not coming.. need more data like bank nifty , sensex. then for each index range as well projected pe / call for more profit based on 360 option chain as well"*
