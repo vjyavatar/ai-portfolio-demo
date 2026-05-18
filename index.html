@@ -542,6 +542,19 @@ body.dc-simple [data-dc-mode="pro"]{max-height:0!important;opacity:0!important;p
 #siResult details{overflow:hidden !important}
 #tabContentArea{overflow:visible !important}
 #report{overflow:visible !important}
+/* r63.99.24: GLOBAL ORPHAN-COLLAPSE — defensive rule against phantom-space bugs.
+   When .sc[data-tab] elements get hidden via display:none by switchTab(), they
+   take zero space ✓. BUT some dynamically-injected sections (Analyst Insights,
+   verdict strips, news themes, trade guides) may inject into tab-content areas
+   WITHOUT proper .sc[data-tab] attributes, leaving them visible across tabs and
+   causing phantom gaps. This rule collapses any direct child of tabContentArea
+   that is empty OR has no meaningful visible content. Targeted enough to not
+   affect legit empty placeholders (those have min-height set inline). */
+#tabContentArea > div:empty:not([style*="min-height"]):not([id]){display:none !important}
+#tabContentArea > section:empty:not([style*="min-height"]):not([id]){display:none !important}
+/* If a section's class doesn't include .sc but it lives in tabContentArea, it
+   should never take space larger than its content. Defensive max-height-when-empty. */
+#tabContentArea > *:not(.sc):not([data-tab]):not(#deControls):not(#deHeader):not(#deResult):empty{display:none !important;margin:0 !important;padding:0 !important}
 .sc:hover{box-shadow:0 4px 16px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);transform:translateY(-1px)}
 /* Section headers — bigger, bolder */
 .sh{display:flex;align-items:center;gap:12px;padding:16px 20px 0;transition:opacity .2s}
@@ -1389,7 +1402,11 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 <div id="groupSubNav" style="display:none;padding:6px 16px;background:#fff;border-bottom:1px solid #e2e5ea;position:sticky;top:calc(var(--ticker-h,0px) + var(--nav-h,54px) + var(--rh-h,36px) + var(--tab-h,38px));z-index:190;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,.04)"></div>
 
 <!-- TAB CONTENT AREA — ALL content lives inside here -->
-<div id="tabContentArea" style="min-height:60vh">
+<!-- r63.99.28: REMOVED min-height:60vh that forced the container to ~540px even when
+     content was short (e.g. Visual Decision Engine collapsed). That min-height was
+     the source of the phantom whitespace gap in Vijay's screenshots. Container now
+     sizes naturally to its content. -->
+<div id="tabContentArea">
 
 <!-- METRICS + EXTRAS — inside Summary tab -->
 <!-- SUMMARY SUB-TAB BAR -->
@@ -2064,6 +2081,24 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <strong>Macro Tailwind (10%)</strong> &mdash; categorical bonus for 2026 megatrend exposure (AI, defense, cyber, robotics, grid).<br>
   <strong>Technical Structure (5%)</strong> &mdash; above both SMAs + healthy RSI (40-70).</div>
 </div>
+</div></div>
+
+<!-- ═══ TAB: TOMORROW'S OPEN BRIEF (r63.99.26 — moved from decision tab to own subtab) ═══ -->
+<div class="sc" data-tab="tomorrowbrief" style="border-left:3px solid #7c3aed;display:none">
+<div class="sh"><div class="si" style="background:rgba(124,58,237,.1)">🌅</div><div class="st" style="color:#7c3aed">Tomorrow's Open Brief — Pre-Open Prediction</div></div>
+<div class="sbody">
+<div style="padding:11px 13px;background:linear-gradient(180deg,#f5f3ff,#ede9fe);border:1px solid #c4b5fd;border-radius:10px;margin-bottom:12px;font-size:11px;color:#5b21b6;line-height:1.6">
+  <strong style="font-family:Sora,sans-serif">🔮 What to expect when the market opens</strong> · Combines GIFT NIFTY/S&amp;P futures, global cues (VIX, DXY, crude, gold), key OI walls (support/resistance), news themes, and yesterday's movers into one pre-open brief. Honest probabilistic — "GAP UP 65% confidence" not "stocks will open up". Runs any time.
+</div>
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;padding:11px 13px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">
+  <select id="tobRegion" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;font-family:Sora,sans-serif;font-weight:700;cursor:pointer">
+    <option value="IN">🇮🇳 India (NIFTY/BANKNIFTY)</option>
+    <option value="US">🇺🇸 US (SPY/QQQ)</option>
+  </select>
+  <button onclick="window.loadTomorrowBrief&amp;&amp;window.loadTomorrowBrief(true)" id="tobBtn" style="padding:7px 18px;border-radius:6px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px">🌅 GENERATE BRIEF</button>
+  <div id="tobStatus" style="flex:1;min-width:200px;font-size:10px;color:#6d28d9;font-family:'JetBrains Mono',monospace">Click GENERATE BRIEF to get a unified pre-open prediction. Cached 5min.</div>
+</div>
+<div id="tobResult" style="min-height:80px"><div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px">Pick a region, then click <strong>GENERATE BRIEF</strong>. The output combines pre-market futures, global asset signals, OI walls, news themes, and watchlist into one daily-ritual page.</div></div>
 </div></div>
 
 <div class="sc" data-tab="proscan" style="border-left:3px solid #1A3A78;display:none">

@@ -146,9 +146,48 @@
 //   (5) DATA SOURCES TRANSPARENCY STRIP — single-ticker 360° view now shows
 //       which sources contributed (yfinance.info, finnhub, nse, curated) so
 //       you can see WHY a stock has high or low completeness.
-window.CELESYS_VERSION = "r63.99.25";
-window.CELESYS_BUILD_TIME = 1779268200;
-window.CELESYS_BUILD_DATE = "2026-05-20 06:30:00 UTC";
+// r63.99.26: REGRESSION FIX — Tomorrow's Open Brief panel placement.
+// Previous r99.24 placed it ABOVE Visual Decision Engine in the Analyze Stock
+// subtab, creating ~400px of visible-but-empty-looking space (panel was rendering
+// but its initial empty-state placeholder didn't draw enough contrast to look like
+// content). Vijay's screenshot showed exactly this gap. FIX: removed from the
+// Decide → Analyze Stock subtab; added as its OWN subtab "🌅 Tomorrow's Open"
+// in the Decide group. Same backend, same UI, just lives in a dedicated tab
+// where it doesn't visually push other content down. Also: defensive CSS from
+// r99.24 retained (it does collapse genuinely-empty orphans even if it didn't
+// catch this case).
+// r63.99.27: TOMORROW'S OPEN BRIEF — FULLY FUNCTIONAL
+//   (1) OI cache-warming: brief endpoint now actually CALLS nse_options(NIFTY)
+//       and nse_options(BANKNIFTY) on demand to populate the OI levels section,
+//       instead of speculatively looking for a cache that doesn't exist. Result
+//       cached for 15min per index in _brief_oi_* globals. Falls back gracefully
+//       when NSE blocks Render IP — returns honest warning with the actual error.
+//   (2) AI News-Impact paragraph: new _compute_ai_news_impact() helper calls
+//       claude-haiku-4-5 with current global cues + news themes summary, returns
+//       a 3-4 sentence directional read + sectors to watch + risk events.
+//       Cached 4h per region (Anthropic calls are expensive). Renders as a
+//       prominent purple-bordered card above the news themes section.
+//       Honest framing — uses "likely", "expect", "watch for", not certainty.
+//   (3) New /api/tomorrow-ai-impact endpoint — standalone AI impact for direct
+//       integration or testing.
+//   The brief is now a true daily-ritual page: open it, see verdict, futures,
+//   global cues, OI walls, AI directional read with sectors/risks, news themes,
+//   watchlist — all in one view. ~5-15s when fresh, ~1s when fully cached.
+// r63.99.28: ACTUAL ROOT CAUSE of phantom whitespace gap (finally).
+//   Vijay's "UI HAS DISTURBED" screenshots across r99.23, r99.24, r99.26 were
+//   ALL caused by ONE thing: #tabContentArea had inline `style="min-height:60vh"`
+//   on its container div (index.html line 1405). When the active subtab content
+//   was shorter than 60% of viewport height (e.g. Visual Decision Engine in
+//   collapsed state, or Analyze Stock with no stock yet loaded), the parent
+//   container forced itself to ≥540px tall, with the actual content pinned at
+//   the bottom — leaving 200-500px of empty space ABOVE.
+//   None of my previous fixes addressed this because they all assumed orphaned
+//   elements were taking space. The actual cause was a parent min-height rule.
+//   FIX: removed style="min-height:60vh" from #tabContentArea. Container now
+//   sizes to its content. Three rounds of misdiagnosis on my part; sorry.
+window.CELESYS_VERSION = "r63.99.28";
+window.CELESYS_BUILD_TIME = 1779285900;
+window.CELESYS_BUILD_DATE = "2026-05-20 11:25:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -2815,7 +2854,7 @@ var TAB_GROUPS = {
   // institutional terminals are text-first; saturated emojis (🧠 pink, 🎯 red,
   // ⚡ yellow, 🔥 orange, 💎 cyan, 📊 blue) make the nav visually noisy. Removing
   // them. The tab content already self-identifies via its own header.
-  decide:   {tabs: ['decision','toptrades','topinvest','smv3','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','etfscanner','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🧠 Smart Money v3','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','📊 ETF Scanner','Reports','PMS'], default: 'decision'},
+  decide:   {tabs: ['decision','tomorrowbrief','toptrades','topinvest','smv3','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','etfscanner','reports','pms'], labels: ['Analyze Stock','🌅 Tomorrow\'s Open','Top Trades','Top Investments','🧠 Smart Money v3','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','📊 ETF Scanner','Reports','PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -4470,6 +4509,11 @@ if(tab==='intraday'){
 if(tab==='etfscanner'){
   window._activeEtfScannerTab=true;
   if(typeof window.loadEtfScanner==='function')setTimeout(function(){window.loadEtfScanner(false);},100);
+  return;
+}
+// r63.99.26: Tomorrow's Open Brief — own subtab (was incorrectly placed in decision tab in r99.24)
+if(tab==='tomorrowbrief'){
+  // Don't auto-fetch; let user click GENERATE BRIEF explicitly (avoids stale data, lets them pick region first)
   return;
 }
 // r63.72: Institutional Positioning Scanner
@@ -10822,6 +10866,46 @@ window._renderTomorrowBrief = function(d) {
       if (oi.top_put_wall) h += '<div><strong style="color:#059669">Support (Put wall):</strong> ' + Number(oi.top_put_wall).toLocaleString() + '</div>';
       h += '</div></div>';
     });
+    h += '</div>';
+  }
+
+  // ─── AI News Impact paragraph (r63.99.27) — the differentiator ───
+  if (d.ai_impact && (d.ai_impact.paragraph || d.ai_impact.sectors_to_watch && d.ai_impact.sectors_to_watch.length)) {
+    var ai = d.ai_impact;
+    h += '<div style="background:linear-gradient(180deg,#fff,#fafbfc);border:2px solid #7c3aed40;border-radius:12px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(124,58,237,0.08)">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">';
+    h += '<div style="font-size:12px;font-weight:900;color:#7c3aed;letter-spacing:0.4px;font-family:Sora,sans-serif">🤖 AI DIRECTIONAL READ</div>';
+    if (ai._cached) {
+      h += '<div style="font-size:8px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">cached · ' + (ai._cache_age_min || 0) + 'm old · refreshes every 4h</div>';
+    } else if (ai.model_used) {
+      h += '<div style="font-size:8px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">via ' + ai.model_used + ' · fresh</div>';
+    }
+    h += '</div>';
+    if (ai._unavailable) {
+      h += '<div style="font-size:10px;color:#94a3b8;font-style:italic">' + (ai.paragraph || 'AI impact unavailable.') + '</div>';
+    } else if (ai.paragraph) {
+      h += '<div style="font-size:12px;color:#1e1b4b;line-height:1.65;margin-bottom:10px">' + ai.paragraph + '</div>';
+    }
+    // Sectors to watch
+    if (ai.sectors_to_watch && ai.sectors_to_watch.length) {
+      h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #ede9fe">';
+      h += '<div style="font-size:10px;font-weight:800;color:#5b21b6;letter-spacing:0.4px;margin-bottom:6px">🎯 SECTORS TO WATCH</div>';
+      ai.sectors_to_watch.forEach(function(s){
+        h += '<div style="padding:6px 10px;background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:4px;margin-bottom:4px;font-size:11px">';
+        h += '<strong style="color:#5b21b6">' + s.name + ':</strong> <span style="color:#475569">' + s.reason + '</span></div>';
+      });
+      h += '</div>';
+    }
+    // Risk events
+    if (ai.risk_events && ai.risk_events.length) {
+      h += '<div style="margin-top:8px">';
+      h += '<div style="font-size:10px;font-weight:800;color:#dc2626;letter-spacing:0.4px;margin-bottom:6px">⚠ RISK EVENTS</div>';
+      ai.risk_events.forEach(function(r){
+        h += '<div style="padding:6px 10px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;margin-bottom:4px;font-size:11px">';
+        h += '<strong style="color:#991b1b">' + r.event + ':</strong> <span style="color:#475569">' + r.implication + '</span></div>';
+      });
+      h += '</div>';
+    }
     h += '</div>';
   }
 
