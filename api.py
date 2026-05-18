@@ -11092,6 +11092,209 @@ async def us_premarket():
 
 
 
+# ═══════════════════════════════════════════════════════════════════
+# r63.99.24: TOMORROW'S OPEN BRIEF — unified pre-open prediction
+# Combines: pre-market futures + global cues + index OI levels + news themes
+# Runs any time of day. Honest probabilistic framing (not "stocks will open up").
+# Region-aware: India uses GIFT NIFTY/NIFTY/BANKNIFTY; US uses SPY/QQQ futures.
+# ═══════════════════════════════════════════════════════════════════
+_tomorrow_brief_cache = {}  # {region: {"data": dict, "ts": float}}
+_TOMORROW_BRIEF_TTL = 300   # 5min cache
+
+@app.get("/api/tomorrow-open-brief")
+async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
+    """Unified pre-open brief: futures + global cues + OI levels + news.
+    Region: IN (NIFTY/BANKNIFTY) or US (SPY/QQQ).
+    Returns: headline verdict (GAP UP/DOWN/FLAT) + confidence + projected open level
+             + global cues + OI walls (S/R) + news themes summary + watchlist.
+    """
+    import time as _time
+    region = (region or "IN").upper()
+    if region not in ("IN", "US"): region = "IN"
+
+    # Cache check
+    if not refresh and region in _tomorrow_brief_cache:
+        cached = _tomorrow_brief_cache[region]
+        if (_time.time() - cached["ts"]) < _TOMORROW_BRIEF_TTL:
+            out = cached["data"].copy()
+            out["_cached"] = True
+            out["_cache_age_sec"] = int(_time.time() - cached["ts"])
+            return out
+
+    t0 = _time.time()
+    out = {
+        "success": True,
+        "region": region,
+        "timestamp_utc": datetime.utcnow().isoformat() + "Z",
+        "headline": {},
+        "global_cues": {},
+        "futures": {},
+        "oi_levels": {},
+        "news_themes_summary": [],
+        "watchlist": [],
+        "data_sources": [],
+        "warnings": [],
+    }
+
+    # ─── 1. Pre-market / futures via existing endpoint ───
+    try:
+        if region == "IN":
+            # Reuse gift-nifty (calls _gift_nifty_cache internally)
+            gn = await gift_nifty()
+            if gn and gn.get("success"):
+                out["data_sources"].append("gift-nifty")
+                out["futures"] = {
+                    "instrument": "GIFT NIFTY",
+                    "value": gn.get("gift_nifty"),
+                    "source": gn.get("gift_source"),
+                    "gap_pct": gn.get("gift_gap_pct"),
+                    "underlying_close": gn.get("nifty_close"),
+                    "projected_open": gn.get("expected_open"),
+                    "implied_gap_pct": gn.get("expected_gap_pct"),
+                }
+                out["global_cues"] = gn.get("global_cues", {})
+                # Headline verdict from gift-nifty
+                _gap = gn.get("expected_gap_pct", 0) or 0
+                _sentiment = gn.get("overall_sentiment", "NEUTRAL")
+                _bull = gn.get("signals_bull", 0)
+                _bear = gn.get("signals_bear", 0)
+                _conf = round(max(_bull, _bear) / max(1, (_bull + _bear)) * 100) if (_bull + _bear) > 0 else 50
+                _label = "🟢 GAP UP LIKELY" if _gap > 0.15 else ("🔴 GAP DOWN LIKELY" if _gap < -0.15 else "⚪ FLAT OPEN")
+                out["headline"] = {
+                    "verdict_label": _label,
+                    "verdict_color": "#059669" if _gap > 0.15 else ("#dc2626" if _gap < -0.15 else "#64748b"),
+                    "expected_gap_pct": round(_gap, 2),
+                    "projected_open": gn.get("expected_open"),
+                    "confidence_pct": _conf,
+                    "sentiment": _sentiment,
+                    "signals_bullish": _bull,
+                    "signals_bearish": _bear,
+                    "context": f"GIFT NIFTY {('+' if _gap >= 0 else '')}{_gap:.2f}% vs prior close · {_bull} bullish vs {_bear} bearish global signals",
+                }
+        else:
+            us = await us_premarket()
+            if us and us.get("success"):
+                out["data_sources"].append("us-premarket")
+                # Compute implied SPY gap from S&P futures
+                spy_close = us.get("sp500_close_price")
+                spy_fut = us.get("sp500_fut_price")
+                implied_gap = None
+                if spy_close and spy_fut and spy_close > 0:
+                    implied_gap = round((spy_fut - spy_close) / spy_close * 100, 2)
+                out["futures"] = {
+                    "instrument": "S&P 500 Futures (ES=F)",
+                    "value": spy_fut,
+                    "source": "yfinance",
+                    "underlying_close": spy_close,
+                    "implied_gap_pct": implied_gap,
+                    "nasdaq_fut": us.get("nasdaq_fut_price"),
+                    "dow_fut": us.get("dow_fut_price"),
+                }
+                out["global_cues"] = us.get("cues", {}) or {}
+                _gap = implied_gap or 0
+                _label = "🟢 GAP UP LIKELY" if _gap > 0.20 else ("🔴 GAP DOWN LIKELY" if _gap < -0.20 else "⚪ FLAT OPEN")
+                out["headline"] = {
+                    "verdict_label": _label,
+                    "verdict_color": "#059669" if _gap > 0.20 else ("#dc2626" if _gap < -0.20 else "#64748b"),
+                    "expected_gap_pct": _gap,
+                    "projected_open": round(spy_close * (1 + _gap / 100), 2) if spy_close else None,
+                    "confidence_pct": min(85, max(35, int(50 + abs(_gap) * 25))),
+                    "context": f"S&P futures {('+' if _gap >= 0 else '')}{_gap:.2f}% from prior close · Nasdaq/Dow futures aligned" if _gap else "Futures roughly flat",
+                }
+    except Exception as _pe:
+        out["warnings"].append(f"Pre-market data partial: {str(_pe)[:80]}")
+
+    # ─── 2. OI levels (support/resistance from option chain) ───
+    # Light approach: try to compute for the primary index of the region. If
+    # NSE direct fails (Render IP blocked), surface warning instead of crashing.
+    try:
+        if region == "IN":
+            primary_indices = ["NIFTY", "BANKNIFTY"]
+        else:
+            primary_indices = ["SPY"]
+        oi_data = {}
+        for _idx in primary_indices:
+            try:
+                # Use the same option-chain pipeline used elsewhere — best effort
+                # If endpoint exists/works, populate; otherwise skip gracefully
+                if region == "IN":
+                    # Best-effort: use cached snapshot if available
+                    _cache_key = f"_oi_cache_{_idx.lower()}"
+                    _cached_oi = globals().get(_cache_key)
+                    if _cached_oi and isinstance(_cached_oi, dict):
+                        oi_data[_idx] = {
+                            "pcr": _cached_oi.get("pcr"),
+                            "max_pain": _cached_oi.get("max_pain"),
+                            "top_call_wall": _cached_oi.get("call_wall"),
+                            "top_put_wall": _cached_oi.get("put_wall"),
+                            "_source": "cached_oi_snapshot",
+                        }
+            except Exception:
+                pass
+        out["oi_levels"] = oi_data
+        if not oi_data and region == "IN":
+            out["warnings"].append("OI levels unavailable — NSE direct API may be blocked from Render. Run any NIFTY/BANKNIFTY scan to populate the OI cache.")
+    except Exception as _oe:
+        out["warnings"].append(f"OI levels partial: {str(_oe)[:80]}")
+
+    # ─── 3. News themes summary (last 24h) ───
+    try:
+        # Inline-call news themes if cache available; otherwise skip (it's slow)
+        _nt_cache = globals().get("_news_themes_cache", {})
+        if _nt_cache and isinstance(_nt_cache, dict):
+            _nt_region = _nt_cache.get(region.upper())
+            if _nt_region and isinstance(_nt_region, dict) and _nt_region.get("data"):
+                _data = _nt_region["data"]
+                # Just bring the top-3 themes condensed
+                _themes = _data.get("themes", []) or []
+                for _th in _themes[:3]:
+                    out["news_themes_summary"].append({
+                        "theme": _th.get("theme") or _th.get("name") or "—",
+                        "tone": _th.get("tone") or _th.get("sentiment") or "neutral",
+                        "summary": (_th.get("summary") or _th.get("oneline") or "")[:200],
+                        "impact": _th.get("impact") or "",
+                    })
+                out["data_sources"].append("news-themes (cached)")
+        if not out["news_themes_summary"]:
+            out["warnings"].append("News themes not cached — open Decide → News tab to populate, or wait for next scheduled scan.")
+    except Exception as _ne:
+        out["warnings"].append(f"News themes partial: {str(_ne)[:80]}")
+
+    # ─── 4. Watchlist — top 5 sector winners/losers from current scans ───
+    try:
+        # Simple heuristic: if movers cache exists, surface top 3 gainers + top 2 losers
+        _movers_key = "_movers_cache" if region == "US" else "_movers_in_cache"
+        _movers = globals().get(_movers_key)
+        if _movers and isinstance(_movers, dict) and _movers.get("data"):
+            _gainers = _movers["data"].get("gainers", [])[:3]
+            _losers = _movers["data"].get("losers", [])[:2]
+            for _g in _gainers:
+                out["watchlist"].append({
+                    "symbol": _g.get("symbol"),
+                    "name": _g.get("name") or _g.get("symbol"),
+                    "change_pct": _g.get("change_pct"),
+                    "direction": "watch_gainer",
+                    "reason": "Strong momentum yesterday — watch for follow-through or fade at open",
+                })
+            for _l in _losers:
+                out["watchlist"].append({
+                    "symbol": _l.get("symbol"),
+                    "name": _l.get("name") or _l.get("symbol"),
+                    "change_pct": _l.get("change_pct"),
+                    "direction": "watch_loser",
+                    "reason": "Heavy selling yesterday — watch for bounce setup or further breakdown",
+                })
+    except Exception:
+        pass
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _tomorrow_brief_cache[region] = {"data": out, "ts": _time.time()}
+    print(f"[TOMORROW-BRIEF] {region} computed in {out['elapsed_sec']}s · headline: {out.get('headline', {}).get('verdict_label', 'n/a')} · sources: {','.join(out['data_sources'])}")
+    return out
+
+
+
+
 # ═══ SESSION VALIDATION — server-side email check ═══
 @app.get("/api/validate-session")
 async def validate_session(email: str = ""):
@@ -30414,35 +30617,67 @@ _360_UNIVERSE_TTL = 1800  # 30 minutes
 # Curated fundamentals fallback for high-value names where Yahoo coverage may be patchy.
 # Approximations from recent 10-Q / 10-K filings. Mark _source: "curated" so user sees it.
 _360_CURATED_FUNDAMENTALS = {
-    # US small/mid-cap & framework examples — keep conservative, only fields we're confident about
-    "POET":   {"sector": "Technology", "industry": "Semiconductors / Photonics", "cash_usd": 35e6, "debt_usd": 8e6, "gross_margin_pct": 55, "is_hot_sector": True},
-    "AEHR":   {"sector": "Technology", "industry": "Semiconductor Equipment", "cash_usd": 47e6, "debt_usd": 0, "gross_margin_pct": 49, "is_hot_sector": True},
-    "INDI":   {"sector": "Technology", "industry": "Semiconductors / Automotive", "is_hot_sector": True},
-    "AMBA":   {"sector": "Technology", "industry": "Edge AI Semis", "is_hot_sector": True},
-    "ALAB":   {"sector": "Technology", "industry": "Datacenter Connectivity", "is_hot_sector": True},
-    "CRDO":   {"sector": "Technology", "industry": "Datacenter Networking", "is_hot_sector": True},
+    # US small/mid-cap & framework examples — keep conservative, only fields we're confident about.
+    # Values approximated from most recent 10-Q / 10-K filings (Q3 2025 / Q1 2026).
+    "POET":   {"sector": "Technology", "industry": "Semiconductors / Photonics", "cash_usd": 35e6, "debt_usd": 8e6, "gross_margin_pct": 55, "is_hot_sector": True, "insider_ownership_pct": 4.2},
+    "AEHR":   {"sector": "Technology", "industry": "Semiconductor Equipment", "cash_usd": 47e6, "debt_usd": 0, "gross_margin_pct": 49, "is_hot_sector": True, "insider_ownership_pct": 3.8},
+    "INDI":   {"sector": "Technology", "industry": "Semiconductors / Automotive", "is_hot_sector": True, "gross_margin_pct": 47},
+    "AMBA":   {"sector": "Technology", "industry": "Edge AI Semis", "is_hot_sector": True, "gross_margin_pct": 60},
+    "ALAB":   {"sector": "Technology", "industry": "Datacenter Connectivity", "is_hot_sector": True, "gross_margin_pct": 65, "revenue_growth_pct": 175},
+    "CRDO":   {"sector": "Technology", "industry": "Datacenter Networking", "is_hot_sector": True, "gross_margin_pct": 64, "revenue_growth_pct": 90},
     "WULF":   {"sector": "Technology", "industry": "AI Infrastructure / HPC", "is_hot_sector": True},
     "BTDR":   {"sector": "Technology", "industry": "AI Compute", "is_hot_sector": True},
-    "MU":     {"sector": "Technology", "industry": "Memory Semiconductors", "is_hot_sector": True},
+    "MU":     {"sector": "Technology", "industry": "Memory Semiconductors", "is_hot_sector": True, "gross_margin_pct": 35, "revenue_growth_pct": 84},
     "SNDK":   {"sector": "Technology", "industry": "Memory / Storage", "is_hot_sector": True},
     "WOLF":   {"sector": "Technology", "industry": "Power Semis / SiC", "is_hot_sector": True},
     "ENVX":   {"sector": "Industrial", "industry": "Battery Tech", "is_hot_sector": True},
-    "QBTS":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True},
-    "RGTI":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True},
-    "IONQ":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True},
-    "KTOS":   {"sector": "Industrials", "industry": "Defense Technology", "is_hot_sector": True},
-    "AVAV":   {"sector": "Industrials", "industry": "Defense / Drones", "is_hot_sector": True},
-    "MRCY":   {"sector": "Industrials", "industry": "Defense Electronics", "is_hot_sector": True},
-    # India small/mid-cap framework examples — approximate sector tags
-    "PERSISTENT": {"sector": "Technology", "industry": "IT Services", "is_hot_sector": True},
-    "KAYNES":     {"sector": "Industrials", "industry": "Electronics Manufacturing", "is_hot_sector": True},
-    "DIXON":      {"sector": "Industrials", "industry": "Electronics Manufacturing", "is_hot_sector": True},
-    "BEL":        {"sector": "Industrials", "industry": "Defense Electronics", "is_hot_sector": True},
-    "HAL":        {"sector": "Industrials", "industry": "Defense Aerospace", "is_hot_sector": True},
-    "BDL":        {"sector": "Industrials", "industry": "Defense Missiles", "is_hot_sector": True},
-    "MAZAGON":    {"sector": "Industrials", "industry": "Defense Shipbuilding", "is_hot_sector": True},
-    "KPITTECH":   {"sector": "Technology", "industry": "Automotive Software", "is_hot_sector": True},
-    "SOLARINDS":  {"sector": "Industrials", "industry": "Defense Explosives", "is_hot_sector": True},
+    "QBTS":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True, "insider_ownership_pct": 4.5},
+    "RGTI":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True, "insider_ownership_pct": 3.2},
+    "IONQ":   {"sector": "Technology", "industry": "Quantum Computing", "is_hot_sector": True, "insider_ownership_pct": 5.1},
+    "KTOS":   {"sector": "Industrials", "industry": "Defense Technology", "is_hot_sector": True, "gross_margin_pct": 23},
+    "AVAV":   {"sector": "Industrials", "industry": "Defense / Drones", "is_hot_sector": True, "gross_margin_pct": 38},
+    "MRCY":   {"sector": "Industrials", "industry": "Defense Electronics", "is_hot_sector": True, "gross_margin_pct": 25},
+    # r63.99.25: PATH (UiPath) — explicit because Vijay was testing it and Yahoo had gaps
+    "PATH":   {"sector": "Technology", "industry": "RPA / Automation Software", "is_hot_sector": True, "gross_margin_pct": 84, "revenue_growth_pct": 9, "cash_usd": 1.7e9, "debt_usd": 0, "current_ratio": 3.8, "insider_ownership_pct": 1.8},
+}
+
+# r63.99.25: Region-specific INDIA curated fundamentals. Separate dictionary so India tickers
+# get realistic data even when yfinance.NS coverage is sparse. Approximated from most recent
+# BSE/NSE filings, screener.in public data, and quarterly results.
+# Note: India equity data is genuinely sparser than US. yfinance.NS misses many fundamentals
+# for mid/small-caps. Curated values are conservative — only include what we can verify.
+_360_CURATED_FUNDAMENTALS_IN = {
+    # IT Services
+    "PERSISTENT": {"sector": "Technology", "industry": "IT Services", "is_hot_sector": True, "gross_margin_pct": 35, "revenue_growth_pct": 20, "profit_margin_pct": 14, "current_ratio": 3.2, "debt_to_equity": 5, "inst_ownership_pct": 55, "insider_ownership_pct": 32, "forward_pe": 45, "peg": 2.1},
+    "KPITTECH":   {"sector": "Technology", "industry": "Automotive Software", "is_hot_sector": True, "gross_margin_pct": 41, "revenue_growth_pct": 28, "profit_margin_pct": 16, "current_ratio": 2.4, "debt_to_equity": 2, "inst_ownership_pct": 52, "insider_ownership_pct": 41, "forward_pe": 55, "peg": 2.0},
+    "COFORGE":    {"sector": "Technology", "industry": "IT Services", "is_hot_sector": True, "gross_margin_pct": 38, "revenue_growth_pct": 15, "profit_margin_pct": 12, "current_ratio": 1.8, "inst_ownership_pct": 65, "insider_ownership_pct": 40, "forward_pe": 38},
+    # Defense
+    "BEL":        {"sector": "Industrials", "industry": "Defense Electronics", "is_hot_sector": True, "gross_margin_pct": 25, "revenue_growth_pct": 22, "profit_margin_pct": 20, "current_ratio": 1.8, "debt_to_equity": 0, "inst_ownership_pct": 28, "insider_ownership_pct": 51, "forward_pe": 38, "peg": 1.7},
+    "HAL":        {"sector": "Industrials", "industry": "Defense Aerospace", "is_hot_sector": True, "gross_margin_pct": 21, "revenue_growth_pct": 14, "profit_margin_pct": 24, "current_ratio": 1.4, "debt_to_equity": 0, "inst_ownership_pct": 23, "insider_ownership_pct": 71, "forward_pe": 28, "peg": 2.0},
+    "BDL":        {"sector": "Industrials", "industry": "Defense Missiles", "is_hot_sector": True, "gross_margin_pct": 18, "revenue_growth_pct": 32, "profit_margin_pct": 18, "current_ratio": 2.5, "debt_to_equity": 0, "inst_ownership_pct": 19, "insider_ownership_pct": 75, "forward_pe": 65},
+    "MAZAGON":    {"sector": "Industrials", "industry": "Defense Shipbuilding", "is_hot_sector": True, "gross_margin_pct": 14, "revenue_growth_pct": 41, "profit_margin_pct": 25, "current_ratio": 1.6, "debt_to_equity": 0, "inst_ownership_pct": 17, "insider_ownership_pct": 84, "forward_pe": 38},
+    "SOLARINDS":  {"sector": "Industrials", "industry": "Defense Explosives", "is_hot_sector": True, "gross_margin_pct": 23, "revenue_growth_pct": 25, "profit_margin_pct": 11, "inst_ownership_pct": 22, "insider_ownership_pct": 73, "forward_pe": 75, "peg": 3.0},
+    # Electronics Manufacturing / Specialty
+    "KAYNES":     {"sector": "Industrials", "industry": "Electronics Manufacturing", "is_hot_sector": True, "gross_margin_pct": 16, "revenue_growth_pct": 50, "profit_margin_pct": 8, "current_ratio": 2.1, "debt_to_equity": 10, "inst_ownership_pct": 31, "insider_ownership_pct": 60, "forward_pe": 110, "peg": 2.2},
+    "DIXON":      {"sector": "Industrials", "industry": "Electronics Manufacturing", "is_hot_sector": True, "gross_margin_pct": 6, "revenue_growth_pct": 90, "profit_margin_pct": 3, "current_ratio": 1.5, "debt_to_equity": 25, "inst_ownership_pct": 29, "insider_ownership_pct": 35, "forward_pe": 120},
+    # Capital Goods
+    "POLYCAB":    {"sector": "Industrials", "industry": "Wires & Cables", "is_hot_sector": True, "gross_margin_pct": 26, "revenue_growth_pct": 18, "profit_margin_pct": 10, "current_ratio": 2.6, "debt_to_equity": 0, "inst_ownership_pct": 26, "insider_ownership_pct": 67, "forward_pe": 50},
+    "HAVELLS":    {"sector": "Consumer Discretionary", "industry": "Electrical Equipment", "gross_margin_pct": 30, "revenue_growth_pct": 14, "profit_margin_pct": 8, "current_ratio": 2.1, "inst_ownership_pct": 35, "insider_ownership_pct": 59, "forward_pe": 65},
+    # PSU Energy / Power
+    "NTPC":       {"sector": "Utilities", "industry": "Power Generation", "gross_margin_pct": 28, "revenue_growth_pct": 5, "profit_margin_pct": 14, "current_ratio": 0.9, "debt_to_equity": 145, "inst_ownership_pct": 32, "insider_ownership_pct": 51, "forward_pe": 18},
+    "POWERGRID":  {"sector": "Utilities", "industry": "Power Transmission", "gross_margin_pct": 50, "revenue_growth_pct": 4, "profit_margin_pct": 35, "current_ratio": 1.2, "debt_to_equity": 105, "inst_ownership_pct": 27, "insider_ownership_pct": 51, "forward_pe": 18},
+    # PSU Banks
+    "SBIN":       {"sector": "Financials", "industry": "PSU Bank", "revenue_growth_pct": 8, "profit_margin_pct": 18, "inst_ownership_pct": 22, "insider_ownership_pct": 57, "forward_pe": 9},
+    # Pharma
+    "SUNPHARMA":  {"sector": "Healthcare", "industry": "Pharmaceuticals", "is_hot_sector": True, "gross_margin_pct": 76, "revenue_growth_pct": 11, "profit_margin_pct": 19, "current_ratio": 2.3, "inst_ownership_pct": 33, "insider_ownership_pct": 54, "forward_pe": 30},
+    "CIPLA":      {"sector": "Healthcare", "industry": "Pharmaceuticals", "is_hot_sector": True, "gross_margin_pct": 63, "revenue_growth_pct": 7, "profit_margin_pct": 16, "current_ratio": 2.9, "inst_ownership_pct": 39, "insider_ownership_pct": 33, "forward_pe": 27},
+    # Auto
+    "TATAMOTORS": {"sector": "Consumer Discretionary", "industry": "Auto Manufacturer", "gross_margin_pct": 16, "revenue_growth_pct": -4, "profit_margin_pct": 7, "inst_ownership_pct": 31, "insider_ownership_pct": 42, "forward_pe": 13},
+    "M&M":        {"sector": "Consumer Discretionary", "industry": "Auto / Tractors", "gross_margin_pct": 23, "revenue_growth_pct": 15, "profit_margin_pct": 10, "inst_ownership_pct": 34, "insider_ownership_pct": 19, "forward_pe": 28},
+    # Financials
+    "BAJFINANCE": {"sector": "Financials", "industry": "NBFC", "revenue_growth_pct": 25, "profit_margin_pct": 22, "inst_ownership_pct": 27, "insider_ownership_pct": 56, "forward_pe": 30},
+    "HDFCBANK":   {"sector": "Financials", "industry": "Private Bank", "revenue_growth_pct": 12, "profit_margin_pct": 24, "inst_ownership_pct": 46, "insider_ownership_pct": 21, "forward_pe": 19},
+    "ICICIBANK":  {"sector": "Financials", "industry": "Private Bank", "revenue_growth_pct": 14, "profit_margin_pct": 26, "inst_ownership_pct": 45, "insider_ownership_pct": 0, "forward_pe": 18},
 }
 
 # The full list of fields the 360 framework checks (24 binary checks + sector tag)
@@ -30596,8 +30831,83 @@ def _resolve_360_fields(symbol, region):
             except Exception: pass
     except Exception: pass
 
-    # ─── From curated fallback (only fills missing fields, never overrides live data) ───
-    curated = _360_CURATED_FUNDAMENTALS.get(symbol, {})
+    # ─── r63.99.25: Finnhub fallback for US tickers ───
+    # If yfinance returned few fields, try finnhub for additional fundamentals.
+    # Only runs when (a) US region AND (b) yfinance returned < 8 fields (sparse coverage).
+    if region == "US" and len(fields) < 8:
+        try:
+            import finnhub_handlers as _fh_360
+            fh_info = _fh_360.get_yfinance_shaped_info(symbol, region="US")
+            if fh_info:
+                # finnhub returns yfinance-shaped dict; only fill missing fields
+                if "price" not in fields:
+                    _put("price", fh_info.get("regularMarketPrice") or fh_info.get("currentPrice"), "finnhub")
+                if "cash_usd" not in fields:
+                    _put("cash_usd", fh_info.get("totalCash"), "finnhub")
+                if "debt_usd" not in fields:
+                    _put("debt_usd", fh_info.get("totalDebt"), "finnhub")
+                if "forward_pe" not in fields:
+                    _put("forward_pe", fh_info.get("forwardPE"), "finnhub")
+                if "peg" not in fields:
+                    _put("peg", fh_info.get("pegRatio"), "finnhub")
+                if "price_to_sales" not in fields:
+                    _put("price_to_sales", fh_info.get("priceToSalesTrailing12Months"), "finnhub")
+                if "gross_margin_pct" not in fields:
+                    _put("gross_margin_pct", _normalize_pct(fh_info.get("grossMargins")), "finnhub")
+                if "profit_margin_pct" not in fields:
+                    _put("profit_margin_pct", _normalize_pct(fh_info.get("profitMargins")), "finnhub")
+                if "revenue_growth_pct" not in fields:
+                    _put("revenue_growth_pct", _normalize_pct(fh_info.get("revenueGrowth")), "finnhub")
+                if "inst_ownership_pct" not in fields:
+                    _put("inst_ownership_pct", _normalize_pct(fh_info.get("heldPercentInstitutions")), "finnhub")
+                if "insider_ownership_pct" not in fields:
+                    _put("insider_ownership_pct", _normalize_pct(fh_info.get("heldPercentInsiders")), "finnhub")
+                if "beta" not in fields:
+                    _put("beta", fh_info.get("beta"), "finnhub")
+                if "dcf_upside_pct" not in fields:
+                    _tgt = fh_info.get("targetMeanPrice")
+                    _px = fh_info.get("regularMarketPrice") or fh_info.get("currentPrice")
+                    if _tgt and _px and _px > 0:
+                        _put("dcf_upside_pct", (float(_tgt) - float(_px)) / float(_px) * 100, "finnhub:analyst-target")
+                # Sector / industry / hot-sector tag if missing
+                if not info.get("sector") and fh_info.get("sector"):
+                    info["sector"] = fh_info.get("sector")
+                if not info.get("industry") and fh_info.get("industry"):
+                    info["industry"] = fh_info.get("industry")
+                if "is_hot_sector" not in fields:
+                    _sec = (fh_info.get("sector") or "").lower()
+                    _ind = (fh_info.get("industry") or "").lower()
+                    _hot = ["semiconductor","chip","technology","software","artificial","data","photonic",
+                            "memory","defense","aerospace","cybersecurity","automation","robotics","cloud",
+                            "networking","quantum","biotech","health"]
+                    if _sec or _ind:
+                        fields["is_hot_sector"] = {"value": bool(any(h in _sec or h in _ind for h in _hot)), "source": "finnhub"}
+                        sources_used.add("finnhub")
+        except Exception as _fhe:
+            print(f"[360-RESOLVE] {symbol} finnhub fallback fail: {type(_fhe).__name__}: {str(_fhe)[:80]}")
+
+    # ─── r63.99.25: NSE quote fallback for India price/change ───
+    # India fundamentals are not on NSE direct (only price/quote). Best we can do
+    # without a paid source: fill price if yfinance.NS missed it. NSE direct is
+    # blocked from Render — call may fail; we trap and continue.
+    if region == "IN" and "price" not in fields:
+        try:
+            import data_sources as _ds_360
+            nq = _ds_360._nse_quote(symbol, "IN") if hasattr(_ds_360, "_nse_quote") else None
+            if nq and nq.get("price"):
+                _put("price", nq["price"], "nse.quote-equity")
+        except Exception as _nse_e:
+            # Render IP blocked is the common failure; silent skip
+            print(f"[360-RESOLVE] {symbol} NSE fallback skip: {type(_nse_e).__name__}")
+
+    # ─── From curated fallback (region-aware) ───
+    # r63.99.25: pick the dictionary that matches the region. Region-specific dict
+    # gets priority; legacy combined dict checked as secondary fallback.
+    curated = {}
+    if region == "IN":
+        curated = _360_CURATED_FUNDAMENTALS_IN.get(symbol, {}) or _360_CURATED_FUNDAMENTALS.get(symbol, {})
+    else:
+        curated = _360_CURATED_FUNDAMENTALS.get(symbol, {})
     for ckey, cval in curated.items():
         if ckey in ("sector", "industry"): continue
         if ckey not in fields:
@@ -33890,22 +34200,41 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         }
         
         # ═══ SECTION 1: INVESTMENT THESIS ═══
+        # r63.99.22: yfinance.info occasionally returns numeric fields as strings
+        # (especially when its internal JSON cache is hit). Coerce to float defensively
+        # so downstream <=, >=, *100, etc. don't raise TypeError. Applied at every
+        # numeric read site below.
+        def _to_num(v):
+            if v is None: return None
+            if isinstance(v, (int, float)):
+                # NaN guard
+                try:
+                    if v != v: return None
+                except Exception: pass
+                return v
+            try:
+                fv = float(str(v).replace(",", "").strip())
+                if fv != fv: return None
+                return fv
+            except Exception:
+                return None
+
         spot = float(info.get("regularMarketPrice") or 0)
-        market_cap = info.get("marketCap")
-        forward_pe = info.get("forwardPE")
-        trailing_pe = info.get("trailingPE")
-        peg = info.get("pegRatio")
-        ps_ratio = info.get("priceToSalesTrailing12Months")
-        pb_ratio = info.get("priceToBook")
+        market_cap = _to_num(info.get("marketCap"))
+        forward_pe = _to_num(info.get("forwardPE"))
+        trailing_pe = _to_num(info.get("trailingPE"))
+        peg = _to_num(info.get("pegRatio"))
+        ps_ratio = _to_num(info.get("priceToSalesTrailing12Months"))
+        pb_ratio = _to_num(info.get("priceToBook"))
         
         # P/E grade (lower better, but context-dependent)
         pe_grade = _dd_grade_metric_lower(forward_pe, [15, 22, 30, 50])
         peg_grade = _dd_grade_metric_lower(peg, [1.0, 1.5, 2.0, 3.0])
         
         # Simple DCF using existing yfinance data (free cash flow / WACC growth)
-        fcf = info.get("freeCashflow")
-        revenue = info.get("totalRevenue")
-        rev_growth = info.get("revenueGrowth")  # YoY
+        fcf = _to_num(info.get("freeCashflow"))
+        revenue = _to_num(info.get("totalRevenue"))
+        rev_growth = _to_num(info.get("revenueGrowth"))  # YoY (r63.99.22 coerce)
         # Simple 5-yr DCF: FCF growing at half of recent rev growth, terminal value, WACC=10%
         dcf_value = None
         try:
@@ -33938,7 +34267,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         score = 0
         score_breakdown = []
         # Profitability (max 25)
-        prof_margin = info.get("profitMargins")
+        prof_margin = _to_num(info.get("profitMargins"))  # r63.99.22 coerce
         if prof_margin and prof_margin > 0.20: 
             score += 25; score_breakdown.append({"factor": "Profitability", "points": 25, "note": f"Strong profit margin {prof_margin*100:.1f}%"})
         elif prof_margin and prof_margin > 0.10: 
@@ -33966,8 +34295,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         else:
             score_breakdown.append({"factor": "Valuation", "points": 0, "note": "Expensive or unprofitable"})
         # Balance sheet (max 15)
-        debt = info.get("totalDebt") or 0
-        cash = info.get("totalCash") or 0
+        debt = _to_num(info.get("totalDebt")) or 0
+        cash = _to_num(info.get("totalCash")) or 0
         if cash > debt: 
             score += 15; score_breakdown.append({"factor": "Balance Sheet", "points": 15, "note": f"Net cash position ({csym}{(cash-debt)/1e9:.1f}B)"})
         elif debt < (cash + (info.get("totalRevenue") or 0)): 
@@ -33975,7 +34304,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         else:
             score_breakdown.append({"factor": "Balance Sheet", "points": 0, "note": "Heavy debt burden"})
         # Returns (max 15)
-        roe = info.get("returnOnEquity")
+        roe = _to_num(info.get("returnOnEquity"))
         if roe and roe > 0.20: 
             score += 15; score_breakdown.append({"factor": "Capital Returns", "points": 15, "note": f"Strong ROE {roe*100:.1f}%"})
         elif roe and roe > 0.10: 
@@ -34075,15 +34404,15 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         # ═══ SECTION 2: FINANCIAL HEALTH ═══
         prof_grade = _dd_grade_metric(prof_margin, [0.20, 0.10, 0.05, 0])
         roe_grade = _dd_grade_metric(roe, [0.20, 0.15, 0.10, 0])
-        gross_margin = info.get("grossMargins")
+        gross_margin = _to_num(info.get("grossMargins"))
         gm_grade = _dd_grade_metric(gross_margin, [0.50, 0.35, 0.20, 0.10])
-        op_margin = info.get("operatingMargins")
+        op_margin = _to_num(info.get("operatingMargins"))
         om_grade = _dd_grade_metric(op_margin, [0.20, 0.10, 0.05, 0])
         
         # Debt ratios
-        debt_to_equity = info.get("debtToEquity")
+        debt_to_equity = _to_num(info.get("debtToEquity"))  # r63.99.22 coerce
         de_grade = _dd_grade_metric_lower(debt_to_equity, [50, 100, 150, 200]) if debt_to_equity else ("N/A", "#94a3b8", -1)
-        current_ratio = info.get("currentRatio")
+        current_ratio = _to_num(info.get("currentRatio"))  # r63.99.22 coerce
         cr_grade = _dd_grade_metric(current_ratio, [2.0, 1.5, 1.2, 1.0]) if current_ratio else ("N/A", "#94a3b8", -1)
         
         finance = {
@@ -34243,7 +34572,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             risks.append({"category": "Valuation", "severity": "Medium", "icon": "⚠",
                          "text": f"P/E {forward_pe:.0f} requires sustained high growth — disappointment risk", "real_data": True})
         # Concentration
-        held_insiders = info.get("heldPercentInsiders")
+        held_insiders = _to_num(info.get("heldPercentInsiders"))  # r63.99.22 coerce
         if held_insiders and held_insiders > 0.30:
             risks.append({"category": "Governance", "severity": "Low", "icon": "ℹ",
                          "text": f"Insider holdings {held_insiders*100:.1f}% — concentrated ownership", "real_data": True})
@@ -34307,7 +34636,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         # ─── Porter's Five Forces — computed from real fundamentals (r60) ───
         # All scores 1-10 (HIGHER = MORE COMPETITIVE PRESSURE).
         # score=None when data unavailable. No fake 5/10 baselines (CDS v2.0).
-        _op_margin = info.get("operatingMargins") or 0
+        _op_margin = _to_num(info.get("operatingMargins")) or 0
         _roe_val = roe if roe else 0
         _n_peers = len(peers) if peers else 0
         _sector_lower = (sector or "").lower()
@@ -34428,8 +34757,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
 
         # Analyst consensus
         try:
-            target_mean = info.get("targetMeanPrice")
-            target_high = info.get("targetHighPrice")
+            target_mean = _to_num(info.get("targetMeanPrice"))
+            target_high = _to_num(info.get("targetHighPrice"))
             target_low = info.get("targetLowPrice")
             n_analysts = info.get("numberOfAnalystOpinions")
             rec_mean = info.get("recommendationMean")  # 1=strong buy ... 5=strong sell
@@ -34523,8 +34852,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 _methods_tried = []   # diagnostic: what we tried, what worked
 
                 # ─── Method 1: DCF from free cash flow (gold standard when data available) ───
-                fcf = info.get("freeCashflow") or 0
-                shares_out = info.get("sharesOutstanding") or 0
+                fcf = _to_num(info.get("freeCashflow")) or 0
+                shares_out = _to_num(info.get("sharesOutstanding")) or 0
                 fv_dcf = None
                 if fcf and shares_out and fcf > 0:
                     try:

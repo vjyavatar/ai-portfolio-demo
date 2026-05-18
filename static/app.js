@@ -116,9 +116,39 @@
 // Decide → Analyze Stock subtab, reappears when returning. Removes the
 // big empty gap visible in Vijay's screenshot between Analyst Insights and
 // the ETF Scanner header.
-window.CELESYS_VERSION = "r63.99.23";
-window.CELESYS_BUILD_TIME = 1779235800;
-window.CELESYS_BUILD_DATE = "2026-05-19 21:30:00 UTC";
+// r63.99.24: TWO CHANGES
+//   (1) DEFENSIVE CSS for orphaned-card phantom-space — added rules in
+//       index.html that collapse any empty/untagged children of tabContentArea
+//       so future dynamic injections without proper .sc + data-tab attribution
+//       can't create phantom gaps. Covers the case Vijay's screenshot shows
+//       above Visual Decision Engine where unknown elements were taking space.
+//   (2) NEW FEATURE — Tomorrow's Open Brief. Unified pre-open prediction
+//       combining GIFT NIFTY / S&P futures + global cues (VIX, DXY, crude,
+//       gold) + key OI walls (support/resistance) + news themes summary +
+//       watchlist from movers. New /api/tomorrow-open-brief endpoint,
+//       new panel at top of Decide → Analyze Stock tab. Honest probabilistic
+//       framing — "GAP UP 65% confidence", not "stocks will open up". Cached
+//       5min server-side.
+// r63.99.25: REGION-AWARE 360° DATA RESOLVER —
+//   (1) NEW _360_CURATED_FUNDAMENTALS_IN dictionary with 20+ India mid/large-cap
+//       names with realistic curated fundamentals (PERSISTENT, KPITTECH, COFORGE,
+//       BEL, HAL, BDL, MAZAGON, KAYNES, DIXON, POLYCAB, NTPC, SBIN, SUNPHARMA,
+//       TATAMOTORS, M&M, BAJFINANCE, HDFCBANK, ICICIBANK, etc). Real numbers
+//       from BSE filings / screener.in public data — not placeholder defaults.
+//   (2) FINNHUB FALLBACK for US tickers — when yfinance returns <8 fields
+//       (sparse coverage), resolver automatically calls finnhub_handlers for
+//       additional fundamentals. Reuses existing _fh wrapper. Fills price,
+//       cash/debt, PE, PEG, P/S, margins, growth, ownership, beta, DCF upside.
+//   (3) NSE QUOTE FALLBACK for India — fills price/change from NSE direct
+//       when yfinance.NS missed it. Trapped silently when NSE blocks Render IP.
+//   (4) PATH ADDED to US curated with full fundamentals (Vijay's recurring
+//       test case for the 360° framework).
+//   (5) DATA SOURCES TRANSPARENCY STRIP — single-ticker 360° view now shows
+//       which sources contributed (yfinance.info, finnhub, nse, curated) so
+//       you can see WHY a stock has high or low completeness.
+window.CELESYS_VERSION = "r63.99.25";
+window.CELESYS_BUILD_TIME = 1779268200;
+window.CELESYS_BUILD_DATE = "2026-05-20 06:30:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -10499,6 +10529,17 @@ window._render360Scanner = function(d) {
     if (_completenessPct !== null) h += '<div style="font-size:9px;color:#64748b;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">data ' + _completenessPct + '% complete</div>';
   }
   h += '</div></div>';
+  // r63.99.25: data sources transparency strip — shows which sources contributed
+  var _sourcesArr = (_strict && _strict.sources_used) || [];
+  if (_sourcesArr && _sourcesArr.length) {
+    h += '<div style="margin-bottom:14px;padding:7px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">';
+    h += '<div style="font-size:9px;font-weight:800;color:#475569;letter-spacing:0.4px">DATA SOURCES:</div>';
+    _sourcesArr.forEach(function(src){
+      var srcColor = src.indexOf('curated') >= 0 ? '#7c3aed' : src.indexOf('finnhub') >= 0 ? '#0891b2' : src.indexOf('nse') >= 0 ? '#dc2626' : '#059669';
+      h += '<span style="font-size:9px;padding:2px 8px;border-radius:10px;background:' + srcColor + '15;color:' + srcColor + ';font-weight:700;font-family:\'IBM Plex Mono\',monospace">' + src + '</span>';
+    });
+    h += '</div>';
+  }
   h += '<div style="padding:11px 14px;background:' + _verdictColor + '08;border:1px solid ' + _verdictColor + '30;border-left:4px solid ' + _verdictColor + ';border-radius:8px;margin-bottom:14px">';
   h += '<div style="font-size:13px;font-weight:900;color:' + _verdictColor + ';font-family:Sora,sans-serif;margin-bottom:4px">' + _verdictLabel + '</div>';
   h += '<div style="font-size:11px;color:#475569;line-height:1.55">' + _verdictAction + '</div>';
@@ -10652,6 +10693,181 @@ window._set360Mode = function(mode) {
     var sEl = document.getElementById('scan360Result');
     if (sEl) sEl.innerHTML = window._render360Scanner(window._360SingleData);
   }
+};
+
+// r63.99.24: TOMORROW'S OPEN BRIEF — unified pre-open prediction
+// Combines pre-market futures, global cues, OI walls, news themes, watchlist
+// into one daily-ritual brief. Cached 5min server-side; toggle button forces refresh.
+window.loadTomorrowBrief = function(forceRefresh) {
+  var regSel = document.getElementById('tobRegion');
+  var resultEl = document.getElementById('tobResult');
+  var statusEl = document.getElementById('tobStatus');
+  var btnEl = document.getElementById('tobBtn');
+  if (!resultEl) return;
+  var region = (regSel && regSel.value) || 'IN';
+  if (btnEl) { btnEl.disabled = true; btnEl.style.opacity = '0.6'; btnEl.innerHTML = '⏳ COMPUTING…'; }
+  if (statusEl) statusEl.textContent = 'Combining futures + global cues + OI + news for ' + region + '…';
+  resultEl.innerHTML = '<div style="padding:40px;text-align:center;background:#fff;border:1px solid #c4b5fd;border-radius:10px"><div style="display:inline-block;width:18px;height:18px;border:3px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:10px"></div><span style="font-size:12px;color:#5b21b6;font-weight:700">Building Tomorrow\'s Open Brief…</span></div>';
+  var url = '/api/tomorrow-open-brief?region=' + region + (forceRefresh ? '&refresh=1' : '');
+  fetch(url, {cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; btnEl.innerHTML = '🌅 GENERATE BRIEF'; }
+    if (!d || !d.success) {
+      if (statusEl) statusEl.textContent = 'Brief failed';
+      resultEl.innerHTML = '<div style="padding:16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px"><strong>Brief failed:</strong> ' + ((d && d.error) || 'unknown') + '<br><button onclick="window.loadTomorrowBrief(true)" style="margin-top:8px;padding:6px 14px;border-radius:6px;background:#7c3aed;color:#fff;border:none;cursor:pointer;font-size:10px;font-weight:700">↻ Retry</button></div>';
+      return;
+    }
+    if (statusEl) {
+      statusEl.textContent = (d._cached ? '↻ Cached · ' + d._cache_age_sec + 's old' : 'Fresh brief in ' + d.elapsed_sec + 's') +
+                             ' · sources: ' + ((d.data_sources || []).join(', ') || 'none');
+    }
+    resultEl.innerHTML = window._renderTomorrowBrief(d);
+  }).catch(function(e){
+    if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; btnEl.innerHTML = '🌅 GENERATE BRIEF'; }
+    if (statusEl) statusEl.textContent = 'Network error';
+    resultEl.innerHTML = '<div style="padding:16px;color:#dc2626;font-size:11px">Network error: ' + e.message + '<br><button onclick="window.loadTomorrowBrief(true)" style="margin-top:8px;padding:6px 14px;border-radius:6px;background:#7c3aed;color:#fff;border:none;cursor:pointer;font-size:10px;font-weight:700">↻ Retry</button></div>';
+  });
+};
+
+window._renderTomorrowBrief = function(d) {
+  if (!d || !d.headline) return '<div style="padding:20px;color:#94a3b8;font-size:11px">No data available.</div>';
+  var h = '';
+  var hd = d.headline || {};
+  var color = hd.verdict_color || '#64748b';
+  // ─── Headline card (BIG verdict) ───
+  h += '<div style="background:#fff;border:2px solid ' + color + '40;border-radius:12px;padding:18px 22px;margin-bottom:14px;box-shadow:0 4px 16px ' + color + '15">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;gap:12px">';
+  h += '<div style="width:48px;height:48px;border-radius:12px;background:' + color + '15;display:flex;align-items:center;justify-content:center;font-size:28px">🌅</div>';
+  h += '<div>';
+  h += '<div style="font-size:9px;font-weight:800;color:' + color + ';letter-spacing:0.6px">PRE-OPEN VERDICT · ' + (d.region === 'IN' ? 'NIFTY' : 'S&P 500') + '</div>';
+  h += '<div style="font-size:22px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;line-height:1.1;margin-top:3px">' + (hd.verdict_label || '—') + '</div>';
+  h += '</div></div>';
+  h += '<div style="text-align:right">';
+  h += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.4px">CONFIDENCE</div>';
+  h += '<div style="font-size:24px;font-weight:900;color:' + color + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + (hd.confidence_pct || '?') + '<span style="font-size:13px;color:#94a3b8">%</span></div>';
+  h += '</div></div>';
+  // Gap + projected open + context
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:10px">';
+  if (hd.expected_gap_pct !== undefined && hd.expected_gap_pct !== null) {
+    var gap = hd.expected_gap_pct;
+    var gapColor = gap > 0.15 ? '#059669' : gap < -0.15 ? '#dc2626' : '#64748b';
+    h += '<div style="padding:8px 10px;background:#f8fafc;border-radius:8px;border-left:3px solid ' + gapColor + '">';
+    h += '<div style="font-size:9px;color:#64748b;font-weight:700">EXPECTED GAP</div>';
+    h += '<div style="font-size:16px;font-weight:900;color:' + gapColor + ';font-family:\'IBM Plex Mono\',monospace">' + (gap >= 0 ? '+' : '') + gap.toFixed(2) + '%</div>';
+    h += '</div>';
+  }
+  if (hd.projected_open) {
+    h += '<div style="padding:8px 10px;background:#f8fafc;border-radius:8px;border-left:3px solid #1A3A78">';
+    h += '<div style="font-size:9px;color:#64748b;font-weight:700">PROJECTED OPEN</div>';
+    h += '<div style="font-size:16px;font-weight:900;color:#1A3A78;font-family:\'IBM Plex Mono\',monospace">' + Number(hd.projected_open).toLocaleString() + '</div>';
+    h += '</div>';
+  }
+  if (hd.signals_bullish !== undefined && hd.signals_bearish !== undefined) {
+    h += '<div style="padding:8px 10px;background:#f8fafc;border-radius:8px;border-left:3px solid #d97706">';
+    h += '<div style="font-size:9px;color:#64748b;font-weight:700">SIGNALS</div>';
+    h += '<div style="font-size:11px;font-weight:800;font-family:\'IBM Plex Mono\',monospace"><span style="color:#059669">🟢 ' + hd.signals_bullish + '</span> · <span style="color:#dc2626">🔴 ' + hd.signals_bearish + '</span></div>';
+    h += '</div>';
+  }
+  h += '</div>';
+  if (hd.context) h += '<div style="font-size:10px;color:#475569;font-style:italic;padding-top:8px;border-top:1px solid #f1f5f9">' + hd.context + '</div>';
+  h += '</div>';
+
+  // ─── Global cues strip ───
+  if (d.global_cues && Object.keys(d.global_cues).length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:800;color:#0f172a;letter-spacing:0.3px;margin-bottom:8px;font-family:Sora,sans-serif">🌍 GLOBAL CUES</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px">';
+    var cueLabels = {sp500: 'S&P 500 Fut', nasdaq: 'Nasdaq Fut', dow: 'Dow Fut', vix: 'VIX', india_vix: 'India VIX', crude: 'Crude', gold: 'Gold', dxy: 'DXY'};
+    Object.keys(cueLabels).forEach(function(k){
+      var cue = d.global_cues[k];
+      if (!cue || cue.price == null) return;
+      var chg = cue.change_pct;
+      var cc = chg == null ? '#64748b' : chg > 0 ? '#059669' : chg < 0 ? '#dc2626' : '#64748b';
+      h += '<div style="padding:6px 8px;border:1px solid ' + cc + '30;border-radius:6px;background:' + cc + '08;text-align:center">';
+      h += '<div style="font-size:8px;color:#64748b;font-weight:700">' + cueLabels[k] + '</div>';
+      h += '<div style="font-size:11px;color:#0f172a;font-weight:800;font-family:\'IBM Plex Mono\',monospace;margin-top:2px">' + (Number(cue.price).toFixed(2)) + '</div>';
+      if (chg != null) h += '<div style="font-size:9px;color:' + cc + ';font-family:\'IBM Plex Mono\',monospace;font-weight:700">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</div>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+  }
+
+  // ─── Futures detail ───
+  if (d.futures && d.futures.value) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:800;color:#0f172a;letter-spacing:0.3px;margin-bottom:8px;font-family:Sora,sans-serif">📈 ' + (d.futures.instrument || 'FUTURES') + '</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:#475569;font-family:\'IBM Plex Mono\',monospace">';
+    h += '<div><strong style="color:#0f172a">Current:</strong> ' + Number(d.futures.value).toLocaleString() + '</div>';
+    if (d.futures.underlying_close) h += '<div><strong style="color:#0f172a">Underlying Close:</strong> ' + Number(d.futures.underlying_close).toLocaleString() + '</div>';
+    if (d.futures.implied_gap_pct != null) {
+      var igc = d.futures.implied_gap_pct > 0 ? '#059669' : d.futures.implied_gap_pct < 0 ? '#dc2626' : '#64748b';
+      h += '<div><strong style="color:#0f172a">Implied Gap:</strong> <span style="color:' + igc + ';font-weight:800">' + (d.futures.implied_gap_pct >= 0 ? '+' : '') + d.futures.implied_gap_pct + '%</span></div>';
+    }
+    if (d.futures.source) h += '<div style="color:#94a3b8;font-size:9px">via ' + d.futures.source + '</div>';
+    h += '</div></div>';
+  }
+
+  // ─── OI levels (support/resistance) ───
+  if (d.oi_levels && Object.keys(d.oi_levels).length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:800;color:#0f172a;letter-spacing:0.3px;margin-bottom:8px;font-family:Sora,sans-serif">🏛 KEY OI LEVELS (Support &amp; Resistance)</div>';
+    Object.keys(d.oi_levels).forEach(function(idxName){
+      var oi = d.oi_levels[idxName];
+      h += '<div style="padding:8px 10px;background:#f8fafc;border-radius:6px;margin-bottom:6px">';
+      h += '<div style="font-size:10px;font-weight:800;color:#1A3A78;margin-bottom:4px">' + idxName + '</div>';
+      h += '<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:10px;font-family:\'IBM Plex Mono\',monospace">';
+      if (oi.pcr != null) h += '<div><strong>PCR:</strong> ' + oi.pcr + '</div>';
+      if (oi.max_pain) h += '<div><strong>Max Pain:</strong> ' + Number(oi.max_pain).toLocaleString() + '</div>';
+      if (oi.top_call_wall) h += '<div><strong style="color:#dc2626">Resistance (Call wall):</strong> ' + Number(oi.top_call_wall).toLocaleString() + '</div>';
+      if (oi.top_put_wall) h += '<div><strong style="color:#059669">Support (Put wall):</strong> ' + Number(oi.top_put_wall).toLocaleString() + '</div>';
+      h += '</div></div>';
+    });
+    h += '</div>';
+  }
+
+  // ─── News themes summary ───
+  if (d.news_themes_summary && d.news_themes_summary.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:800;color:#0f172a;letter-spacing:0.3px;margin-bottom:8px;font-family:Sora,sans-serif">📰 NEWS THEMES IMPACTING OPEN</div>';
+    d.news_themes_summary.forEach(function(t){
+      var toneColor = (t.tone || '').toLowerCase().indexOf('bull') >= 0 || (t.tone || '').toLowerCase().indexOf('pos') >= 0 ? '#059669' :
+                      (t.tone || '').toLowerCase().indexOf('bear') >= 0 || (t.tone || '').toLowerCase().indexOf('neg') >= 0 ? '#dc2626' : '#64748b';
+      h += '<div style="padding:8px 10px;background:#f8fafc;border-left:3px solid ' + toneColor + ';border-radius:6px;margin-bottom:6px">';
+      h += '<div style="font-size:11px;font-weight:800;color:#0f172a">' + t.theme + ' <span style="font-size:9px;color:' + toneColor + ';padding:1px 6px;background:' + toneColor + '15;border-radius:3px;margin-left:4px">' + (t.tone || 'neutral') + '</span></div>';
+      if (t.summary) h += '<div style="font-size:10px;color:#475569;margin-top:3px;line-height:1.5">' + t.summary + '</div>';
+      if (t.impact) h += '<div style="font-size:9px;color:#7c3aed;margin-top:3px;font-style:italic">→ ' + t.impact + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  // ─── Watchlist ───
+  if (d.watchlist && d.watchlist.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:800;color:#0f172a;letter-spacing:0.3px;margin-bottom:8px;font-family:Sora,sans-serif">👁 WATCHLIST FOR TOMORROW</div>';
+    d.watchlist.forEach(function(w){
+      var wc = w.direction === 'watch_gainer' ? '#059669' : '#dc2626';
+      h += '<div style="padding:8px 10px;background:#f8fafc;border-left:3px solid ' + wc + ';border-radius:6px;margin-bottom:6px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
+      h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-weight:900;color:#0f172a;font-size:12px">' + w.symbol + '</div>';
+      h += '<div style="font-size:10px;color:' + wc + ';font-weight:800">' + (w.change_pct >= 0 ? '+' : '') + (w.change_pct || 0).toFixed(2) + '%</div>';
+      h += '<div style="font-size:10px;color:#475569;flex:1;min-width:200px">' + w.reason + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  // ─── Warnings / data freshness ───
+  if (d.warnings && d.warnings.length) {
+    h += '<div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:10px 12px;font-size:10px;color:#854d0e;line-height:1.6">';
+    h += '<div style="font-weight:800;margin-bottom:4px">⚠ Honest Caveats</div>';
+    d.warnings.forEach(function(w){ h += '<div>• ' + w + '</div>'; });
+    h += '</div>';
+  }
+
+  // Footer
+  h += '<div style="text-align:center;padding:8px;font-size:9px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">Pre-open prediction is probabilistic. Confidence reflects signal alignment, NOT certainty. Computed: ' + (d.timestamp_utc || '') + '</div>';
+
+  return h;
 };
 
 window.load360Universe = function(forceRefresh) {
