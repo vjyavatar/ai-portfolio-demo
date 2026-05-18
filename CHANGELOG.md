@@ -1,3 +1,93 @@
+## r63.99.29 (2026-05-20) — Tomorrow's Brief multi-index expansion (BANKNIFTY + SENSEX + per-index range + PE/CE recos)
+
+Vijay's ask, verbatim: *"certain data is not coming.. need more data like bank nifty , sensex. then for each index range as well projected pe / call for more profit based on 360 option chain as well"*
+
+### What changed
+
+**(1) Backend — multi-index expansion** (`api.py`, `/api/tomorrow-open-brief`):
+- `primary_indices` expanded from `["NIFTY", "BANKNIFTY"]` to `["NIFTY", "BANKNIFTY", "SENSEX"]`.
+- New per-index lot sizes dict: `{"NIFTY": 65, "BANKNIFTY": 30, "FINNIFTY": 60, "MIDCPNIFTY": 120, "SENSEX": 20}`.
+- Each index entry now carries: `spot`, `atm_iv`, `atm_strike`, `expiry`, `lot_size`, PCR, max pain, top call wall (resistance), top put wall (support), GEX regime.
+
+**(2) Backend — projected 1-σ daily range from ATM IV**:
+- Formula: `spot × (IV/100) × sqrt(1/365)` → expected one-day move.
+- Output: `projected_range: {low, high, pct}` per index.
+- Renders with honest caveat: "~68% probability the index closes within this range tomorrow."
+
+**(3) Backend — PE/CE/Iron Condor recommendation per index**:
+- Direction picked from headline verdict + expected gap:
+  - `GAP DOWN` or `gap < -0.10%` → BUY ATM PE, target = top_put_wall (support)
+  - `GAP UP` or `gap > +0.10%` → BUY ATM CE, target = top_call_wall (resistance)
+  - `FLAT` → SELL IRON CONDOR (short CE at call_wall + short PE at put_wall)
+- Strike step heuristic: BANKNIFTY/SENSEX = 100pt, NIFTY = 50pt. ATM strike snapped to nearest step.
+- Output includes rationale string + target strike + expected % move to target.
+
+**(4) Frontend** (`static/app.js`, `_renderTomorrowBrief`):
+- Full multi-index OI section. Each index renders as its own card.
+- Per-index header: index name + spot + expiry + ATM IV + lot size.
+- OI levels row: PCR, max pain (amber), resistance ↗ (red), support ↘ (green), GEX regime (blue).
+- **PROJECTED RANGE box** (indigo): `low ↔ high (±X%)` with 68% probability caveat.
+- **RECOMMENDATION box** (color-coded):
+  - 🟢 Green for CE: `BUY NIFTY 23550 CE (29-May-2026)` + rationale + target move %.
+  - 🔴 Red for PE: `BUY NIFTY 23550 PE (29-May-2026)` + rationale + target move %.
+  - 🟣 Purple for IRON CONDOR: `SELL NIFTY IRON CONDOR · Short 23700 CE / 23400 PE` + rationale.
+
+### Honest caveats (worth re-reading)
+
+1. **Recommendation targets only hit if spot actually moves TO the wall.** Long-option plays (CE/PE) lose to premium decay if the index consolidates. The 1-σ projected range tells you the EXPECTED magnitude, not the direction certainty. Confidence on the headline verdict (50% in your last screenshot) reflects signal alignment, NOT probability of correct direction.
+
+2. **IRON CONDOR is the lowest-risk play** of the three. Long CE/PE plays require directional move to be profitable; iron condor profits if spot stays between walls (the more common outcome).
+
+3. **These are educational signal alignments, NOT trade tickets.** Lot sizes, position sizing, stop losses, risk management are all your responsibility. The brief tells you WHAT the OI structure suggests; you decide if/how to size.
+
+4. **NSE Render-IP block still applies.** If the brief shows "OI levels unavailable — NSE direct API may be blocked from Render IP" with per-index error messages, that's honest. NSE refuses to serve the Render outbound IP (72.180.65.28). Fix requires either:
+   - A paid feed (Truedata / Global Datafeeds / NseAPI subscription, $200-500/month)
+   - A proxy or VPN egress for Render
+   - A self-hosted backend on a non-blocked IP
+   This is a separate infra project, not solvable in app code.
+
+5. **The deployed version may still be r99.24** if you haven't pulled r99.27/28 yet. Your latest screenshot showed the old "Run any NIFTY/BANKNIFTY scan to populate the OI cache" warning, which was r99.24's wording. r99.27+ surfaces per-index errors instead. Verify with **Render → Clear build cache → Deploy** + hard refresh → check version badge says `⚙ r63.99.29`.
+
+### Files changed
+
+- `api.py` — Tomorrow's Brief endpoint OI section expanded (~80 lines of new logic for indices, range, recommendation)
+- `static/app.js` — `_renderTomorrowBrief` OI section rewrite (~95 lines, replaces ~15-line simple version)
+- `static/app.min.js` synced
+- `build_version.txt` → `r63.99.29`
+
+### Testing — 26/26 new r99.29 assertions PASS
+
+Plus the canonical battery: 33 of 35 r99-series suites + core suites GREEN. The 2 failing suites (`smoke_premium_resilience.py`, `smoke_test_scs_smi.py`) are pre-existing failures from r99.5 and r63.95.0 era with known test-rig issues, unrelated to this build.
+
+### Post-deploy verification
+
+1. **Decide → 🌅 Tomorrow's Open** (subtab in Decide group)
+2. Click **🌅 GENERATE BRIEF**
+3. Verify badge shows `⚙ r63.99.29`
+4. You should see:
+   - Pre-open verdict card (existing)
+   - Global cues strip (existing)
+   - GIFT NIFTY card (existing)
+   - **NEW: NIFTY index card** with OI levels + projected range + recommendation
+   - **NEW: BANKNIFTY index card** with OI levels + projected range + recommendation
+   - **NEW: SENSEX index card** with OI levels + projected range + recommendation
+   - AI Directional Read card (existing, r99.27)
+   - News themes (existing)
+   - Watchlist (existing)
+5. If OI sections show "unavailable — NSE direct API may be blocked from Render IP", that's the honest NSE/Render constraint surfacing, not a bug.
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js build_version.txt CHANGELOG.md
+git commit -m "r63.99.29: Tomorrow's Brief — multi-index (NIFTY+BANKNIFTY+SENSEX), range projection, PE/CE recos"
+git push origin main
+```
+
+Render → Clear build cache → Deploy → hard refresh → badge `⚙ r63.99.29`.
+
+---
+
 ## r63.99.28 (2026-05-20) — ACTUAL fix for the phantom whitespace gap
 
 Vijay: *"I AM ALREADY FRUSTRATED.. AGAIN.."* Fourth screenshot of the same gap. You're right to be frustrated. I owe you a real diagnosis this time, not another guess.

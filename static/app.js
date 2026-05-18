@@ -185,9 +185,32 @@
 //   elements were taking space. The actual cause was a parent min-height rule.
 //   FIX: removed style="min-height:60vh" from #tabContentArea. Container now
 //   sizes to its content. Three rounds of misdiagnosis on my part; sorry.
-window.CELESYS_VERSION = "r63.99.28";
-window.CELESYS_BUILD_TIME = 1779285900;
-window.CELESYS_BUILD_DATE = "2026-05-20 11:25:00 UTC";
+// r63.99.29: TOMORROW'S BRIEF MULTI-INDEX EXPANSION (Vijay's ask).
+//   Previous brief showed only NIFTY. Vijay asked for BANKNIFTY + SENSEX too,
+//   with per-index range projection and PE/CE/IronCondor recommendation.
+//   CHANGES:
+//   (1) Backend: primary_indices expanded to [NIFTY, BANKNIFTY, SENSEX].
+//       Per-index lot sizes added. Projected 1-sigma daily range from ATM IV:
+//       spot × IV × sqrt(1/365). PE/CE recommendation per index:
+//         - GAP DOWN / gap < -0.10% → BUY ATM PE, target = top_put_wall
+//         - GAP UP   / gap > +0.10% → BUY ATM CE, target = top_call_wall
+//         - FLAT     → SELL IRON CONDOR (short CE @ call_wall + short PE @ put_wall)
+//       Strike step heuristic: BANKNIFTY/SENSEX = 100pt, NIFTY = 50pt.
+//   (2) Frontend: _renderTomorrowBrief expanded with full multi-index OI section.
+//       Per-index card with spot/expiry/ATM IV/lot, OI levels (PCR/maxpain/walls/
+//       GEX regime), PROJECTED RANGE box (indigo, with 68% probability caveat),
+//       RECOMMENDATION box (color-coded: green CE, red PE, purple IRON CONDOR)
+//       with rationale + target % move.
+//   HONEST CAVEAT: recommendation targets only hit if spot actually moves TO
+//   the wall. If spot consolidates, premium decay hurts the long-option recos.
+//   IRON CONDOR is the lowest-risk play; long PE/CE plays require directional
+//   move to be profitable. Recos are educational signal alignment, NOT trade
+//   tickets. User must size + risk-manage independently.
+//   NSE constraint: Render IP still blocked. Brief now surfaces honest per-index
+//   errors when NSE returns no chain. Fix needs paid feed/proxy (separate project).
+window.CELESYS_VERSION = "r63.99.29";
+window.CELESYS_BUILD_TIME = 1779290400;
+window.CELESYS_BUILD_DATE = "2026-05-20 12:40:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -10851,20 +10874,75 @@ window._renderTomorrowBrief = function(d) {
     h += '</div></div>';
   }
 
-  // ─── OI levels (support/resistance) ───
+  // ─── OI levels (support/resistance + projected range + PE/CE recommendation) ───
+  // r63.99.29: expanded per-index — NIFTY + BANKNIFTY + SENSEX, each with
+  // projected range and option recommendation derived from gap signal + walls.
   if (d.oi_levels && Object.keys(d.oi_levels).length) {
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">';
-    h += '<div style="font-size:11px;font-weight:800;color:#0f172a;letter-spacing:0.3px;margin-bottom:8px;font-family:Sora,sans-serif">🏛 KEY OI LEVELS (Support &amp; Resistance)</div>';
+    h += '<div style="font-size:11px;font-weight:800;color:#0f172a;letter-spacing:0.3px;margin-bottom:10px;font-family:Sora,sans-serif">🏛 INDEX OI LEVELS · PROJECTED RANGE · OPTION RECOMMENDATION</div>';
     Object.keys(d.oi_levels).forEach(function(idxName){
       var oi = d.oi_levels[idxName];
-      h += '<div style="padding:8px 10px;background:#f8fafc;border-radius:6px;margin-bottom:6px">';
-      h += '<div style="font-size:10px;font-weight:800;color:#1A3A78;margin-bottom:4px">' + idxName + '</div>';
-      h += '<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:10px;font-family:\'IBM Plex Mono\',monospace">';
-      if (oi.pcr != null) h += '<div><strong>PCR:</strong> ' + oi.pcr + '</div>';
-      if (oi.max_pain) h += '<div><strong>Max Pain:</strong> ' + Number(oi.max_pain).toLocaleString() + '</div>';
-      if (oi.top_call_wall) h += '<div><strong style="color:#dc2626">Resistance (Call wall):</strong> ' + Number(oi.top_call_wall).toLocaleString() + '</div>';
-      if (oi.top_put_wall) h += '<div><strong style="color:#059669">Support (Put wall):</strong> ' + Number(oi.top_put_wall).toLocaleString() + '</div>';
-      h += '</div></div>';
+      h += '<div style="padding:12px 14px;background:linear-gradient(180deg,#f8fafc,#fff);border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px">';
+      // Index name + spot + expiry banner
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #f1f5f9">';
+      h += '<div style="font-size:13px;font-weight:900;color:#1A3A78;font-family:Sora,sans-serif">' + idxName + '</div>';
+      var rightBits = [];
+      if (oi.spot) rightBits.push('<strong style="color:#0f172a">Spot:</strong> ' + Number(oi.spot).toLocaleString());
+      if (oi.expiry) rightBits.push('<strong style="color:#0f172a">Expiry:</strong> ' + oi.expiry);
+      if (oi.atm_iv) rightBits.push('<strong style="color:#0f172a">ATM IV:</strong> ' + oi.atm_iv + '%');
+      if (oi.lot_size) rightBits.push('<strong style="color:#0f172a">Lot:</strong> ' + oi.lot_size);
+      h += '<div style="font-size:10px;color:#475569;font-family:\'IBM Plex Mono\',monospace">' + rightBits.join(' &middot; ') + '</div>';
+      h += '</div>';
+
+      // OI levels row
+      h += '<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:10px;font-family:\'IBM Plex Mono\',monospace;margin-bottom:8px">';
+      if (oi.pcr != null) h += '<div style="padding:4px 8px;background:#f8fafc;border-radius:4px"><strong>PCR:</strong> ' + oi.pcr + '</div>';
+      if (oi.max_pain) h += '<div style="padding:4px 8px;background:#fef3c7;border-radius:4px"><strong style="color:#92400e">Max Pain:</strong> ' + Number(oi.max_pain).toLocaleString() + '</div>';
+      if (oi.top_call_wall) h += '<div style="padding:4px 8px;background:#fef2f2;border-radius:4px;border:1px solid #fca5a5"><strong style="color:#dc2626">Resistance ↗:</strong> ' + Number(oi.top_call_wall).toLocaleString() + '</div>';
+      if (oi.top_put_wall) h += '<div style="padding:4px 8px;background:#f0fdf4;border-radius:4px;border:1px solid #86efac"><strong style="color:#059669">Support ↘:</strong> ' + Number(oi.top_put_wall).toLocaleString() + '</div>';
+      if (oi.gex_regime) h += '<div style="padding:4px 8px;background:#eff6ff;border-radius:4px"><strong style="color:#1e40af">GEX:</strong> ' + oi.gex_regime + '</div>';
+      h += '</div>';
+
+      // Projected range
+      if (oi.projected_range && oi.projected_range.low != null && oi.projected_range.high != null) {
+        var pr = oi.projected_range;
+        h += '<div style="padding:8px 12px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:6px;margin-bottom:8px">';
+        h += '<div style="font-size:9px;font-weight:800;color:#4338ca;letter-spacing:0.4px;margin-bottom:4px">📐 PROJECTED 1-SIGMA RANGE (from ATM IV)</div>';
+        h += '<div style="font-size:12px;color:#1e1b4b;font-family:\'IBM Plex Mono\',monospace;font-weight:700">';
+        h += Number(pr.low).toLocaleString() + ' &harr; ' + Number(pr.high).toLocaleString();
+        h += ' <span style="color:#6366f1;font-size:10px">(&plusmn;' + pr.pct + '%)</span>';
+        h += '</div>';
+        h += '<div style="font-size:9px;color:#64748b;margin-top:2px;font-style:italic">~68% probability the index closes within this range tomorrow</div>';
+        h += '</div>';
+      }
+
+      // Option recommendation
+      if (oi.recommendation) {
+        var rec = oi.recommendation;
+        var rcColor = rec.instrument === 'CE' ? '#059669' : rec.instrument === 'PE' ? '#dc2626' : '#7c3aed';
+        var rcEmoji = rec.instrument === 'CE' ? '📈' : rec.instrument === 'PE' ? '📉' : '🔄';
+        h += '<div style="padding:10px 12px;background:' + rcColor + '08;border:1px solid ' + rcColor + '40;border-left:4px solid ' + rcColor + ';border-radius:6px">';
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:4px">';
+        h += '<div style="font-size:11px;font-weight:900;color:' + rcColor + ';letter-spacing:0.3px;font-family:Sora,sans-serif">' + rcEmoji + ' RECOMMENDATION</div>';
+        if (rec.expected_pct_move_to_target != null) {
+          h += '<div style="font-size:10px;color:' + rcColor + ';font-weight:700;font-family:\'IBM Plex Mono\',monospace">target move: ' + (rec.expected_pct_move_to_target > 0 ? '+' : '') + rec.expected_pct_move_to_target + '%</div>';
+        }
+        h += '</div>';
+        if (rec.instrument === 'IRON CONDOR') {
+          h += '<div style="font-size:13px;font-weight:900;color:#0f172a;font-family:\'IBM Plex Mono\',monospace;margin-bottom:4px">';
+          h += rec.action + ' ' + idxName + ' IRON CONDOR · Short ' + Number(rec.strikes_short_call).toLocaleString() + ' CE / ' + Number(rec.strikes_short_put).toLocaleString() + ' PE';
+          h += '</div>';
+        } else {
+          h += '<div style="font-size:13px;font-weight:900;color:#0f172a;font-family:\'IBM Plex Mono\',monospace;margin-bottom:4px">';
+          h += rec.action + ' ' + idxName + ' ' + Number(rec.strike).toLocaleString() + ' ' + rec.instrument;
+          if (rec.expiry) h += ' <span style="font-size:10px;color:#64748b;font-weight:500">(' + rec.expiry + ')</span>';
+          h += '</div>';
+        }
+        if (rec.rationale) h += '<div style="font-size:10px;color:#475569;line-height:1.55">' + rec.rationale + '</div>';
+        h += '</div>';
+      }
+
+      h += '</div>';  // end index block
     });
     h += '</div>';
   }

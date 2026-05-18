@@ -11101,6 +11101,166 @@ async def us_premarket():
 _tomorrow_brief_cache = {}  # {region: {"data": dict, "ts": float}}
 _TOMORROW_BRIEF_TTL = 300   # 5min cache
 
+# r63.99.27: AI news-impact cache — keyed by region. 4h TTL since news doesn't
+# change minute-to-minute and Anthropic calls are expensive (~$0.005 per call).
+_ai_news_impact_cache = {}  # {region: {"data": dict, "ts": float}}
+_AI_NEWS_IMPACT_TTL = 14400  # 4h
+
+def _compute_ai_news_impact(region: str, global_cues: dict, news_themes: list, refresh: bool = False) -> dict:
+    """Call Anthropic API to interpret cached news + global signals into a
+    directional impact paragraph for tomorrow's open. Cached 4h per region.
+
+    Returns dict with keys: paragraph, sectors_to_watch, risk_events, generated_at,
+    model_used, or None if API unavailable / insufficient input.
+    """
+    import time as _time
+    region = (region or "IN").upper()
+    if region not in ("IN", "US"): region = "IN"
+
+    # Cache check
+    if not refresh and region in _ai_news_impact_cache:
+        cached = _ai_news_impact_cache[region]
+        if (_time.time() - cached["ts"]) < _AI_NEWS_IMPACT_TTL:
+            out_cached = dict(cached["data"])
+            out_cached["_cached"] = True
+            out_cached["_cache_age_min"] = int((_time.time() - cached["ts"]) / 60)
+            return out_cached
+
+    if not ANTHROPIC_API_KEY:
+        return {"paragraph": "AI news-impact requires ANTHROPIC_API_KEY environment variable. Not currently configured.",
+                "sectors_to_watch": [], "risk_events": [], "_unavailable": True}
+
+    # Build prompt from available signals
+    cue_lines = []
+    for k, v in (global_cues or {}).items():
+        if not isinstance(v, dict): continue
+        chg = v.get("change_pct")
+        if chg is not None:
+            cue_lines.append(f"- {k}: {v.get('price', '?')} ({'+' if chg >= 0 else ''}{chg:.2f}%)")
+    news_lines = []
+    for th in (news_themes or [])[:5]:
+        theme = th.get("theme", "?")
+        tone = th.get("tone", "neutral")
+        summary = th.get("summary", "")
+        news_lines.append(f"- [{tone}] {theme}: {summary[:180]}")
+
+    if not cue_lines and not news_lines:
+        return None  # Nothing to interpret
+
+    market_name = "Indian (NIFTY/BANKNIFTY)" if region == "IN" else "US (SPY/QQQ)"
+    prompt = f"""You are a market strategist briefing a trader before {market_name} market opens tomorrow.
+
+GLOBAL CUES (current values):
+{chr(10).join(cue_lines) if cue_lines else "- No global cues available"}
+
+NEWS THEMES (last 24h, with tone tags):
+{chr(10).join(news_lines) if news_lines else "- No recent news themes available"}
+
+Write a CONCISE directional impact assessment in EXACTLY this format (no preamble):
+
+PARAGRAPH:
+[3-4 sentence paragraph: What's the likely directional bias for tomorrow's open? Which specific sector(s) face the biggest impact (positive or negative)? Reference specific signals from above. Use probabilistic language ("likely", "expect", "watch for") — NOT certainty. Be honest if signals are conflicting.]
+
+SECTORS_TO_WATCH:
+- [Sector name]: [1-line reason]
+- [Sector name]: [1-line reason]
+(2-4 sectors only, the ones most affected by the cues/news above)
+
+RISK_EVENTS:
+- [Event/risk]: [1-line implication]
+- [Event/risk]: [1-line implication]
+(2-3 events only — earnings, Fed, geopolitical, anything that could swing the open)
+
+Honest framing: if global cues are flat and news is light, SAY SO. Don't invent volatility that isn't there.
+"""
+
+    try:
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 700,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=30,
+        )
+        if r.status_code != 200:
+            print(f"[AI-NEWS-IMPACT] {region} API status {r.status_code}: {r.text[:200]}")
+            return None
+        data = r.json()
+        content = data.get("content", [])
+        text = ""
+        for block in content:
+            if block.get("type") == "text":
+                text += block.get("text", "")
+        text = text.strip()
+        if not text:
+            return None
+
+        # Parse the three sections
+        paragraph = ""; sectors = []; risks = []
+        section = None
+        for line in text.split("\n"):
+            stripped = line.strip()
+            if not stripped: continue
+            if stripped.upper().startswith("PARAGRAPH:"):
+                section = "paragraph"; continue
+            if stripped.upper().startswith("SECTORS_TO_WATCH:") or stripped.upper().startswith("SECTORS TO WATCH:"):
+                section = "sectors"; continue
+            if stripped.upper().startswith("RISK_EVENTS:") or stripped.upper().startswith("RISK EVENTS:"):
+                section = "risks"; continue
+            if section == "paragraph":
+                paragraph += (" " + stripped) if paragraph else stripped
+            elif section == "sectors":
+                cleaned = stripped.lstrip("-•* ").strip()
+                if cleaned and ":" in cleaned:
+                    name, reason = cleaned.split(":", 1)
+                    sectors.append({"name": name.strip(), "reason": reason.strip()})
+                elif cleaned:
+                    sectors.append({"name": cleaned, "reason": ""})
+            elif section == "risks":
+                cleaned = stripped.lstrip("-•* ").strip()
+                if cleaned and ":" in cleaned:
+                    name, implication = cleaned.split(":", 1)
+                    risks.append({"event": name.strip(), "implication": implication.strip()})
+                elif cleaned:
+                    risks.append({"event": cleaned, "implication": ""})
+
+        result = {
+            "paragraph": paragraph or text[:600],  # fallback: raw text if parse failed
+            "sectors_to_watch": sectors[:4],
+            "risk_events": risks[:3],
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "model_used": "claude-haiku-4-5",
+            "_cached": False,
+        }
+        _ai_news_impact_cache[region] = {"data": result, "ts": _time.time()}
+        return result
+    except Exception as e:
+        print(f"[AI-NEWS-IMPACT] {region} failed: {type(e).__name__}: {str(e)[:120]}")
+        return None
+
+
+@app.get("/api/tomorrow-ai-impact")
+async def tomorrow_ai_impact(region: str = "IN", refresh: int = 0):
+    """Standalone endpoint to fetch AI news-impact for a region. Same cache
+    as the Tomorrow's Brief composite endpoint. Useful for testing or
+    direct integration."""
+    # Pull just news themes + global cues from brief composite (re-uses caches)
+    brief = await tomorrow_open_brief(region=region, refresh=0)
+    if not brief or not brief.get("success"):
+        return {"success": False, "error": "Could not compose brief for AI impact."}
+    impact = _compute_ai_news_impact(region, brief.get("global_cues", {}), brief.get("news_themes_summary", []), refresh=bool(refresh))
+    if not impact:
+        return {"success": False, "error": "Could not compute AI impact — see server logs."}
+    return {"success": True, "region": region, "ai_impact": impact}
+
+
 @app.get("/api/tomorrow-open-brief")
 async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
     """Unified pre-open brief: futures + global cues + OI levels + news.
@@ -11205,37 +11365,147 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
         out["warnings"].append(f"Pre-market data partial: {str(_pe)[:80]}")
 
     # ─── 2. OI levels (support/resistance from option chain) ───
-    # Light approach: try to compute for the primary index of the region. If
-    # NSE direct fails (Render IP blocked), surface warning instead of crashing.
+    # r63.99.27: actually CALL nse_options on demand instead of looking for a
+    # cache that doesn't exist. Cache the result locally for 15min so repeated
+    # brief requests don't hammer NSE. Falls back gracefully when NSE blocks Render IP.
     try:
         if region == "IN":
-            primary_indices = ["NIFTY", "BANKNIFTY"]
+            primary_indices = ["NIFTY", "BANKNIFTY", "SENSEX"]
         else:
-            primary_indices = ["SPY"]
+            primary_indices = []  # US options OI is in /api/options-flow, separate flow
         oi_data = {}
+        oi_warnings = []
+        # r63.99.29: per-index lot size for quoting (in shares)
+        _idx_lot_sizes = {"NIFTY": 65, "BANKNIFTY": 30, "FINNIFTY": 60, "MIDCPNIFTY": 120, "SENSEX": 20}
         for _idx in primary_indices:
+            # 15min OI cache per index
+            _oi_cache_key = f"_brief_oi_{_idx.lower()}"
+            _now = _time.time()
+            _cached = globals().get(_oi_cache_key)
+            if _cached and isinstance(_cached, dict) and (_now - _cached.get("ts", 0) < 900) and not refresh:
+                oi_data[_idx] = _cached["data"]
+                oi_data[_idx]["_source"] = "brief_cache (15min)"
+                continue
+            # Live fetch via existing endpoint
             try:
-                # Use the same option-chain pipeline used elsewhere — best effort
-                # If endpoint exists/works, populate; otherwise skip gracefully
-                if region == "IN":
-                    # Best-effort: use cached snapshot if available
-                    _cache_key = f"_oi_cache_{_idx.lower()}"
-                    _cached_oi = globals().get(_cache_key)
-                    if _cached_oi and isinstance(_cached_oi, dict):
-                        oi_data[_idx] = {
-                            "pcr": _cached_oi.get("pcr"),
-                            "max_pain": _cached_oi.get("max_pain"),
-                            "top_call_wall": _cached_oi.get("call_wall"),
-                            "top_put_wall": _cached_oi.get("put_wall"),
-                            "_source": "cached_oi_snapshot",
-                        }
-            except Exception:
-                pass
+                oi_resp = await nse_options(symbol=_idx)
+                if oi_resp and oi_resp.get("success"):
+                    gex = oi_resp.get("gex", {}) or {}
+                    ce_res = oi_resp.get("ce_resistance", []) or []
+                    pe_sup = oi_resp.get("pe_support", []) or []
+                    # Pick top wall by OI (already sorted desc in nse_options)
+                    top_call = (ce_res[0]["strike"] if ce_res else None) or gex.get("callWall")
+                    top_put  = (pe_sup[0]["strike"] if pe_sup else None) or gex.get("putWall")
+                    spot = oi_resp.get("spot") or 0
+                    atm_iv = oi_resp.get("atm_iv") or 0
+                    atm_strike = oi_resp.get("atm_strike") or spot
+                    chain_near_atm = oi_resp.get("chain_near_atm", []) or []
+
+                    # r63.99.29: PROJECTED RANGE — 1-sigma expected daily move
+                    # using ATM IV. Formula: spot × IV × sqrt(DTE/365). For a
+                    # daily move use DTE ≈ 1, so divisor sqrt(365) ≈ 19.1.
+                    # IV is in percent; convert to decimal.
+                    range_low, range_high, range_pct = None, None, None
+                    if spot > 0 and atm_iv > 0:
+                        import math as _math
+                        _iv_dec = atm_iv / 100.0
+                        _daily_move = spot * _iv_dec / _math.sqrt(365)
+                        range_low  = round(spot - _daily_move, 2)
+                        range_high = round(spot + _daily_move, 2)
+                        range_pct  = round(_daily_move / spot * 100, 2)
+
+                    # r63.99.29: PE/CE RECOMMENDATION based on verdict direction
+                    # + projected range + actual walls. Pick a near-ATM strike
+                    # likely to capture the expected move WITHOUT being too far
+                    # OTM (where premium decay hurts). Bias: 1-2 strikes ITM/ATM.
+                    # Returns: {action, instrument, strike, expiry, rationale, target, stoploss}
+                    rec = None
+                    if spot > 0:
+                        _gap = (out.get("headline", {}) or {}).get("expected_gap_pct", 0) or 0
+                        _verdict = (out.get("headline", {}) or {}).get("verdict_label", "")
+                        # Strike step heuristic (NIFTY 50-pt strikes, BANKNIFTY 100-pt, SENSEX 100-pt)
+                        _step = 100 if _idx in ("BANKNIFTY", "SENSEX") else 50
+                        _atm = round(spot / _step) * _step
+                        if _gap < -0.10 or "GAP DOWN" in _verdict:
+                            # Bearish bias — recommend PE (Put). Pick ATM-or-slightly-ITM put.
+                            rec_strike = _atm  # ATM put
+                            rec = {
+                                "action": "BUY",
+                                "instrument": "PE",  # Put
+                                "strike": rec_strike,
+                                "expiry": oi_resp.get("expiry"),
+                                "rationale": f"Bearish bias from gap signal. ATM PE captures downside toward put-wall support at {top_put or '?'}.",
+                                "target_strike": top_put,
+                                "expected_pct_move_to_target": round(((spot - top_put) / spot * 100), 2) if top_put and spot else None,
+                            }
+                        elif _gap > 0.10 or "GAP UP" in _verdict:
+                            # Bullish bias — recommend CE (Call). ATM call.
+                            rec_strike = _atm
+                            rec = {
+                                "action": "BUY",
+                                "instrument": "CE",  # Call
+                                "strike": rec_strike,
+                                "expiry": oi_resp.get("expiry"),
+                                "rationale": f"Bullish bias from gap signal. ATM CE captures upside toward call-wall resistance at {top_call or '?'}.",
+                                "target_strike": top_call,
+                                "expected_pct_move_to_target": round(((top_call - spot) / spot * 100), 2) if top_call and spot else None,
+                            }
+                        else:
+                            # FLAT — recommend premium-selling structure (iron condor between walls)
+                            if top_call and top_put and top_call > top_put:
+                                rec = {
+                                    "action": "SELL",
+                                    "instrument": "IRON CONDOR",
+                                    "strike": None,
+                                    "strikes_short_call": top_call,
+                                    "strikes_short_put": top_put,
+                                    "expiry": oi_resp.get("expiry"),
+                                    "rationale": f"FLAT verdict → range-bound expected. Sell CE at {top_call} (resistance) and PE at {top_put} (support). Profit if spot stays between walls until expiry.",
+                                    "max_profit_if_inside_range": True,
+                                }
+
+                    entry = {
+                        "pcr": oi_resp.get("pcr"),
+                        "max_pain": oi_resp.get("max_pain"),
+                        "top_call_wall": top_call,
+                        "top_put_wall": top_put,
+                        "spot": spot,
+                        "atm_iv": atm_iv,
+                        "atm_strike": atm_strike,
+                        "gex_regime": gex.get("regime"),
+                        "expiry": oi_resp.get("expiry"),
+                        "lot_size": _idx_lot_sizes.get(_idx),
+                        # r63.99.29: new fields
+                        "projected_range": {"low": range_low, "high": range_high, "pct": range_pct},
+                        "recommendation": rec,
+                    }
+                    oi_data[_idx] = entry
+                    globals()[_oi_cache_key] = {"data": entry, "ts": _now}
+                else:
+                    oi_warnings.append(f"{_idx}: NSE returned no chain")
+            except Exception as _idx_e:
+                # NSE Render-IP block is the common failure
+                oi_warnings.append(f"{_idx}: {type(_idx_e).__name__} ({str(_idx_e)[:50]})")
         out["oi_levels"] = oi_data
+        if oi_data:
+            out["data_sources"].append("nse-options (live or 15min cache)")
         if not oi_data and region == "IN":
-            out["warnings"].append("OI levels unavailable — NSE direct API may be blocked from Render. Run any NIFTY/BANKNIFTY scan to populate the OI cache.")
+            out["warnings"].append("OI levels unavailable — NSE direct API may be blocked from Render IP. " + ("Errors: " + "; ".join(oi_warnings) if oi_warnings else "No diagnostic."))
     except Exception as _oe:
         out["warnings"].append(f"OI levels partial: {str(_oe)[:80]}")
+
+    # ─── 2b. AI News Impact (r63.99.27) ───
+    # Calls Anthropic API to interpret current news + global cues into a directional
+    # paragraph: "FOMC tomorrow → expect rate-sensitive sectors to be volatile",
+    # "NVDA earnings tonight → semis likely lead direction", etc. Cached 4h since
+    # news doesn't change minute-to-minute and AI calls are expensive.
+    try:
+        _ai_impact = _compute_ai_news_impact(region, out.get("global_cues", {}), out.get("news_themes_summary", []), refresh=refresh)
+        if _ai_impact:
+            out["ai_impact"] = _ai_impact
+            out["data_sources"].append("anthropic-news-impact")
+    except Exception as _ae:
+        out["warnings"].append(f"AI impact unavailable: {type(_ae).__name__}: {str(_ae)[:80]}")
 
     # ─── 3. News themes summary (last 24h) ───
     try:
