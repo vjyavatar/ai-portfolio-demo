@@ -97,9 +97,28 @@
 // cash burn (if runway ≥ 2yr), high P/E (if PEG < 2 or rev growth > 40%),
 // low inst ownership (treats 20-60% as sweet spot, not red flag), megatrend
 // sector REQUIRED. Different tier labels (MOONSHOT/EMERGING/TOO EARLY/WEAK).
-window.CELESYS_VERSION = "r63.99.21";
-window.CELESYS_BUILD_TIME = 1779210000;
-window.CELESYS_BUILD_DATE = "2026-05-19 15:00:00 UTC";
+// r63.99.22: COMPETITIVE MOAT type-coercion fix —
+// "Error: TypeError: '<=' not supported between instances of 'str' and 'int'"
+// when running moat analysis on POET (and similar tickers). Root cause:
+// yfinance.info occasionally returns numeric fields as strings (cache hit
+// returning raw JSON). Backend DD endpoint compared str vs int with <=, >=.
+// Added _to_num() coercion helper at top of investor_due_diligence(),
+// applied to all 18 numeric info.get() reads (forward_pe, trailing_pe, peg,
+// ps_ratio, pb_ratio, market_cap, fcf, revenue, rev_growth, prof_margin,
+// debt, cash, roe, gross_margin, op_margin, debt_to_equity, current_ratio,
+// held_insiders, target_mean, target_high, _op_margin, etc.). Now safe for
+// any yfinance return type — strings get parsed, NaN guarded, None preserved.
+// r63.99.23: ORPHANED ANALYST INSIGHTS — Analyst Insights card (injected
+// dynamically when viewing a stock) was leaking into other subtabs (ETF
+// Scanner, etc.) because it lacked `.sc` class + `data-tab` attribute that
+// switchTab() uses to hide-everything-and-show-one-tab. Added both:
+// className gains 'sc', sets data-tab="decision". Now hides when leaving
+// Decide → Analyze Stock subtab, reappears when returning. Removes the
+// big empty gap visible in Vijay's screenshot between Analyst Insights and
+// the ETF Scanner header.
+window.CELESYS_VERSION = "r63.99.23";
+window.CELESYS_BUILD_TIME = 1779235800;
+window.CELESYS_BUILD_DATE = "2026-05-19 21:30:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -32157,7 +32176,8 @@ window._csR6322Inject = function(anchorInfo) {
   
   var card = document.createElement('section');
   card.id = 'cs-r6322-card';
-  card.className = 'cs-r6322-section';  // legacy detection
+  card.className = 'cs-r6322-section sc';  // r63.99.23: add 'sc' class so switchTab() hides it
+  card.setAttribute('data-tab', 'decision');  // r63.99.23: bind to Decide→Analyze Stock subtab where it's injected
   // r63.22: matches existing report card style (.sc class equivalent)
   card.style.cssText = 
     'margin:14px 0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;' +

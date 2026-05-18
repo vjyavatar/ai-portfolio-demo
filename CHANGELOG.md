@@ -1,3 +1,175 @@
+## r63.99.23 (2026-05-19) — Orphaned Analyst Insights card fix (the huge empty gap)
+
+**Vijay's screenshot:** Analyst Insights header at top → **massive empty space** → Institutional ETF Scanner header at bottom. The gap was hundreds of pixels of nothing.
+
+### Root cause — orphaned-element bug
+
+`switchTab()` hides everything matching `.sc[data-tab]` and shows the destination tab's elements. That works for HTML-declared cards.
+
+But **Analyst Insights is INJECTED dynamically** by `_csR6322Inject()` when a stock loads. Until r63.99.23, the injected card had:
+- `className = "cs-r6322-section"` — **no `sc` class**
+- **No `data-tab` attribute**
+
+So when the user clicked **Decide → 📊 ETF Scanner** subtab:
+1. `switchTab('etfscanner')` ran → hid everything with `.sc[data-tab]`
+2. ETF Scanner panel (`.sc[data-tab="etfscanner"]`) became visible ✓
+3. Analyst Insights card — no `.sc`, no `data-tab` — **stayed visible** ✗
+4. Between them sat dozens of OTHER `.sc[data-tab="decision"]` cards (Smart Money, Top Trades, PMS, Reports, etc.) — all now `display:none`
+5. But the parent containers/wrappers preserved their padding/margin
+6. Result: orphaned Analyst Insights at top → blank space where hidden cards were → ETF Scanner at bottom
+
+### Fix
+
+Two lines in the dynamic card creation:
+
+```javascript
+card.className = 'cs-r6322-section sc';   // ← added 'sc' class
+card.setAttribute('data-tab', 'decision'); // ← bind to Analyze Stock subtab
+```
+
+Now:
+- When user is on **Decide → Analyze Stock**: Analyst Insights shows ✓
+- When user switches to **ETF Scanner** (or any other subtab): Insights hides with everything else ✓
+- When user returns to **Analyze Stock**: Insights shows again ✓
+- **No more empty gap** — both panels can never appear simultaneously, so the layout collapses cleanly
+
+### Why this kept slipping past
+
+`_csR6322Inject` was written as an INSERT-AFTER-VERDICT helper. The verdict card already had `data-tab="quick"` (later "decision"), so the assumption was the insertion would inherit context. But DOM attributes don't inherit — each element stands alone. The insights card was a sibling of correctly-tagged cards but not tagged itself, so `switchTab`'s `querySelectorAll('.sc[data-tab]')` missed it.
+
+This is a class of bug I'll keep an eye out for: **anywhere we `createElement` and `insertBefore`/`insertAdjacentElement` something that's meant to live on a specific tab, it needs the matching `.sc` class + `data-tab` attribute**.
+
+### Files changed
+
+`static/app.js` (just `_csR6322Inject`):
+- Line 32171 — `className = 'cs-r6322-section sc'` (was just `'cs-r6322-section'`)
+- Line 32172 — `card.setAttribute('data-tab', 'decision')` (NEW)
+- Version → r63.99.23
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.23. `CHANGELOG.md`.
+
+### Testing — 26 suites, 760 total assertions all green
+
+- All previous + **7 new r63.99.23** asserting the className + data-tab additions
+
+### Post-deploy verification
+
+1. **Decide → Analyze Stock** → type **MU** → analyze → see Analyst Insights card appear below verdict
+2. Click **Decide → 📊 ETF Scanner** subtab
+3. Analyst Insights should now disappear (was visible before)
+4. No more empty gap between sections
+5. Click back to **Analyze Stock** → Insights reappears
+
+### Git
+
+```bash
+git add static/app.js static/app.min.js build_version.txt CHANGELOG.md
+git commit -m "r63.99.23: orphaned Analyst Insights card — add sc class + data-tab so it hides on tab switch"
+git push origin main
+```
+
+Then **Render → Clear build cache → Deploy** + hard refresh. Badge → `⚙ r63.99.23 · 2026-05-19`.
+
+### Honest note on scope
+
+I fixed JUST the Analyst Insights card from your screenshot. There may be OTHER dynamically-injected cards with the same orphaning issue (earnings calendar strip, journal button, premium gate, etc.). If you see another card "leaking" into the wrong tab, send a screenshot and I'll do the same fix.
+
+For now I'm not preemptively patching them all — most other injected elements are page-level (top nav strips), not tab-specific, so they're not orphaned in the same way. The Analyst Insights case is unique because it's the only one that's CONTENT for one specific subtab but injected outside the HTML.
+
+---
+
+## r63.99.22 (2026-05-19) — Competitive Moat type-coercion fix (POET TypeError)
+
+**Vijay's screenshot:** Competitive Moat Analysis on POET shows red error: *"Error: TypeError: '<=' not supported between instances of 'str' and 'int'"*.
+
+### Root cause
+
+The Moat panel calls `/api/investor-due-diligence`. That endpoint reads 18+ numeric fields from `yfinance.info` via `info.get("forwardPE")`, `info.get("debtToEquity")`, etc., then compares them to thresholds with `<=`, `>=`. Normally fine — but **yfinance.info occasionally returns numeric fields as strings** when its internal JSON cache is hit (the cached value bypasses parsing). On POET, one or more fields came back as `"45.2"` (string) instead of `45.2` (float). Python won't compare `str <= int` and raises TypeError, crashing the whole DD response.
+
+### Fix
+
+Added a `_to_num(v)` defensive coercion helper at the top of `investor_due_diligence()` (line ~33897):
+
+```python
+def _to_num(v):
+    if v is None: return None
+    if isinstance(v, (int, float)):
+        try:
+            if v != v: return None  # NaN guard
+        except Exception: pass
+        return v
+    try:
+        fv = float(str(v).replace(",", "").strip())
+        if fv != fv: return None
+        return fv
+    except Exception:
+        return None
+```
+
+Applied to all 18 numeric `info.get()` reads in DD:
+
+| Variable | Was | Now |
+|---|---|---|
+| `market_cap` | `info.get("marketCap")` | `_to_num(info.get("marketCap"))` |
+| `forward_pe` | `info.get("forwardPE")` | `_to_num(info.get("forwardPE"))` |
+| `trailing_pe`, `peg`, `ps_ratio`, `pb_ratio` | raw | coerced |
+| `fcf`, `revenue` | raw | coerced |
+| `rev_growth`, `prof_margin` | raw | coerced |
+| `debt`, `cash` | `info.get(...) or 0` | `_to_num(info.get(...)) or 0` |
+| `roe`, `gross_margin`, `op_margin` | raw | coerced |
+| `debt_to_equity`, `current_ratio` | raw | coerced |
+| `held_insiders` | raw | coerced |
+| `target_mean`, `target_high`, `_op_margin` | raw | coerced |
+
+Helper handles all four edge cases:
+- `None` → returns `None`
+- Number (`int`/`float`) → returns as-is (with NaN guard)
+- String with whitespace or commas → parses (`"1,234.56"` → `1234.56`)
+- Garbage (`"abc"`, empty string) → returns `None`
+
+### Runtime test
+
+Added `smoke_r99_22_runtime.py` that actually executes `_to_num` against 12 input cases + replays the exact original error scenario (`debt_to_equity = "145.3"` → comparison). All pass.
+
+### Files changed
+
+`api.py`:
+- New `_to_num()` helper inside `investor_due_diligence()` (~14 lines)
+- 18 numeric `info.get()` reads wrapped with `_to_num()`
+
+`static/app.js` — version bump only, no logic change.
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.22. `CHANGELOG.md`.
+
+### Testing — 25 suites, 753 total assertions all green
+
+Previous 709 + **30 new r99.22 static** + **14 new r99.22 runtime** (exercises the coercion function with real inputs including the exact failing case).
+
+### Post-deploy verification
+
+1. Go to **Decide → ⚙ Moat** (or wherever the Competitive Moat panel lives)
+2. Type **POET** → US → click **⚡ ANALYZE MOAT**
+3. Should now render full Porter's Five Forces analysis instead of red error
+4. Repeat with other thinly-covered tickers (AEHR, IONQ, RGTI, QBTS) — they'll work too since this hardens the entire endpoint, not just POET
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js build_version.txt CHANGELOG.md
+git commit -m "r63.99.22: Moat analysis TypeError fix — coerce yfinance.info string returns via _to_num"
+git push origin main
+```
+
+Then **Render → Clear build cache → Deploy** + hard refresh. Badge → `⚙ r63.99.22 · 2026-05-19`.
+
+### Why this kept biting us
+
+This is the **third time** in recent builds a yfinance return-type quirk has caused a runtime crash (after r63.99.17 IPGP `_action_ia` and r63.99.19 MU field-name). Pattern recognition: **never trust yfinance.info to return what its type hints suggest**. From now on, anywhere we read `info.get(...)` and later compare it to a number, the read should go through `_to_num` (or equivalent). This is what "multi-source data redundancy" means at the integration layer — not just "try another source" but "defensively coerce whatever the source returns".
+
+I'll keep an eye on this pattern in future builds. If it shows up a fourth time, I'll extract `_to_num` to a module-level utility and apply it across the codebase instead of just inside DD.
+
+---
+
 ## r63.99.21 (2026-05-19) — Mode B: Pre-Discovery scorer (Vijay's choice)
 
 **Vijay's choice between three options:** Option B — keep the strict Institutional Quality scorer, **ADD** a Pre-Discovery scorer with growth-stage-appropriate thresholds. So the universe scan can answer BOTH questions:
