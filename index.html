@@ -1675,6 +1675,33 @@ window._fillAlgoSelect=fillSelect;
 <div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:#fffbeb;border:1px solid #fde68a;font-size:9px;color:#92400e;line-height:1.5">
   Moat scoring uses Porter&apos;s Five Forces framework (Buyer Power, Supplier Power, Competitive Rivalry, Threat of New Entrants, Substitution Risk) combined with quantitative measures (ROE persistence, gross margin stability, market share concentration). Qualitative items are heuristic interpretations from real financial data &mdash; clearly labeled.
 </div>
+
+<!-- ═══ r63.99.31: COMPETITIVE ADVANTAGES MATRIX — multi-stock moat grid ═══ -->
+<div style="margin-top:20px;padding:14px 16px;border-top:2px dashed #fde68a">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+    <div style="font-size:14px;font-weight:900;color:#92400e;font-family:Sora,sans-serif;letter-spacing:-0.2px">&#127942; Competitive Advantages Matrix</div>
+    <div style="flex:1;min-width:100px"></div>
+    <div style="font-size:8px;color:#a16207;font-style:italic">Pat Dorsey&apos;s &quot;Little Book&quot; framework &middot; Morningstar moat ratings</div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;padding:10px 12px;background:linear-gradient(180deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:10px">
+    <span style="font-size:8px;font-weight:800;color:#92400e;letter-spacing:0.7px">SYMBOLS</span>
+    <input id="moatMatrixSyms" type="text" placeholder="MSFT,V,MA,ASML,AVGO,COST,CNI,WM,MPLX,JPM" style="padding:6px 10px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #fde68a;background:#fff;color:#451a03;font-family:'JetBrains Mono',monospace;flex:1;min-width:280px">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-size:8px;font-weight:800;color:#92400e;letter-spacing:0.7px">MARKET</span>
+      <div style="display:flex;border:1px solid #fde68a;border-radius:6px;overflow:hidden;background:#fff">
+        <button id="moatMatrixRegIN" onclick="window._setMoatMatrixRegion('IN')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#92400e">IN</button>
+        <button id="moatMatrixRegUS" onclick="window._setMoatMatrixRegion('US')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;border-left:1px solid #fde68a;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#d97706,#92400e);color:#fff">US</button>
+      </div>
+    </div>
+    <button onclick="window.loadMoatMatrix&amp;&amp;window.loadMoatMatrix()" style="padding:5px 14px;border-radius:6px;background:linear-gradient(135deg,#d97706,#92400e);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px">&#129351; SHOW MATRIX</button>
+    <button onclick="document.getElementById('moatMatrixSyms').value='MSFT,V,MA,ASML,AVGO,COST,CNI,WM,MPLX,JPM';window._setMoatMatrixRegion('US');window.loadMoatMatrix&amp;&amp;window.loadMoatMatrix()" style="padding:5px 10px;border-radius:6px;background:#fff;border:1px solid #fde68a;color:#92400e;font-size:9px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Reset to screenshot example</button>
+  </div>
+  <div id="moatMatrixStatus" style="font-size:9px;color:var(--text3);margin-bottom:10px;font-family:'JetBrains Mono',monospace"></div>
+  <div id="moatMatrixResult" style="min-height:120px"><div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Enter comma-separated tickers above and click <strong>SHOW MATRIX</strong> to see which of 6 economic moats each stock possesses.</div></div>
+  <div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:#fffbeb;border:1px solid #fde68a;font-size:9px;color:#92400e;line-height:1.5">
+    Classifications curated from Pat Dorsey&apos;s framework &amp; Morningstar moat ratings &mdash; widely-accepted attributions only. Unknown tickers show empty rows (no speculation). Coverage: ~60 US large/mega-caps, ~50 India large/mid-caps.
+  </div>
+</div>
 </div></div>
 
 <!-- ═══ TAB: STRUCTURAL — r63.94.0: Structural Change Signal (SCS) institutional-grade detector ═══ -->
@@ -2099,6 +2126,29 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <div id="tobStatus" style="flex:1;min-width:200px;font-size:10px;color:#6d28d9;font-family:'JetBrains Mono',monospace">Click GENERATE BRIEF to get a unified pre-open prediction. Cached 5min.</div>
 </div>
 <div id="tobResult" style="min-height:80px"><div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px">Pick a region, then click <strong>GENERATE BRIEF</strong>. The output combines pre-market futures, global asset signals, OI walls, news themes, and watchlist into one daily-ritual page.</div></div>
+</div></div>
+
+<!-- ═══ TAB: STOCK DASHBOARD (r63.99.32) — institutional fundamentals view ═══ -->
+<div class="sc" data-tab="fundadashboard" style="border-left:3px solid #0891b2;display:none">
+<div class="sh"><div class="si" style="background:rgba(8,145,178,.1)">📊</div><div class="st" style="color:#0891b2">Stock Dashboard — 10-Year Fundamentals + Institutional Analysis</div></div>
+<div class="sbody">
+<div style="padding:11px 13px;background:linear-gradient(180deg,#ecfeff,#cffafe);border:1px solid #67e8f9;border-radius:10px;margin-bottom:12px;font-size:11px;color:#0e7490;line-height:1.6">
+  <strong style="font-family:Sora,sans-serif">📊 End-to-end fundamentals for any stock</strong> &middot; 10-year history of revenue, net income, EPS, FCF, ROIC, debt — plus my analytical layers: ROIC trajectory verdict, FCF quality, buyback/dilution signal, leverage assessment, dividend safety, and growth-quality decomposition. Honest about data gaps — never fabricates missing numbers.
+</div>
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;padding:11px 13px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">
+  <span style="font-size:8px;font-weight:800;color:#0e7490;letter-spacing:0.7px">SYMBOL</span>
+  <input id="dashSym" type="text" placeholder="MSFT or RELIANCE" style="padding:7px 10px;border:1px solid #67e8f9;border-radius:6px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#0c4a6e;width:160px">
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:8px;font-weight:800;color:#0e7490;letter-spacing:0.7px">MARKET</span>
+    <div style="display:flex;border:1px solid #67e8f9;border-radius:6px;overflow:hidden;background:#fff">
+      <button id="dashRegIN" onclick="window._setDashRegion('IN')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#0e7490">IN</button>
+      <button id="dashRegUS" onclick="window._setDashRegion('US')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;border-left:1px solid #67e8f9;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff">US</button>
+    </div>
+  </div>
+  <button onclick="window.loadDashboard&amp;&amp;window.loadDashboard()" id="dashBtn" style="padding:7px 18px;border-radius:6px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px">📊 ANALYZE</button>
+  <div id="dashStatus" style="flex:1;min-width:200px;font-size:10px;color:#0e7490;font-family:'JetBrains Mono',monospace">Enter symbol then click ANALYZE. Cached 30min.</div>
+</div>
+<div id="dashResult" style="min-height:120px"><div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px">Enter a ticker above and click <strong>📊 ANALYZE</strong> to see a full institutional fundamentals dashboard: 10-year history of EPS / Revenue / FCF / ROIC / D-to-A, CAGRs, plus my analytical verdicts on share-action, ROIC quality, FCF conversion, leverage, dividend safety, and growth pattern.</div></div>
 </div></div>
 
 <div class="sc" data-tab="proscan" style="border-left:3px solid #1A3A78;display:none">
@@ -2534,7 +2584,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=1778612666"></script>
+<script src="/static/app.min.js?v=1779554400"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>
