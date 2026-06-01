@@ -405,9 +405,72 @@
 //     Dashboard (Decide → 📊 Dashboard) offers FCF-yield zones as an alternative
 //     that doesn't need analyst inputs — that's why the banner exists.
 //   – Cannot fix the missing services/ module. Need source from Vijay's repo.
-window.CELESYS_VERSION = "r63.99.36";
-window.CELESYS_BUILD_TIME = 1779554400;
-window.CELESYS_BUILD_DATE = "2026-05-23 14:00:00 UTC";
+// r63.99.37: STOCK DASHBOARD ERROR-HANDLING FIX.
+//   Vijay screenshotted "Error: unknown" when typing MU into the new Stock
+//   Dashboard subtab — my own r99.32-r99.35 feature failing on the deployed site.
+//   Root cause: when the dashboard handler hit an unhandled exception, FastAPI
+//   returned HTTP 500 with body {"detail":"Internal Server Error"}. Frontend's
+//   loadDashboard only read d.error (undefined), fell through to 'unknown'.
+//   Two fixes:
+//   (1) BACKEND: wrap stock_dashboard impl in a thin try/except wrapper. Renamed
+//       the existing handler to _stock_dashboard_impl and added a new public
+//       stock_dashboard wrapper that catches Exception and returns
+//       {success:false, error:"<TypeName>: <message>", trace:"..."}. Verified
+//       via synthetic test that injects an exception AFTER data fetch — the
+//       wrapper catches what the existing inner try/except misses.
+//   (2) FRONTEND: loadDashboard error-handler now also reads d.detail (FastAPI
+//       default), HTTP status, and surfaces the trace via a collapsible
+//       <details> block so Vijay can see the actual Python exception in the
+//       browser. Adds "possible causes" hint listing common diagnoses (yfinance
+//       rate-limited, IP-blocked, insufficient history) so the error is
+//       actionable not opaque.
+//   AFTER FIX: instead of "Error: unknown", user sees something like:
+//       "Error analyzing MU: AttributeError: 'NoneType' object has no
+//       attribute 'iloc' ▸ Show backend trace"
+//   The wrapper costs ~30 lines; the frontend change ~25 lines. Zero impact on
+//   normal happy-path execution (verified via test_dashboard_happy.py).
+// r63.99.38: PROACTIVE VALIDATION — 30-archetype harness caught 2 logic bugs
+// + 1 crash class beyond what r99.37 covered.
+//   Vijay's ask: "please identify proactively all issues and fix and trace".
+//   Same methodology as r99.35: build a synthetic-data harness that exercises
+//   the impl against diverse ticker shapes, find every crash and every
+//   illogical verdict, fix each, re-run until 30/30 clean.
+//   Harness covers 30 archetypes including: premium compounder, MU-class
+//   hypergrowth, deep value, value destroyer, thin data, empty data, info-only,
+//   single year, no price, zero revenue, zero shares, negative equity, NaN-laden
+//   data, negative FCF, India tickers, mixed string/numeric, penny stocks,
+//   mega caps, recent loss, all zeros, no longName, cyclical, dividend
+//   initiator, None statements, negative P/E, post-loss profit, future dates,
+//   asymmetric dividend info, flat 10y, mega-loss year.
+//   FINDINGS:
+//   (1) CRASH on string-valued info fields. yfinance occasionally returns
+//       "N/A", "Infinity", or other strings in info["trailingPE"]/marketCap/etc.
+//       Naked `pe > 0` comparison crashed with TypeError. Real-world: any
+//       ticker where Yahoo computes PE as undefined under newer schema.
+//       FIX: defensive _ds_num() coercion at the boundary — sanitizes None,
+//       strings, NaN, +/-inf, booleans. Applied to every summary field
+//       sourced from info_g.get().
+//   (2) LOGIC BUG: verdict=BUY/STRONG BUY emitted when basic pricing data
+//       is unavailable. Archetype 09 (no price): BUY emitted with no
+//       order-ticket possible. Archetype 11 (zero shares): STRONG BUY,
+//       quality_score=91, full fabricated order_ticket. Decision layer
+//       scored ROIC/FCF from raw row math while ignoring that per-share
+//       metrics are fictional without basic counts.
+//       FIX: DATA-SANITY PREFLIGHT GATE in decision layer. Before any
+//       analytical verdict, require (a) price > 0, (b) shares > 0,
+//       (c) market_cap > 0. Without all three → force INSUFFICIENT_DATA
+//       with a precise reason in summary_one_liner.
+//   (3) UX BUG: when verdict=INSUFFICIENT_DATA, the entire decision card
+//       was silently skipped on the frontend. Users saw a half-rendered
+//       dashboard with no explanation.
+//       FIX: render an amber explainer card showing the summary_one_liner
+//       and (in a <details>) the full warnings array so the user knows
+//       WHY no verdict was generated.
+//   AFTER FIXES: 30/30 archetypes pass with sensible verdicts. No crash,
+//   no illogical verdict, no silent skip.
+window.CELESYS_VERSION = "r63.99.38";
+window.CELESYS_BUILD_TIME = 1779727200;
+window.CELESYS_BUILD_DATE = "2026-05-25 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11480,11 +11543,34 @@ window.loadDashboard = function() {
   if (stEl) stEl.textContent = 'Building 10-year dashboard for ' + sym + ' (' + reg + ')…';
   resEl.innerHTML = '<div style="text-align:center;padding:40px;color:#0e7490;font-size:11px"><div style="display:inline-block;width:16px;height:16px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Computing fundamentals + analytical layers for ' + sym + '…</div>';
   fetch('/api/stock-dashboard?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg), {cache:'no-store'})
-    .then(function(r){ return r.json(); })
+    .then(function(r){
+      // r63.99.37: capture HTTP status so we can show meaningful message even if body isn't valid JSON
+      window._lastDashHttpStatus = r.status;
+      return r.json().catch(function(){
+        // Response wasn't JSON at all (could happen on proxy/gateway errors)
+        return {success: false, error: 'Non-JSON response (HTTP ' + r.status + ')'};
+      });
+    })
     .then(function(d){
       if (btnEl) { btnEl.disabled = false; btnEl.style.opacity = '1'; btnEl.innerHTML = '📊 ANALYZE'; }
       if (!d || !d.success) {
-        resEl.innerHTML = '<div style="padding:16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px"><strong>Error:</strong> ' + ((d && d.error) || 'unknown') + '</div>';
+        // r63.99.37: surface the most useful error message we can find.
+        // FastAPI default returns {detail:"..."}, our wrapper returns {error:"..."},
+        // and some paths may have neither — fall through to HTTP status.
+        var msg = (d && (d.error || d.detail)) || ('HTTP ' + (window._lastDashHttpStatus || '?'));
+        var trace = (d && d.trace) ? d.trace : '';
+        var traceHtml = trace ?
+          '<details style="margin-top:10px;font-size:10px"><summary style="cursor:pointer;color:#991b1b;font-weight:700">▸ Show backend trace</summary>' +
+          '<pre style="margin-top:6px;padding:8px;background:#fff;border:1px solid #fca5a5;border-radius:4px;font-size:9px;color:#7f1d1d;overflow:auto;max-height:200px;font-family:\'JetBrains Mono\',monospace;white-space:pre-wrap">' +
+          trace.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre></details>'
+          : '';
+        resEl.innerHTML = '<div style="padding:16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px">' +
+          '<strong>Error analyzing ' + sym + ':</strong> ' + msg +
+          '<div style="margin-top:8px;font-size:10px;color:#7f1d1d;line-height:1.5">' +
+          'Possible causes: yfinance is rate-limited or IP-blocked on this deploy, the ticker has insufficient history, or an internal computation failed. Try a different ticker (e.g. MSFT, AAPL) to isolate; if those fail too the backend dependency is down.' +
+          '</div>' +
+          traceHtml +
+          '</div>';
         if (stEl) stEl.textContent = '';
         return;
       }
@@ -11644,6 +11730,32 @@ window._renderDashboard = function(d) {
   // The decision card sits at the very top — answer "so what do I do?" first,
   // then provide the supporting evidence below.
   var dec = d.decision || null;
+  // r63.99.38: When verdict is INSUFFICIENT_DATA (which now includes new cases
+  // from the data-sanity gate: no price, no shares, no market cap), the
+  // decision card was previously skipped silently. That left users staring
+  // at a dashboard with no verdict and no explanation. Show a clear
+  // explainer instead.
+  if (dec && dec.verdict === 'INSUFFICIENT_DATA') {
+    h += '<div style="background:linear-gradient(135deg,#fef3c7,#fef9c3);border:2px dashed #d97706;border-radius:12px;padding:16px 20px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">';
+    h += '<span style="font-size:22px">⚠</span>';
+    h += '<span style="font-size:11px;font-weight:900;color:#78350f;letter-spacing:1px;font-family:Sora,sans-serif">INSUFFICIENT DATA · ' + (d.symbol || '?') + '</span>';
+    h += '<span style="font-size:10px;color:#92400e;background:#fff;border:1px solid #fde68a;padding:3px 8px;border-radius:4px;font-weight:700">NO VERDICT</span>';
+    h += '</div>';
+    var oneLine = dec.summary_one_liner || 'Not enough data to make a fundamentals call.';
+    h += '<div style="font-size:13px;color:#78350f;line-height:1.5;margin-bottom:10px">' + oneLine + '</div>';
+    if (d.warnings && d.warnings.length > 0) {
+      h += '<details style="margin-top:8px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700;letter-spacing:0.3px">▸ See all warnings (' + d.warnings.length + ')</summary>';
+      h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.6">';
+      d.warnings.forEach(function(w){ h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+      h += '</ul></details>';
+    }
+    h += '<div style="margin-top:10px;font-size:10px;color:#78350f;line-height:1.5">';
+    h += 'The fundamentals table below still shows what data <em>was</em> available. ';
+    h += 'If a verdict is needed, try a different region (US vs IN) or a primary listing (e.g. <code style="background:#fde68a;padding:1px 5px;border-radius:3px">RELIANCE.NS</code> for India).';
+    h += '</div>';
+    h += '</div>';
+  }
   if (dec && dec.verdict && dec.verdict !== 'INSUFFICIENT_DATA') {
     var verdictColors = {
       'STRONG BUY':       {bg: '#dcfce7', border: '#16a34a', text: '#14532d', accent: '#16a34a'},

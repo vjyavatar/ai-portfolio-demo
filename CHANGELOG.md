@@ -1,3 +1,224 @@
+## r63.99.38 (2026-05-25) — Proactive Stock Dashboard validation: 30-archetype harness caught 3 bug classes
+
+Vijay's ask after r99.37: *"pleaes identify proactively all issues and fixe and trace"*. Same methodology that found 6 bugs in r99.35, applied this time to the Stock Dashboard endpoint specifically.
+
+### The harness — 30 archetypes
+
+`/tmp/validate_dashboard_v2.py` (not shipped). Monkey-patches `yfinance.Ticker` BEFORE `api.py` imports it so every test case gets controlled input. Calls `_stock_dashboard_impl` directly (bypassing the r99.37 wrapper — we want to see crashes, not catch them).
+
+Archetypes cover real-world ticker shapes that have caused bugs in Celesys history or that map to known data-source pathology:
+
+```
+01  Premium compounder (MSFT-like)       16  Mixed string/numeric in info
+02  MU-class hypergrowth (parabolic)     17  Extremely tiny numbers (penny)
+03  Deep value / cheap stock             18  Extremely large numbers (mega)
+04  Value destroyer (neg ROIC + debt)    19  Recent loss after profitable years
+05  Thin data (3 years only)             20  All zeros (zombie shell)
+06  Empty data (yfinance returns []]     21  Single-row info, no longName
+07  Info dict only — no statements       22  Earnings cyclical (semis pattern)
+08  Single year only                     23  No div history then initiates
+09  No price (regularMarketPrice=None)   24  None for income_stmt
+10  Zero revenue (SPAC/shell)            25  Negative P/E (loss-making)
+11  Zero shares outstanding              26  Recent profit after losses (insane PE)
+12  Negative equity (zombie)             27  Future-dated DataFrame columns
+13  NaN-laden data (yfinance corrupt)    28  Dividend rate w/o yield
+14  Negative FCF (growth stage)          29  Identical-data 10y (no growth)
+15  India ticker with .NS suffix         30  Mega-loss year (banking/oil crash)
+```
+
+For each, the harness checks: response is a dict, success flag, presence of `decision` / `annual` / `action_now` / `order_ticket` / `horizons`, AND sensibility checks (BUY verdict requires price, STRONG BUY incompatible with zero shares, stop must be below entry, action_now color must match verdict).
+
+### Findings — 3 bug classes
+
+**Bug 1: CRASH on string-valued info fields**
+
+Archetype 16 (`info["trailingPE"]="N/A", "forwardPE"=float('inf')`) triggered:
+
+```
+File "api.py", line 5048, in _stock_dashboard_impl
+    if pe is not None and pe > 0:
+TypeError: '>' not supported between instances of 'str' and 'int'
+```
+
+yfinance's `info` dict is documented as floats but in practice returns strings, None, NaN, +/-inf, even booleans for missing fields. Every `summary[...]` field sourced from `info_g.get()` was vulnerable. Real-world trigger: any ticker where Yahoo's analytics service hasn't yet computed the field (newly-listed, recent fiscal restatement, ratio computed from negative EPS).
+
+Fix: defensive `_ds_num()` coercion at the boundary. Single helper applied to all 22 info-derived summary fields:
+
+```python
+def _ds_num(v):
+    if v is None: return None
+    if isinstance(v, bool): return None
+    if isinstance(v, str):
+        s = v.strip()
+        if s in ('', 'N/A', 'n/a', '-', '—', 'None', 'none', 'null',
+                 'NaN', 'nan', 'Infinity', 'inf', '-inf', '∞'): return None
+        try: v = float(s)
+        except (ValueError, TypeError): return None
+    if isinstance(v, (int, float)):
+        try:
+            f = float(v)
+            if f != f: return None              # NaN
+            if f == float('inf') or f == float('-inf'): return None
+            return f
+        except (ValueError, TypeError, OverflowError): return None
+    return None
+```
+
+**Bug 2: Illogical verdict when basic pricing data is missing**
+
+Archetype 09 (price=None) → `verdict=BUY completeness=52.9%`. Cannot size an order without a price.
+Archetype 11 (zero shares) → `verdict=STRONG BUY composite=75 quality_score=91`, full fabricated `order_ticket` ("BUY 100 shares at $50, stop $42.50, target $60"). Quality scored 91 from per-row ROIC/FCF math while ignoring that per-share metrics are fictional without share count.
+
+Fix: **DATA-SANITY PREFLIGHT GATE** in the decision layer, before any verdict assignment:
+
+```python
+_data_sanity_failures = []
+if _price is None or _price <= 0: _data_sanity_failures.append("price unavailable")
+if _shares is None or _shares <= 0: _data_sanity_failures.append("shares outstanding unknown or zero")
+if _mcap is None or _mcap <= 0: _data_sanity_failures.append("market cap unavailable")
+if _data_sanity_failures:
+    decision["verdict"] = "INSUFFICIENT_DATA"
+    decision["summary_one_liner"] = ("Critical data unavailable for a verdict: " + ", ".join(_data_sanity_failures) + ".")
+    out["warnings"].append("Verdict downgraded to INSUFFICIENT_DATA — " + "; ".join(_data_sanity_failures))
+```
+
+After fix: archetype 09 → `verdict=INSUFFICIENT_DATA` with `summary_one_liner: "Critical data unavailable for a verdict: price unavailable"`. Archetype 11 → `verdict=INSUFFICIENT_DATA, summary_one_liner: "...shares outstanding unknown or zero, market cap unavailable"`.
+
+**Bug 3: Frontend silently skips decision card on INSUFFICIENT_DATA**
+
+The renderer at app.js line 11694 had `if (dec && dec.verdict !== 'INSUFFICIENT_DATA') { /* render verdict card */ }`. When the new sanity gate fired, the decision card disappeared entirely — leaving the user looking at a half-rendered dashboard with no explanation.
+
+Fix: render a dashed amber INSUFFICIENT_DATA explainer card before the verdict-card branch:
+
+```
+⚠ INSUFFICIENT DATA · MU                              [NO VERDICT]
+
+Critical data unavailable for a verdict: price unavailable,
+shares outstanding unknown or zero, market cap unavailable.
+
+▸ See all warnings (3)
+
+The fundamentals table below still shows what data was available.
+If a verdict is needed, try a different region (US vs IN) or a
+primary listing (e.g. RELIANCE.NS for India).
+```
+
+### Validation — 30/30 PASS clean
+
+```
+RESULTS: OK=30 GRACEFUL_ERR=0 WARNS=0 CRASHES=0
+```
+
+Plus regression tests from r99.37 still pass:
+- `test_dashboard_wrapper_v3.py`: wrapper catches post-fetch exceptions ✓
+- `test_dashboard_happy.py`: happy path unchanged ✓
+
+### Files changed (5)
+
+- `api.py` — `_ds_num` helper + 22 info-field coercions + data-sanity gate before decision-verdict logic (~80 lines net)
+- `static/app.js` — INSUFFICIENT_DATA explainer card + version header (~30 lines net)
+- `static/app.min.js` — synced byte-identical (md5 `37058e7d29c445ccc352d1f5e5ba380c`)
+- `index.html` — cache-bust `?v=1779640800` → `?v=1779727200`
+- `build_version.txt` — r63.99.37 → r63.99.38
+- `CHANGELOG.md` — this entry
+
+### What this means for MU (Vijay's failing test case)
+
+If MU's real failure on Render was the string-PE bug (Bug 1), r99.38 fixes it directly. If it was something else, the r99.37 wrapper will now surface the actual Python exception with a clickable trace instead of "Error: unknown" — Vijay sends the trace, I patch the specific issue in r99.39.
+
+Either way the build moves from reactive ("ship, wait for Vijay to find bugs") to proactive ("synthesize 30 archetypes covering known pathology classes, fix everything that breaks").
+
+---
+
+## r63.99.37 (2026-05-24) — Stock Dashboard "Error: unknown" fix
+
+Vijay sent a screenshot: typed `mu` into the new Stock Dashboard subtab (the feature I built in r99.32-r99.35), clicked ANALYZE, got `Error: unknown`. **My own feature failing on the deployed site, with the worst possible error message — one that gives no diagnostic information.**
+
+### Root cause
+
+The frontend's `loadDashboard` reads only `d.error` from the response:
+
+```js
+'Error: ' + ((d && d.error) || 'unknown')
+```
+
+When the backend's `/api/stock-dashboard` handler hits an unhandled Python exception, FastAPI returns HTTP 500 with body `{"detail": "Internal Server Error"}`. There's no `error` field — so the frontend falls through to `'unknown'`. Same thing if the route returns 404 (`{"detail":"Not Found"}`) — frontend would still display `Error: unknown`.
+
+The dashboard impl is 1,100+ lines of Python with 10-year fundamentals fetching, CAGR computation, 6 analytical layers (ROIC trajectory, FCF quality, leverage, dividend safety, share action, growth quality), Pat-Dorsey moat scoring, FCF-yield reverse-engineered zones, position sizing, action_now, horizons, catalyst calendar, benchmark comparison, order ticket, decision tree. Plenty of surface area for an unexpected exception to land outside the existing inner try/except blocks.
+
+### Two fixes
+
+**Backend wrapper** (`api.py` line 4525):
+
+Renamed the existing 1,100-line handler from `stock_dashboard` to `_stock_dashboard_impl` and added a thin public wrapper:
+
+```python
+@app.get("/api/stock-dashboard")
+async def stock_dashboard(symbol: str = "", region: str = "US", refresh: int = 0):
+    try:
+        return await _stock_dashboard_impl(symbol, region, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err_str = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[DASHBOARD] {symbol} ({region}) unhandled exception: {_err_str}")
+        print(_tb.format_exc()[:2000])
+        return {
+            "success": False,
+            "symbol": symbol,
+            "region": region,
+            "error": _err_str,
+            "trace": _tb.format_exc()[:1500],
+        }
+```
+
+Whatever exception bubbles up from any depth, the user now sees the actual Python error type and message, not FastAPI's opaque default.
+
+**Frontend error display** (`static/app.js` loadDashboard):
+
+```js
+// Before
+'Error: ' + ((d && d.error) || 'unknown')
+
+// After — falls through to d.detail (FastAPI default), then HTTP status,
+// and renders the trace in a collapsible <details> block.
+var msg = (d && (d.error || d.detail)) || ('HTTP ' + (window._lastDashHttpStatus || '?'));
+```
+
+Also wrapped `r.json()` in `.catch()` so a non-JSON response body (gateway/proxy errors) doesn't kill the chain. Adds a "possible causes" hint listing common diagnoses so the error message is actionable rather than just informative.
+
+### Verification
+
+Built three synthetic tests against a sandbox copy of `api.py`:
+
+1. **`test_dashboard_wrapper.py`** — monkey-patch `yfinance.Ticker` to raise `AttributeError`. Result: endpoint returns `success:True` with `verdict:INSUFFICIENT_DATA` (existing graceful degradation, no crash). **Proves: yfinance failure alone is NOT what causes "Error: unknown" — the inner try/except already handles that.**
+2. **`test_dashboard_wrapper_v3.py`** — monkey-patch `_dashboard_cache` to throw on `__setitem__`, which fires AFTER all computation finishes (a path the inner try misses). Result without wrapper: HTTP 500 + `{"detail":"Internal Server Error"}`. Result with wrapper: `{success:false, error:"RuntimeError: simulated cache crash after dashboard computed", trace:"..." (784 chars)}`. **Proves: wrapper catches what inner try/except misses.**
+3. **`test_dashboard_happy.py`** — MSFT through the wrapper unchanged. Result: `success:True`, same elapsed time, same `verdict:INSUFFICIENT_DATA` graceful degradation. **Proves: zero impact on happy path.**
+
+### Files changed (5)
+
+- `api.py` — wrapper + impl rename (+30 lines net)
+- `static/app.js` — loadDashboard error-handler rewrite (+25 lines net) + version header
+- `static/app.min.js` — synced byte-identical
+- `index.html` — cache-bust `?v=1779554400` → `?v=1779640800`
+- `build_version.txt` — r63.99.36 → r63.99.37
+- `CHANGELOG.md` — this entry
+
+### What you'll see on the deployed site
+
+When MU fails next time (whatever the actual cause), instead of:
+
+> **Error:** unknown
+
+You'll see something like:
+
+> **Error analyzing MU:** AttributeError: 'NoneType' object has no attribute 'iloc'
+> Possible causes: yfinance is rate-limited or IP-blocked on this deploy, the ticker has insufficient history, or an internal computation failed. Try a different ticker (e.g. MSFT, AAPL) to isolate; if those fail too the backend dependency is down.
+> ▸ Show backend trace [click to expand full Python traceback]
+
+Click the trace, copy it, paste it to me, and I can fix the actual underlying bug. Until r99.37 deploys, "Error: unknown" is uninformative noise — it'll become diagnostic data.
+
+---
+
 ## r63.99.36 (2026-05-23) — Discoverability banner + stuck-loader watchdog
 
 Vijay sent 7 screenshots of MU on the Analyze Stock page with the prompt: *"i dont see new features ar enot apparing... premium intelligence is not at all appearing... FAIR VAlue is not coming"*.

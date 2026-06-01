@@ -4244,6 +4244,1651 @@ async def cycle_analysis(symbol: str, region: str = "US", market_cap: int = 0, p
         return {"success": False, "error": str(e)}
 
 
+# ═══════════════════════════════════════════════════════════
+# r63.99.31: COMPETITIVE ADVANTAGES MATRIX — multi-stock moat grid
+# ═══════════════════════════════════════════════════════════
+# Maps stocks → which of 6 canonical economic moats they possess.
+# Used by Moat tab matrix view (Morningstar/value-investing convention).
+# Six moat types from Pat Dorsey's "Little Book That Builds Wealth":
+#   1. Brand Power      — pricing power from brand premium
+#   2. Network Effects  — value grows with users/participants
+#   3. Switching Costs  — high cost/friction to change providers
+#   4. Cost Advantages  — structural cost edge (scale, process, location)
+#   5. Intangible Assets — patents, licenses, regulatory protection
+#   6. Efficient Scale  — limited market that fits few players
+#
+# CURATED ONLY in r63.99.31 — known names get accurate classifications.
+# Unknown names return empty moat row with note. AI-derived classification
+# for unknown stocks could be added in a future build (~$0.005/stock cost).
+_MOAT_TYPES = ["brand_power", "network_effects", "switching_costs",
+               "cost_advantages", "intangible_assets", "efficient_scale"]
+
+_MOAT_TYPE_LABELS = {
+    "brand_power":      "Brand Power",
+    "network_effects":  "Network Effects",
+    "switching_costs":  "Switching Costs",
+    "cost_advantages":  "Cost Advantages",
+    "intangible_assets": "Intangible Assets",
+    "efficient_scale":  "Efficient Scale",
+}
+
+# Curated classifications. Values are sets of moat types this stock possesses.
+# Sources: Morningstar moat ratings, Pat Dorsey framework, Buffett/Munger
+# letters, sector-standard analysis. Conservative — only listed moats that
+# are widely accepted; avoid speculative attributions.
+_MOAT_CURATED_US = {
+    # MEGA-CAP TECH
+    "MSFT":  {"network_effects", "switching_costs", "intangible_assets"},
+    "AAPL":  {"brand_power", "switching_costs", "intangible_assets"},
+    "GOOGL": {"network_effects", "intangible_assets", "cost_advantages"},
+    "GOOG":  {"network_effects", "intangible_assets", "cost_advantages"},
+    "META":  {"network_effects", "intangible_assets"},
+    "AMZN":  {"network_effects", "cost_advantages", "switching_costs"},
+    "NVDA":  {"intangible_assets", "switching_costs"},
+    # PAYMENTS / FINTECH
+    "V":     {"brand_power", "network_effects", "switching_costs"},
+    "MA":    {"brand_power", "network_effects", "switching_costs"},
+    "PYPL":  {"network_effects", "switching_costs"},
+    "AXP":   {"brand_power", "network_effects"},
+    # SEMICONDUCTORS / EQUIPMENT
+    "ASML":  {"switching_costs", "intangible_assets", "efficient_scale"},
+    "AVGO":  {"switching_costs", "cost_advantages", "intangible_assets"},
+    "TSM":   {"cost_advantages", "intangible_assets", "efficient_scale"},
+    "AMAT":  {"switching_costs", "intangible_assets"},
+    "LRCX":  {"switching_costs", "intangible_assets"},
+    "KLAC":  {"switching_costs", "intangible_assets"},
+    # CONSUMER STAPLES / RETAIL
+    "COST":  {"brand_power", "switching_costs", "cost_advantages"},
+    "WMT":   {"cost_advantages", "brand_power"},
+    "HD":    {"brand_power", "cost_advantages"},
+    "PG":    {"brand_power", "cost_advantages"},
+    "KO":    {"brand_power", "cost_advantages"},
+    "PEP":   {"brand_power", "cost_advantages"},
+    "MCD":   {"brand_power", "intangible_assets"},  # franchise system
+    "SBUX":  {"brand_power"},
+    "NKE":   {"brand_power"},
+    "LULU":  {"brand_power"},
+    # UTILITIES / INFRASTRUCTURE (efficient-scale dominant)
+    "CNI":   {"switching_costs", "efficient_scale"},
+    "CP":    {"switching_costs", "efficient_scale"},
+    "UNP":   {"switching_costs", "efficient_scale"},
+    "WM":    {"switching_costs", "efficient_scale"},
+    "RSG":   {"switching_costs", "efficient_scale"},
+    "MPLX":  {"switching_costs", "efficient_scale"},
+    "ENB":   {"switching_costs", "efficient_scale"},
+    "EPD":   {"switching_costs", "efficient_scale"},
+    # BANKS / FINANCIALS
+    "JPM":   {"brand_power", "switching_costs", "cost_advantages"},
+    "BAC":   {"switching_costs", "cost_advantages"},
+    "WFC":   {"switching_costs", "cost_advantages"},
+    "BRK.B": {"brand_power", "intangible_assets"},
+    "BRK-B": {"brand_power", "intangible_assets"},
+    "BLK":   {"brand_power", "switching_costs", "intangible_assets"},
+    "SPGI":  {"intangible_assets", "switching_costs"},
+    "MCO":   {"intangible_assets", "switching_costs"},
+    "MSCI":  {"intangible_assets", "switching_costs"},
+    # HEALTHCARE
+    "JNJ":   {"brand_power", "intangible_assets"},
+    "LLY":   {"intangible_assets", "switching_costs"},
+    "UNH":   {"cost_advantages", "switching_costs"},
+    "ISRG":  {"switching_costs", "intangible_assets"},
+    "ABBV":  {"intangible_assets"},
+    "PFE":   {"intangible_assets"},
+    # SOFTWARE / SAAS
+    "ADBE":  {"switching_costs", "brand_power"},
+    "CRM":   {"switching_costs", "network_effects"},
+    "ORCL":  {"switching_costs"},
+    "NOW":   {"switching_costs"},
+    "INTU":  {"switching_costs", "brand_power"},
+    # INDUSTRIALS / DEFENSE
+    "LMT":   {"intangible_assets", "switching_costs"},
+    "RTX":   {"intangible_assets", "switching_costs"},
+    "NOC":   {"intangible_assets", "switching_costs"},
+    "GE":    {"switching_costs", "intangible_assets"},
+    # ENERGY
+    "XOM":   {"cost_advantages", "efficient_scale"},
+    "CVX":   {"cost_advantages", "efficient_scale"},
+    # AUTOMOTIVE
+    "TSLA":  {"brand_power", "cost_advantages"},
+    # MEDIA / ENTERTAINMENT
+    "DIS":   {"brand_power", "intangible_assets"},
+    "NFLX":  {"brand_power", "network_effects"},
+}
+
+# India curated — Indian large/mid-caps with widely-accepted moat profiles
+_MOAT_CURATED_IN = {
+    # IT SERVICES
+    "TCS":         {"brand_power", "switching_costs", "cost_advantages"},
+    "INFY":        {"brand_power", "switching_costs", "cost_advantages"},
+    "HCLTECH":     {"switching_costs", "cost_advantages"},
+    "WIPRO":       {"switching_costs", "cost_advantages"},
+    "PERSISTENT":  {"switching_costs"},
+    # FMCG / CONSUMER
+    "HINDUNILVR":  {"brand_power", "cost_advantages"},
+    "ITC":         {"brand_power", "intangible_assets"},
+    "NESTLEIND":   {"brand_power"},
+    "BRITANNIA":   {"brand_power"},
+    "DABUR":       {"brand_power"},
+    "MARICO":      {"brand_power"},
+    "ASIANPAINT":  {"brand_power", "cost_advantages"},
+    # BANKING
+    "HDFCBANK":    {"brand_power", "switching_costs", "cost_advantages"},
+    "ICICIBANK":   {"switching_costs", "cost_advantages"},
+    "KOTAKBANK":   {"brand_power", "switching_costs"},
+    "AXISBANK":    {"switching_costs"},
+    "SBIN":        {"brand_power", "cost_advantages"},   # PSU scale
+    "BAJFINANCE":  {"brand_power", "switching_costs"},
+    # PAYMENTS / EXCHANGES
+    "BSE":         {"network_effects", "intangible_assets", "efficient_scale"},
+    "CDSL":        {"network_effects", "intangible_assets", "efficient_scale"},
+    "MCX":         {"network_effects", "intangible_assets", "efficient_scale"},
+    # ENERGY / OIL
+    "RELIANCE":    {"cost_advantages", "efficient_scale", "intangible_assets"},
+    "ONGC":        {"cost_advantages", "intangible_assets"},
+    "IOC":         {"cost_advantages", "efficient_scale"},
+    # UTILITIES / INFRA
+    "NTPC":        {"cost_advantages", "efficient_scale"},
+    "POWERGRID":   {"switching_costs", "efficient_scale", "intangible_assets"},
+    "ADANIPORTS":  {"switching_costs", "efficient_scale"},
+    "CONCOR":      {"switching_costs", "efficient_scale"},
+    # AUTO
+    "MARUTI":      {"brand_power", "cost_advantages"},
+    "TATAMOTORS":  {"brand_power"},
+    "M&M":         {"brand_power"},
+    "EICHERMOT":   {"brand_power"},  # Royal Enfield
+    "BAJAJ-AUTO":  {"brand_power", "cost_advantages"},
+    "HEROMOTOCO":  {"brand_power", "cost_advantages"},
+    # PHARMA
+    "SUNPHARMA":   {"intangible_assets", "cost_advantages"},
+    "CIPLA":       {"intangible_assets", "cost_advantages"},
+    "DRREDDY":     {"intangible_assets"},
+    "DIVISLAB":    {"cost_advantages", "intangible_assets"},
+    # DEFENSE PSUs
+    "BEL":         {"intangible_assets", "switching_costs"},
+    "HAL":         {"intangible_assets", "efficient_scale"},
+    "BDL":         {"intangible_assets", "efficient_scale"},
+    "MAZAGON":     {"intangible_assets", "efficient_scale"},
+    # CEMENT / METALS
+    "ULTRACEMCO":  {"cost_advantages", "brand_power"},
+    "AMBUJACEM":   {"cost_advantages", "brand_power"},
+    "JSWSTEEL":    {"cost_advantages"},
+    "TATASTEEL":   {"cost_advantages"},
+    "COALINDIA":   {"cost_advantages", "intangible_assets", "efficient_scale"},
+    # PAINTS / SPECIALTY
+    "PIDILITIND":  {"brand_power", "switching_costs"},
+    "TITAN":       {"brand_power"},
+    # ELECTRONICS / EMS
+    "DIXON":       {"cost_advantages"},
+    "KAYNES":      {"cost_advantages"},
+    # NEW-AGE
+    "ZOMATO":      {"network_effects", "brand_power"},
+    "NYKAA":       {"brand_power"},
+    "PAYTM":       {"network_effects"},
+    "POLICYBZR":   {"network_effects", "brand_power"},
+    "IRCTC":       {"intangible_assets", "efficient_scale"},
+}
+
+
+def _moat_lookup(symbol: str, region: str = "US") -> dict:
+    """Return curated moat classification for a symbol, or empty result with
+    'not_classified' flag if unknown. Never invents classifications.
+
+    Returns:
+      {symbol, region, moats: {<type>: bool}, classified: bool, source: str}
+    """
+    sym = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region == "IN":
+        moat_set = _MOAT_CURATED_IN.get(sym)
+    else:
+        moat_set = _MOAT_CURATED_US.get(sym)
+
+    result = {
+        "symbol": sym,
+        "region": region,
+        "moats": {mtype: (moat_set is not None and mtype in moat_set) for mtype in _MOAT_TYPES},
+        "classified": moat_set is not None,
+        "source": "curated (Pat Dorsey framework + Morningstar moat ratings)" if moat_set else "not_classified",
+        "moat_count": len(moat_set) if moat_set else 0,
+    }
+    return result
+
+
+@app.get("/api/moat-matrix")
+async def moat_matrix(symbols: str = "", region: str = "US"):
+    """Return competitive-advantages grid for a comma-separated list of symbols.
+
+    Args:
+      symbols: Comma-separated tickers (e.g. "MSFT,V,MA,ASML,AVGO,COST")
+      region: "US" or "IN" — picks the curated dictionary
+
+    Returns:
+      {success, region, moat_types: [list of 6 types with labels],
+       rows: [{symbol, moats: {brand_power: bool, ...}, classified, moat_count}],
+       unclassified: [list of symbols not in curated dict],
+       caveats: [honest notes about methodology]}
+    """
+    region = (region or "US").upper()
+    if region not in ("US", "IN"):
+        region = "US"
+
+    sym_list = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()]
+    if not sym_list:
+        return {
+            "success": False,
+            "error": "Provide symbols as comma-separated list (e.g. ?symbols=MSFT,V,MA)",
+        }
+
+    rows = []
+    unclassified = []
+    for sym in sym_list:
+        entry = _moat_lookup(sym, region)
+        rows.append(entry)
+        if not entry["classified"]:
+            unclassified.append(sym)
+
+    return {
+        "success": True,
+        "region": region,
+        "moat_types": [{"key": k, "label": _MOAT_TYPE_LABELS[k]} for k in _MOAT_TYPES],
+        "rows": rows,
+        "unclassified": unclassified,
+        "curated_count_us": len(_MOAT_CURATED_US),
+        "curated_count_in": len(_MOAT_CURATED_IN),
+        "caveats": [
+            "Classifications are curated from Pat Dorsey's 'Little Book That Builds Wealth' framework and Morningstar moat ratings — widely-accepted attributions only, no speculative claims.",
+            "Unknown tickers return empty rows with 'not_classified' flag. They are not auto-derived from financial data in this version.",
+            "Moats are qualitative — having a moat ≠ undervalued. Use this view as a screen, not a buy signal.",
+            "India curated dict covers ~50 large/mid-caps; US covers ~60 mega/large-caps. Coverage is intentionally selective to stay accurate.",
+        ],
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# r63.99.32: STOCK DASHBOARD — institutional fundamentals view
+# ═══════════════════════════════════════════════════════════
+# Single-endpoint dashboard inspired by Vijay's Google Sheets screenshots:
+#   - 10-year history: EPS, RevPerShare, FCFPerShare, ShsOutstanding, D/A, ROIC
+#   - Summary cards: Revenue, Gross Profit, Net Income, FCF, Dividend, CAGRs
+#   - Analytical layers (my expertise): ROIC trajectory, FCF conversion,
+#     dilution/buyback signal, debt trajectory, dividend safety, growth quality
+#
+# Sources:
+#   - yfinance income_stmt / balance_sheet / cashflow (10yr annual)
+#   - yfinance .info for trailing TTM + dividends + shares outstanding
+# Falls back gracefully: if a field isn't available, returns None with a
+# 'data_completeness' flag rather than fabricating values. Honest gaps.
+
+_dashboard_cache = {}  # {sym_region: {data, ts}}
+_DASHBOARD_TTL = 1800  # 30min — fundamentals don't change intra-day
+
+@app.get("/api/stock-dashboard")
+async def stock_dashboard(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Public wrapper for the stock dashboard endpoint.
+
+    r63.99.37: This wrapper exists ONLY to catch any unhandled exception from
+    the implementation and convert it into a {"success": False, "error": ...}
+    JSON response. Previously, an unhandled exception caused FastAPI to return
+    HTTP 500 with body {"detail": "Internal Server Error"} — the frontend's
+    loadDashboard reads d.error which was undefined, producing the useless
+    "Error: unknown" message Vijay saw on MU. With this wrapper, the user
+    now sees the actual exception type + message + a short trace.
+    """
+    try:
+        return await _stock_dashboard_impl(symbol, region, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err_str = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[DASHBOARD] {symbol} ({region}) unhandled exception: {_err_str}")
+        print(_tb.format_exc()[:2000])
+        return {
+            "success": False,
+            "symbol": symbol,
+            "region": region,
+            "error": _err_str,
+            "trace": _tb.format_exc()[:1500],
+        }
+
+
+async def _stock_dashboard_impl(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Comprehensive financial dashboard for any stock.
+
+    Returns 10-year annual history + summary cards + analytical layers.
+    Cached 30 min per symbol+region. Never fabricates values — missing data
+    surfaces as None with explicit 'data_completeness' percentage.
+    """
+    import time as _time
+    import math as _math
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not symbol:
+        return {"success": False, "error": "Provide ?symbol=..."}
+
+    cache_key = f"{symbol}_{region}"
+    if not refresh and cache_key in _dashboard_cache:
+        c = _dashboard_cache[cache_key]
+        if (_time.time() - c["ts"]) < _DASHBOARD_TTL:
+            out_cached = dict(c["data"])
+            out_cached["_cached"] = True
+            out_cached["_cache_age_sec"] = int(_time.time() - c["ts"])
+            return out_cached
+
+    t0 = _time.time()
+    out = {
+        "success": True,
+        "symbol": symbol,
+        "region": region,
+        "company_name": None,
+        "currency": "USD" if region == "US" else "INR",
+        "scale_label": "$" if region == "US" else "₹",
+        "annual": [],            # list of dicts, oldest→newest
+        "summary": {},
+        "cagrs": {},
+        "ratios": {},
+        "analysis": {},          # my analytical layers
+        "warnings": [],
+        "data_sources": [],
+        "data_completeness_pct": 0,
+    }
+
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+    except ImportError:
+        return {"success": False, "error": "yfinance not available"}
+
+    # Resolve symbol → yfinance ticker (handle .NS for India)
+    try:
+        inst = _resolve_instrument(symbol, region)
+        _yf_sym = inst.get("yf", symbol if region == "US" else f"{symbol}.NS")
+    except Exception:
+        _yf_sym = symbol if region == "US" else f"{symbol}.NS"
+
+    # ───────── 1. Fetch financials ─────────
+    def _fetch_all():
+        _yahoo_rate_wait()
+        try:
+            tk = yf.Ticker(_yf_sym)
+            inc = tk.income_stmt if hasattr(tk, 'income_stmt') else getattr(tk, 'financials', None)
+            bs  = tk.balance_sheet if hasattr(tk, 'balance_sheet') else None
+            cf  = tk.cashflow if hasattr(tk, 'cashflow') else None
+            info = {}
+            try: info = tk.info or {}
+            except Exception: info = {}
+            return inc, bs, cf, info
+        except Exception as e:
+            return None, None, None, {"_err": str(e)[:120]}
+
+    try:
+        _lp = _aio.get_event_loop()
+        inc_df, bs_df, cf_df, info = await _lp.run_in_executor(None, _fetch_all)
+    except Exception as e:
+        return {"success": False, "error": f"fetch failed: {type(e).__name__}: {str(e)[:120]}"}
+
+    out["company_name"] = info.get("longName") or info.get("shortName") or symbol
+    out["currency"] = info.get("financialCurrency") or out["currency"]
+    out["data_sources"].append("yfinance")
+
+    # ───────── 2. Build 10-year annual series ─────────
+    annual = []
+    filled = 0
+    expected_fields = 0
+    if inc_df is not None and len(inc_df.columns) > 0:
+        for col in inc_df.columns[:10]:
+            year = col.strftime("%Y") if hasattr(col, "strftime") else str(col)[:4]
+            row = {"year": year}
+            # Income statement
+            def _ifield(name):
+                try:
+                    if name in inc_df.index:
+                        return float(inc_df.at[name, col])
+                except Exception: pass
+                return None
+            rev = _ifield("Total Revenue")
+            cor = _ifield("Cost Of Revenue") or _ifield("Cost of Revenue") or _ifield("Reconciled Cost Of Revenue")
+            gp  = _ifield("Gross Profit")
+            if gp is None and rev is not None and cor is not None:
+                gp = rev - cor
+            ni  = _ifield("Net Income")
+            ebitda = _ifield("EBITDA")
+            eps = _ifield("Diluted EPS") or _ifield("Basic EPS")
+
+            # Balance sheet
+            def _bfield(name):
+                try:
+                    if bs_df is not None and col in bs_df.columns and name in bs_df.index:
+                        return float(bs_df.at[name, col])
+                except Exception: pass
+                return None
+            equity = _bfield("Stockholders Equity") or _bfield("Total Stockholder Equity")
+            total_assets = _bfield("Total Assets")
+            total_debt = _bfield("Total Debt") or ((_bfield("Long Term Debt") or 0) + (_bfield("Current Debt") or 0)) or None
+            cash_eq = _bfield("Cash And Cash Equivalents") or _bfield("Cash Cash Equivalents And Short Term Investments")
+            shares = _bfield("Share Issued") or _bfield("Ordinary Shares Number") or _bfield("Common Stock Shares Outstanding")
+
+            # Cashflow
+            def _cfield(name):
+                try:
+                    if cf_df is not None and col in cf_df.columns and name in cf_df.index:
+                        return float(cf_df.at[name, col])
+                except Exception: pass
+                return None
+            opcf = _cfield("Operating Cash Flow") or _cfield("Total Cash From Operating Activities")
+            capex = _cfield("Capital Expenditure") or _cfield("Capital Expenditures")
+            if capex is not None: capex = abs(capex)
+            fcf = (opcf - capex) if (opcf is not None and capex is not None) else None
+            divs_paid = _cfield("Cash Dividends Paid")
+
+            # Derived per-share
+            rev_ps = (rev / shares) if (rev is not None and shares and shares > 0) else None
+            fcf_ps = (fcf / shares) if (fcf is not None and shares and shares > 0) else None
+
+            # Ratios
+            gross_margin = (gp / rev * 100) if (gp is not None and rev and rev > 0) else None
+            net_margin = (ni / rev * 100) if (ni is not None and rev and rev > 0) else None
+            roe = (ni / equity * 100) if (ni is not None and equity and equity > 0) else None
+            roa = (ni / total_assets * 100) if (ni is not None and total_assets and total_assets > 0) else None
+            # ROIC ≈ NOPAT / Invested Capital. Approximation: NI / (Equity + Debt - Cash)
+            invested_capital = None
+            if equity is not None:
+                invested_capital = equity
+                if total_debt: invested_capital += total_debt
+                if cash_eq: invested_capital -= cash_eq
+            roic = (ni / invested_capital * 100) if (ni is not None and invested_capital and invested_capital > 0) else None
+            debt_to_assets = (total_debt / total_assets * 100) if (total_debt is not None and total_assets and total_assets > 0) else None
+            debt_to_equity = (total_debt / equity * 100) if (total_debt is not None and equity and equity > 0) else None
+            fcf_conversion = (fcf / ni * 100) if (fcf is not None and ni and ni > 0) else None
+
+            row.update({
+                "revenue": rev,
+                "cost_of_revenue": cor,
+                "gross_profit": gp,
+                "net_income": ni,
+                "ebitda": ebitda,
+                "eps": eps,
+                "shares_outstanding": shares,
+                "revenue_per_share": rev_ps,
+                "operating_cash_flow": opcf,
+                "capex": capex,
+                "fcf": fcf,
+                "fcf_per_share": fcf_ps,
+                "dividends_paid": divs_paid,
+                "total_assets": total_assets,
+                "total_debt": total_debt,
+                "cash_equivalents": cash_eq,
+                "stockholders_equity": equity,
+                "gross_margin_pct": round(gross_margin, 2) if gross_margin is not None else None,
+                "net_margin_pct": round(net_margin, 2) if net_margin is not None else None,
+                "roe_pct": round(roe, 2) if roe is not None else None,
+                "roa_pct": round(roa, 2) if roa is not None else None,
+                "roic_pct": round(roic, 2) if roic is not None else None,
+                "debt_to_assets_pct": round(debt_to_assets, 2) if debt_to_assets is not None else None,
+                "debt_to_equity_pct": round(debt_to_equity, 2) if debt_to_equity is not None else None,
+                "fcf_conversion_pct": round(fcf_conversion, 2) if fcf_conversion is not None else None,
+            })
+
+            # Count completeness: how many of 17 key fields populated
+            key_fields = ["revenue","gross_profit","net_income","eps","shares_outstanding",
+                          "revenue_per_share","fcf","fcf_per_share","total_assets","total_debt",
+                          "stockholders_equity","gross_margin_pct","net_margin_pct","roe_pct",
+                          "roic_pct","debt_to_assets_pct","fcf_conversion_pct"]
+            for k in key_fields:
+                expected_fields += 1
+                if row.get(k) is not None: filled += 1
+
+            annual.append(row)
+
+        # Reverse to oldest→newest for chart rendering
+        annual.reverse()
+        out["annual"] = annual
+        if expected_fields > 0:
+            out["data_completeness_pct"] = round(filled / expected_fields * 100, 1)
+    else:
+        out["warnings"].append("yfinance returned no income statement data for this ticker.")
+
+    # ───────── 3. Summary cards (TTM + latest year) ─────────
+    info_g = info if isinstance(info, dict) else {}
+    latest = annual[-1] if annual else {}
+
+    # r63.99.38: Defensive coercion. yfinance occasionally returns strings
+    # ("N/A", "—", "Infinity"), NaN, +/-inf, or even booleans for missing
+    # fields. Naked arithmetic/comparison on these crashes downstream code
+    # (e.g. `pe > 0` on the string "N/A" → TypeError). The 23-archetype
+    # validation harness for r99.38 caught this on the "Mixed string/numeric
+    # in info" archetype. _ds_num() is the universal sanitizer; use it for
+    # EVERY info-derived value before it lands in summary, where downstream
+    # decision/quality/valuation/order_ticket logic assumes clean numbers.
+    def _ds_num(v):
+        if v is None: return None
+        if isinstance(v, bool): return None  # bool is int subclass — reject explicitly
+        if isinstance(v, str):
+            s = v.strip()
+            if s in ('', 'N/A', 'n/a', '-', '—', 'None', 'none', 'null', 'NaN', 'nan', 'Infinity', 'inf', '-inf', '∞'):
+                return None
+            try: v = float(s)
+            except (ValueError, TypeError): return None
+        if isinstance(v, (int, float)):
+            try:
+                f = float(v)
+                if f != f: return None              # NaN
+                if f == float('inf') or f == float('-inf'): return None
+                return f
+            except (ValueError, TypeError, OverflowError):
+                return None
+        return None
+
+    out["summary"] = {
+        "price": _ds_num(info_g.get("regularMarketPrice")) or _ds_num(info_g.get("currentPrice")),
+        "market_cap": _ds_num(info_g.get("marketCap")),
+        "trailing_pe": _ds_num(info_g.get("trailingPE")),
+        "forward_pe": _ds_num(info_g.get("forwardPE")),
+        "price_to_book": _ds_num(info_g.get("priceToBook")),
+        "price_to_sales": _ds_num(info_g.get("priceToSalesTrailing12Months")),
+        "ev_to_ebitda": _ds_num(info_g.get("enterpriseToEbitda")),
+        "revenue_ttm": _ds_num(info_g.get("totalRevenue")) or _ds_num(latest.get("revenue")),
+        "gross_profit_latest": _ds_num(latest.get("gross_profit")),
+        "net_income_latest": _ds_num(latest.get("net_income")),
+        "eps_latest": _ds_num(latest.get("eps")) or _ds_num(info_g.get("trailingEps")),
+        "fcf_ttm": _ds_num(info_g.get("freeCashflow")) or _ds_num(latest.get("fcf")),
+        "fcf_per_share_ttm": _ds_num(latest.get("fcf_per_share")),
+        "fcf_yield_pct": None,
+        "shares_outstanding_latest": _ds_num(info_g.get("sharesOutstanding")) or _ds_num(latest.get("shares_outstanding")),
+        "dividend_rate": _ds_num(info_g.get("dividendRate")),
+        "dividend_yield_pct": (_ds_num(info_g.get("dividendYield")) * 100) if _ds_num(info_g.get("dividendYield")) is not None else None,
+        "payout_ratio_pct": (_ds_num(info_g.get("payoutRatio")) * 100) if _ds_num(info_g.get("payoutRatio")) is not None else None,
+        "latest_year": latest.get("year"),
+        # Latest ratios
+        "gross_margin_latest_pct": _ds_num(latest.get("gross_margin_pct")),
+        "net_margin_latest_pct": _ds_num(latest.get("net_margin_pct")),
+        "roe_latest_pct": _ds_num(latest.get("roe_pct")) or ((_ds_num(info_g.get("returnOnEquity")) * 100) if _ds_num(info_g.get("returnOnEquity")) is not None else None),
+        "roic_latest_pct": _ds_num(latest.get("roic_pct")),
+        "debt_to_assets_latest_pct": _ds_num(latest.get("debt_to_assets_pct")),
+        "debt_to_equity_latest_pct": _ds_num(latest.get("debt_to_equity_pct")),
+    }
+    # FCF yield = FCF / market cap
+    if out["summary"]["fcf_ttm"] and out["summary"]["market_cap"]:
+        out["summary"]["fcf_yield_pct"] = round(out["summary"]["fcf_ttm"] / out["summary"]["market_cap"] * 100, 2)
+
+    # ───────── 4. CAGRs (5Y and 10Y for revenue, net income, EPS, FCF) ─────────
+    def _cagr(first, last, years):
+        if first is None or last is None or first <= 0 or last <= 0 or years <= 0:
+            return None
+        return round(((last / first) ** (1 / years) - 1) * 100, 2)
+
+    if len(annual) >= 2:
+        for span_years in (5, 10):
+            if len(annual) < (span_years + 1) and len(annual) < 2: continue
+            # Use earliest year available up to span_years back
+            n = min(span_years, len(annual) - 1)
+            first = annual[-(n + 1)] if (n + 1) <= len(annual) else annual[0]
+            last = annual[-1]
+            key_suffix = f"{n}y"
+            out["cagrs"][f"revenue_{key_suffix}_cagr_pct"] = _cagr(first.get("revenue"), last.get("revenue"), n)
+            out["cagrs"][f"net_income_{key_suffix}_cagr_pct"] = _cagr(first.get("net_income"), last.get("net_income"), n)
+            out["cagrs"][f"eps_{key_suffix}_cagr_pct"] = _cagr(first.get("eps"), last.get("eps"), n)
+            out["cagrs"][f"fcf_{key_suffix}_cagr_pct"] = _cagr(first.get("fcf"), last.get("fcf"), n)
+
+    # 5y/10y average gross profit ratio
+    def _avg_gpm(yrs):
+        vals = [a["gross_margin_pct"] for a in annual[-yrs:] if a.get("gross_margin_pct") is not None]
+        return round(sum(vals) / len(vals), 2) if vals else None
+    if annual:
+        out["ratios"]["avg_gross_margin_5y_pct"] = _avg_gpm(5)
+        out["ratios"]["avg_gross_margin_10y_pct"] = _avg_gpm(10)
+        out["ratios"]["last_year_gross_margin_pct"] = latest.get("gross_margin_pct")
+
+    # ───────── 5. ANALYTICAL LAYER (my expertise) ─────────
+    analysis = {}
+
+    # 5a. Shares outstanding trajectory: dilution vs buyback
+    shs_series = [a.get("shares_outstanding") for a in annual if a.get("shares_outstanding")]
+    if len(shs_series) >= 2:
+        shs_chg_pct = (shs_series[-1] - shs_series[0]) / shs_series[0] * 100
+        if shs_chg_pct < -5:
+            analysis["share_action"] = {"verdict": "BUYBACK", "change_pct": round(shs_chg_pct, 2),
+                "interpretation": f"Shares outstanding ↓ {abs(round(shs_chg_pct, 1))}% over period — management is returning capital via buybacks. Positive for per-share metrics."}
+        elif shs_chg_pct > 5:
+            analysis["share_action"] = {"verdict": "DILUTION", "change_pct": round(shs_chg_pct, 2),
+                "interpretation": f"Shares outstanding ↑ {round(shs_chg_pct, 1)}% over period — material dilution. Per-share growth lags total growth. Check whether this funded acquisitions or compensation."}
+        else:
+            analysis["share_action"] = {"verdict": "NEUTRAL", "change_pct": round(shs_chg_pct, 2),
+                "interpretation": "Share count broadly flat — neither aggressive buybacks nor material dilution."}
+
+    # 5b. ROIC trajectory — is it expanding, stable, or compressing?
+    roic_series = [a.get("roic_pct") for a in annual if a.get("roic_pct") is not None]
+    if len(roic_series) >= 3:
+        roic_avg = sum(roic_series) / len(roic_series)
+        roic_recent = sum(roic_series[-3:]) / min(3, len(roic_series))
+        roic_early = sum(roic_series[:3]) / min(3, len(roic_series))
+        trend_delta = roic_recent - roic_early
+        if roic_avg >= 15 and trend_delta >= -2:
+            analysis["roic_quality"] = {"verdict": "HIGH-QUALITY COMPOUNDER", "avg_pct": round(roic_avg, 2),
+                "interpretation": f"Sustained ROIC of {round(roic_avg,1)}% with stable/expanding trend. This is the profile of a business that earns well above its cost of capital — Buffett/Munger territory."}
+        elif roic_avg >= 10 and trend_delta >= -3:
+            analysis["roic_quality"] = {"verdict": "ABOVE-AVERAGE", "avg_pct": round(roic_avg, 2),
+                "interpretation": f"ROIC averaging {round(roic_avg,1)}% — comfortably above typical WACC of 8-10%. Solid business economics."}
+        elif roic_avg < 8:
+            analysis["roic_quality"] = {"verdict": "VALUE-DESTROYING", "avg_pct": round(roic_avg, 2),
+                "interpretation": f"ROIC of {round(roic_avg,1)}% likely sits BELOW cost of capital (~8-10%). Growth here destroys shareholder value. Check business model carefully."}
+        else:
+            analysis["roic_quality"] = {"verdict": "MARGINAL", "avg_pct": round(roic_avg, 2),
+                "interpretation": f"ROIC around {round(roic_avg,1)}% — at or slightly above cost of capital. Growth is barely value-accretive; quality matters more than multiple here."}
+        analysis["roic_quality"]["trend_delta_pct"] = round(trend_delta, 2)
+
+    # 5c. FCF conversion quality
+    fcf_conv_series = [a.get("fcf_conversion_pct") for a in annual if a.get("fcf_conversion_pct") is not None]
+    if len(fcf_conv_series) >= 3:
+        fcf_conv_avg = sum(fcf_conv_series) / len(fcf_conv_series)
+        if fcf_conv_avg >= 100:
+            analysis["fcf_quality"] = {"verdict": "HIGH-QUALITY EARNINGS", "avg_pct": round(fcf_conv_avg, 2),
+                "interpretation": f"FCF conversion of {round(fcf_conv_avg,0)}% means reported earnings translate fully to cash. Capital-light business; trust the income statement."}
+        elif fcf_conv_avg >= 70:
+            analysis["fcf_quality"] = {"verdict": "DECENT CONVERSION", "avg_pct": round(fcf_conv_avg, 2),
+                "interpretation": f"FCF conversion of {round(fcf_conv_avg,0)}% — earnings mostly become cash, modest reinvestment needs. Acceptable."}
+        else:
+            analysis["fcf_quality"] = {"verdict": "EARNINGS-CASH GAP", "avg_pct": round(fcf_conv_avg, 2),
+                "interpretation": f"FCF conversion of just {round(fcf_conv_avg,0)}% — reported earnings overstate cash generation. Capex-heavy or working-capital-hungry. Be skeptical of headline EPS."}
+
+    # 5d. Debt trajectory
+    debt_series = [a.get("debt_to_assets_pct") for a in annual if a.get("debt_to_assets_pct") is not None]
+    if len(debt_series) >= 3:
+        debt_recent = sum(debt_series[-3:]) / min(3, len(debt_series))
+        debt_early = sum(debt_series[:3]) / min(3, len(debt_series))
+        debt_delta = debt_recent - debt_early
+        if debt_recent <= 30 and debt_delta <= 5:
+            analysis["leverage"] = {"verdict": "CONSERVATIVE", "current_pct": round(debt_recent, 2), "delta_pct": round(debt_delta, 2),
+                "interpretation": f"D/A around {round(debt_recent,0)}% with stable/declining trend. Balance sheet has plenty of room — survives recessions, can pursue M&A."}
+        elif debt_recent <= 50:
+            analysis["leverage"] = {"verdict": "MODERATE", "current_pct": round(debt_recent, 2), "delta_pct": round(debt_delta, 2),
+                "interpretation": f"D/A around {round(debt_recent,0)}%. Manageable in normal times; watch for stress in down cycles."}
+        else:
+            analysis["leverage"] = {"verdict": "HIGH LEVERAGE", "current_pct": round(debt_recent, 2), "delta_pct": round(debt_delta, 2),
+                "interpretation": f"D/A of {round(debt_recent,0)}% is elevated. Interest coverage and refinancing risk matter more than headline earnings here."}
+
+    # 5e. Dividend safety
+    payout = out["summary"].get("payout_ratio_pct")
+    div_yield = out["summary"].get("dividend_yield_pct")
+    if payout is not None and div_yield is not None:
+        if payout > 0 and payout <= 50:
+            analysis["dividend"] = {"verdict": "WELL-COVERED", "payout_pct": round(payout, 2), "yield_pct": round(div_yield, 2),
+                "interpretation": f"Payout of {round(payout,0)}% leaves ample cushion. Dividend can grow with earnings; cuts only in severe stress."}
+        elif payout > 0 and payout <= 75:
+            analysis["dividend"] = {"verdict": "COVERED BUT TIGHTER", "payout_pct": round(payout, 2), "yield_pct": round(div_yield, 2),
+                "interpretation": f"Payout of {round(payout,0)}% leaves less room. Growth in payout will track earnings closely; recession-sensitive."}
+        elif payout > 75:
+            analysis["dividend"] = {"verdict": "STRETCHED", "payout_pct": round(payout, 2), "yield_pct": round(div_yield, 2),
+                "interpretation": f"Payout of {round(payout,0)}% leaves little margin. Dividend cuts likely in any earnings shock — high yield may compensate for that risk, but understand what you're buying."}
+        else:
+            analysis["dividend"] = {"verdict": "NO DIVIDEND", "interpretation": "Company reinvests all earnings — appropriate for growth phase, but no income for shareholders."}
+
+    # 5f. Growth quality (revenue vs net income vs EPS CAGR alignment)
+    rev_5y = out["cagrs"].get("revenue_5y_cagr_pct")
+    ni_5y = out["cagrs"].get("net_income_5y_cagr_pct")
+    eps_5y = out["cagrs"].get("eps_5y_cagr_pct")
+    if rev_5y is not None and ni_5y is not None and eps_5y is not None:
+        if eps_5y > ni_5y and eps_5y > rev_5y:
+            analysis["growth_quality"] = {"verdict": "EPS-LEVERAGED GROWTH",
+                "interpretation": f"EPS CAGR ({eps_5y}%) > NI CAGR ({ni_5y}%) > Revenue CAGR ({rev_5y}%). Operating leverage + buybacks compounding shareholder value. High-quality growth pattern."}
+        elif rev_5y > 0 and ni_5y > rev_5y * 1.5:
+            analysis["growth_quality"] = {"verdict": "MARGIN EXPANSION",
+                "interpretation": f"Net Income CAGR ({ni_5y}%) outpacing Revenue CAGR ({rev_5y}%) — margin expansion is driving earnings. Investigate whether expansion is sustainable or one-off."}
+        elif rev_5y > ni_5y > 0:
+            analysis["growth_quality"] = {"verdict": "MARGIN COMPRESSION",
+                "interpretation": f"Revenue CAGR ({rev_5y}%) > NI CAGR ({ni_5y}%). Growing top-line but losing margin. Pricing power eroding or costs rising faster than scale benefits."}
+        elif ni_5y < 0:
+            analysis["growth_quality"] = {"verdict": "EARNINGS DECLINING",
+                "interpretation": "Net income CAGR is negative — earnings shrinking over the period. Decompose what's broken (margins? volumes? one-offs?)."}
+
+    out["analysis"] = analysis
+
+    # ───────── 6. Honest data warnings ─────────
+    if not annual:
+        out["warnings"].append("No annual history available — yfinance returned empty data for this ticker.")
+    elif len(annual) < 5:
+        out["warnings"].append(f"Only {len(annual)} years of data available; CAGRs over 5y/10y may be missing.")
+    if out["data_completeness_pct"] < 60:
+        out["warnings"].append(f"Data completeness {out['data_completeness_pct']}% — many fields couldn't be derived. yfinance coverage is thinner outside US large-caps.")
+    if region == "IN" and out["data_completeness_pct"] < 50:
+        out["warnings"].append("India coverage on yfinance is sparse. For Indian stocks, consider a paid feed (Tijori, Trendlyne) for full fundamentals.")
+
+    # ═══════════════════════════════════════════════════════════
+    # r63.99.33: DECISION LAYER — turn descriptive analysis into actionable call
+    # ═══════════════════════════════════════════════════════════
+    decision = {
+        "verdict": "INSUFFICIENT_DATA",
+        "conviction_pct": 0,
+        "quality_score": 0,    # 0-100, from analytical layers
+        "valuation_score": 0,  # 0-100, from price-vs-fundamentals
+        "composite_score": 0,
+        "position_sizing": None,
+        "entry_zones": {},
+        "valuation_context": {},
+        "peer_context": {},
+        "invalidation_signals": [],
+        "key_risks": [],
+        "summary_one_liner": "Insufficient data to make a decision call.",
+    }
+
+    # 6a. QUALITY SCORE — weighted aggregation of 6 analytical verdicts.
+    # Weights chosen to mirror how a fundamentals investor actually ranks importance:
+    #   ROIC quality       — 30% (most important: are returns above WACC?)
+    #   FCF conversion     — 20% (are earnings real?)
+    #   Leverage           — 15% (can it survive stress?)
+    #   Growth quality     — 15% (decomposition signal)
+    #   Capital return     — 10% (buybacks compound)
+    #   Dividend safety    — 10% (income + signal of confidence)
+    _verdict_scores = {
+        # ROIC quality (30 pts max)
+        "roic_quality": {
+            "HIGH-QUALITY COMPOUNDER": 30, "ABOVE-AVERAGE": 22,
+            "MARGINAL": 12, "VALUE-DESTROYING": 0,
+        },
+        # FCF quality (20 pts max)
+        "fcf_quality": {
+            "HIGH-QUALITY EARNINGS": 20, "DECENT CONVERSION": 14,
+            "EARNINGS-CASH GAP": 5,
+        },
+        # Leverage (15 pts max)
+        "leverage": {
+            "CONSERVATIVE": 15, "MODERATE": 10, "HIGH LEVERAGE": 3,
+        },
+        # Growth quality (15 pts max)
+        "growth_quality": {
+            "EPS-LEVERAGED GROWTH": 15, "MARGIN EXPANSION": 12,
+            "MARGIN COMPRESSION": 6, "EARNINGS DECLINING": 0,
+        },
+        # Capital return (10 pts max)
+        "share_action": {
+            "BUYBACK": 10, "NEUTRAL": 6, "DILUTION": 2,
+        },
+        # Dividend (10 pts max)
+        "dividend": {
+            "WELL-COVERED": 10, "COVERED BUT TIGHTER": 7,
+            "STRETCHED": 3, "NO DIVIDEND": 5,  # no div is neutral, not negative
+        },
+    }
+    quality_score = 0
+    layers_used = 0
+    for layer_key, score_map in _verdict_scores.items():
+        layer = analysis.get(layer_key)
+        if layer and layer.get("verdict") in score_map:
+            quality_score += score_map[layer["verdict"]]
+            layers_used += 1
+    # Normalize to 100 if we got partial layers
+    if layers_used > 0 and layers_used < len(_verdict_scores):
+        # Pro-rate: assume missing layers would score average (50% of their max)
+        max_possible = 100
+        max_from_used = sum(max(v.values()) for k, v in _verdict_scores.items()
+                            if analysis.get(k) and analysis.get(k, {}).get("verdict") in v)
+        if max_from_used > 0:
+            quality_score = round(quality_score / max_from_used * 100)
+        else:
+            quality_score = 50  # neutral when nothing scored
+    decision["quality_score"] = quality_score
+
+    # 6b. VALUATION SCORE — current multiples vs reasonable thresholds.
+    # Honest: we don't have 5Y historical P/E for the stock, so we benchmark
+    # against absolute thresholds for what's expensive/cheap for the GROWTH RATE.
+    # Cheap names with high growth = high score; expensive low-growth = low.
+    val_score = 50  # default neutral
+    val_components = []
+    pe = out["summary"].get("trailing_pe")
+    fwd_pe = out["summary"].get("forward_pe")
+    peg_proxy = None
+    eps_5y = out["cagrs"].get("eps_5y_cagr_pct")
+
+    # Compute PEG (P/E to growth) — most actionable single multiple
+    if fwd_pe and eps_5y and eps_5y > 0:
+        peg_proxy = round(fwd_pe / eps_5y, 2)
+    elif pe and eps_5y and eps_5y > 0:
+        peg_proxy = round(pe / eps_5y, 2)
+
+    if peg_proxy is not None:
+        if peg_proxy < 1.0:
+            val_score = 85
+            val_components.append({"metric": "PEG", "value": peg_proxy, "verdict": "CHEAP", "note": f"PEG of {peg_proxy} means you pay <1× for each % of growth — Peter Lynch's classic value zone."})
+        elif peg_proxy < 1.5:
+            val_score = 70
+            val_components.append({"metric": "PEG", "value": peg_proxy, "verdict": "FAIR", "note": f"PEG of {peg_proxy} is reasonable — paying ~1× for growth."})
+        elif peg_proxy < 2.5:
+            val_score = 45
+            val_components.append({"metric": "PEG", "value": peg_proxy, "verdict": "PREMIUM", "note": f"PEG of {peg_proxy} requires growth to come through. Negative surprises punished hard."})
+        else:
+            val_score = 25
+            val_components.append({"metric": "PEG", "value": peg_proxy, "verdict": "EXPENSIVE", "note": f"PEG of {peg_proxy} prices in perfection. Multiple compression risk is real."})
+
+    # FCF yield context — for mature names this is the cleanest valuation signal
+    fcf_yield = out["summary"].get("fcf_yield_pct")
+    if fcf_yield is not None:
+        if fcf_yield >= 7:
+            val_components.append({"metric": "FCF Yield", "value": fcf_yield, "verdict": "ATTRACTIVE", "note": f"FCF yield of {fcf_yield}% beats most fixed income — generous cash return for the price."})
+            if val_score < 70: val_score = max(val_score, 65)
+        elif fcf_yield >= 4:
+            val_components.append({"metric": "FCF Yield", "value": fcf_yield, "verdict": "FAIR", "note": f"FCF yield of {fcf_yield}% is reasonable."})
+        elif fcf_yield >= 2:
+            val_components.append({"metric": "FCF Yield", "value": fcf_yield, "verdict": "MODEST", "note": f"FCF yield of {fcf_yield}% — growth must compound to justify."})
+        else:
+            val_components.append({"metric": "FCF Yield", "value": fcf_yield, "verdict": "LOW", "note": f"FCF yield of {fcf_yield}% means heavy reliance on multiple expansion or future growth."})
+            if val_score > 40: val_score = min(val_score, 40)
+
+    # Absolute P/E sanity check for context
+    if pe is not None and pe > 0:
+        if pe < 15:
+            val_components.append({"metric": "Trailing P/E", "value": pe, "verdict": "BELOW MARKET AVG", "note": "Trades below typical large-cap multiple."})
+        elif pe > 40:
+            val_components.append({"metric": "Trailing P/E", "value": pe, "verdict": "WELL ABOVE MARKET", "note": "Premium multiple — growth/quality must justify."})
+
+    decision["valuation_score"] = val_score
+    decision["valuation_context"] = {"components": val_components, "peg_proxy": peg_proxy}
+
+    # 6c. ENTRY/EXIT ZONES — what price would make the math obviously attractive
+    # Three reference points: current price, "fair value" (FCF yield = 5%),
+    # "attractive zone" (FCF yield = 7%), "wait zone" (FCF yield = 3% or below)
+    price = out["summary"].get("price")
+    mcap = out["summary"].get("market_cap")
+    fcf_ttm = out["summary"].get("fcf_ttm")
+    if price and mcap and fcf_ttm and fcf_ttm > 0 and price > 0:
+        # shares ≈ mcap / price
+        shares_implied = mcap / price
+        # Target prices at different FCF yields
+        # If price_x = FCF / (target_yield * shares), then mcap_x = FCF / target_yield
+        try:
+            fair_value_price  = round((fcf_ttm / 0.05) / shares_implied, 2)  # 5% FCF yield = fair
+            attractive_price  = round((fcf_ttm / 0.07) / shares_implied, 2)  # 7% FCF yield = attractive
+            premium_price     = round((fcf_ttm / 0.03) / shares_implied, 2)  # 3% FCF yield = expensive
+            decision["entry_zones"] = {
+                "current_price": price,
+                "attractive_entry_below": attractive_price,
+                "fair_value_near": fair_value_price,
+                "wait_for_pullback_above": premium_price,
+                "method": "FCF yield (7%=attractive, 5%=fair, 3%=expensive)",
+                "honesty_note": "These are reverse-engineered from current FCF assuming constant cash generation. They are NOT a DCF — they ignore growth in FCF over time. Treat as 'what price would the math obviously work' bands, not price targets.",
+            }
+        except Exception:
+            pass
+
+    # 6d. PEER/INDEX OPPORTUNITY COST — quick benchmark vs index expectation
+    # Use EPS 5Y CAGR as the proxy — easy to compute, very meaningful
+    if eps_5y is not None:
+        # Index baseline: S&P 500 historical EPS growth ~8%/yr, NIFTY ~10%/yr
+        baseline = 8 if region == "US" else 10
+        if eps_5y > baseline + 5:
+            decision["peer_context"] = {
+                "verdict": "BEATING INDEX",
+                "delta_vs_baseline": round(eps_5y - baseline, 1),
+                "interpretation": f"EPS CAGR of {eps_5y}% vs {baseline}% baseline ({region} index). Outperforming the passive alternative — earning the active premium.",
+            }
+        elif eps_5y > baseline - 3:
+            decision["peer_context"] = {
+                "verdict": "MATCHING INDEX",
+                "delta_vs_baseline": round(eps_5y - baseline, 1),
+                "interpretation": f"EPS CAGR of {eps_5y}% is roughly in line with {region} index baseline ({baseline}%). Active selection is breaking even — quality and valuation matter more than growth here.",
+            }
+        else:
+            decision["peer_context"] = {
+                "verdict": "LAGGING INDEX",
+                "delta_vs_baseline": round(eps_5y - baseline, 1),
+                "interpretation": f"EPS CAGR of {eps_5y}% trails {region} index baseline ({baseline}%). Opportunity cost: simpler to own the index unless valuation is meaningfully cheaper.",
+            }
+
+    # 6e. INVALIDATION SIGNALS — what would change the verdict
+    invalidation = []
+    roic_q = analysis.get("roic_quality", {})
+    if roic_q.get("verdict") in ("HIGH-QUALITY COMPOUNDER", "ABOVE-AVERAGE"):
+        invalidation.append(f"ROIC drops below 10% for 2+ consecutive years (currently averaging {roic_q.get('avg_pct')}%).")
+    fcf_q = analysis.get("fcf_quality", {})
+    if fcf_q.get("verdict") == "HIGH-QUALITY EARNINGS":
+        invalidation.append(f"FCF conversion drops below 70% — indicates working capital stress or capex spike (currently averaging {fcf_q.get('avg_pct')}%).")
+    lev = analysis.get("leverage", {})
+    if lev.get("verdict") == "CONSERVATIVE" and lev.get("current_pct") is not None:
+        invalidation.append(f"D/A rises above 50% (currently {lev.get('current_pct')}%) — signals balance sheet deterioration or aggressive M&A.")
+    growth = analysis.get("growth_quality", {})
+    if growth.get("verdict") in ("EPS-LEVERAGED GROWTH", "MARGIN EXPANSION"):
+        invalidation.append("Two consecutive quarters of revenue OR EPS miss — would flip growth-quality verdict.")
+    if peg_proxy is not None and peg_proxy < 2:
+        invalidation.append(f"Forward P/E expands to 50+ without commensurate growth — flips valuation from {val_components[0]['verdict'] if val_components else 'OK'} to EXPENSIVE.")
+    if fcf_yield is not None and fcf_yield >= 4:
+        invalidation.append(f"FCF yield falls below 3% (currently {fcf_yield}%) — multiple expansion has front-loaded returns.")
+    decision["invalidation_signals"] = invalidation[:6]
+
+    # 6f. KEY RISKS — sector-agnostic + data-derived
+    risks = []
+    if lev.get("verdict") == "HIGH LEVERAGE":
+        risks.append({"risk": "Refinancing risk", "detail": f"D/A of {lev.get('current_pct')}% — rate cycle changes hit interest coverage hard."})
+    if fcf_q.get("verdict") == "EARNINGS-CASH GAP":
+        risks.append({"risk": "Earnings quality", "detail": "Reported EPS doesn't translate to cash — capex-heavy or working-capital-hungry. Headline numbers overstate true cash generation."})
+    if roic_q.get("verdict") == "VALUE-DESTROYING":
+        risks.append({"risk": "Capital allocation", "detail": "ROIC below WACC means growth destroys value. Every dollar reinvested earns less than it costs."})
+    if analysis.get("share_action", {}).get("verdict") == "DILUTION":
+        risks.append({"risk": "Dilution drag", "detail": f"Shares ↑{analysis['share_action'].get('change_pct')}% — total returns lag total earnings growth by share-creep."})
+    if growth.get("verdict") == "MARGIN COMPRESSION":
+        risks.append({"risk": "Pricing power erosion", "detail": "Revenue growing faster than profit — competitive pressure or input cost inflation."})
+    if growth.get("verdict") == "EARNINGS DECLINING":
+        risks.append({"risk": "Earnings recession", "detail": "Net income shrinking — investigate whether structural or cyclical before treating as buy opportunity."})
+    if val_score < 35:
+        risks.append({"risk": "Multiple compression", "detail": "Premium valuation means a re-rating to even fair-value multiples could drop the stock 30-50% even if fundamentals stay intact."})
+    # Region-specific
+    if region == "IN":
+        risks.append({"risk": "FX exposure", "detail": "INR weakness affects USD-earnings names (IT exporters benefit, importers hurt)."})
+    decision["key_risks"] = risks[:6]
+
+    # 6g. MASTER VERDICT — combine quality_score + valuation_score
+    # Composite weighted 60/40 quality vs valuation (Buffett: "quality first, price second")
+    composite = round(quality_score * 0.60 + val_score * 0.40)
+    decision["composite_score"] = composite
+
+    # Map composite + individual verdicts to a master call
+    has_data = quality_score > 0 or val_score != 50
+    has_severe_issue = (
+        roic_q.get("verdict") == "VALUE-DESTROYING" or
+        growth.get("verdict") == "EARNINGS DECLINING"
+    )
+
+    # r63.99.38: DATA-SANITY PREFLIGHT GATE.
+    # The 30-archetype validation harness caught two real bugs the existing
+    # `has_data` check missed:
+    #   - Archetype 09 (no price): verdict=BUY emitted even though we have no
+    #     price → no actionable order_ticket possible. User sees "BUY" but
+    #     can't execute.
+    #   - Archetype 11 (zero shares outstanding): verdict=STRONG BUY,
+    #     quality_score=91, full order_ticket fabricated. Decision layer
+    #     scored ROIC/FCF from raw row math while ignoring that the company
+    #     has no shares — making per-share metrics fictional.
+    # A real verdict requires (a) a current price, (b) positive shares
+    # outstanding implied by mcap/shares fields, and (c) positive market_cap.
+    # Without these, force INSUFFICIENT_DATA regardless of analytical score.
+    _sum = out.get("summary", {})
+    _price = _sum.get("price")
+    _shares = _sum.get("shares_outstanding_latest")
+    _mcap = _sum.get("market_cap")
+    _data_sanity_failures = []
+    if _price is None or (isinstance(_price, (int, float)) and _price <= 0):
+        _data_sanity_failures.append("price unavailable")
+    if _shares is None or (isinstance(_shares, (int, float)) and _shares <= 0):
+        _data_sanity_failures.append("shares outstanding unknown or zero")
+    if _mcap is None or (isinstance(_mcap, (int, float)) and _mcap <= 0):
+        _data_sanity_failures.append("market cap unavailable")
+    if _data_sanity_failures:
+        decision["verdict"] = "INSUFFICIENT_DATA"
+        decision["conviction_pct"] = 0
+        decision["summary_one_liner"] = (
+            "Critical data unavailable for a verdict: "
+            + ", ".join(_data_sanity_failures)
+            + ". Fundamentals scoring may still be present but a verdict requires basic pricing data."
+        )
+        out["warnings"].append(
+            "Verdict downgraded to INSUFFICIENT_DATA — " + "; ".join(_data_sanity_failures)
+        )
+    elif not has_data:
+        decision["verdict"] = "INSUFFICIENT_DATA"
+        decision["conviction_pct"] = 0
+        decision["summary_one_liner"] = "Not enough data to make a fundamentals call."
+    elif has_severe_issue:
+        decision["verdict"] = "AVOID"
+        decision["conviction_pct"] = 75
+        decision["summary_one_liner"] = "Severe fundamental issue (value-destroying ROIC or declining earnings). Avoid until the underlying problem fixes."
+    elif composite >= 75:
+        decision["verdict"] = "STRONG BUY"
+        decision["conviction_pct"] = min(90, composite + 10)
+        decision["summary_one_liner"] = f"Quality {quality_score}% + Valuation {val_score}% = Strong fundamentals AND reasonable price. The setup most investors hope for."
+    elif composite >= 60:
+        decision["verdict"] = "BUY"
+        decision["conviction_pct"] = composite
+        if quality_score >= 70 and val_score < 60:
+            decision["summary_one_liner"] = f"Quality {quality_score}% (strong), Valuation {val_score}% (full). Great business at a fair-to-rich price — accumulate on dips."
+        elif val_score >= 70 and quality_score < 65:
+            decision["summary_one_liner"] = f"Valuation {val_score}% (cheap), Quality {quality_score}% (acceptable). Cigar-butt or special situation — verify what's broken."
+        else:
+            decision["summary_one_liner"] = f"Composite {composite}% — solid quality at reasonable valuation."
+    elif composite >= 45:
+        decision["verdict"] = "HOLD"
+        decision["conviction_pct"] = composite
+        decision["summary_one_liner"] = f"Composite {composite}% — neither obviously attractive nor obviously broken. Existing holders can hold; new buyers need a catalyst."
+    elif composite >= 30:
+        decision["verdict"] = "AVOID"
+        decision["conviction_pct"] = 100 - composite
+        decision["summary_one_liner"] = f"Composite {composite}% — quality or valuation problem (or both). Better opportunities exist for the same capital."
+    else:
+        decision["verdict"] = "SHORT-CANDIDATE"
+        decision["conviction_pct"] = 100 - composite
+        decision["summary_one_liner"] = f"Composite {composite}% — fundamentals weak AND valuation expensive. Theoretical short candidate (verify borrow availability, catalyst, sentiment before acting)."
+
+    # 6h. POSITION SIZING — translates verdict into actionable size
+    # Inputs: composite score, quality score, region uncertainty
+    if decision["verdict"] == "STRONG BUY" and quality_score >= 70:
+        decision["position_sizing"] = {
+            "size": "FULL POSITION",
+            "percent_of_portfolio": "4-6%",
+            "rationale": "High quality + reasonable valuation = full size. This is the kind of position you can hold through cycles without second-guessing.",
+        }
+    elif decision["verdict"] == "STRONG BUY":
+        decision["position_sizing"] = {
+            "size": "HALF POSITION",
+            "percent_of_portfolio": "2-3%",
+            "rationale": "Verdict is strong buy but quality is moderate — start half-size, add on confirmation of thesis.",
+        }
+    elif decision["verdict"] == "BUY" and quality_score >= 70:
+        decision["position_sizing"] = {
+            "size": "HALF TO FULL",
+            "percent_of_portfolio": "2-4%",
+            "rationale": "Quality is high; valuation just isn't a steal. Start half-size, add on pullbacks toward 'attractive entry' zone.",
+        }
+    elif decision["verdict"] == "BUY":
+        decision["position_sizing"] = {
+            "size": "STARTER POSITION",
+            "percent_of_portfolio": "1-2%",
+            "rationale": "Buy verdict but composite isn't overwhelming. Starter size to learn the story; scale up if quality reaffirms each earnings cycle.",
+        }
+    elif decision["verdict"] == "HOLD":
+        decision["position_sizing"] = {
+            "size": "HOLD EXISTING / NO NEW",
+            "percent_of_portfolio": "0% new",
+            "rationale": "Not enough conviction to add. If already owned, sell only if invalidation signals fire.",
+        }
+    elif decision["verdict"] in ("AVOID", "SHORT-CANDIDATE"):
+        decision["position_sizing"] = {
+            "size": "AVOID / EXIT",
+            "percent_of_portfolio": "0%",
+            "rationale": "Better risk-adjusted opportunities exist. If holding, set exit rules tied to invalidation signals.",
+        }
+    else:
+        decision["position_sizing"] = {
+            "size": "WAIT FOR DATA",
+            "percent_of_portfolio": "0%",
+            "rationale": "Decision requires fundamentals data we don't have. Don't size based on guesses.",
+        }
+
+    # ═══════════════════════════════════════════════════════════
+    # r63.99.34: DEEPER DECISION LAYER
+    # Six additions to make this directly actionable for a PM:
+    #   (a) action_now — current price vs zones → ACCUMULATE / WAIT / TRIM / EXIT
+    #   (b) horizons — separate verdict for 6m TRADE, 18m POSITION, 3y+ COMPOUNDER
+    #   (c) catalyst_calendar — next earnings, ex-div, fiscal year end
+    #   (d) benchmark_comparison — 1Y/3Y/5Y return vs index, alpha verdict
+    #   (e) order_ticket — concrete shares/dollar amounts for default $100k account
+    #   (f) decision_tree — final 3-bullet "IF you have $X, do this NOW"
+    # ═══════════════════════════════════════════════════════════
+
+    # Helper for price formatting in rationale strings
+    _curr_sym = "$" if region == "US" else "₹"
+    def fmt_price(v):
+        if v is None: return "?"
+        try:
+            return f"{_curr_sym}{float(v):,.2f}"
+        except Exception: return "?"
+
+    # ───────── 6i. ACTION NOW — what to do TODAY given current price ─────────
+    # r63.99.35: action_now now fires whenever we have a price + verdict.
+    # If entry_zones exist, we use them for granular bucketing. If not,
+    # we still give a verdict-based action (DO NOT BUY for AVOID, HOLD for HOLD, etc.)
+    # so the user gets actionable guidance even on thin-data tickers.
+    action_now = None
+    verdict_v = decision["verdict"]
+    if price and verdict_v != "INSUFFICIENT_DATA":
+        # Branch 1: AVOID / SHORT-CANDIDATE — verdict alone is enough
+        if verdict_v in ("AVOID", "SHORT-CANDIDATE"):
+            action_now = {
+                "action": "DO NOT BUY",
+                "urgency": "EXIT IF HOLDING",
+                "rationale": f"Verdict is {verdict_v}. Quality and/or valuation are working against you. If holding, set hard exit rules and don't add.",
+                "color": "red",
+            }
+        # Branch 2: HOLD — verdict alone is enough
+        elif verdict_v == "HOLD":
+            action_now = {
+                "action": "HOLD EXISTING / NO NEW BUYS",
+                "urgency": "PASSIVE",
+                "rationale": "Composite isn't strong enough to commit new capital. Existing position can ride; new buyers should wait for either a price pullback (to attractive zone) or a quality re-rating.",
+                "color": "amber",
+            }
+        # Branch 3: BUY-class verdicts — need zones to give granular action
+        elif decision.get("entry_zones") and decision["entry_zones"].get("current_price"):
+            z = decision["entry_zones"]
+            attractive = z.get("attractive_entry_below")
+            fair       = z.get("fair_value_near")
+            expensive  = z.get("wait_for_pullback_above")
+
+            if attractive and price <= attractive:
+                action_now = {
+                    "action": "ACCUMULATE NOW",
+                    "urgency": "ACT THIS WEEK",
+                    "rationale": f"Price ({fmt_price(price)}) is AT OR BELOW the attractive entry zone ({fmt_price(attractive)}). This is the level where the FCF-yield math obviously works. Build a full position here, not over months.",
+                    "color": "green",
+                }
+            elif fair and price <= fair:
+                action_now = {
+                    "action": "SCALE IN PARTIAL",
+                    "urgency": "ACT THIS MONTH",
+                    "rationale": f"Price ({fmt_price(price)}) is between attractive ({fmt_price(attractive) if attractive else '?'}) and fair value ({fmt_price(fair)}). Buy 50-70% of intended size now; keep dry powder for a dip to attractive zone.",
+                    "color": "lime",
+                }
+            elif expensive and price <= expensive:
+                action_now = {
+                    "action": "STARTER ONLY / WAIT FOR DIP",
+                    "urgency": "PATIENT",
+                    "rationale": f"Price ({fmt_price(price)}) is between fair ({fmt_price(fair) if fair else '?'}) and expensive ({fmt_price(expensive)}). Quality justifies a small starter (25% of intended size); add only on a 10-15% pullback toward fair value.",
+                    "color": "amber",
+                }
+            else:
+                # price > expensive zone — but quality matters for the call.
+                # Premium-quality compounders (quality_score ≥ 80) STRUCTURALLY
+                # trade above FCF-yield zones — that's the market's quality premium.
+                if quality_score >= 80 and verdict_v in ("STRONG BUY", "BUY"):
+                    action_now = {
+                        "action": "STARTER ONLY / DOLLAR-COST AVERAGE",
+                        "urgency": "PATIENT",
+                        "rationale": f"Price ({fmt_price(price)}) is above FCF-yield-based fair value, BUT quality score ({quality_score}/100) is elite. Premium compounders structurally trade above yield-based fair value. Start with 20-30% of intended size now; add monthly via dollar-cost averaging instead of timing a dip that may not come.",
+                        "color": "lime",
+                    }
+                else:
+                    action_now = {
+                        "action": "WAIT — TOO EXPENSIVE NOW",
+                        "urgency": "DO NOTHING",
+                        "rationale": f"Price ({fmt_price(price)}) is ABOVE the expensive threshold ({fmt_price(expensive) if expensive else '?'}). Even a great business is a bad investment at the wrong price. Set a price alert at fair value ({fmt_price(fair) if fair else '?'}) and wait.",
+                        "color": "red",
+                    }
+        # Branch 4: BUY-class verdict but NO entry zones (FCF negative or missing)
+        # Still give actionable guidance — verdict alone is informative.
+        else:
+            if verdict_v in ("STRONG BUY", "BUY"):
+                action_now = {
+                    "action": "BUY (limited price guidance)",
+                    "urgency": "REVIEW MANUALLY",
+                    "rationale": f"Verdict is {verdict_v} but FCF-yield entry zones couldn't be computed (FCF negative or data missing). Use peer multiples and qualitative judgment for entry timing. Start with a partial position.",
+                    "color": "lime",
+                }
+    elif price and verdict_v == "INSUFFICIENT_DATA":
+        # Thin data — still tell the user this is unactionable
+        action_now = {
+            "action": "INSUFFICIENT DATA — DO NOT TRADE",
+            "urgency": "WAIT FOR BETTER COVERAGE",
+            "rationale": "Fundamentals data is too sparse to make a fundamentals-based call. Use peer comparisons, qualitative research, or wait for next earnings. Don't size positions on incomplete data.",
+            "color": "amber",
+        }
+    decision["action_now"] = action_now
+
+    # ───────── 6j. TIME-HORIZON VERDICTS ─────────
+    # Same data, three lenses. A stock can be a great compounder but bad short-term.
+    horizons = {}
+    # 6-month TRADE lens: momentum + valuation timing
+    # 18-month POSITION: quality + growth + leverage
+    # 3y+ COMPOUNDER: ROIC + FCF + capital return
+    roic_verdict = analysis.get("roic_quality", {}).get("verdict")
+    growth_verdict = analysis.get("growth_quality", {}).get("verdict")
+    leverage_verdict = analysis.get("leverage", {}).get("verdict")
+    fcf_verdict = analysis.get("fcf_quality", {}).get("verdict")
+    share_verdict = analysis.get("share_action", {}).get("verdict")
+
+    # 6-MONTH (trade): valuation dominates
+    if val_score >= 70 and growth_verdict in ("EPS-LEVERAGED GROWTH", "MARGIN EXPANSION"):
+        horizons["6_month_trade"] = {"verdict": "FAVORABLE", "rationale": "Cheap + growing earnings = setup for multiple re-rating over near-term."}
+    elif val_score >= 60:
+        horizons["6_month_trade"] = {"verdict": "NEUTRAL", "rationale": "Valuation is fair but no catalyst for near-term re-rating. Patient money only."}
+    elif val_score < 40:
+        horizons["6_month_trade"] = {"verdict": "UNFAVORABLE", "rationale": "Premium valuation means downside risk on any miss. Multi-quarter execution required to grow into the multiple."}
+    else:
+        horizons["6_month_trade"] = {"verdict": "MIXED", "rationale": "Valuation neither cheap nor expensive. Outcome depends on next 1-2 earnings prints."}
+
+    # 18-MONTH (position): quality + growth balance
+    if roic_verdict in ("HIGH-QUALITY COMPOUNDER", "ABOVE-AVERAGE") and growth_verdict != "EARNINGS DECLINING":
+        horizons["18_month_position"] = {"verdict": "FAVORABLE", "rationale": "Quality business with intact growth trajectory. 18m horizon gives earnings time to compound into the price."}
+    elif roic_verdict == "MARGINAL":
+        horizons["18_month_position"] = {"verdict": "NEUTRAL", "rationale": "Marginal returns on capital — growth is barely value-accretive. Hold only if catalyst-driven."}
+    elif roic_verdict == "VALUE-DESTROYING" or growth_verdict == "EARNINGS DECLINING":
+        horizons["18_month_position"] = {"verdict": "UNFAVORABLE", "rationale": "Either ROIC below WACC or earnings declining. 18 months of compounding works AGAINST you here."}
+    else:
+        horizons["18_month_position"] = {"verdict": "MIXED", "rationale": "Quality-growth balance unclear from available data."}
+
+    # 3-YEAR+ (compounder): ROIC + FCF + capital return discipline
+    compounder_signals = 0
+    if roic_verdict == "HIGH-QUALITY COMPOUNDER": compounder_signals += 2
+    elif roic_verdict == "ABOVE-AVERAGE": compounder_signals += 1
+    if fcf_verdict == "HIGH-QUALITY EARNINGS": compounder_signals += 1
+    if share_verdict == "BUYBACK": compounder_signals += 1
+    if leverage_verdict == "CONSERVATIVE": compounder_signals += 1
+    if compounder_signals >= 4:
+        horizons["3_year_compounder"] = {"verdict": "FAVORABLE", "rationale": f"Compounder signals: {compounder_signals}/5. ROIC + FCF + buybacks + conservative balance sheet — buy-and-forget profile."}
+    elif compounder_signals >= 2:
+        horizons["3_year_compounder"] = {"verdict": "NEUTRAL", "rationale": f"Compounder signals: {compounder_signals}/5. Has some compounder traits but not all. Suitable for satellite, not core."}
+    else:
+        horizons["3_year_compounder"] = {"verdict": "UNFAVORABLE", "rationale": f"Compounder signals: {compounder_signals}/5. Missing the structural traits of a multi-year compounder. Won't survive 3-year holding decision."}
+    decision["horizons"] = horizons
+
+    # ───────── 6k. CATALYST CALENDAR ─────────
+    # Pull dates from yfinance .info. Honest when missing.
+    catalysts = []
+    try:
+        # Next earnings — yfinance returns this as a list of timestamps usually
+        edate = info_g.get("earningsDate") or info_g.get("nextEarningsDate")
+        if edate:
+            # yfinance returns either ISO string, timestamp, or list
+            if isinstance(edate, (list, tuple)) and edate:
+                edate = edate[0]
+            try:
+                from datetime import datetime as _dt
+                if isinstance(edate, (int, float)):
+                    edate_str = _dt.utcfromtimestamp(edate).strftime("%Y-%m-%d")
+                else:
+                    edate_str = str(edate)[:10]
+                catalysts.append({
+                    "type": "EARNINGS",
+                    "date": edate_str,
+                    "why_it_matters": "Earnings is THE quarterly thesis test. EPS / revenue / guide all repriced in one print.",
+                })
+            except Exception: pass
+        # Ex-dividend date
+        exdiv = info_g.get("exDividendDate")
+        if exdiv:
+            try:
+                from datetime import datetime as _dt
+                exdiv_str = _dt.utcfromtimestamp(exdiv).strftime("%Y-%m-%d") if isinstance(exdiv, (int, float)) else str(exdiv)[:10]
+                catalysts.append({
+                    "type": "EX-DIVIDEND",
+                    "date": exdiv_str,
+                    "why_it_matters": "Must own before this date to receive next dividend. Stock typically drops by ~dividend amount on this day.",
+                })
+            except Exception: pass
+        # Fiscal year end (annual catalyst)
+        fy_end = info_g.get("lastFiscalYearEnd") or info_g.get("nextFiscalYearEnd")
+        if fy_end:
+            try:
+                from datetime import datetime as _dt
+                fy_str = _dt.utcfromtimestamp(fy_end).strftime("%Y-%m-%d") if isinstance(fy_end, (int, float)) else str(fy_end)[:10]
+                catalysts.append({
+                    "type": "FISCAL YEAR END",
+                    "date": fy_str,
+                    "why_it_matters": "Full-year guide and capital allocation announcements typically follow within 30-60 days.",
+                })
+            except Exception: pass
+    except Exception:
+        pass
+    decision["catalyst_calendar"] = catalysts
+    if not catalysts:
+        decision["catalyst_calendar_note"] = "No catalyst dates available from yfinance for this ticker. Check the company IR page directly."
+
+    # ───────── 6l. BENCHMARK COMPARISON (1Y/3Y/5Y stock vs index) ─────────
+    benchmark = None
+    try:
+        # Use already-fetched yfinance for the benchmark
+        bench_ticker = "SPY" if region == "US" else "^NSEI"
+        bench_label = "S&P 500" if region == "US" else "NIFTY 50"
+
+        def _fetch_returns(sym):
+            _yahoo_rate_wait()
+            try:
+                t = yf.Ticker(sym)
+                hist = t.history(period="5y", interval="1mo", auto_adjust=True)
+                if hist is None or len(hist) < 13: return None
+                close = hist["Close"].dropna()
+                last = float(close.iloc[-1])
+                ret_1y = ((last / float(close.iloc[-13])) - 1) * 100 if len(close) >= 13 else None
+                ret_3y = ((last / float(close.iloc[-37])) - 1) * 100 if len(close) >= 37 else None
+                ret_5y = ((last / float(close.iloc[-61])) - 1) * 100 if len(close) >= 61 else None
+                # Annualize 3Y/5Y for CAGR-style comparison
+                ret_3y_cagr = (((1 + ret_3y/100) ** (1/3)) - 1) * 100 if ret_3y is not None else None
+                ret_5y_cagr = (((1 + ret_5y/100) ** (1/5)) - 1) * 100 if ret_5y is not None else None
+                return {"r1y": ret_1y, "r3y_cagr": ret_3y_cagr, "r5y_cagr": ret_5y_cagr}
+            except Exception:
+                return None
+
+        stock_ret = await _lp.run_in_executor(None, _fetch_returns, _yf_sym)
+        bench_ret = await _lp.run_in_executor(None, _fetch_returns, bench_ticker)
+        if stock_ret and bench_ret:
+            alpha_1y = (stock_ret.get("r1y") or 0) - (bench_ret.get("r1y") or 0)
+            alpha_3y = (stock_ret.get("r3y_cagr") or 0) - (bench_ret.get("r3y_cagr") or 0)
+            alpha_5y = (stock_ret.get("r5y_cagr") or 0) - (bench_ret.get("r5y_cagr") or 0)
+            # Verdict
+            consistent_alpha = sum(1 for a in (alpha_1y, alpha_3y, alpha_5y) if a > 2)
+            if consistent_alpha >= 2:
+                alpha_verdict = "PERSISTENT OUTPERFORMER"
+                alpha_interp = f"Beating {bench_label} across multiple horizons — active selection is being rewarded."
+            elif consistent_alpha == 1:
+                alpha_verdict = "INTERMITTENT ALPHA"
+                alpha_interp = f"Outperforms in some periods but not consistently. Volatility-adjusted edge is less clear."
+            elif sum(1 for a in (alpha_1y, alpha_3y, alpha_5y) if a < -2) >= 2:
+                alpha_verdict = "STRUCTURAL UNDERPERFORMER"
+                alpha_interp = f"Trailing {bench_label} on multiple horizons. Hard to justify holding vs the index."
+            else:
+                alpha_verdict = "INDEX-LIKE"
+                alpha_interp = f"Roughly tracking {bench_label}. You're not getting active edge — consider whether the active fee/risk is worth it."
+            benchmark = {
+                "benchmark_label": bench_label,
+                "benchmark_ticker": bench_ticker,
+                "stock_1y_pct": round(stock_ret.get("r1y"), 2) if stock_ret.get("r1y") is not None else None,
+                "stock_3y_cagr_pct": round(stock_ret.get("r3y_cagr"), 2) if stock_ret.get("r3y_cagr") is not None else None,
+                "stock_5y_cagr_pct": round(stock_ret.get("r5y_cagr"), 2) if stock_ret.get("r5y_cagr") is not None else None,
+                "bench_1y_pct": round(bench_ret.get("r1y"), 2) if bench_ret.get("r1y") is not None else None,
+                "bench_3y_cagr_pct": round(bench_ret.get("r3y_cagr"), 2) if bench_ret.get("r3y_cagr") is not None else None,
+                "bench_5y_cagr_pct": round(bench_ret.get("r5y_cagr"), 2) if bench_ret.get("r5y_cagr") is not None else None,
+                "alpha_1y_pct": round(alpha_1y, 2),
+                "alpha_3y_pct": round(alpha_3y, 2),
+                "alpha_5y_pct": round(alpha_5y, 2),
+                "alpha_verdict": alpha_verdict,
+                "interpretation": alpha_interp,
+            }
+    except Exception as bench_e:
+        print(f"[DASHBOARD] {symbol} benchmark fetch failed: {type(bench_e).__name__}: {str(bench_e)[:80]}")
+    decision["benchmark_comparison"] = benchmark
+    if not benchmark:
+        # r63.99.35: surface in warnings so user knows WHY this section is empty
+        out["warnings"].append("Benchmark comparison unavailable — couldn't fetch 5-year history for stock or index (yfinance may be IP-blocked or ticker thin).")
+
+    # ───────── 6m. ORDER TICKET — concrete numbers for $100k default account ─────────
+    # Translates "buy 4-6%" into actual shares + dollar amounts. Honest about
+    # being a default account size; the UI lets user adjust.
+    order_ticket = None
+    if price and decision.get("position_sizing"):
+        ps = decision["position_sizing"]
+        # Parse percent_of_portfolio string like "4-6%" → midpoint 5%
+        pct_str = ps.get("percent_of_portfolio", "0%")
+        try:
+            # extract numbers from "4-6%" or "1-2%" or "0%"
+            import re as _re
+            nums = [float(x) for x in _re.findall(r"\d+\.?\d*", pct_str)]
+            if len(nums) >= 2:
+                pct_mid = (nums[0] + nums[1]) / 2 / 100
+            elif len(nums) == 1:
+                pct_mid = nums[0] / 100
+            else:
+                pct_mid = 0
+        except Exception:
+            pct_mid = 0
+
+        default_account = 100_000  # USD or INR — region-aware default
+        if region == "IN": default_account = 1_000_000  # ₹10L is a reasonable PMS-style default
+
+        if pct_mid > 0 and price > 0:
+            dollar_position = round(default_account * pct_mid)
+            shares = int(dollar_position / price)
+            actual_dollars = round(shares * price, 2)
+
+            # Risk-to-stop estimate using entry zones.
+            # Stop logic: take a reasonable % stop (15% below current for buys),
+            # but don't go BELOW the attractive entry — that would be a 50%+ drawdown
+            # for premium-quality compounders trading well above their FCF-yield zones.
+            # The stop is the WORST case we'd accept; for high-quality names it's
+            # typically the recent volatility band, not the deep-value zone.
+            stop_price = None
+            target_price = None
+            risk_dollars = None
+            reward_dollars = None
+            if decision.get("entry_zones"):
+                z = decision["entry_zones"]
+                # Default stop: 15% below current (volatility-based)
+                base_stop = price * 0.85
+                # r63.99.35: only tighten stop UPWARD toward attractive zone if
+                # that zone is BELOW current price (typical case for expensive
+                # names trading above attractive). For DEEP VALUE stocks where
+                # attractive zone is ABOVE current (stock is already cheap),
+                # don't tighten — that would put stop above entry, which is wrong.
+                az = z.get("attractive_entry_below")
+                if az and az < price and az > base_stop:
+                    # Stock has run only modestly above attractive zone — use
+                    # 95% of attractive as a tighter stop than the default 15%.
+                    base_stop = az * 0.95
+                # Hard floor: stop never above current * 0.85 (15% max drawdown)
+                # to prevent absurd stops. Also never above current at all.
+                base_stop = min(base_stop, price * 0.85)
+                stop_price = round(base_stop, 2)
+                # Target: for buy verdicts, +20% from current OR fair_value_near
+                # (whichever is more reasonable). Don't use expensive_above as target
+                # — that's a "wait for pullback" zone, not a target.
+                if decision["verdict"] in ("STRONG BUY", "BUY"):
+                    base_target = price * 1.20
+                    # If fair_value_near is meaningfully above current, use it
+                    if z.get("fair_value_near") and z["fair_value_near"] > price * 1.10:
+                        base_target = max(base_target, z["fair_value_near"])
+                    target_price = round(base_target, 2)
+                elif decision["verdict"] == "HOLD":
+                    # Smaller target for hold — just 12% upside (cost of capital)
+                    target_price = round(price * 1.12, 2)
+            else:
+                # r63.99.35: no entry_zones (FCF negative or missing). Fall back
+                # to simple volatility-based stop/target so user still gets a
+                # tradable ticket. Honest about limitations via the note field.
+                if decision["verdict"] in ("STRONG BUY", "BUY"):
+                    stop_price = round(price * 0.85, 2)
+                    target_price = round(price * 1.20, 2)
+                elif decision["verdict"] == "HOLD":
+                    stop_price = round(price * 0.85, 2)
+                    target_price = round(price * 1.12, 2)
+            if stop_price and shares > 0:
+                risk_dollars = round(shares * (price - stop_price), 2)
+            if target_price and shares > 0:
+                reward_dollars = round(shares * (target_price - price), 2)
+
+            order_ticket = {
+                "default_account_size": default_account,
+                "currency": "USD" if region == "US" else "INR",
+                "position_pct_mid": round(pct_mid * 100, 1),
+                "dollar_allocation": dollar_position,
+                "shares_to_buy": shares,
+                "shares_actual_cost": actual_dollars,
+                "entry_price": price,
+                "stop_price": stop_price,
+                "target_price": target_price,
+                "risk_dollars": risk_dollars,
+                "reward_dollars": reward_dollars,
+                "reward_risk_ratio": round(reward_dollars / risk_dollars, 2) if (reward_dollars and risk_dollars and risk_dollars > 0) else None,
+                "honesty_note": f"Default {('$' if region=='US' else '₹')}{default_account:,} account. Adjust account size in UI to recompute shares. Stop/target are heuristic (10% below for stop, 25% above OR expensive-zone for target) — set per your own framework.",
+            }
+    decision["order_ticket"] = order_ticket
+
+    # ───────── 6n. DECISION TREE — final compact "DO THIS" panel ─────────
+    # 3 numbered bullets max, written like a checklist
+    tree = []
+    # Helper: grammatically-correct "N share(s)" with safe handling of None ticket
+    def shr(divisor=1):
+        if not order_ticket: return "?"
+        n = max(1, (order_ticket.get("shares_to_buy", 0) // divisor))
+        return f"{n} share" if n == 1 else f"{n} shares"
+    if decision["verdict"] in ("STRONG BUY", "BUY") and action_now:
+        if action_now["action"] == "ACCUMULATE NOW":
+            tree.append(f"1. BUY {shr(1)} at market (~{fmt_price(price)}). Use {decision['position_sizing']['percent_of_portfolio']} of portfolio.")
+            if order_ticket and order_ticket.get("stop_price"):
+                tree.append(f"2. Set stop at {fmt_price(order_ticket['stop_price'])} ({'%.1f' % ((price/order_ticket['stop_price'] - 1) * 100)}% risk = {('$' if region=='US' else '₹')}{abs(order_ticket['risk_dollars']):,} on default size).")
+            if order_ticket and order_ticket.get("target_price"):
+                tree.append(f"3. Take profits at {fmt_price(order_ticket['target_price'])} (R:R = {order_ticket.get('reward_risk_ratio','?')}:1).")
+        elif action_now["action"] == "SCALE IN PARTIAL":
+            tree.append(f"1. Buy 50% of intended size NOW (~{shr(2)}).")
+            tree.append(f"2. Set price alert at {fmt_price(decision['entry_zones'].get('attractive_entry_below')) if decision.get('entry_zones') else '?'} — add remainder there.")
+            tree.append(f"3. Monitor next earnings ({(catalysts[0]['date'] if catalysts else 'TBD')}) for thesis confirmation.")
+        elif action_now["action"] == "STARTER ONLY / DOLLAR-COST AVERAGE":
+            tree.append(f"1. Buy 20-30% of intended size NOW (~{shr(4)}) — don't time the dip.")
+            tree.append(f"2. Set up monthly DCA for the remainder over 6-12 months.")
+            tree.append(f"3. Premium quality (composite {decision['composite_score']}/100) — exit ONLY if invalidation signals fire.")
+        elif action_now["action"] == "STARTER ONLY / WAIT FOR DIP":
+            tree.append(f"1. Buy 25% of intended size as starter (~{shr(4)}).")
+            tree.append(f"2. Set price alert at fair value ({fmt_price(decision['entry_zones'].get('fair_value_near')) if decision.get('entry_zones') else '?'}) for next tranche.")
+            tree.append("3. Re-evaluate after next earnings — multiple compression risk is real.")
+        elif action_now["action"] == "BUY (limited price guidance)":
+            tree.append(f"1. Buy partial position (~{shr(2)}) at market (~{fmt_price(price)}).")
+            tree.append("2. Verify thesis with peer multiples and next earnings — entry zones not computable without positive FCF.")
+            tree.append("3. Set discretionary stop based on personal risk tolerance.")
+        else:  # WAIT
+            tree.append(f"1. Do not buy. Price ({fmt_price(price)}) is above the expensive threshold.")
+            tree.append(f"2. Set price alert at fair value ({fmt_price(decision['entry_zones'].get('fair_value_near')) if decision.get('entry_zones') else '?'}).")
+            tree.append("3. Monitor for next earnings — multiple compression or guidance miss creates buy opportunity.")
+    elif decision["verdict"] == "HOLD":
+        tree.append("1. If holding: HOLD. Do not add new capital.")
+        tree.append("2. If not holding: WAIT for either valuation reset (>=15% pullback) OR quality re-rating (next 1-2 earnings).")
+        tree.append("3. Monitor invalidation signals — exit if any fire.")
+    elif decision["verdict"] in ("AVOID", "SHORT-CANDIDATE"):
+        tree.append("1. DO NOT BUY. Better risk-adjusted opportunities exist for the same capital.")
+        tree.append("2. If currently holding: set hard exit rules and execute on next strength.")
+        if decision["verdict"] == "SHORT-CANDIDATE":
+            tree.append("3. Short setup: verify borrow cost, sentiment, AND catalyst before acting. Shorting good businesses at any price is a famous way to lose.")
+        else:
+            tree.append("3. Revisit only if a clear catalyst (mgmt change, divestiture, restructuring) appears.")
+    else:
+        tree.append("1. Wait for fundamentals data to clarify the picture.")
+        tree.append("2. Don't size positions on guesses.")
+        tree.append("3. Try a recognizable large-cap to verify the dashboard is producing data correctly.")
+    decision["decision_tree"] = tree[:3]
+
+    out["decision"] = decision
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _dashboard_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[DASHBOARD] {symbol} ({region}) verdict={decision['verdict']} composite={decision['composite_score']} computed in {out['elapsed_sec']}s · completeness {out['data_completeness_pct']}%")
+    return out
+
+
+# ═══════════════════════════════════════════════════════════
+# r63.99.33: AI BULL/BEAR CASE — companion to /api/stock-dashboard
+# ═══════════════════════════════════════════════════════════
+# Given the dashboard data, calls Anthropic to produce 3 bull points,
+# 3 bear points, and 1 catalyst-to-watch. Cached 24h per (symbol, region)
+# since fundamentals don't change daily.
+_ai_bullbear_cache = {}  # {sym_region: {data, ts}}
+_AI_BULLBEAR_TTL = 86400  # 24h
+
+@app.get("/api/stock-dashboard-bullbear")
+async def stock_dashboard_bullbear(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Returns AI bull case + bear case + catalyst to watch for the stock.
+    Cached 24h. Calls claude-haiku-4-5; ~$0.005 per call.
+    """
+    import time as _time
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if not symbol:
+        return {"success": False, "error": "Provide ?symbol=..."}
+    cache_key = f"{symbol}_{region}"
+
+    if not refresh and cache_key in _ai_bullbear_cache:
+        c = _ai_bullbear_cache[cache_key]
+        if (_time.time() - c["ts"]) < _AI_BULLBEAR_TTL:
+            out_c = dict(c["data"])
+            out_c["_cached"] = True
+            out_c["_cache_age_min"] = int((_time.time() - c["ts"]) / 60)
+            return out_c
+
+    if not ANTHROPIC_API_KEY:
+        return {"success": False, "error": "ANTHROPIC_API_KEY not configured.", "_unavailable": True}
+
+    # Fetch dashboard data first (uses 30min cache so usually instant)
+    dash = await stock_dashboard(symbol=symbol, region=region, refresh=0)
+    if not dash or not dash.get("success"):
+        return {"success": False, "error": "Could not fetch dashboard data for bull/bear analysis."}
+
+    summary = dash.get("summary", {})
+    cagrs = dash.get("cagrs", {})
+    analysis = dash.get("analysis", {})
+    decision = dash.get("decision", {})
+    company = dash.get("company_name") or symbol
+
+    # Build a compact context for the AI
+    ctx_lines = []
+    ctx_lines.append(f"Company: {company} ({symbol}, {region})")
+    if summary.get("price"): ctx_lines.append(f"Price: {summary.get('price')}")
+    if summary.get("market_cap"): ctx_lines.append(f"Market Cap: {summary.get('market_cap')}")
+    if summary.get("trailing_pe"): ctx_lines.append(f"P/E (trailing): {summary.get('trailing_pe')}")
+    if summary.get("forward_pe"): ctx_lines.append(f"P/E (forward): {summary.get('forward_pe')}")
+    if summary.get("fcf_yield_pct"): ctx_lines.append(f"FCF Yield: {summary.get('fcf_yield_pct')}%")
+    if summary.get("dividend_yield_pct"): ctx_lines.append(f"Dividend Yield: {summary.get('dividend_yield_pct')}%")
+    if summary.get("roic_latest_pct"): ctx_lines.append(f"ROIC: {summary.get('roic_latest_pct')}%")
+    if summary.get("gross_margin_latest_pct"): ctx_lines.append(f"Gross Margin: {summary.get('gross_margin_latest_pct')}%")
+    if cagrs.get("revenue_5y_cagr_pct") is not None: ctx_lines.append(f"Revenue 5Y CAGR: {cagrs.get('revenue_5y_cagr_pct')}%")
+    if cagrs.get("eps_5y_cagr_pct") is not None: ctx_lines.append(f"EPS 5Y CAGR: {cagrs.get('eps_5y_cagr_pct')}%")
+    # Analytical verdicts
+    for k in ("roic_quality", "fcf_quality", "leverage", "share_action", "dividend", "growth_quality"):
+        v = analysis.get(k, {}).get("verdict")
+        if v: ctx_lines.append(f"{k}: {v}")
+    if decision.get("verdict"): ctx_lines.append(f"Composite verdict: {decision.get('verdict')} (conviction {decision.get('conviction_pct')}%)")
+
+    prompt = f"""You are an institutional equity analyst writing a brief for a portfolio manager.
+
+STOCK CONTEXT:
+{chr(10).join(ctx_lines)}
+
+Write THREE BULL POINTS, THREE BEAR POINTS, and ONE KEY CATALYST in EXACTLY this format (no preamble):
+
+BULL CASE:
+- [Point 1: one-line specific reason to own]
+- [Point 2]
+- [Point 3]
+
+BEAR CASE:
+- [Point 1: one-line specific risk to avoid]
+- [Point 2]
+- [Point 3]
+
+KEY CATALYST:
+- [The single event/datapoint to watch in the next 6-12 months that would confirm or reject the thesis]
+
+Rules:
+- Bull/bear must reference the actual numbers above. Don't generic-fy. If ROIC is 25%, cite that. If P/E is 35, cite that.
+- Be honest: if data is conflicting, say so. Don't force a coherent narrative.
+- Use plain English a smart investor (not necessarily a CFA) would understand.
+- No hype words ("revolutionary", "game-changer"). No certainty ("will", "guaranteed"). Use "may", "could", "if X happens then Y".
+- 1-2 sentences per point. No filler.
+"""
+
+    try:
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 600,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=30,
+        )
+        if r.status_code != 200:
+            print(f"[BULLBEAR] {symbol} API {r.status_code}: {r.text[:200]}")
+            return {"success": False, "error": f"AI API status {r.status_code}"}
+        data = r.json()
+        content = data.get("content", [])
+        text = ""
+        for block in content:
+            if block.get("type") == "text":
+                text += block.get("text", "")
+        text = text.strip()
+
+        # Parse the three sections
+        bull, bear, catalyst = [], [], ""
+        section = None
+        for line in text.split("\n"):
+            stripped = line.strip()
+            if not stripped: continue
+            up = stripped.upper()
+            if up.startswith("BULL CASE:"):
+                section = "bull"; continue
+            if up.startswith("BEAR CASE:"):
+                section = "bear"; continue
+            if up.startswith("KEY CATALYST:"):
+                section = "catalyst"; continue
+            cleaned = stripped.lstrip("-•* ").strip()
+            if not cleaned: continue
+            if section == "bull": bull.append(cleaned)
+            elif section == "bear": bear.append(cleaned)
+            elif section == "catalyst":
+                catalyst = (catalyst + " " + cleaned).strip() if catalyst else cleaned
+
+        result = {
+            "success": True,
+            "symbol": symbol,
+            "region": region,
+            "bull_case": bull[:3],
+            "bear_case": bear[:3],
+            "key_catalyst": catalyst,
+            "model_used": "claude-haiku-4-5",
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "_cached": False,
+        }
+        _ai_bullbear_cache[cache_key] = {"data": result, "ts": _time.time()}
+        return result
+    except Exception as e:
+        print(f"[BULLBEAR] {symbol} fail: {type(e).__name__}: {str(e)[:120]}")
+        return {"success": False, "error": f"{type(e).__name__}: {str(e)[:120]}"}
+
+
 # r63.72.16: Diamond Hunter — post-crash quality scanner
 @app.get("/api/diamond-hunter")
 async def diamond_hunter(
