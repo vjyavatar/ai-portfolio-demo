@@ -1,3 +1,157 @@
+## r63.99.41 (2026-05-28) — Insider Activity + Sector-Relative RS + Smart Money v3 integration
+
+Continuation of r99.40. From the documented r99.41 gaps, picked 3 high-impact wires-in that don't need new external data sources — they use what we already have, just wired through.
+
+### What ships
+
+**A. Insider Activity Integration** (single source, 4 consumers)
+**B. Sector-Relative Strength** — Smart Exit T2 upgrade
+**C. Smart Money v3 wiring** — 7th component in Conviction Score
+
+Plus 1 new endpoint + 1 new UI pill (11 total in Engines subtab now).
+
+### A. Insider Activity Integration
+
+The biggest gap in r99.39/40: Multibagger C7 was hardcoded to 5/10 placeholder, Earnings Predictor had no insider signal, Mgmt Change had no behavioral proxy. yfinance exposes `Ticker.insider_transactions` for free — we just hadn't wired it.
+
+**New helper** (`_get_insider_activity_proper`):
+- Single source of truth for insider data — used by 4 consumers
+- Pulls `Ticker.insider_transactions`, filters by lookback window, aggregates buys vs sells, returns net_score [-1, +1]
+- Honest gap handling: empty table → `{success: True, transaction_count: 0}` (not failure)
+
+**New endpoint** `/api/insider-activity`:
+- Input: `symbol`, `region`, `lookback_days` (clamped 30-730, default 180)
+- Output: `net_score`, `buy_dollars`, `sell_dollars`, `buyer_count`, `seller_count`, `verdict`, `interpretation`
+- Verdict bands:
+| Net Score | Verdict |
+|---|---|
+| ≥ +0.7 | STRONG INSIDER BUYING |
+| +0.3 to +0.7 | MILD INSIDER BUYING |
+| -0.3 to +0.3 | NEUTRAL |
+| -0.7 to -0.3 | MILD INSIDER SELLING |
+| ≤ -0.7 | HEAVY INSIDER SELLING |
+| 0 tx in window | NO ACTIVITY (data gap, not bearish) |
+
+**4 consumers wired in this build:**
+
+1. **Multibagger C7 (Insider Buying Signal)** — was 5/10 hardcoded placeholder. Now real:
+   - Window: 365 days
+   - 10/10 on STRONG BUYING, 8/10 MILD, 5/10 NEUTRAL, 3/10 MILD SELLING, 1/10 HEAVY SELLING, 4/10 NO ACTIVITY
+   - NO ACTIVITY scores 4 (not 5) because absence is itself a slightly negative signal — directors who never buy may not have conviction
+
+2. **Earnings Predictor S5 (NEW 5th signal)** — pre-earnings insider buying:
+   - Window: 90 days (tight pre-earnings window)
+   - Max 20 pts (signals 1-4 were max 25 each; clamped via `_eng_clamp_score`)
+   - 18/20 STRONG BUYING (bullish flag), 14/20 MILD, 10/20 NEUTRAL, 6/20 MILD SELLING (bearish flag), 2/20 HEAVY SELLING
+
+3. **Mgmt Change new proxy (Cluster Insider Buying)** — structural-change signal:
+   - Window: 180 days
+   - Fires CLUSTER INSIDER BUYING (+20 pts) if ≥3 buyers AND net ≥+0.5
+   - Fires INSIDER BUYING CLUSTER (+10 pts) if ≥2 buyers AND net ≥+0.3
+   - Adds informational BROAD INSIDER SELLING flag if ≥3 sellers AND net ≤-0.7 (doesn't add to positive-change score)
+
+4. **Conviction Score** — via Smart Money v3 (see C below) which already parses insider data internally
+
+### B. Sector-Relative Strength (Smart Exit T2 upgrade)
+
+r99.39's Smart Exit T2 used absolute returns. Real institutional signal is RS vs sector — a stock down 5% in a sector up 30% is much weaker than the absolute number suggests.
+
+**Implementation:**
+- `_SECTOR_TO_ETF` dict maps yfinance.info.sector strings to sector ETF symbols
+  - US: 11 sectors → XLK / XLF / XLV / XLY / XLP / XLE / XLI / XLB / XLRE / XLU / XLC
+  - IN: 6 sectors → BANKBEES / ITBEES / PHARMABEES / AUTOBEES / METALBEES
+- `_get_sector_etf()` does direct + fuzzy lookup (yfinance sector names vary)
+- T2 logic upgrade:
+  - Fetches sector ETF history in parallel with stock history
+  - Computes 6m + 3m relative return (stock − sector)
+  - Stronger threshold than r99.39: `rel_6m < -15pts` fires HARD (14 pts), `rel_6m < -8pts` MODERATE (10 pts), `rel_3m < -8pts` MILD (6 pts)
+  - **Graceful fallback** to absolute returns when sector unmappable (penny stocks, weird sectors, ETFs themselves)
+  - Evidence array shows both sector ETF used and the relative comparison so user sees the calc
+
+### C. Conviction Score 7th component (Smart Money v3)
+
+`smart_money_v3._compute()` was already in the codebase and already does sophisticated per-ticker scoring (accumulation 30% + bottleneck 25% + inflection 20% + RS 15% + narrative 10%, 0-100). r99.40's Conviction Score had it on the `_future_inputs` list but never wired.
+
+**Wired now:**
+- Call `smart_money_v3._compute(yf_sym, {})` from inside `_inst_conviction_impl`
+- Empty snapshot dict — no week-over-week delta, just current score
+- Maps 0-100 smv3 score to 0-15 component (was 6 components totaling 100 in r99.40, now 7 totaling 115 → still clamped to 100 by `_eng_clamp_score`)
+- Component note shows raw smv3 score + stage + accumulation + action (e.g. "smv3 score 78 · Expansion stage · Aggressive accumulation · BUY")
+- Honest neutral 7/15 if smv3 returns None or errors
+
+### Validation — 112 PASS / 0 FAIL across 3 harnesses
+
+`/tmp/validate_r99_41.py` — 19 archetypes covering:
+| Test class | Coverage |
+|---|---|
+| Insider endpoint | 6 archetypes: strong buy, heavy sell, balanced, no data, empty symbol, lookback clamp |
+| Smart Exit T2 sector-relative | 3 archetypes: tech vs XLK, unknown sector fallback, India bank vs BANKBEES |
+| Conviction Score 7 components | 2 archetypes: full data, smv3 missing |
+| Multibagger C7 real insider | 2 archetypes: strong buying → 10/10, no data → 4/10 |
+| Earnings Predictor S5 | 2 archetypes: 5 signals present, no insider → NO ACTIVITY |
+| Mgmt Change cluster proxy | 1 archetype: 4-buyer cluster fires proxy |
+| Regression on r99.39/40 shape | 3 archetypes: Smart Exit 5 triggers, Multibagger 7 components, ETF Builder unchanged |
+
+**Final**: PASS=42 FAIL=0.
+
+Regression on prior harnesses (after updating r99.39 obsolete 6-component assertion to 7):
+- r99.39 engines harness: 38 PASS / 0 FAIL
+- r99.40 engines harness (subset excluding slow picks tests): 32 PASS / 0 FAIL
+
+### New UI element
+
+Engines subtab now has **11 pills** instead of 10. New pill: **📊 Insider Activity**.
+
+Panel shows:
+- Verdict card (color-coded by signal direction)
+- 3-card grid: 🟢 BOUGHT (green), 🔴 SOLD (red), ⚖ NET (purple)
+- "This data also feeds into" callout linking to Multibagger C7 / Earnings S5 / Mgmt cluster proxy / Conviction smv3
+- Interpretation field explaining what the score means in plain language
+- Warnings + cache state
+
+### Files changed (6, same set as r99.40)
+
+| File | Δ |
+|---|---|
+| `api.py` | +~330 lines (insider helper + endpoint + 3 retrofits) |
+| `static/app.js` | +~150 lines (insider panel JS + version header) |
+| `static/app.min.js` | synced byte-identical (md5 in zip) |
+| `index.html` | +~30 lines (11th pill + insider panel HTML) + cache-bust bump |
+| `build_version.txt` | r63.99.40 → r63.99.41 |
+| `CHANGELOG.md` | this entry |
+
+### Deploy ritual (unchanged)
+
+1. Render auto-deploys on push
+2. Hard refresh browser
+3. Navigate to **Decide → 🎯 Engines → 📊 Insider Activity**
+4. Try `NVDA` / `RELIANCE` with default 180-day lookback
+5. Then check **🧠 Conviction Score** — verify 7th component (Smart Money v3) is now showing
+6. Then **🔬 Multibagger Probability** — C7 should show real insider data, not "NOT YET WIRED"
+7. Then **🔥 Smart Exit** — T2 evidence should show sector ETF (XLK/BANKBEES) used
+
+### Design principles carried forward
+
+1. **Wrapper pattern** (r99.37) — every endpoint catches all exceptions
+2. **`_ds_num` sanitization** (r99.38) — yfinance type chaos doesn't crash
+3. **Sanity gates** (r99.38) — missing critical data → `INSUFFICIENT_DATA` with reason
+4. **Honest data gaps** (r99.39) — `_future_inputs` and `_note` fields visible in response
+5. **Status labels** (r99.39+) — FULL / PARTIAL / SCAFFOLD on every engine
+6. **Single source helpers** (r99.41 NEW) — insider logic factored to `_get_insider_activity_proper` so all 4 consumers can't drift
+
+### Documented r99.42+ roadmap (still 4 gaps surfaced honestly)
+
+| Gap | What's needed |
+|---|---|
+| **Earnings Predictor → FULL** | Options flow (put/call skew + IV expansion) — F&O feed for IN (Upstox available), needs alternative for US |
+| **Management Change → FULL** | SEC EDGAR 8-K parser (US) + SEBI corporate-announcement scraper (IN) + headline NLP for CEO/CFO changes |
+| **Today's Picks → FULL** | Nightly cron over Russell 1000 + Nifty 500 (vs current 25 ticker curated universe) — needs Postgres job |
+| **Capital Rotation → FULL** | 13F sector flow deltas + options sector flow + FII/DII data overlays |
+
+Each engine continues to surface these gaps in its API response via `_future_inputs` field — users see what's not wired in real time, not buried in docs.
+
+---
+
 ## r63.99.40 (2026-05-27) — Celesys 2.0 spec COMPLETE: 6 final engines
 
 Vijay's ask: *"write extensive foolproof and implement attached line by line and trace and implement"* (resubmitted with full spec doc). r99.39 shipped 4 of the 10 engines from the Celesys 2.0 brief. This build completes the remaining 6.

@@ -514,9 +514,34 @@
 //     • r99.38 dashboard harness: 30/30 PASS (no regression — verified direct)
 //   r99.41 enhancement roadmap documented in CHANGELOG.md (per-engine _note
 //   and _future_inputs surface gaps to users in real time, not buried in docs).
-window.CELESYS_VERSION = "r63.99.40";
-window.CELESYS_BUILD_TIME = 1779900000;
-window.CELESYS_BUILD_DATE = "2026-05-27 14:00:00 UTC";
+// r63.99.41: ENHANCEMENT LAYER on r99.40 Celesys 2.0 engines. 3 high-impact
+// retrofits that don't need new external data sources:
+//   A. INSIDER ACTIVITY INTEGRATION — wires yfinance.insider_transactions:
+//      • New endpoint /api/insider-activity (standalone tracker)
+//      • Multibagger C7: real insider score (was 5/10 placeholder)
+//      • Earnings Predictor S5: pre-earnings insider signal (5th signal added)
+//      • Mgmt Change new proxy: cluster insider buying as structural signal
+//   B. SECTOR-RELATIVE STRENGTH — Smart Exit T2 upgrade:
+//      • Maps yfinance.info.sector → sector ETF (XLK, XLF, XLV, ... + BANKBEES,
+//        ITBEES, PHARMABEES, AUTOBEES for India)
+//      • Computes 6m/3m return vs sector benchmark
+//      • Stronger T2 firing threshold (>15pts underperformance) than r99.39
+//        absolute return baseline (>10%)
+//      • Graceful fallback to absolute returns when sector unmappable
+//   C. CONVICTION SCORE 7th COMPONENT — Smart Money v3 wiring:
+//      • Calls smart_money_v3._compute() directly (already in codebase)
+//      • Maps smv3's 0-100 score to 0-15 component
+//      • Total component count now 7 (was 6)
+//      • Honest neutral 7/15 if smv3 unavailable
+//   NEW UI: 11th nav pill in Engines subtab — "📊 Insider Activity"
+//   VALIDATION:
+//     • r99.41 enhancement harness: 42 PASS / 0 FAIL
+//     • r99.39 engines harness (updated for r99.41 shape): 38 PASS / 0 FAIL
+//     • r99.40 engines harness (subset, picks excluded for runtime): 32 PASS / 0 FAIL
+//     • 112 total checks passing, 0 failures
+window.CELESYS_VERSION = "r63.99.41";
+window.CELESYS_BUILD_TIME = 1779986400;
+window.CELESYS_BUILD_DATE = "2026-05-28 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11586,7 +11611,8 @@ window._engState = {exit: {region: 'US'}, risk: {region: 'US'},
                     conv: {region: 'US'}, rot: {region: 'US'},
                     mb: {region: 'US'}, etf: {region: 'US'},
                     eps: {region: 'US'}, macro: {region: 'US'},
-                    mgmt: {region: 'US'}, picks: {region: 'US'}};
+                    mgmt: {region: 'US'}, picks: {region: 'US'},
+                    insider: {region: 'US'}};
 
 window._engShow = function(panel) {
   // Hide all panels, show selected, update button styling
@@ -11596,6 +11622,7 @@ window._engShow = function(panel) {
     'multibagger': 'engMultibaggerPanel', 'etfbuilder': 'engETFBuilderPanel',
     'earningspred': 'engEarningsPredPanel', 'macro': 'engMacroPanel',
     'mgmt': 'engMgmtPanel', 'picks': 'engPicksPanel',
+    'insider': 'engInsiderPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11608,6 +11635,7 @@ window._engShow = function(panel) {
     'multibagger': 'engBtnMB', 'etfbuilder': 'engBtnETF',
     'earningspred': 'engBtnEPS', 'macro': 'engBtnMacro',
     'mgmt': 'engBtnMgmt', 'picks': 'engBtnPicks',
+    'insider': 'engBtnInsider',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12443,6 +12471,95 @@ window._renderInstPicks = function(d) {
     h += '</ul></details>';
   }
   h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ ENGINE 11: INSIDER ACTIVITY (r99.41) ═══════════════════
+window._loadInsiderActivity = function() {
+  var inp = document.getElementById('insiderSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  if (!sym) {
+    document.getElementById('insiderResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please enter a symbol first.</div>';
+    return;
+  }
+  var reg = window._engState.insider.region;
+  var lookback = parseInt(document.getElementById('insiderLookback').value || '180');
+  var btn = document.getElementById('insiderBtn');
+  var resEl = document.getElementById('insiderResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ FETCHING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Fetching ' + lookback + 'd insider transactions for ' + sym + '…</div>';
+  fetch('/api/insider-activity?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg) + '&lookback_days=' + lookback, {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '📊 FETCH INSIDER ACTIVITY'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown';
+        window._engRenderError('insiderResult', sym, msg, d && d.trace);
+        return;
+      }
+      resEl.innerHTML = window._renderInsiderActivity(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '📊 FETCH INSIDER ACTIVITY'; }
+      window._engRenderError('insiderResult', sym, 'Network error: ' + e.message);
+    });
+};
+
+window._renderInsiderActivity = function(d) {
+  var colors = {green: '#10b981', lime: '#84cc16', amber: '#d97706', red: '#dc2626', gray: '#64748b'};
+  var color = colors[d.color || 'gray'];
+  var net = d.net_score || 0;
+  var fmtUSD = function(n) {
+    if (!n) return '$0';
+    if (n >= 1e9) return '$' + (n/1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return '$' + (n/1e3).toFixed(0) + 'K';
+    return '$' + n.toLocaleString();
+  };
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">INSIDER ACTIVITY · ' + (d.symbol || '?') + ' · ' + d.lookback_days + ' DAYS</div>';
+  h += '<div style="font-size:20px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;margin-top:2px;line-height:1.1">' + (d.verdict || '?') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b">NET SCORE</div>';
+  h += '<div style="font-size:28px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;line-height:1">' + (net > 0 ? '+' : '') + net.toFixed(2) + '</div>';
+  h += '<div style="font-size:9px;color:#64748b">range: -1 to +1</div></div></div>';
+  if (d.interpretation) {
+    h += '<div style="margin-top:10px;padding:8px 12px;background:#fff;border-radius:6px;font-size:11px;color:#475569;line-height:1.5">' + d.interpretation + '</div>';
+  }
+  h += '</div>';
+  // Transaction summary grid
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px">';
+  h += '<div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;padding:10px 12px">';
+  h += '<div style="font-size:9px;font-weight:800;color:#065f46;letter-spacing:0.5px;margin-bottom:3px">🟢 BOUGHT</div>';
+  h += '<div style="font-size:18px;font-weight:900;color:#065f46;font-family:JetBrains Mono,monospace">' + fmtUSD(d.buy_dollars) + '</div>';
+  h += '<div style="font-size:10px;color:#047857;margin-top:2px">' + d.buyer_count + ' insider' + (d.buyer_count === 1 ? '' : 's') + '</div></div>';
+  h += '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 12px">';
+  h += '<div style="font-size:9px;font-weight:800;color:#991b1b;letter-spacing:0.5px;margin-bottom:3px">🔴 SOLD</div>';
+  h += '<div style="font-size:18px;font-weight:900;color:#991b1b;font-family:JetBrains Mono,monospace">' + fmtUSD(d.sell_dollars) + '</div>';
+  h += '<div style="font-size:10px;color:#7f1d1d;margin-top:2px">' + d.seller_count + ' insider' + (d.seller_count === 1 ? '' : 's') + '</div></div>';
+  h += '<div style="background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px;padding:10px 12px">';
+  h += '<div style="font-size:9px;font-weight:800;color:#5b21b6;letter-spacing:0.5px;margin-bottom:3px">⚖ NET</div>';
+  var netColor = d.net_dollars >= 0 ? '#065f46' : '#991b1b';
+  h += '<div style="font-size:18px;font-weight:900;color:' + netColor + ';font-family:JetBrains Mono,monospace">' + (d.net_dollars >= 0 ? '+' : '-') + fmtUSD(Math.abs(d.net_dollars)) + '</div>';
+  h += '<div style="font-size:10px;color:#5b21b6;margin-top:2px">' + d.transaction_count + ' tx total</div></div>';
+  h += '</div>';
+  // Cross-references — show where this data is used
+  h += '<div style="margin-top:10px;padding:10px 12px;background:#ecfeff;border:1px solid #67e8f9;border-radius:8px">';
+  h += '<div style="font-size:11px;font-weight:800;color:#0e7490;letter-spacing:0.3px;margin-bottom:5px">🔗 This data also feeds into</div>';
+  h += '<ul style="margin:0;padding-left:18px;font-size:10.5px;color:#155e75;line-height:1.6">';
+  h += '<li><strong>Multibagger Probability C7</strong> — insider buying component (365-day window)</li>';
+  h += '<li><strong>Earnings Surprise S5</strong> — pre-earnings insider signal (90-day window)</li>';
+  h += '<li><strong>Management Change</strong> — cluster insider buying as structural-change proxy (180-day window)</li>';
+  h += '<li><strong>Conviction Score</strong> — via Smart Money v3 (r99.41 new 7th component)</li>';
+  h += '</ul></div>';
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + (d._cached ? ' · cached' : '') + '</div>';
   return h;
 };
 

@@ -6138,8 +6138,10 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
     out["triggers"].append(t1)
 
     # ───────── TRIGGER 2: RELATIVE STRENGTH DETERIORATION ─────────
+    # r99.41: Upgraded to sector-relative RS when sector ETF is mappable.
+    # Falls back to absolute returns when sector unknown or ETF data missing.
     t2 = {"name": "Relative Strength Break", "score": 0, "max": 20,
-          "fired": False, "evidence": [], "weight_explain": "3m + 6m return vs sector"}
+          "fired": False, "evidence": [], "weight_explain": "3m + 6m return vs sector ETF"}
     if hist is not None and hasattr(hist, 'empty') and not hist.empty:
         closes = list(hist["Close"].dropna())
         if len(closes) >= 130:
@@ -6147,13 +6149,54 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
             ret_3m = (closes[-1] - closes[-63]) / closes[-63] * 100 if closes[-63] > 0 else 0
             t2["evidence"].append(f"6m return: {round(ret_6m, 1)}%")
             t2["evidence"].append(f"3m return: {round(ret_3m, 1)}%")
-            # Absolute return-based signal (sector relative would need ETF fetch)
-            if ret_6m < -10:
-                t2["score"] += 12; t2["fired"] = True
-                t2["evidence"].append("6m return below -10% — meaningful momentum loss")
-            elif ret_3m < -5:
-                t2["score"] += 6; t2["fired"] = True
-                t2["evidence"].append("3m return negative — recent weakness")
+
+            # r99.41: Sector-relative computation
+            sector_name = info.get("sector") if isinstance(info, dict) else None
+            sector_etf = _get_sector_etf(sector_name, region)
+            sector_ret_6m = None
+            sector_ret_3m = None
+            if sector_etf:
+                try:
+                    def _fetch_sector():
+                        try:
+                            stk = yf.Ticker(sector_etf)
+                            sh = stk.history(period="1y", interval="1d", auto_adjust=True)
+                            if sh is None or sh.empty: return None
+                            scl = list(sh["Close"].dropna())
+                            return scl if len(scl) >= 130 else None
+                        except Exception:
+                            return None
+                    sclosrs = await _lp.run_in_executor(None, _fetch_sector)
+                    if sclosrs and len(sclosrs) >= 130:
+                        sector_ret_6m = (sclosrs[-1] - sclosrs[-126]) / sclosrs[-126] * 100 if sclosrs[-126] > 0 else 0
+                        sector_ret_3m = (sclosrs[-1] - sclosrs[-63]) / sclosrs[-63] * 100 if sclosrs[-63] > 0 else 0
+                        t2["evidence"].append(f"Sector ({sector_name} → {sector_etf}) 6m: {round(sector_ret_6m, 1)}%, 3m: {round(sector_ret_3m, 1)}%")
+                except Exception as _e:
+                    t2["evidence"].append(f"Sector ETF fetch failed: {str(_e)[:60]}")
+
+            # Decide signal: use sector-relative if available, else absolute
+            if sector_ret_6m is not None:
+                rel_6m = ret_6m - sector_ret_6m
+                rel_3m = ret_3m - (sector_ret_3m or 0)
+                t2["evidence"].append(f"Relative: 6m {round(rel_6m, 1)}%, 3m {round(rel_3m, 1)}%")
+                if rel_6m < -15:
+                    t2["score"] += 14; t2["fired"] = True
+                    t2["evidence"].append("6m UNDERPERFORMED sector by >15pts — meaningful RS break")
+                elif rel_6m < -8:
+                    t2["score"] += 10; t2["fired"] = True
+                    t2["evidence"].append("6m underperformed sector by >8pts — RS deteriorating")
+                elif rel_3m < -8:
+                    t2["score"] += 6; t2["fired"] = True
+                    t2["evidence"].append("3m underperformed sector — recent RS loss")
+            else:
+                # Fallback to absolute when no sector ETF available
+                t2["evidence"].append(f"No sector ETF available for sector='{sector_name}' — using absolute returns (weaker signal)")
+                if ret_6m < -10:
+                    t2["score"] += 12; t2["fired"] = True
+                    t2["evidence"].append("6m return below -10% (absolute) — meaningful momentum loss")
+                elif ret_3m < -5:
+                    t2["score"] += 6; t2["fired"] = True
+                    t2["evidence"].append("3m return negative (absolute) — recent weakness")
         else:
             t2["evidence"].append(f"Only {len(closes)} closes available — insufficient for 6m RS")
     else:
@@ -6722,6 +6765,48 @@ async def _inst_conviction_impl(symbol, region, refresh):
         "note": c6_note
     })
 
+    # ───────── r99.41: Component 7 — Smart Money v3 score (bonus 0-15) ─────────
+    # Wires the existing smart_money_v3._compute() per-ticker scorer into the
+    # Conviction aggregator. Maps smv3's 0-100 score to a 0-15 component.
+    # Note: composite is _eng_clamp_score'd to 100, so adding 15 max means a
+    # 90+ stock with strong smv3 stays at 100, but moderate stocks see a real swing.
+    c7_score = 7  # neutral baseline if smv3 unavailable
+    c7_note = "Smart Money v3 unavailable — scored 7/15 neutral"
+    c7_raw = None
+    try:
+        import smart_money_v3 as _smv3_mod
+        import asyncio as _aio_smv3
+        _lp_smv3 = _aio_smv3.get_event_loop()
+        # _compute is sync — run in executor; pass empty snapshot (no week-over-week)
+        yf_sym_smv3 = symbol if region == "US" else f"{symbol}.NS"
+        smv3_data = await _lp_smv3.run_in_executor(None, _smv3_mod._compute, yf_sym_smv3, {})
+        if smv3_data and isinstance(smv3_data, dict):
+            smv3_score = _eng_ds_num(smv3_data.get("smart_money_score"))
+            if smv3_score is not None:
+                c7_raw = smv3_score
+                c7_score = int(round(smv3_score * 15 / 100))
+                stage = smv3_data.get("stage", "?")
+                action = smv3_data.get("action", "?")
+                accum = smv3_data.get("accumulation", "?")
+                c7_note = f"smv3 score {smv3_score} · {stage} stage · {accum} accumulation · {action}"
+            else:
+                c7_note = "smv3 returned no score (likely insufficient yfinance data)"
+                out["warnings"].append("Smart Money v3 returned no score — Component 7 scored neutral")
+        else:
+            c7_note = "smv3 returned None (data fetch failed)"
+            out["warnings"].append("Smart Money v3 fetch failed — Component 7 scored neutral")
+    except ImportError:
+        c7_note = "smart_money_v3 module not present"
+    except Exception as _esmv3:
+        c7_note = f"smv3 error: {type(_esmv3).__name__}: {str(_esmv3)[:80]}"
+        out["warnings"].append(f"Smart Money v3 errored — Component 7 scored neutral: {c7_note}")
+
+    out["components"].append({
+        "name": "Smart Money v3 Score (r99.41)", "score": c7_score, "max": 15,
+        "raw": c7_raw, "source": "smart_money_v3._compute()",
+        "note": c7_note
+    })
+
     # Composite — sum the components
     composite = sum(c["score"] for c in out["components"])
     out["conviction_score"] = _eng_clamp_score(composite)
@@ -6739,15 +6824,15 @@ async def _inst_conviction_impl(symbol, region, refresh):
         out["verdict"] = "EXIT ZONE"; out["color"] = "red"
 
     out["elapsed_sec"] = round(_time.time() - t0, 2)
-    out["_inputs_from"] = "stock-dashboard + yfinance"
+    out["_inputs_from"] = "stock-dashboard + yfinance + smart-money-v3 (r99.41)"
     out["_future_inputs"] = [
-        "smart-money-v3 (institutional flow scoring) — needs services/ module",
         "dd-positioning-intelligence (FII/DII, block trades) — needs services/ module",
-        "Options put/call skew — F&O feed integration r99.40+",
-        "Delivery percentage (India) — NSE bhav copy r99.40+",
+        "Options put/call skew — F&O feed integration r99.42+",
+        "Delivery percentage (India) — NSE bhav copy r99.42+",
+        "Dark pool flow (US) — needs paid feed r99.42+",
     ]
     _inst_conviction_cache[cache_key] = {"data": out, "ts": _time.time()}
-    print(f"[CONVICTION] {symbol} ({region}) score={out['conviction_score']} verdict={out['verdict']} in {out['elapsed_sec']}s")
+    print(f"[CONVICTION] {symbol} ({region}) score={out['conviction_score']} verdict={out['verdict']} smv3={c7_raw} in {out['elapsed_sec']}s")
     return out
 
 
@@ -7184,14 +7269,50 @@ async def _multibagger_prob_impl(symbol, region, refresh):
     out["components"].append(c6)
 
     # ───────── C7: Insider Buying (10 pts) ─────────
+    # r99.41: Wired to yfinance.insider_transactions via _get_insider_activity_proper.
+    # Replaces r99.40 placeholder that scored neutral 5/10. Honest fallback
+    # if data unavailable.
     c7 = {"name": "Insider Buying Signal", "max": 10, "score": 0,
           "evidence": [], "verdict": "UNKNOWN"}
-    # yfinance.insider_transactions is unreliable; use insider holding as proxy
-    # Real implementation in r99.41 will integrate Form 4 / SEBI insider data
-    c7["evidence"].append("Insider transaction feed not wired in r99.40 — scored neutral")
-    c7["evidence"].append("r99.41: Form 4 (US) / SEBI insider filings (IN) integration")
-    c7["score"] = 5; c7["verdict"] = "NOT YET WIRED"
-    out["warnings"].append("Insider Buying component is r99.41 placeholder — scored 5/10 neutral pending Form 4 / SEBI feed integration")
+    try:
+        import asyncio as _aio2
+        _lp7 = _aio2.get_event_loop()
+        insider_data = await _lp7.run_in_executor(None, _get_insider_activity_proper,
+                                                   symbol, region, 365)
+    except Exception as _ec7:
+        insider_data = {"success": False, "error": str(_ec7)[:80]}
+
+    if insider_data.get("success"):
+        net = insider_data["net_score"]
+        bv = insider_data["buy_dollars"]
+        sv = insider_data["sell_dollars"]
+        bc = insider_data["buyer_count"]
+        sc = insider_data["seller_count"]
+        tx = insider_data["transaction_count"]
+        c7["evidence"].append(f"Insider transactions in last 365d: {tx}")
+        if tx == 0:
+            c7["score"] = 4; c7["verdict"] = "NO ACTIVITY"
+            c7["evidence"].append("No transactions filed — neutral signal (especially common for IN tickers)")
+        elif net >= 0.7:
+            c7["score"] = 10; c7["verdict"] = "STRONG BUYING"
+            c7["evidence"].append(f"${bv:,} bought by {bc} insider(s) vs ${sv:,} sold — conviction signal")
+        elif net >= 0.3:
+            c7["score"] = 8; c7["verdict"] = "MILD BUYING"
+            c7["evidence"].append(f"${bv:,} bought vs ${sv:,} sold — net positive")
+        elif net >= -0.3:
+            c7["score"] = 5; c7["verdict"] = "NEUTRAL"
+            c7["evidence"].append(f"${bv:,} bought vs ${sv:,} sold — balanced")
+        elif net >= -0.7:
+            c7["score"] = 3; c7["verdict"] = "MILD SELLING"
+            c7["evidence"].append(f"${sv:,} sold by {sc} insider(s) — mild profit-taking signal")
+        else:
+            c7["score"] = 1; c7["verdict"] = "HEAVY SELLING"
+            c7["evidence"].append(f"${sv:,} sold by {sc} insider(s) — bearish insider signal")
+    else:
+        c7["score"] = 5; c7["verdict"] = "DATA UNAVAILABLE"
+        c7["evidence"].append(f"yfinance fetch failed: {insider_data.get('error', 'unknown')}")
+        c7["evidence"].append("Scored neutral 5/10 (no positive or negative signal)")
+        out["warnings"].append("Insider data fetch failed — C7 scored neutral")
     out["components"].append(c7)
 
     # ───────── COMPOSITE ─────────
@@ -7649,6 +7770,48 @@ async def _earnings_pred_impl(symbol, region, refresh):
         s4["evidence"].append("Revenue / earnings growth unavailable")
     out["signals"].append(s4)
 
+    # ───────── SIGNAL 5: Insider Buying (r99.41 wire-in, 20 pts) ─────────
+    # Bonus signal — sums into composite which is then clamped to 100.
+    # Pre-earnings insider buying is a strong contrarian signal.
+    s5 = {"name": "Insider Buying (pre-earnings)", "score": 10, "max": 20,
+          "evidence": [], "verdict": "UNKNOWN", "bullish": None}
+    try:
+        import asyncio as _aio5
+        _lp5 = _aio5.get_event_loop()
+        insider_data = await _lp5.run_in_executor(None, _get_insider_activity_proper,
+                                                   symbol, region, 90)  # tight window pre-earnings
+    except Exception as _ec5:
+        insider_data = {"success": False, "error": str(_ec5)[:80]}
+
+    if insider_data.get("success"):
+        net = insider_data["net_score"]
+        bv = insider_data["buy_dollars"]
+        sv = insider_data["sell_dollars"]
+        tx = insider_data["transaction_count"]
+        s5["evidence"].append(f"90-day insider transactions: {tx}")
+        if tx == 0:
+            s5["score"] = 10; s5["verdict"] = "NO ACTIVITY"; s5["bullish"] = None
+            s5["evidence"].append("No insider transactions in 90d — neutral signal")
+        elif net >= 0.5:
+            s5["score"] = 18; s5["verdict"] = "STRONG BUYING"; s5["bullish"] = True
+            s5["evidence"].append(f"${bv:,} bought vs ${sv:,} sold — bullish pre-earnings")
+        elif net >= 0.2:
+            s5["score"] = 14; s5["verdict"] = "MILD BUYING"; s5["bullish"] = True
+            s5["evidence"].append(f"${bv:,} bought vs ${sv:,} sold")
+        elif net >= -0.2:
+            s5["score"] = 10; s5["verdict"] = "NEUTRAL"; s5["bullish"] = None
+            s5["evidence"].append(f"${bv:,} bought vs ${sv:,} sold — balanced")
+        elif net >= -0.5:
+            s5["score"] = 6; s5["verdict"] = "MILD SELLING"; s5["bullish"] = False
+            s5["evidence"].append(f"${sv:,} sold — caution flag")
+        else:
+            s5["score"] = 2; s5["verdict"] = "HEAVY SELLING"; s5["bullish"] = False
+            s5["evidence"].append(f"${sv:,} sold pre-earnings — bearish signal")
+    else:
+        s5["evidence"].append(f"Insider data fetch failed: {insider_data.get('error', 'unknown')}")
+        s5["evidence"].append("Scored neutral 10/20")
+    out["signals"].append(s5)
+
     # ───────── COMPOSITE → probability ─────────
     composite = sum(s["score"] for s in out["signals"])
     out["beat_probability_pct"] = _eng_clamp_score(composite)
@@ -8016,6 +8179,40 @@ async def _mgmt_change_impl(symbol, region, refresh):
             })
             score += 5
 
+    # r99.41 PROXY 5: Cluster insider buying — wires to _get_insider_activity_proper
+    try:
+        import asyncio as _aiomg
+        _lpmg = _aiomg.get_event_loop()
+        insider_180 = await _lpmg.run_in_executor(None, _get_insider_activity_proper,
+                                                    symbol, region, 180)
+    except Exception:
+        insider_180 = {"success": False}
+
+    if insider_180.get("success"):
+        bc = insider_180.get("buyer_count", 0)
+        net = insider_180.get("net_score", 0.0)
+        bd = insider_180.get("buy_dollars", 0)
+        if bc >= 3 and net >= 0.5:
+            proxies.append({
+                "signal": "CLUSTER INSIDER BUYING",
+                "detail": f"{bc} insiders bought a total ${bd:,} in last 180d (net buy score {net:+.2f}) — strong signal management sees value",
+                "weight": 20,
+            })
+            score += 20
+        elif bc >= 2 and net >= 0.3:
+            proxies.append({
+                "signal": "INSIDER BUYING CLUSTER",
+                "detail": f"{bc} insiders bought ${bd:,} in last 180d (net {net:+.2f})",
+                "weight": 10,
+            })
+            score += 10
+        elif net <= -0.7 and insider_180.get("seller_count", 0) >= 3:
+            proxies.append({
+                "signal": "BROAD INSIDER SELLING",
+                "detail": f"{insider_180['seller_count']} insiders sold ${insider_180['sell_dollars']:,} in last 180d (net {net:+.2f}) — caution flag for structural changes",
+                "weight": 0,  # informational, doesn't add to "positive change" score
+            })
+
     out["structural_change_proxies"] = proxies
     out["structural_change_score"] = min(100, score)
 
@@ -8030,8 +8227,8 @@ async def _mgmt_change_impl(symbol, region, refresh):
         out["color"] = "gray"
 
     out["_future_inputs"] = [
-        "8-K filings (US SEC EDGAR) — CEO/CFO/director changes, acquisitions, divestitures — r99.41",
-        "SEBI corporate-announcement feed (IN) — director resignations, AGM resolutions — r99.41",
+        "8-K filings (US SEC EDGAR) — CEO/CFO/director changes, acquisitions, divestitures — r99.42",
+        "SEBI corporate-announcement feed (IN) — director resignations, AGM resolutions — r99.42",
         "News headline scanning — NLP for management-change keywords — r99.42",
         "Proxy statement / DEF 14A executive compensation changes — r99.42",
     ]
@@ -8150,6 +8347,241 @@ async def _inst_picks_impl(region, top_n, refresh):
     _inst_picks_cache[cache_key] = {"data": out, "ts": _time.time()}
     print(f"[INST-PICKS] {region} top {top_n}/{len(universe)} scored={len(scores)} in {out['elapsed_sec']}s")
     return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# r63.99.41: ENHANCEMENT LAYER on top of r99.40 Celesys 2.0 engines
+#
+# Three high-impact wires-in that don't need new external data sources:
+#   A. Insider Activity Integration  — new /api/insider-activity endpoint
+#      + Multibagger C7 + Earnings Predictor signal + Mgmt Change proxy
+#   B. Sector-Relative Strength      — Smart Exit T2 upgrade
+#   C. Smart Money v3 wiring         — 7th component in Conviction Score
+#
+# All retrofits preserve API shape — frontend continues working without changes.
+# New endpoint follows r99.37 wrapper + r99.38 _ds_num + r99.39 sanity-gate.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def _get_insider_activity_proper(symbol, region, lookback_days=180):
+    """Compute insider activity from yfinance.Ticker.insider_transactions.
+
+    Reused by Multibagger C7, Earnings Predictor signal, Mgmt Change proxy,
+    and the new /api/insider-activity endpoint. Returns:
+        {success, net_score (-1..+1), buy_dollars, sell_dollars,
+         buyer_count, seller_count, transaction_count, lookback_days,
+         _data_source}
+    or {success: False, error} on any failure.
+    """
+    from datetime import datetime, timedelta
+    try:
+        import yfinance as yf
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+        tk = yf.Ticker(yf_sym)
+    except Exception as e:
+        return {"success": False, "error": f"ticker init failed: {str(e)[:80]}"}
+
+    try:
+        ins = tk.insider_transactions
+    except Exception as e:
+        return {"success": False, "error": f"insider_transactions fetch failed: {str(e)[:80]}"}
+
+    if ins is None or (hasattr(ins, 'empty') and ins.empty):
+        return {"success": True, "net_score": 0.0,
+                "buy_dollars": 0, "sell_dollars": 0,
+                "buyer_count": 0, "seller_count": 0,
+                "transaction_count": 0, "lookback_days": lookback_days,
+                "_data_source": "yfinance.insider_transactions (empty)"}
+
+    cutoff = datetime.now() - timedelta(days=lookback_days)
+    buy_v, sell_v = 0.0, 0.0
+    buyers, sellers = set(), set()
+    tx_count = 0
+    try:
+        for _, row in ins.iterrows():
+            dt = row.get("Start Date")
+            if dt is None:
+                continue
+            if hasattr(dt, "to_pydatetime"):
+                dt = dt.to_pydatetime()
+            try:
+                if dt < cutoff:
+                    continue
+            except TypeError:
+                # Tz-aware vs naive comparison — fallback: skip
+                continue
+            tx_count += 1
+            txn = str(row.get("Transaction", "")).lower()
+            val = _eng_ds_num(row.get("Value")) or 0.0
+            insider_name = str(row.get("Insider", "?"))
+            if "purchase" in txn or "buy" in txn:
+                buy_v += val
+                if val > 0: buyers.add(insider_name)
+            elif "sale" in txn or "sell" in txn:
+                sell_v += val
+                if val > 0: sellers.add(insider_name)
+    except Exception as e:
+        return {"success": False, "error": f"row iteration failed: {str(e)[:80]}"}
+
+    net = 0.0
+    if buy_v + sell_v > 0:
+        net = max(-1.0, min(1.0, (buy_v - sell_v) / (buy_v + sell_v)))
+
+    return {
+        "success": True,
+        "net_score": round(net, 3),
+        "buy_dollars": int(buy_v),
+        "sell_dollars": int(sell_v),
+        "buyer_count": len(buyers),
+        "seller_count": len(sellers),
+        "transaction_count": tx_count,
+        "lookback_days": lookback_days,
+        "_data_source": "yfinance.insider_transactions",
+    }
+
+
+# r99.41 standalone endpoint — single source of truth for insider data
+_insider_activity_cache = {}
+_INSIDER_ACTIVITY_TTL = 3600
+
+
+@app.get("/api/insider-activity")
+async def insider_activity(symbol: str = "", region: str = "US",
+                           lookback_days: int = 180, refresh: int = 0):
+    """Insider Activity — net buying/selling over a lookback window."""
+    try:
+        return await _insider_activity_impl(symbol, region, lookback_days, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[INSIDER] {symbol} ({region}) unhandled: {_err}")
+        return {"success": False, "symbol": symbol, "error": _err,
+                "trace": _tb.format_exc()[:1500]}
+
+
+async def _insider_activity_impl(symbol, region, lookback_days, refresh):
+    import time as _time
+    import asyncio as _aio
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    lookback_days = max(30, min(730, lookback_days))
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    cache_key = f"{symbol}_{region}_{lookback_days}"
+    if not refresh and cache_key in _insider_activity_cache:
+        c = _insider_activity_cache[cache_key]
+        if (_time.time() - c["ts"]) < _INSIDER_ACTIVITY_TTL:
+            out_c = dict(c["data"]); out_c["_cached"] = True
+            return out_c
+
+    t0 = _time.time()
+    try: _yahoo_rate_wait()
+    except Exception: pass
+
+    # Run blocking yfinance call in executor
+    _lp = _aio.get_event_loop()
+    data = await _lp.run_in_executor(None, _get_insider_activity_proper,
+                                      symbol, region, lookback_days)
+
+    out = {
+        "success": True, "symbol": symbol, "region": region,
+        "lookback_days": lookback_days,
+        "net_score": 0.0, "buy_dollars": 0, "sell_dollars": 0,
+        "net_dollars": 0,
+        "buyer_count": 0, "seller_count": 0, "transaction_count": 0,
+        "verdict": "NO ACTIVITY", "color": "gray",
+        "warnings": [], "_engine": "insider_activity_v1",
+    }
+
+    if not data.get("success"):
+        out["success"] = False
+        out["error"] = data.get("error", "fetch failed")
+        return out
+
+    out["net_score"] = data["net_score"]
+    out["buy_dollars"] = data["buy_dollars"]
+    out["sell_dollars"] = data["sell_dollars"]
+    out["net_dollars"] = data["buy_dollars"] - data["sell_dollars"]
+    out["buyer_count"] = data["buyer_count"]
+    out["seller_count"] = data["seller_count"]
+    out["transaction_count"] = data["transaction_count"]
+
+    # Verdict bands
+    if out["transaction_count"] == 0:
+        out["verdict"] = "NO ACTIVITY"
+        out["color"] = "gray"
+        out["interpretation"] = f"No insider transactions filed in last {lookback_days} days. Either truly quiet OR data not yet available from yfinance/Yahoo (NSE filings often lag)."
+    elif out["net_score"] >= 0.7:
+        out["verdict"] = "STRONG INSIDER BUYING"
+        out["color"] = "green"
+        out["interpretation"] = f"${out['buy_dollars']:,} bought vs ${out['sell_dollars']:,} sold by {out['buyer_count']} insider(s). Strong conviction signal — insiders rarely buy with their own money unless they expect upside."
+    elif out["net_score"] >= 0.3:
+        out["verdict"] = "MILD INSIDER BUYING"
+        out["color"] = "lime"
+        out["interpretation"] = f"${out['buy_dollars']:,} bought vs ${out['sell_dollars']:,} sold. Moderate insider conviction."
+    elif out["net_score"] >= -0.3:
+        out["verdict"] = "NEUTRAL"
+        out["color"] = "amber"
+        out["interpretation"] = f"${out['buy_dollars']:,} bought vs ${out['sell_dollars']:,} sold. Balanced activity — neither bullish nor bearish on insider side."
+    elif out["net_score"] >= -0.7:
+        out["verdict"] = "MILD INSIDER SELLING"
+        out["color"] = "amber"
+        out["interpretation"] = f"${out['buy_dollars']:,} bought vs ${out['sell_dollars']:,} sold by {out['seller_count']} insider(s). Mild profit-taking — note that diversification and tax-planning drive many sales, so not always bearish."
+    else:
+        out["verdict"] = "HEAVY INSIDER SELLING"
+        out["color"] = "red"
+        out["interpretation"] = f"${out['sell_dollars']:,} sold vs ${out['buy_dollars']:,} bought by {out['seller_count']} insider(s). Concentrated sell-side activity — investigate context (option exercises, secondary, etc.) but conservative interpretation is bearish."
+
+    if "(empty)" in data.get("_data_source", ""):
+        out["warnings"].append("yfinance returned empty insider_transactions table — could be data gap (especially common for IN tickers)")
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _insider_activity_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[INSIDER] {symbol} ({region}) {lookback_days}d net={out['net_score']:.2f} verdict={out['verdict']} txns={out['transaction_count']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ────── r99.41 sector → ETF map for Smart Exit relative-strength upgrade ──────
+_SECTOR_TO_ETF = {
+    "US": {
+        "Technology": "XLK", "Financial Services": "XLF", "Healthcare": "XLV",
+        "Consumer Cyclical": "XLY", "Consumer Defensive": "XLP",
+        "Energy": "XLE", "Industrials": "XLI", "Basic Materials": "XLB",
+        "Real Estate": "XLRE", "Utilities": "XLU",
+        "Communication Services": "XLC",
+        # yfinance also uses these names
+        "Financial": "XLF", "Information Technology": "XLK",
+    },
+    "IN": {
+        # India sector ETF mapping — coarser than US
+        "Financial Services": "BANKBEES.NS", "Banks": "BANKBEES.NS",
+        "Financial": "BANKBEES.NS",
+        "Technology": "ITBEES.NS",
+        "Information Technology": "ITBEES.NS",
+        "Healthcare": "PHARMABEES.NS",
+        "Pharmaceutical": "PHARMABEES.NS",
+        "Auto Components": "AUTOBEES.NS", "Automobile": "AUTOBEES.NS",
+        "Metals & Mining": "METALBEES.NS", "Basic Materials": "METALBEES.NS",
+    },
+}
+
+
+def _get_sector_etf(sector_name, region):
+    """Map a yfinance sector string to a sector ETF symbol. Returns None if no match."""
+    if not sector_name:
+        return None
+    region_map = _SECTOR_TO_ETF.get(region, {})
+    # Direct match
+    if sector_name in region_map:
+        return region_map[sector_name]
+    # Fuzzy: try lower-case partials
+    sl = sector_name.lower()
+    for k, v in region_map.items():
+        if k.lower() in sl or sl in k.lower():
+            return v
+    return None
 
 
 # r63.72: Institutional Positioning Scanner
