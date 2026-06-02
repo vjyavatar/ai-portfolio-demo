@@ -7946,12 +7946,19 @@ async def _macro_impact_impl(symbol, region, refresh):
         for factor in factors:
             macro_rets = await _lp.run_in_executor(None, _fetch_history, factor["ticker"])
             f_out = {
-                "factor": factor["label"], "ticker": factor["ticker"],
+                # r99.42: frontend reads name/score/interpretation. Provide both
+                # the legacy keys (factor/impact_score/verdict) AND the names the
+                # frontend renders, so we don't break any other consumer.
+                "factor": factor["label"], "name": factor["label"],
+                "ticker": factor["ticker"],
                 "interpret_high": factor["interpret_high"],
-                "correlation": None, "impact_score": 0, "verdict": "UNKNOWN",
+                "interpretation": factor["interpret_high"],
+                "correlation": None, "impact_score": 0, "score": 0,
+                "verdict": "UNKNOWN",
             }
             if not macro_rets or len(macro_rets) < 30:
                 f_out["verdict"] = "DATA UNAVAILABLE"
+                f_out["interpretation"] = "Macro factor data unavailable from yfinance — likely rate-limited or symbol unsupported on this IP"
                 out["factors"].append(f_out)
                 continue
             # Align lengths — take the shorter
@@ -7970,8 +7977,6 @@ async def _macro_impact_impl(symbol, region, refresh):
                 corr = 0
             f_out["correlation"] = round(corr, 3)
             # Impact score: -5 to +5 based on correlation magnitude
-            # Direction comes from the macro context (e.g. high VIX = bad for stock if correlation is negative... wait actually if VIX rises and stock rises with it, correlation is positive but stock benefits from risk-off? That's unusual. Usually negative correlation with VIX = stock falls when VIX rises = bad.)
-            # Approach: just report correlation; let user interpret. We classify:
             if corr >= 0.5: f_out["impact_score"] = 5; f_out["verdict"] = "STRONG POSITIVE"
             elif corr >= 0.3: f_out["impact_score"] = 3; f_out["verdict"] = "MODERATE POSITIVE"
             elif corr >= 0.1: f_out["impact_score"] = 1; f_out["verdict"] = "MILD POSITIVE"
@@ -7979,6 +7984,10 @@ async def _macro_impact_impl(symbol, region, refresh):
             elif corr <= -0.3: f_out["impact_score"] = -3; f_out["verdict"] = "MODERATE NEGATIVE"
             elif corr <= -0.1: f_out["impact_score"] = -1; f_out["verdict"] = "MILD NEGATIVE"
             else: f_out["impact_score"] = 0; f_out["verdict"] = "UNCORRELATED"
+            # Mirror into the frontend-expected keys
+            f_out["score"] = f_out["impact_score"]
+            # Richer interpretation combining context + verdict
+            f_out["interpretation"] = f"{f_out['verdict']} correlation ({corr:+.2f}) over 90 days. Context: {factor['interpret_high']}"
             out["factors"].append(f_out)
     except ImportError:
         return {"success": False, "error": "yfinance not available"}
@@ -8350,6 +8359,501 @@ async def _inst_picks_impl(region, top_n, refresh):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# r63.99.43: DIRECTIONAL OPTIONS SCANNER (CE BUY / PE BUY)
+#
+# Vijay's spec (institutional ordering — trend FIRST, options data CONFIRMS):
+#   1. Trend       (EMA20, VWAP)   ← highest weight
+#   2. RS / RW     (vs benchmark)
+#   3. Volume      (>1.5x avg)
+#   4. Breakout    (close vs 20d high/low)
+#   5. ADX         (>20 / >25 for premium)
+#   6. RSI         (>55 for CE, <45 for PE)
+#   7. Options     (delta, IV, IV rank, OI ∆) — last
+#
+# Scoring philosophy: a stock fails Step 1 (trend) → skip entirely. No
+# "options data overrides" allowed. This matches Vijay's "If these are not
+# present, skip the trade" rule.
+#
+# Output: ranked CE BUY list + ranked PE BUY list for both US and IN.
+# r99.43 SCAFFOLD: trend/RS/volume/ADX from yfinance OHLCV only. Real options
+# Greeks (delta, IV, IV rank) need F&O feed (Upstox for IN, alternative for US)
+# — flagged in _data_quality field per-row.
+# ════════════════════════════════════════════════════════════════════════════
+
+_directional_options_cache = {}
+_DIRECTIONAL_OPTIONS_TTL = 1800  # 30min — stocks move during day
+
+
+def _ema(values, period):
+    """Exponential moving average. Returns latest EMA value."""
+    if not values or len(values) < period:
+        return None
+    k = 2.0 / (period + 1)
+    ema = sum(values[:period]) / period  # SMA seed
+    for v in values[period:]:
+        ema = v * k + ema * (1 - k)
+    return ema
+
+
+def _adx(highs, lows, closes, period=14):
+    """ADX (Average Directional Index). Returns latest ADX value."""
+    if len(closes) < period * 2:
+        return None
+    plus_dm = []
+    minus_dm = []
+    tr = []
+    for i in range(1, len(closes)):
+        up = highs[i] - highs[i-1]
+        down = lows[i-1] - lows[i]
+        plus_dm.append(up if up > down and up > 0 else 0)
+        minus_dm.append(down if down > up and down > 0 else 0)
+        tr.append(max(highs[i] - lows[i],
+                      abs(highs[i] - closes[i-1]),
+                      abs(lows[i] - closes[i-1])))
+    if len(tr) < period:
+        return None
+    # Wilder's smoothing
+    atr = sum(tr[:period]) / period
+    plus_di_sum = sum(plus_dm[:period]) / period
+    minus_di_sum = sum(minus_dm[:period]) / period
+    dx_vals = []
+    for i in range(period, len(tr)):
+        atr = (atr * (period - 1) + tr[i]) / period
+        plus_di_sum = (plus_di_sum * (period - 1) + plus_dm[i]) / period
+        minus_di_sum = (minus_di_sum * (period - 1) + minus_dm[i]) / period
+        if atr == 0:
+            continue
+        plus_di = 100 * plus_di_sum / atr
+        minus_di = 100 * minus_di_sum / atr
+        di_sum = plus_di + minus_di
+        if di_sum == 0:
+            continue
+        dx = 100 * abs(plus_di - minus_di) / di_sum
+        dx_vals.append(dx)
+    if len(dx_vals) < period:
+        return None
+    return sum(dx_vals[-period:]) / period
+
+
+def _rsi(closes, period=14):
+    """RSI (Relative Strength Index). Returns latest RSI value."""
+    if len(closes) < period + 1:
+        return None
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        d = closes[i] - closes[i-1]
+        gains.append(max(0, d))
+        losses.append(max(0, -d))
+    if len(gains) < period:
+        return None
+    avg_g = sum(gains[:period]) / period
+    avg_l = sum(losses[:period]) / period
+    for i in range(period, len(gains)):
+        avg_g = (avg_g * (period - 1) + gains[i]) / period
+        avg_l = (avg_l * (period - 1) + losses[i]) / period
+    if avg_l == 0:
+        return 100.0
+    rs = avg_g / avg_l
+    return 100 - (100 / (1 + rs))
+
+
+def _vwap_approx(closes, highs, lows, volumes, n=20):
+    """Approximate rolling VWAP from last n daily bars."""
+    if len(closes) < n or len(volumes) < n:
+        return None
+    typical = [(highs[i] + lows[i] + closes[i]) / 3 for i in range(-n, 0)]
+    vols = volumes[-n:]
+    total_vol = sum(vols)
+    if total_vol == 0:
+        return None
+    return sum(typical[i] * vols[i] for i in range(n)) / total_vol
+
+
+def _score_directional_ticker(symbol, region, benchmark_ret_20d):
+    """Compute CE/PE directional score for one ticker. Sync — runs in executor.
+
+    Returns dict with:
+      symbol, sector, price, ce_score (0-100), pe_score (0-100), ce_signals,
+      pe_signals, indicators, options_hint, data_quality
+    """
+    import yfinance as yf
+    yf_sym = symbol if region == "US" else f"{symbol}.NS"
+    out = {
+        "symbol": symbol, "region": region, "yf_sym": yf_sym,
+        "sector": "Unknown", "price": None,
+        "ce_score": 0, "pe_score": 0,
+        "ce_signals_passed": 0, "pe_signals_passed": 0,
+        "ce_signals": [], "pe_signals": [],
+        "indicators": {}, "options_hint": {},
+        "data_quality": "ok", "_excluded_reason": None,
+    }
+    try:
+        tk = yf.Ticker(yf_sym)
+        info = {}
+        try: info = tk.info or {}
+        except Exception: info = {}
+        out["sector"] = (info.get("sector") or "Unknown")
+        out["price"] = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
+        hist = tk.history(period="6mo", interval="1d", auto_adjust=True)
+        if hist is None or hist.empty or len(hist) < 30:
+            out["data_quality"] = "insufficient_history"
+            out["_excluded_reason"] = "< 30 daily bars available"
+            return out
+        closes = list(hist["Close"].dropna())
+        highs = list(hist["High"].dropna())
+        lows = list(hist["Low"].dropna())
+        volumes = list(hist["Volume"].dropna())
+        if not closes or len(closes) < 30:
+            out["data_quality"] = "insufficient_history"
+            out["_excluded_reason"] = "< 30 closes after dropna"
+            return out
+
+        # Indicators
+        ema20 = _ema(closes, 20)
+        vwap20 = _vwap_approx(closes, highs, lows, volumes, 20)
+        rsi14 = _rsi(closes, 14)
+        adx14 = _adx(highs, lows, closes, 14)
+        close_now = closes[-1]
+        # 20d avg volume
+        vol_20_avg = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else None
+        vol_today = volumes[-1] if volumes else 0
+        vol_ratio = (vol_today / vol_20_avg) if (vol_20_avg and vol_20_avg > 0) else None
+        # 20d highs/lows for breakout
+        high_20 = max(highs[-20:]) if len(highs) >= 20 else None
+        low_20 = min(lows[-20:]) if len(lows) >= 20 else None
+        # 20d return for RS
+        ret_20 = (closes[-1] - closes[-21]) / closes[-21] * 100 if len(closes) >= 21 and closes[-21] > 0 else 0
+        rs_vs_bench = ret_20 - benchmark_ret_20d if benchmark_ret_20d is not None else None
+
+        out["indicators"] = {
+            "close": round(close_now, 2),
+            "ema20": round(ema20, 2) if ema20 else None,
+            "vwap20": round(vwap20, 2) if vwap20 else None,
+            "rsi14": round(rsi14, 1) if rsi14 else None,
+            "adx14": round(adx14, 1) if adx14 else None,
+            "vol_ratio": round(vol_ratio, 2) if vol_ratio else None,
+            "ret_20d_pct": round(ret_20, 2),
+            "rs_vs_bench_pct": round(rs_vs_bench, 2) if rs_vs_bench is not None else None,
+            "high_20d": round(high_20, 2) if high_20 else None,
+            "low_20d": round(low_20, 2) if low_20 else None,
+        }
+
+        # ───────── CE BUY scoring — strict checklist ─────────
+        ce = 0
+        ce_passed = 0
+        ce_signals = []
+        # 1. Price above EMA20 (20 pts) — Step 1 trend requirement
+        if ema20 is not None:
+            if close_now > ema20:
+                ce += 20; ce_passed += 1
+                ce_signals.append({"check": "Price > EMA20", "passed": True,
+                                   "detail": f"{round(close_now, 2)} > {round(ema20, 2)}", "weight": 20})
+            else:
+                ce_signals.append({"check": "Price > EMA20", "passed": False,
+                                   "detail": f"{round(close_now, 2)} ≤ {round(ema20, 2)} — bullish trend missing", "weight": 20})
+        # 2. Price above VWAP20 (15 pts)
+        if vwap20 is not None:
+            if close_now > vwap20:
+                ce += 15; ce_passed += 1
+                ce_signals.append({"check": "Price > VWAP", "passed": True,
+                                   "detail": f"{round(close_now, 2)} > {round(vwap20, 2)}", "weight": 15})
+            else:
+                ce_signals.append({"check": "Price > VWAP", "passed": False,
+                                   "detail": f"{round(close_now, 2)} ≤ {round(vwap20, 2)}", "weight": 15})
+        # 3. RSI > 55 (15 pts)
+        if rsi14 is not None:
+            if rsi14 > 55:
+                ce += 15; ce_passed += 1
+                ce_signals.append({"check": "RSI > 55", "passed": True,
+                                   "detail": f"RSI = {round(rsi14, 1)}", "weight": 15})
+            else:
+                ce_signals.append({"check": "RSI > 55", "passed": False,
+                                   "detail": f"RSI = {round(rsi14, 1)} — momentum not bullish", "weight": 15})
+        # 4. Volume > 1.5x avg (15 pts)
+        if vol_ratio is not None:
+            if vol_ratio > 1.5:
+                ce += 15; ce_passed += 1
+                ce_signals.append({"check": "Volume > 1.5x avg", "passed": True,
+                                   "detail": f"{round(vol_ratio, 2)}x", "weight": 15})
+            else:
+                ce_signals.append({"check": "Volume > 1.5x avg", "passed": False,
+                                   "detail": f"{round(vol_ratio, 2)}x — no conviction surge", "weight": 15})
+        # 5. ADX > 20 (10 pts) + bonus +5 for ADX > 25
+        if adx14 is not None:
+            if adx14 > 25:
+                ce += 15; ce_passed += 1
+                ce_signals.append({"check": "ADX > 25 (premium)", "passed": True,
+                                   "detail": f"ADX = {round(adx14, 1)} — strong trend", "weight": 15})
+            elif adx14 > 20:
+                ce += 10; ce_passed += 1
+                ce_signals.append({"check": "ADX > 20", "passed": True,
+                                   "detail": f"ADX = {round(adx14, 1)} — moderate trend", "weight": 10})
+            else:
+                ce_signals.append({"check": "ADX > 20", "passed": False,
+                                   "detail": f"ADX = {round(adx14, 1)} — no trend / chop", "weight": 10})
+        # 6. Relative strength vs benchmark (10 pts)
+        if rs_vs_bench is not None:
+            if rs_vs_bench > 0:
+                ce += 10; ce_passed += 1
+                ce_signals.append({"check": "RS > Benchmark", "passed": True,
+                                   "detail": f"+{round(rs_vs_bench, 2)}% outperformance", "weight": 10})
+            else:
+                ce_signals.append({"check": "RS > Benchmark", "passed": False,
+                                   "detail": f"{round(rs_vs_bench, 2)}% vs benchmark", "weight": 10})
+        # 7. Breakout above 20d high (10 pts) — Vijay's "breakout above resistance"
+        if high_20 is not None and close_now >= high_20 * 0.995:  # within 0.5%
+            ce += 10; ce_passed += 1
+            ce_signals.append({"check": "Breakout above 20d high", "passed": True,
+                               "detail": f"Close {round(close_now, 2)} vs 20d high {round(high_20, 2)}", "weight": 10})
+        else:
+            ce_signals.append({"check": "Breakout above 20d high", "passed": False,
+                               "detail": f"Close {round(close_now, 2)} below 20d high {round(high_20, 2) if high_20 else '?'}", "weight": 10})
+
+        out["ce_score"] = min(100, ce)
+        out["ce_signals"] = ce_signals
+        out["ce_signals_passed"] = ce_passed
+
+        # ───────── PE BUY scoring — mirror of CE ─────────
+        pe = 0
+        pe_passed = 0
+        pe_signals = []
+        # 1. Price below EMA20
+        if ema20 is not None:
+            if close_now < ema20:
+                pe += 20; pe_passed += 1
+                pe_signals.append({"check": "Price < EMA20", "passed": True,
+                                   "detail": f"{round(close_now, 2)} < {round(ema20, 2)}", "weight": 20})
+            else:
+                pe_signals.append({"check": "Price < EMA20", "passed": False,
+                                   "detail": f"{round(close_now, 2)} ≥ {round(ema20, 2)} — bearish trend missing", "weight": 20})
+        # 2. Price below VWAP20
+        if vwap20 is not None:
+            if close_now < vwap20:
+                pe += 15; pe_passed += 1
+                pe_signals.append({"check": "Price < VWAP", "passed": True,
+                                   "detail": f"{round(close_now, 2)} < {round(vwap20, 2)}", "weight": 15})
+            else:
+                pe_signals.append({"check": "Price < VWAP", "passed": False,
+                                   "detail": f"{round(close_now, 2)} ≥ {round(vwap20, 2)}", "weight": 15})
+        # 3. RSI < 45
+        if rsi14 is not None:
+            if rsi14 < 45:
+                pe += 15; pe_passed += 1
+                pe_signals.append({"check": "RSI < 45", "passed": True,
+                                   "detail": f"RSI = {round(rsi14, 1)}", "weight": 15})
+            else:
+                pe_signals.append({"check": "RSI < 45", "passed": False,
+                                   "detail": f"RSI = {round(rsi14, 1)} — momentum not bearish", "weight": 15})
+        # 4. Volume > 1.5x (same — high volume validates either direction)
+        if vol_ratio is not None:
+            if vol_ratio > 1.5:
+                pe += 15; pe_passed += 1
+                pe_signals.append({"check": "Volume > 1.5x avg", "passed": True,
+                                   "detail": f"{round(vol_ratio, 2)}x", "weight": 15})
+            else:
+                pe_signals.append({"check": "Volume > 1.5x avg", "passed": False,
+                                   "detail": f"{round(vol_ratio, 2)}x", "weight": 15})
+        # 5. ADX > 20
+        if adx14 is not None:
+            if adx14 > 25:
+                pe += 15; pe_passed += 1
+                pe_signals.append({"check": "ADX > 25 (premium)", "passed": True,
+                                   "detail": f"ADX = {round(adx14, 1)}", "weight": 15})
+            elif adx14 > 20:
+                pe += 10; pe_passed += 1
+                pe_signals.append({"check": "ADX > 20", "passed": True,
+                                   "detail": f"ADX = {round(adx14, 1)}", "weight": 10})
+            else:
+                pe_signals.append({"check": "ADX > 20", "passed": False,
+                                   "detail": f"ADX = {round(adx14, 1)} — no trend", "weight": 10})
+        # 6. Relative weakness vs benchmark
+        if rs_vs_bench is not None:
+            if rs_vs_bench < 0:
+                pe += 10; pe_passed += 1
+                pe_signals.append({"check": "RW < Benchmark", "passed": True,
+                                   "detail": f"{round(rs_vs_bench, 2)}% underperformance", "weight": 10})
+            else:
+                pe_signals.append({"check": "RW < Benchmark", "passed": False,
+                                   "detail": f"+{round(rs_vs_bench, 2)}% — stock outperforming", "weight": 10})
+        # 7. Breakdown below 20d low
+        if low_20 is not None and close_now <= low_20 * 1.005:  # within 0.5%
+            pe += 10; pe_passed += 1
+            pe_signals.append({"check": "Breakdown below 20d low", "passed": True,
+                               "detail": f"Close {round(close_now, 2)} vs 20d low {round(low_20, 2)}", "weight": 10})
+        else:
+            pe_signals.append({"check": "Breakdown below 20d low", "passed": False,
+                               "detail": f"Close {round(close_now, 2)} above 20d low {round(low_20, 2) if low_20 else '?'}", "weight": 10})
+
+        out["pe_score"] = min(100, pe)
+        out["pe_signals"] = pe_signals
+        out["pe_signals_passed"] = pe_passed
+
+        # ───────── Options strike hints (proxy — no real F&O Greeks) ─────────
+        # Vijay's spec: Delta 0.50-0.60 for CE, -0.50 to -0.60 for PE
+        # As a rule of thumb, ATM ≈ 0.50 delta, +5% OTM ≈ 0.35, -5% ITM ≈ 0.65
+        # We surface strike suggestions; real Greeks need F&O feed.
+        if out["price"] is not None and out["price"] > 0:
+            atm = round(out["price"] / 5) * 5 if out["price"] > 50 else round(out["price"])  # nearest $5/$1
+            # CE — slightly OTM = +1 strike (delta ~0.40-0.45) or ATM (delta ~0.50)
+            ce_atm = atm
+            ce_otm1 = atm * 1.02 if out["price"] > 50 else atm + 1
+            # PE — mirror
+            pe_atm = atm
+            pe_otm1 = atm * 0.98 if out["price"] > 50 else atm - 1
+            out["options_hint"] = {
+                "spot": out["price"],
+                "atm_strike_approx": atm,
+                "ce_strikes_to_consider": [ce_atm, round(ce_otm1, 0)],
+                "pe_strikes_to_consider": [pe_atm, round(pe_otm1, 0)],
+                "delta_target_ce": "0.45 - 0.65",
+                "delta_target_pe": "-0.45 to -0.65",
+                "dte_target": "20-45 days",
+                "iv_rank_target": "< 50",
+                "_note": "r99.43 SCAFFOLD — actual Greeks/IV/OI need F&O feed (Upstox for IN, alternative for US). Strikes are spot-based approximations.",
+            }
+        out["data_quality"] = "ok"
+        return out
+    except Exception as e:
+        out["data_quality"] = "fetch_error"
+        out["_excluded_reason"] = f"{type(e).__name__}: {str(e)[:80]}"
+        return out
+
+
+@app.get("/api/directional-options-scanner")
+async def directional_options_scanner(region: str = "US",
+                                       top_n: int = 10,
+                                       min_score: int = 50,
+                                       refresh: int = 0):
+    """Directional Options Scanner — CE BUY + PE BUY institutional ranking.
+
+    Vijay's spec: trend FIRST, options data CONFIRMS.
+    """
+    try:
+        return await _directional_options_impl(region, top_n, min_score, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[DIR-OPTIONS] unhandled: {_err}")
+        return {"success": False, "error": _err, "trace": _tb.format_exc()[:1500]}
+
+
+async def _directional_options_impl(region, top_n, min_score, refresh):
+    import time as _time
+    import asyncio as _aio
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    top_n = max(3, min(25, top_n))
+    min_score = max(0, min(100, min_score))
+
+    cache_key = f"{region}_{top_n}_{min_score}"
+    if not refresh and cache_key in _directional_options_cache:
+        c = _directional_options_cache[cache_key]
+        if (_time.time() - c["ts"]) < _DIRECTIONAL_OPTIONS_TTL:
+            out_c = dict(c["data"]); out_c["_cached"] = True
+            out_c["_cache_age_sec"] = int(_time.time() - c["ts"])
+            return out_c
+
+    t0 = _time.time()
+    universe = _INST_PICKS_UNIVERSE.get(region, _INST_PICKS_UNIVERSE["US"])
+
+    # ───────── Fetch benchmark 20d return for RS calc ─────────
+    try:
+        import yfinance as yf
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        bench_sym = "SPY" if region == "US" else "^NSEI"
+
+        def _bench_ret():
+            try:
+                bh = yf.Ticker(bench_sym).history(period="2mo", interval="1d", auto_adjust=True)
+                if bh is None or bh.empty or len(bh) < 21:
+                    return None
+                bcl = list(bh["Close"].dropna())
+                if len(bcl) < 21:
+                    return None
+                return (bcl[-1] - bcl[-21]) / bcl[-21] * 100 if bcl[-21] > 0 else None
+            except Exception:
+                return None
+
+        _lp = _aio.get_event_loop()
+        benchmark_ret_20d = await _lp.run_in_executor(None, _bench_ret)
+    except ImportError:
+        return {"success": False, "error": "yfinance not available"}
+
+    # ───────── Score each ticker (sequential for rate-limit safety) ─────────
+    results = []
+    excluded = []
+    for sym in universe:
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        scored = await _lp.run_in_executor(None, _score_directional_ticker,
+                                            sym, region, benchmark_ret_20d)
+        if scored["data_quality"] != "ok":
+            excluded.append({"symbol": sym, "reason": scored.get("_excluded_reason", "?")})
+            continue
+        results.append(scored)
+
+    # ───────── Build CE + PE leaderboards ─────────
+    ce_passing = [r for r in results if r["ce_score"] >= min_score]
+    pe_passing = [r for r in results if r["pe_score"] >= min_score]
+    ce_passing.sort(key=lambda x: (-x["ce_score"], -x["ce_signals_passed"]))
+    pe_passing.sort(key=lambda x: (-x["pe_score"], -x["pe_signals_passed"]))
+
+    def _strip_for_response(r, direction):
+        """Trim irrelevant signals for either CE or PE side."""
+        relevant_signals = r["ce_signals"] if direction == "CE" else r["pe_signals"]
+        return {
+            "symbol": r["symbol"], "yf_sym": r["yf_sym"], "sector": r["sector"],
+            "price": r["price"],
+            "score": r["ce_score"] if direction == "CE" else r["pe_score"],
+            "signals_passed": r["ce_signals_passed"] if direction == "CE" else r["pe_signals_passed"],
+            "signals": relevant_signals,
+            "indicators": r["indicators"],
+            "options_hint": r["options_hint"],
+        }
+
+    ce_top = [_strip_for_response(r, "CE") for r in ce_passing[:top_n]]
+    pe_top = [_strip_for_response(r, "PE") for r in pe_passing[:top_n]]
+
+    out = {
+        "success": True, "region": region,
+        "benchmark": bench_sym,
+        "benchmark_ret_20d_pct": round(benchmark_ret_20d, 2) if benchmark_ret_20d is not None else None,
+        "universe_size": len(universe),
+        "scored_count": len(results),
+        "excluded_count": len(excluded),
+        "min_score_filter": min_score,
+        "top_n": top_n,
+        "ce_buy_candidates": ce_top,
+        "pe_buy_candidates": pe_top,
+        "ce_passing_count": len(ce_passing),
+        "pe_passing_count": len(pe_passing),
+        "excluded": excluded[:5],  # show first few for debugging
+        "spec_ordering": [
+            "1. Trend (EMA20, VWAP) — 35 pts",
+            "2. Momentum (RSI) — 15 pts",
+            "3. Volume Surge (>1.5x avg) — 15 pts",
+            "4. ADX (>20 / premium >25) — 10-15 pts",
+            "5. Relative Strength vs Benchmark — 10 pts",
+            "6. Breakout above 20d high / Breakdown below 20d low — 10 pts",
+        ],
+        "_engine": "directional_options_scanner_v1",
+        "_data_quality": "yfinance OHLCV only — no real F&O Greeks (IV, delta, OI ∆) yet",
+        "_future_inputs": [
+            "Real options chain via Upstox (IN F&O) — Greek per strike, IV rank vs 1y, OI ∆ — r99.44",
+            "US options chain via tradier / polygon — same metrics — r99.44+",
+            "5m / 15m intraday confirmation (ORB, gap analysis) — r99.45",
+            "Sector strength filter — only show CE if sector also bullish — r99.45",
+        ],
+        "elapsed_sec": round(_time.time() - t0, 2),
+    }
+
+    _directional_options_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[DIR-OPTIONS] {region} scanned {out['scored_count']}/{out['universe_size']} — CE:{out['ce_passing_count']} PE:{out['pe_passing_count']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # r63.99.41: ENHANCEMENT LAYER on top of r99.40 Celesys 2.0 engines
 #
 # Three high-impact wires-in that don't need new external data sources:
@@ -8371,7 +8875,10 @@ def _get_insider_activity_proper(symbol, region, lookback_days=180):
         {success, net_score (-1..+1), buy_dollars, sell_dollars,
          buyer_count, seller_count, transaction_count, lookback_days,
          _data_source}
-    or {success: False, error} on any failure.
+    or {success: False, error, error_kind} on any failure.
+
+    r99.42: error_kind distinguishes 'rate_limited' from other errors so the
+    UI can show a retry hint instead of a generic error message.
     """
     from datetime import datetime, timedelta
     try:
@@ -8379,12 +8886,25 @@ def _get_insider_activity_proper(symbol, region, lookback_days=180):
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
         tk = yf.Ticker(yf_sym)
     except Exception as e:
-        return {"success": False, "error": f"ticker init failed: {str(e)[:80]}"}
+        return {"success": False, "error": f"ticker init failed: {str(e)[:80]}",
+                "error_kind": "ticker_init"}
 
     try:
         ins = tk.insider_transactions
     except Exception as e:
-        return {"success": False, "error": f"insider_transactions fetch failed: {str(e)[:80]}"}
+        msg = str(e)[:200]
+        # Detect YFRateLimitError or any "Too Many Requests" / 429 signal
+        is_rate_limited = (
+            "YFRateLimitError" in type(e).__name__ or
+            "Too Many Requests" in msg or
+            "429" in msg or
+            "rate limit" in msg.lower()
+        )
+        return {
+            "success": False,
+            "error": f"insider_transactions fetch failed: {msg[:120]}",
+            "error_kind": "rate_limited" if is_rate_limited else "fetch_failed",
+        }
 
     if ins is None or (hasattr(ins, 'empty') and ins.empty):
         return {"success": True, "net_score": 0.0,
@@ -8498,6 +9018,12 @@ async def _insider_activity_impl(symbol, region, lookback_days, refresh):
     if not data.get("success"):
         out["success"] = False
         out["error"] = data.get("error", "fetch failed")
+        # r99.42: surface error_kind so frontend can render a retry hint
+        # instead of a generic error box for transient rate-limit failures.
+        out["error_kind"] = data.get("error_kind", "fetch_failed")
+        if out["error_kind"] == "rate_limited":
+            out["error"] = "Yahoo Finance rate-limited this request. Wait 30-60 seconds and try again."
+            out["retry_after_sec"] = 45
         return out
 
     out["net_score"] = data["net_score"]

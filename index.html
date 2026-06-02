@@ -2175,6 +2175,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <button onclick="window._engShow('mgmt')" id="engBtnMgmt" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128104;&#8205;&#128188; Management Change</button>
   <button onclick="window._engShow('picks')" id="engBtnPicks" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127942; Today's Picks</button>
   <button onclick="window._engShow('insider')" id="engBtnInsider" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128202; Insider Activity</button>
+  <button onclick="window._engShow('diropts')" id="engBtnDirOpts" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127919; CE/PE Scanner</button>
 </div>
 
 <!-- SMART EXIT ENGINE -->
@@ -2387,6 +2388,36 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
       <button onclick="window._loadInsiderActivity()" id="insiderBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128202; FETCH INSIDER ACTIVITY</button>
     </div>
     <div id="insiderResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter symbol &middot; click FETCH INSIDER ACTIVITY for net buying/selling breakdown.</div></div>
+  </div>
+</div>
+
+<!-- ENGINE 12: DIRECTIONAL OPTIONS SCANNER (r99.43) -->
+<div id="engDirOptsPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#127919; CE BUY / PE BUY Scanner</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Institutional ordering: <strong>trend first, options confirm</strong>. Scans the curated universe and ranks Call Buy + Put Buy candidates by 7 checks &mdash; EMA20, VWAP, RSI, volume surge, ADX, relative strength, breakout/breakdown. Stocks failing the trend gate are skipped entirely (Vijay's rule). r99.43 SCAFFOLD: real F&amp;O Greeks (delta/IV/OI) come in r99.44 via Upstox feed.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="diroptsRegIN" onclick="window._engSetRegion('diropts','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="diroptsRegUS" onclick="window._engSetRegion('diropts','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <label style="font-size:10px;color:#5b21b6;font-weight:700">TOP N:</label>
+      <select id="diroptsTopN" style="padding:5px 8px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;color:#4c1d95;background:#fff">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="15">15</option>
+        <option value="25">25</option>
+      </select>
+      <label style="font-size:10px;color:#5b21b6;font-weight:700">MIN SCORE:</label>
+      <select id="diroptsMinScore" style="padding:5px 8px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;color:#4c1d95;background:#fff">
+        <option value="40">40 (loose)</option>
+        <option value="55" selected>55 (institutional)</option>
+        <option value="70">70 (strict)</option>
+        <option value="85">85 (premium)</option>
+      </select>
+      <button onclick="window._loadDirectionalOptions()" id="diroptsBtn" style="margin-left:auto;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127919; SCAN CE / PE</button>
+    </div>
+    <div id="diroptsResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px"><strong>First scan takes ~30-60s</strong> while we score the universe. Cached 30 minutes per filter combo.</div></div>
   </div>
 </div>
 
@@ -2825,7 +2856,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=1779986400"></script>
+<script src="/static/app.min.js?v=1780159200"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>

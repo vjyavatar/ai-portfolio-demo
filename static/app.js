@@ -539,9 +539,55 @@
 //     • r99.39 engines harness (updated for r99.41 shape): 38 PASS / 0 FAIL
 //     • r99.40 engines harness (subset, picks excluded for runtime): 32 PASS / 0 FAIL
 //     • 112 total checks passing, 0 failures
-window.CELESYS_VERSION = "r63.99.41";
-window.CELESYS_BUILD_TIME = 1779986400;
-window.CELESYS_BUILD_DATE = "2026-05-28 14:00:00 UTC";
+// r63.99.42: PRODUCTION BUG FIXES — 3 issues caught from Vijay's screenshots:
+//   BUG 1: Macro Impact factors rendered as "→ undefined" with score 0
+//     Root cause: backend produced {factor, impact_score, verdict} but
+//     frontend reads {name, score, interpretation}. Field-name mismatch
+//     across the macro_impact_v1 → frontend boundary.
+//     Fix: backend now emits BOTH legacy keys AND frontend-expected keys
+//     (name, score, interpretation) so neither side needs to change.
+//   BUG 2: "window._loadInstitutionalPicks is not a function" JS error
+//     Root cause: r99.40 HTML emits onclick="_loadInstitutionalPicks()" but
+//     r99.40 JS only exposed _loadInstPicks (short name). Mismatch sat
+//     dormant until someone clicked SHOW PICKS in production.
+//     Fix: added _loadInstitutionalPicks alias that delegates to
+//     _loadInstPicks. Avoids HTML changes — pure additive JS shim.
+//   BUG 3: Insider Activity bare "Too Many Requests" error
+//     Root cause: Yahoo Finance rate-limits aggressive insider fetches
+//     from Render's shared IP. _get_insider_activity_proper caught the
+//     exception but surfaced just the message — no signal to UI that
+//     this is transient.
+//     Fix: detect YFRateLimitError / 429 / "Too Many Requests" / "rate
+//     limit" by name and message → set error_kind='rate_limited' +
+//     retry_after_sec=45. Frontend renders amber retry card with explicit
+//     RETRY button instead of red generic error.
+// VALIDATION: r99.41 (42 PASS) + r99.39 (38 PASS) regressions clean. Smoke
+// tests confirm all 3 fixes work end-to-end.
+// r63.99.43: DIRECTIONAL OPTIONS SCANNER — CE BUY / PE BUY per Vijay's spec.
+//   Vijay's institutional ordering: trend FIRST, options data CONFIRMS.
+//   "If trend not present, skip the trade" — no options data can override.
+//   New endpoint /api/directional-options-scanner scores every ticker in the
+//   curated universe (25 US + 25 IN) against 7 institutional checks:
+//     1. Price > EMA20 (CE) or < EMA20 (PE)         — 20 pts (trend gate)
+//     2. Price > VWAP (CE) or < VWAP (PE)           — 15 pts
+//     3. RSI > 55 (CE) or < 45 (PE)                 — 15 pts
+//     4. Volume > 1.5x 20d avg                      — 15 pts
+//     5. ADX > 20 (10 pt) or > 25 (15 pt premium)   — 10-15 pts
+//     6. Relative strength/weakness vs benchmark    — 10 pts
+//     7. Breakout above 20d high (CE) / breakdown   — 10 pts
+//   Each candidate gets:
+//     - 7-check pass/fail breakdown with detail strings
+//     - 6 raw indicators (EMA20, VWAP20, RSI14, ADX14, vol ratio, RS vs bench)
+//     - Options strike hints (ATM + slight OTM) — proxy until F&O wires in
+//     - Delta/DTE/IV-rank targets per Vijay's spec
+//   New UI: 12th nav pill "🎯 CE/PE Scanner" in Engines subtab.
+//   Output: two-column grid (CE BUY left green, PE BUY right red) with each
+//   candidate showing score, 7-check breakdown, indicators, and strike hints.
+//   VALIDATION: 42 PASS / 0 FAIL across 8 archetypes. r99.41 (42) +
+//   r99.39 (38) regressions unchanged. 122 total checks passing.
+window.CELESYS_VERSION = "r63.99.43";
+window.CELESYS_BUILD_TIME = 1780159200;
+window.CELESYS_BUILD_DATE = "2026-05-30 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11612,7 +11658,7 @@ window._engState = {exit: {region: 'US'}, risk: {region: 'US'},
                     mb: {region: 'US'}, etf: {region: 'US'},
                     eps: {region: 'US'}, macro: {region: 'US'},
                     mgmt: {region: 'US'}, picks: {region: 'US'},
-                    insider: {region: 'US'}};
+                    insider: {region: 'US'}, diropts: {region: 'US'}};
 
 window._engShow = function(panel) {
   // Hide all panels, show selected, update button styling
@@ -11622,7 +11668,7 @@ window._engShow = function(panel) {
     'multibagger': 'engMultibaggerPanel', 'etfbuilder': 'engETFBuilderPanel',
     'earningspred': 'engEarningsPredPanel', 'macro': 'engMacroPanel',
     'mgmt': 'engMgmtPanel', 'picks': 'engPicksPanel',
-    'insider': 'engInsiderPanel',
+    'insider': 'engInsiderPanel', 'diropts': 'engDirOptsPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11635,7 +11681,7 @@ window._engShow = function(panel) {
     'multibagger': 'engBtnMB', 'etfbuilder': 'engBtnETF',
     'earningspred': 'engBtnEPS', 'macro': 'engBtnMacro',
     'mgmt': 'engBtnMgmt', 'picks': 'engBtnPicks',
-    'insider': 'engBtnInsider',
+    'insider': 'engBtnInsider', 'diropts': 'engBtnDirOpts',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12434,6 +12480,13 @@ window._loadInstPicks = function() {
     });
 };
 
+// r99.42 BUG FIX: HTML emitted by r99.40 calls window._loadInstitutionalPicks
+// (the long name) while r99.40 JS only exposed window._loadInstPicks. The
+// uncaught TypeError "window._loadInstitutionalPicks is not a function" came
+// from this mismatch. Add the alias instead of touching HTML — keeps the fix
+// local and avoids ripping out the old onclick.
+window._loadInstitutionalPicks = function() { return window._loadInstPicks(); };
+
 window._renderInstPicks = function(d) {
   var h = '';
   h += '<div style="background:linear-gradient(135deg,#7c3aed15,#fff);border:2px solid #7c3aed;border-radius:12px;padding:16px 18px;margin-bottom:12px">';
@@ -12494,7 +12547,19 @@ window._loadInsiderActivity = function() {
       if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '📊 FETCH INSIDER ACTIVITY'; }
       if (!d || !d.success) {
         var msg = (d && (d.error || d.detail)) || 'unknown';
-        window._engRenderError('insiderResult', sym, msg, d && d.trace);
+        // r99.42: rate-limit gets a special amber retry card instead of generic error
+        if (d && d.error_kind === 'rate_limited') {
+          var retryAfter = d.retry_after_sec || 45;
+          resEl.innerHTML = '<div style="padding:14px 16px;background:linear-gradient(180deg,#fef3c7,#fef9c3);border:1px solid #fbbf24;border-radius:10px;color:#78350f;font-size:11.5px;line-height:1.6">' +
+            '<div style="font-weight:900;color:#92400e;margin-bottom:6px;font-family:Sora,sans-serif">⏱ Yahoo Finance rate-limited</div>' +
+            '<div style="margin-bottom:8px">' + msg + '</div>' +
+            '<div style="font-size:10px;color:#92400e;margin-bottom:10px">This is a Yahoo throttle, not a bug. Render\'s IP shares quota with other users.</div>' +
+            '<button onclick="window._loadInsiderActivity()" style="padding:6px 14px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">↻ RETRY NOW</button>' +
+            '<span style="font-size:10px;color:#78350f;margin-left:10px">or wait ~' + retryAfter + 's then retry</span>' +
+            '</div>';
+        } else {
+          window._engRenderError('insiderResult', sym, msg, d && d.trace);
+        }
         return;
       }
       resEl.innerHTML = window._renderInsiderActivity(d);
@@ -12560,6 +12625,154 @@ window._renderInsiderActivity = function(d) {
     h += '</ul></details>';
   }
   h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + (d._cached ? ' · cached' : '') + '</div>';
+  return h;
+};
+
+// ═══════════════════ ENGINE 12: DIRECTIONAL OPTIONS SCANNER (r99.43) ═══════════════════
+window._loadDirectionalOptions = function() {
+  var reg = window._engState.diropts.region;
+  var topN = parseInt(document.getElementById('diroptsTopN').value || '10');
+  var minScore = parseInt(document.getElementById('diroptsMinScore').value || '55');
+  var btn = document.getElementById('diroptsBtn');
+  var resEl = document.getElementById('diroptsResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ SCANNING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Scoring ' + reg + ' universe by 7-check institutional checklist (this may take 30-60s on first call)…</div>';
+  fetch('/api/directional-options-scanner?region=' + encodeURIComponent(reg) + '&top_n=' + topN + '&min_score=' + minScore, {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 SCAN CE / PE'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown';
+        window._engRenderError('diroptsResult', reg, msg, d && d.trace);
+        return;
+      }
+      resEl.innerHTML = window._renderDirectionalOptions(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 SCAN CE / PE'; }
+      window._engRenderError('diroptsResult', reg, 'Network error: ' + e.message);
+    });
+};
+
+window._renderDirectionalOptions = function(d) {
+  var h = '';
+  // ───── Header ─────
+  h += '<div style="background:linear-gradient(135deg,#7c3aed15,#fff);border:2px solid #7c3aed;border-radius:12px;padding:14px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:#7c3aed;letter-spacing:0.8px">🎯 ' + (d.region || '?') + " · CE BUY / PE BUY SCANNER</div>";
+  h += '<div style="font-size:16px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-top:2px">' + (d.ce_passing_count || 0) + ' CE candidates · ' + (d.pe_passing_count || 0) + ' PE candidates</div></div>';
+  h += '<div style="text-align:right;font-size:10px;color:#64748b">';
+  h += 'Scanned <strong>' + (d.scored_count || 0) + '/' + (d.universe_size || 0) + '</strong> tickers<br/>';
+  h += 'Min score: <strong>' + (d.min_score_filter || 0) + '/100</strong>';
+  if (d.benchmark_ret_20d_pct !== null && d.benchmark_ret_20d_pct !== undefined) {
+    var bc = d.benchmark_ret_20d_pct >= 0 ? '#10b981' : '#dc2626';
+    h += '<br/>Benchmark ' + (d.benchmark || '?') + ' 20d: <strong style="color:' + bc + '">' + (d.benchmark_ret_20d_pct > 0 ? '+' : '') + d.benchmark_ret_20d_pct + '%</strong>';
+  }
+  h += '</div></div></div>';
+
+  // ───── Helper to render a candidate row ─────
+  function renderCandidate(c, side) {
+    var color = side === 'CE' ? '#10b981' : '#dc2626';
+    var bg = side === 'CE' ? '#ecfdf5' : '#fef2f2';
+    var border = side === 'CE' ? '#6ee7b7' : '#fca5a5';
+    var ind = c.indicators || {};
+    var hint = c.options_hint || {};
+    var html = '';
+    html += '<div style="background:#fff;border:1px solid ' + border + ';border-left:4px solid ' + color + ';border-radius:8px;padding:12px 14px;margin-bottom:8px">';
+    // Top row: symbol + score + price
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">';
+    html += '<div><span style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + c.symbol + '</span>';
+    html += ' <span style="font-size:10px;color:#64748b;margin-left:6px">' + (c.sector || '?') + '</span></div>';
+    html += '<div style="display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:10px;color:#64748b">$' + (c.price || '?') + '</span>';
+    html += '<span style="font-size:9px;color:#64748b">' + c.signals_passed + '/7 checks</span>';
+    html += '<span style="font-size:18px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;background:' + bg + ';padding:2px 10px;border-radius:6px">' + c.score + '</span>';
+    html += '</div></div>';
+    // Indicator strip
+    html += '<div style="font-size:9px;color:#64748b;margin-bottom:6px;font-family:JetBrains Mono,monospace;display:flex;flex-wrap:wrap;gap:10px">';
+    if (ind.ema20 !== null && ind.ema20 !== undefined) html += '<span>EMA20: ' + ind.ema20 + '</span>';
+    if (ind.vwap20 !== null && ind.vwap20 !== undefined) html += '<span>VWAP: ' + ind.vwap20 + '</span>';
+    if (ind.rsi14 !== null && ind.rsi14 !== undefined) html += '<span>RSI: ' + ind.rsi14 + '</span>';
+    if (ind.adx14 !== null && ind.adx14 !== undefined) html += '<span>ADX: ' + ind.adx14 + '</span>';
+    if (ind.vol_ratio !== null && ind.vol_ratio !== undefined) html += '<span>Vol: ' + ind.vol_ratio + 'x</span>';
+    if (ind.rs_vs_bench_pct !== null && ind.rs_vs_bench_pct !== undefined) {
+      var rsc = ind.rs_vs_bench_pct >= 0 ? '#10b981' : '#dc2626';
+      html += '<span>RS: <strong style="color:' + rsc + '">' + (ind.rs_vs_bench_pct > 0 ? '+' : '') + ind.rs_vs_bench_pct + '%</strong></span>';
+    }
+    html += '</div>';
+    // Signals breakdown
+    html += '<details style="margin-bottom:6px"><summary style="cursor:pointer;font-size:10px;color:#5b21b6;font-weight:700">▸ 7-check breakdown</summary>';
+    html += '<ul style="margin:6px 0 0 0;padding-left:16px;font-size:10px;line-height:1.6">';
+    (c.signals || []).forEach(function(s) {
+      var icon = s.passed ? '✓' : '✗';
+      var sc = s.passed ? '#065f46' : '#94a3b8';
+      html += '<li style="color:' + sc + '"><strong>' + icon + ' ' + s.check + '</strong> <span style="color:#64748b">(' + s.weight + 'pt)</span> &mdash; ' + (s.detail || '') + '</li>';
+    });
+    html += '</ul></details>';
+    // Options hint
+    if (hint && hint.atm_strike_approx) {
+      var strikes = side === 'CE' ? (hint.ce_strikes_to_consider || []) : (hint.pe_strikes_to_consider || []);
+      var deltaTarget = side === 'CE' ? hint.delta_target_ce : hint.delta_target_pe;
+      html += '<div style="background:' + bg + ';border-radius:6px;padding:6px 10px;font-size:10px;color:#374151;line-height:1.5">';
+      html += '<strong style="color:' + color + '">📋 Strike hints:</strong> ';
+      html += 'ATM ≈ <strong>' + strikes[0] + '</strong>, slight OTM ≈ <strong>' + (strikes[1] || '?') + '</strong> &middot; ';
+      html += '<span style="color:#64748b">Target Δ ' + deltaTarget + ' &middot; DTE ' + hint.dte_target + ' &middot; IV rank ' + hint.iv_rank_target + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // ───── Two-column grid: CE left, PE right ─────
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+  // CE column
+  h += '<div>';
+  h += '<div style="background:#ecfdf5;border:2px solid #6ee7b7;border-radius:10px;padding:10px 14px;margin-bottom:10px">';
+  h += '<div style="font-size:13px;font-weight:900;color:#065f46;letter-spacing:0.5px;font-family:Sora,sans-serif">🟢 CE BUY (Call Buy)</div>';
+  h += '<div style="font-size:10px;color:#047857;margin-top:2px">Bullish trend + momentum + volume + breakout. Buy ATM/slight-OTM calls.</div>';
+  h += '</div>';
+  if (d.ce_buy_candidates && d.ce_buy_candidates.length) {
+    d.ce_buy_candidates.forEach(function(c) { h += renderCandidate(c, 'CE'); });
+  } else {
+    h += '<div style="padding:24px;background:#fff;border:1px dashed #6ee7b7;border-radius:8px;text-align:center;font-size:11px;color:#94a3b8">No CE candidates passing min score ' + (d.min_score_filter || 0) + '. Try lowering the threshold — markets may be in chop/distribution.</div>';
+  }
+  h += '</div>';
+  // PE column
+  h += '<div>';
+  h += '<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:10px 14px;margin-bottom:10px">';
+  h += '<div style="font-size:13px;font-weight:900;color:#991b1b;letter-spacing:0.5px;font-family:Sora,sans-serif">🔴 PE BUY (Put Buy)</div>';
+  h += '<div style="font-size:10px;color:#7f1d1d;margin-top:2px">Bearish trend + weakness + volume + breakdown. Buy ATM/slight-OTM puts.</div>';
+  h += '</div>';
+  if (d.pe_buy_candidates && d.pe_buy_candidates.length) {
+    d.pe_buy_candidates.forEach(function(c) { h += renderCandidate(c, 'PE'); });
+  } else {
+    h += '<div style="padding:24px;background:#fff;border:1px dashed #fca5a5;border-radius:8px;text-align:center;font-size:11px;color:#94a3b8">No PE candidates passing min score ' + (d.min_score_filter || 0) + '. Markets may be in broad uptrend — consider waiting.</div>';
+  }
+  h += '</div></div>';
+
+  // ───── Footer: scoring methodology + future inputs ─────
+  if (d.spec_ordering && d.spec_ordering.length) {
+    h += '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:10px;color:#5b21b6;font-weight:700">▸ Scoring methodology (Vijay\'s institutional ordering)</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;font-size:10.5px;color:#475569;line-height:1.7">';
+    d.spec_ordering.forEach(function(s) { h += '<li>' + s + '</li>'; });
+    h += '</ul></details>';
+  }
+  if (d._data_quality) {
+    h += '<div style="margin-top:6px;padding:6px 10px;background:#faf5ff;border-radius:6px;font-size:10px;color:#5b21b6;font-style:italic">📊 ' + d._data_quality + '</div>';
+  }
+  if (d._future_inputs && d._future_inputs.length) {
+    h += '<details style="margin-top:6px;font-size:10px"><summary style="cursor:pointer;color:#7c3aed;font-weight:700">▸ Will improve in r99.44+</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5;color:#5b21b6">';
+    d._future_inputs.forEach(function(f) { h += '<li>' + f + '</li>'; });
+    h += '</ul></details>';
+  }
+  if (d.excluded && d.excluded.length) {
+    h += '<details style="margin-top:6px;font-size:10px"><summary style="cursor:pointer;color:#dc2626;font-weight:700">▸ ' + d.excluded_count + ' tickers excluded</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5;color:#7f1d1d">';
+    d.excluded.forEach(function(e) { h += '<li><strong>' + e.symbol + ':</strong> ' + e.reason + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + (d._cached ? ' · cached ' + (d._cache_age_sec || 0) + 's' : '') + '</div>';
   return h;
 };
 

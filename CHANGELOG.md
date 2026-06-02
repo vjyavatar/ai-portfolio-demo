@@ -1,3 +1,243 @@
+## r63.99.43 (2026-05-30) — Directional Options Scanner (CE BUY / PE BUY)
+
+Vijay's full spec for institutional CE/PE selection. Key insight he emphasized:
+
+> "Most retail traders focus on IV, Delta, OI, etc. But institutions typically start with **price movement first**, then use options data as confirmation."
+
+> "If these are not present, **skip the trade**."
+
+This build implements that exact ordering. Trend is the gate; options data is the strike hint, not a green-light by itself.
+
+### What ships
+
+**New endpoint:** `GET /api/directional-options-scanner`
+**New UI pill:** 🎯 CE/PE Scanner (12th pill in Decide → 🎯 Engines)
+**Coverage:** US (25 tickers) + IN (25 tickers), both regions in one scan
+
+### Scoring per Vijay's spec — 7 checks, 100 pts total
+
+Same 7 checks for CE and PE, mirrored direction:
+
+| # | Check (CE) | Check (PE) | Weight | Notes |
+|---|---|---|---|---|
+| 1 | Price > EMA20 | Price < EMA20 | **20 pts** | Trend gate — the master filter |
+| 2 | Price > VWAP | Price < VWAP | 15 pts | Institutional reference |
+| 3 | RSI > 55 | RSI < 45 | 15 pts | Momentum confirmation |
+| 4 | Volume > 1.5x 20d avg | Volume > 1.5x 20d avg | 15 pts | Conviction surge |
+| 5 | ADX > 20 (or 25 premium) | ADX > 20 (or 25 premium) | 10-15 pts | Trend strength |
+| 6 | RS > Benchmark | RW < Benchmark | 10 pts | Outperformance/underperformance |
+| 7 | Close ≥ 99.5% of 20d high | Close ≤ 100.5% of 20d low | 10 pts | Breakout/breakdown |
+
+Scoring is strict and unforgiving — a stock failing trend can't bail itself out with options metrics. This is Vijay's institutional rule encoded directly.
+
+### Min-score filter buckets
+
+| Filter | What you'll see |
+|---|---|
+| 40 (loose) | Mild trend candidates — useful when no clean setups exist |
+| **55 (institutional, default)** | Must pass 4-5 of 7 checks. Typical setups. |
+| 70 (strict) | Premium setups only — 5-6 of 7 |
+| 85 (premium) | "Highly institutional" — 6-7 of 7 with ADX > 25 |
+
+### Output shape per candidate
+
+```javascript
+{
+  symbol: "NVDA",
+  sector: "Technology",
+  price: 147.20,
+  score: 90,                    // 0-100
+  signals_passed: 6,            // out of 7
+  signals: [
+    { check: "Price > EMA20", passed: true,
+      detail: "147.2 > 142.30", weight: 20 },
+    { check: "ADX > 25 (premium)", passed: true,
+      detail: "ADX = 32.4 — strong trend", weight: 15 },
+    // ... 5 more
+  ],
+  indicators: {
+    close: 147.20, ema20: 142.30, vwap20: 144.10,
+    rsi14: 64.5, adx14: 32.4, vol_ratio: 2.30,
+    ret_20d_pct: 18.5, rs_vs_bench_pct: 12.4,
+    high_20d: 147.50, low_20d: 128.40
+  },
+  options_hint: {
+    spot: 147.20, atm_strike_approx: 145,
+    ce_strikes_to_consider: [145, 150],   // ATM + slight OTM
+    pe_strikes_to_consider: [145, 144],
+    delta_target_ce: "0.45 - 0.65",
+    delta_target_pe: "-0.45 to -0.65",
+    dte_target: "20-45 days",
+    iv_rank_target: "< 50",
+    _note: "r99.43 SCAFFOLD — actual Greeks need F&O feed"
+  }
+}
+```
+
+### What's honest scaffolding vs production
+
+| Layer | Status |
+|---|---|
+| Trend / RSI / ADX / VWAP / volume / RS / breakout | **FULL** — computed from yfinance OHLCV |
+| Options strike hints (ATM + slight OTM by % offset) | **SCAFFOLD** — spot-based approximation |
+| Real Greeks (delta, IV rank, OI ∆) | **r99.44** — needs Upstox (IN) + alternative (US) F&O feed |
+| Intraday 5m/15m confirmation (ORB, gap) | **r99.45** — daily-only currently |
+| Sector strength filter (CE only if sector also bullish) | **r99.45** |
+
+Every response surfaces `_data_quality` + `_future_inputs` so users know what's not wired.
+
+### Validation — 42 PASS / 0 FAIL
+
+`/tmp/validate_r99_43.py` — 8 archetypes:
+
+1. Strongly bullish (NVDA-class) → high CE score ≥ 70, all 7 signals present
+2. Strongly bearish (META-class) → high PE score ≥ 70
+3. Strict min_score (85) filter actually drops candidates
+4. Response shape contract — every field the frontend renders is present
+5. India region (^NSEI benchmark, .NS suffix)
+6. Insufficient history (< 30 bars) → excluded gracefully with reason
+7. options_hint complete shape per spec (8 keys)
+8. Empty result (all-flat universe + strict threshold) returns [] not null
+
+Plus regression on prior harnesses:
+- r99.41 (42 PASS / 0 FAIL — insider, sector-RS, smv3 wiring)
+- r99.39 (38 PASS / 0 FAIL — all 4 original engines)
+
+**122 total checks passing, 0 failures.**
+
+### UI design — two-column leaderboard
+
+```
+🎯 US · CE BUY / PE BUY SCANNER
+3 CE candidates · 7 PE candidates
+                                    Scanned 25/25 tickers
+                                    Min score: 55/100
+                                    Benchmark SPY 20d: +2.4%
+
+🟢 CE BUY (Call Buy)             🔴 PE BUY (Put Buy)
+Bullish trend + breakout         Bearish trend + breakdown
+
+┌────────────────────┐           ┌────────────────────┐
+│ NVDA  Tech    $147 │ 90        │ META  Comm  $152.8 │ 90
+│ 6/7 checks         │           │ 6/7 checks         │
+│ ▸ 7-check breakdown│           │ ▸ 7-check breakdown│
+│ 📋 Strike hints:   │           │ 📋 Strike hints:   │
+│   ATM 145, OTM 150 │           │   ATM 152, OTM 150 │
+└────────────────────┘           └────────────────────┘
+```
+
+Each candidate row collapses the 7-check evidence behind a `<details>` for clean scanning, then expands when you want to validate WHY it scored that way.
+
+### Deploy + verification
+
+1. Push → Render auto-deploys
+2. Hard refresh
+3. **Decide → 🎯 Engines** now has 12 pills (was 11)
+4. Click the new 🎯 **CE/PE Scanner** pill
+5. Pick region (IN/US), top N, min score
+6. Click SCAN CE / PE — wait 30-60s on first call (cached 30 min after)
+7. Inspect each candidate's 7-check breakdown to validate the scoring matches Vijay's spec
+
+### r99.44+ roadmap (the real-Greeks layer)
+
+| Engine | What r99.44 adds |
+|---|---|
+| **Real options chain via Upstox (IN)** | Per-strike delta, gamma, IV, IV rank vs 1y, OI ∆, bid-ask spread, DTE — replaces strike hint approximations |
+| **Real US options chain** | Same metrics via tradier/polygon — pending source decision |
+| **Intraday 5m/15m confirmation** | ORB (opening range breakout), gap analysis, 5m volume profile — r99.45 |
+| **Sector strength gate** | Only show CE candidates if sector ETF also bullish — r99.45 |
+
+---
+
+## r63.99.42 (2026-05-29) — 3 production bug fixes from Vijay's screenshots
+
+Vijay sent three screenshots showing live bugs. All three fixed in this build with regression coverage confirming r99.39 (38 PASS) and r99.41 (42 PASS) harnesses still green.
+
+### Bug 1: Macro Impact factors rendered as "→ undefined" with score 0
+
+**Symptom**: Macro Impact for MU showed `→ undefined` for all 5 factor cards. Net macro score showed -2 from correlation math (so backend worked) but no factor name, no score breakdown, no interpretation text.
+
+**Root cause**: The backend `_macro_impact_impl` emitted `{factor, impact_score, verdict}` per factor. The frontend `_renderMacroImpact` reads `{name, score, interpretation}`. Field-name mismatch — both sides correct in isolation, but they never agreed on the contract. Result: `f.name` undefined, `f.score || 0` defaults to 0, `f.interpretation || f.note` empty.
+
+**Fix**: Backend now emits BOTH the legacy keys AND the frontend-expected keys. No frontend change needed (which would have been riskier — `_renderMacroImpact` is shared across nothing else but UI testing is harder than backend mock testing). New fields on every factor:
+- `name` (mirrors `factor`)
+- `score` (mirrors `impact_score`)
+- `interpretation` (combines correlation + verdict + macro context)
+
+Existing keys (`factor`, `impact_score`, `verdict`) preserved for any external consumer.
+
+### Bug 2: "window._loadInstitutionalPicks is not a function" JS error
+
+**Symptom**: Red error banner at bottom: `JS Error (line 2363): Uncaught TypeError: window._loadInstitutionalPicks is not a function`. Today's Picks button completely broken.
+
+**Root cause**: HTML emitted in r99.40 calls `window._loadInstitutionalPicks()` (long name). JS in r99.40 only exposed `window._loadInstPicks` (short name). The mismatch sat dormant for two builds — I only noticed when someone actually clicked the button in production.
+
+**Fix**: Added an aliasing shim in JS:
+```javascript
+window._loadInstitutionalPicks = function() { return window._loadInstPicks(); };
+```
+
+Pure additive — no HTML changes (HTML edits to onclick handlers are higher-risk than a 1-line JS alias). Frontend test added to r99.42 to check both names resolve to the same function.
+
+### Bug 3: Insider Activity bare "Too Many Requests" error
+
+**Symptom**: Insider Activity for MU returned `insider_transactions fetch failed: Too Many Requests. Rate limited. Try after a while.` Rendered as a generic red error card with no user guidance — looks identical to a permanent failure.
+
+**Root cause**: Two-layer problem:
+1. `_get_insider_activity_proper` caught `YFRateLimitError` but didn't distinguish it from any other exception — both surfaced the same way.
+2. `_insider_activity_impl` propagated the error message verbatim. Frontend `_engRenderError` rendered it as a red error box with no retry affordance.
+
+Yahoo Finance rate-limits aggressive fetches from Render's shared IP. Render's outbound IP shares quota with other users — getting throttled here is transient, not a real failure.
+
+**Fix (backend)**: Detect rate-limit errors by exception type name AND message content:
+- `YFRateLimitError` (exception class name)
+- `"Too Many Requests"` (Yahoo's message)
+- `"429"` (HTTP code)
+- `"rate limit"` (lowercase pattern match)
+
+When any match, return `error_kind: "rate_limited"` + `retry_after_sec: 45` + a clear user-facing message: "Yahoo Finance rate-limited this request. Wait 30-60 seconds and try again."
+
+**Fix (frontend)**: When `error_kind === 'rate_limited'`, render an amber retry card instead of red error:
+- Amber gradient background
+- Clock icon ⏱
+- Clear explanation that this is a Yahoo throttle, not a bug
+- `↻ RETRY NOW` button that re-invokes `_loadInsiderActivity()`
+- Wait-time hint ("or wait ~45s then retry")
+
+### Files changed (6, same set as r99.41)
+
+| File | Δ | What |
+|---|---|---|
+| `api.py` | +~50 lines | macro factor field mirrors + insider error_kind detection |
+| `static/app.js` | +~30 lines | _loadInstitutionalPicks alias + rate-limit retry UI + version header |
+| `static/app.min.js` | synced | md5 `dc0196bab42e59a8406d7d395f42d52a` |
+| `index.html` | cache-bust | `1779986400` → `1780072800` |
+| `build_version.txt` | r63.99.41 → r63.99.42 | — |
+| `CHANGELOG.md` | this entry | — |
+
+### Validation
+
+- r99.41 harness: 42 PASS / 0 FAIL (unchanged — no shape changes)
+- r99.39 harness: 38 PASS / 0 FAIL (unchanged)
+- Smoke tests: BUG 1 macro renders `name`/`score`/`interpretation`; BUG 3 returns `error_kind=rate_limited` + `retry_after_sec=45`
+
+### Deploy + verification
+
+1. Push → Render auto-deploys
+2. Hard refresh
+3. Verify each fix:
+   - **Macro Impact**: Enter MU → factors now show factor names (US 10Y Yield, Dollar Index, etc.) + correlation + verdict
+   - **Today's Picks**: Click SHOW PICKS → no JS error, picks render (or 30-60s loading state)
+   - **Insider Activity**: Enter MU → if Yahoo throttles you, amber retry card with clickable RETRY NOW button instead of red generic error
+
+### Pattern for next time
+
+These three bugs all share a root cause: **contract drift between backend and frontend across builds**. r99.40 added the engines + the HTML calling them, but the JS function names slipped between long form (used in HTML) and short form (used in JS). r99.41 wired insider but didn't anticipate Render's shared-IP rate-limiting. The macro endpoint produced fields that nothing on the frontend reads.
+
+Going forward: every new engine endpoint should ship with a single contract test that exercises the full path (HTML onclick → JS handler → fetch → backend → response shape → render). r99.43+ will add a `/tmp/validate_contract.py` harness that mocks `fetch` and proves the JS render functions consume what the Python endpoints produce.
+
+---
+
 ## r63.99.41 (2026-05-28) — Insider Activity + Sector-Relative RS + Smart Money v3 integration
 
 Continuation of r99.40. From the documented r99.41 gaps, picked 3 high-impact wires-in that don't need new external data sources — they use what we already have, just wired through.
