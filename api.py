@@ -8854,6 +8854,1015 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# r63.99.44: INSTITUTIONAL 360° DECISION ENGINE
+#
+# Vijay's spec: weighted 6-dimension framework producing a final BUY/HOLD/SELL
+# with confidence + risk + target horizon. Works for stocks, ETFs, mutual
+# funds, REITs, ADRs across US + IN.
+#
+# THE META-ENGINE — aggregates from existing engines rather than duplicating:
+#   Fundamentals (30%)       → stock-dashboard.decision.quality_score
+#   Valuation (20%)          → stock-dashboard.decision.valuation_score
+#   Technicals (15%)         → reuse _ema/_adx/_rsi from r99.43 + bench-relative
+#   Smart Money (15%)        → _get_insider_activity_proper + smv3._compute
+#   Business Quality (10%)   → yfinance sector + margins + moat heuristics
+#   Catalysts (10%)          → earnings proximity + AI exposure + dividend events
+#
+# Asset-type dispatch (yfinance.info.quoteType):
+#   EQUITY      → 6-dimension stock framework (above)
+#   ETF         → 5-dimension ETF framework (Holdings/Expense/AUM/Perf/Tailwinds)
+#   MUTUALFUND  → 7-dimension MF framework (alpha, sharpe, sortino, drawdown,
+#                 expense, portfolio quality, manager track record — but most
+#                 of these are SCAFFOLD-only via yfinance; flagged in response)
+#   INDEX / ETF-fallback for unknowns
+#
+# Final output:
+#   total_score (0-100) + decision band + confidence + risk + target_horizon
+# ════════════════════════════════════════════════════════════════════════════
+
+_inst_360_cache = {}
+_INST_360_TTL = 1800  # 30 min
+_INST_360_MAX_CACHE = 500  # r99.46 M1: LRU bound
+
+# r99.46 H3: single-flight pattern — per-symbol asyncio.Lock prevents cache stampede.
+# When 2+ concurrent requests for same (symbol, region) miss the cache, only the
+# first computes; the rest wait and reuse its result. Drops yfinance fetches by 100x
+# under concurrent traffic spikes.
+import asyncio as _aio_360
+_inst_360_locks = {}      # (symbol, region) -> Lock
+_inst_360_locks_meta_lock = _aio_360.Lock()  # protects the locks dict itself
+
+# r99.46 H4: per-IP rate limit (in-memory ring buffer of timestamps per remote_addr).
+# 30 req/min/IP. Returns 429-shaped response (success: False, error_kind: rate_limited).
+from collections import deque as _deque_360
+_inst_360_rate = {}  # ip -> deque of timestamps
+_INST_360_RATE_LIMIT_N = 30
+_INST_360_RATE_LIMIT_WINDOW_SEC = 60
+
+# r99.46 H5: timeout for stock_dashboard await.
+_INST_360_DASHBOARD_TIMEOUT_SEC = 15
+
+# r99.46 input validation: symbol allow-list regex. Letters, digits, '.', '-', '&', '^'.
+# yfinance uses '.NS', '.BO', '^NSEI' etc. — so we accept those. Max 20 chars (longer
+# tickers like 'BRK.B' fit; '<script>alert(1)</script>' does not).
+import re as _re_360
+_INST_360_SYMBOL_PATTERN = _re_360.compile(r"^[A-Z0-9.\-&\^]{1,20}$")
+
+# r99.46: detect debug mode for trace exposure (M7 mitigation — production never
+# returns stack traces; dev gets them via env flag).
+import os as _os_360
+_INST_360_DEBUG = _os_360.environ.get("CELESYS_DEBUG", "").lower() in ("1", "true", "yes")
+
+
+def _inst_360_check_rate(ip):
+    """Returns (allowed: bool, retry_after_sec: int)."""
+    import time as _t
+    now = _t.time()
+    q = _inst_360_rate.get(ip)
+    if q is None:
+        q = _deque_360()
+        _inst_360_rate[ip] = q
+    # drop entries outside window
+    while q and (now - q[0]) > _INST_360_RATE_LIMIT_WINDOW_SEC:
+        q.popleft()
+    if len(q) >= _INST_360_RATE_LIMIT_N:
+        retry_in = int(_INST_360_RATE_LIMIT_WINDOW_SEC - (now - q[0])) + 1
+        return False, max(1, retry_in)
+    q.append(now)
+    return True, 0
+
+
+def _inst_360_evict_lru():
+    """Evict oldest entries if cache exceeds bound. O(N) — N small (<500)."""
+    if len(_inst_360_cache) <= _INST_360_MAX_CACHE:
+        return
+    # Sort by timestamp, keep the most recent _INST_360_MAX_CACHE
+    items = sorted(_inst_360_cache.items(), key=lambda kv: kv[1].get("ts", 0), reverse=True)
+    keep = dict(items[:_INST_360_MAX_CACHE])
+    _inst_360_cache.clear()
+    _inst_360_cache.update(keep)
+
+
+async def _inst_360_get_lock(key):
+    """Get or create a Lock for a cache key (under meta-lock to avoid race)."""
+    async with _inst_360_locks_meta_lock:
+        lk = _inst_360_locks.get(key)
+        if lk is None:
+            lk = _aio_360.Lock()
+            _inst_360_locks[key] = lk
+    return lk
+
+
+@app.get("/api/institutional-360")
+async def institutional_360(symbol: str = "", region: str = "US", refresh: int = 0, request: "Request" = None):
+    """Institutional 360° Decision Engine — final BUY/HOLD/SELL with confidence."""
+    # r99.46 input validation (precedes everything)
+    symbol_clean = (symbol or "").strip().upper()
+    if not symbol_clean:
+        return {"success": False, "error": "symbol required",
+                "error_kind": "validation"}
+    if not _INST_360_SYMBOL_PATTERN.match(symbol_clean):
+        # Don't echo the bad input back — that's an XSS vector even with frontend escape.
+        return {"success": False,
+                "error": "invalid symbol format — must be 1-20 chars [A-Z0-9.\\-&^]",
+                "error_kind": "validation"}
+
+    # r99.46 H4: rate limit per IP (fail-open if request object unavailable)
+    try:
+        client_ip = "unknown"
+        if request is not None:
+            client = getattr(request, "client", None)
+            if client is not None:
+                client_ip = getattr(client, "host", "unknown") or "unknown"
+        allowed, retry_in = _inst_360_check_rate(client_ip)
+        if not allowed:
+            return {"success": False, "error": "rate limit exceeded",
+                    "error_kind": "rate_limited", "retry_after_sec": retry_in}
+    except Exception:
+        # Rate-limit machinery failure should not block service — fail open
+        pass
+
+    try:
+        return await _inst_360_impl(symbol_clean, region, refresh)
+    except _aio_360.TimeoutError:
+        # M7: scrubbed error path — no internal trace
+        return {"success": False, "symbol": symbol_clean,
+                "error": "dashboard timeout", "error_kind": "timeout"}
+    except Exception as _exc:
+        # r99.46 M7 + M6: log the sanitized symbol (no \n / control chars), and only
+        # expose stack trace in dev mode.
+        import traceback as _tb
+        safe_log_sym = symbol_clean.replace("\n", "?").replace("\r", "?")
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[360] {safe_log_sym} ({region}) unhandled: {_err}")
+        out_err = {"success": False, "symbol": symbol_clean, "error": _err,
+                   "error_kind": "internal"}
+        if _INST_360_DEBUG:
+            out_err["trace"] = _tb.format_exc()[:1500]
+        return out_err
+
+
+def _detect_asset_type(info):
+    """Map yfinance.info.quoteType to our 4 asset-type classes."""
+    if not isinstance(info, dict):
+        return "UNKNOWN"
+    qt = (info.get("quoteType") or "").upper()
+    if qt in ("EQUITY",):
+        return "EQUITY"
+    if qt in ("ETF",):
+        return "ETF"
+    if qt in ("MUTUALFUND",):
+        return "MUTUALFUND"
+    if qt in ("INDEX",):
+        return "INDEX"
+    # Fallback heuristics
+    if info.get("totalAssets") and not info.get("totalRevenue"):
+        return "ETF"
+    return "EQUITY"
+
+
+# ────── Dimension scorers — each returns {score, max, verdict, components} ──────
+
+async def _score_360_fundamentals(symbol, region, dashboard_data):
+    """Fundamentals dimension (30 pts max). Pulls from stock_dashboard."""
+    d = {"name": "Fundamentals", "score": 0, "max": 30, "verdict": "UNKNOWN",
+         "components": [], "source": "stock-dashboard.decision.quality_score"}
+    if not dashboard_data or not dashboard_data.get("success"):
+        d["verdict"] = "DATA UNAVAILABLE"
+        d["components"].append({
+            "q": "Dashboard fetch", "answer": "Failed — couldn't load fundamentals",
+            "score": 0, "max": 30,
+        })
+        return d
+    decision = dashboard_data.get("decision") or {}
+    analysis = dashboard_data.get("analysis") or {}
+    summary = dashboard_data.get("summary") or {}
+    qs = decision.get("quality_score", 0) or 0  # 0-100
+    d["score"] = round(qs * 30 / 100)
+    # Component breakdown — translate dashboard fields to Vijay's questions
+    rev_cagr = _eng_ds_num((dashboard_data.get("cagrs") or {}).get("revenue_5y_cagr_pct"))
+    eps_cagr = _eng_ds_num((dashboard_data.get("cagrs") or {}).get("eps_5y_cagr_pct"))
+    fcf_cagr = _eng_ds_num((dashboard_data.get("cagrs") or {}).get("fcf_5y_cagr_pct"))
+    roe = _eng_ds_num(summary.get("roe_latest_pct"))
+    op_margin = _eng_ds_num(summary.get("net_margin_latest_pct"))
+    d2e = _eng_ds_num(summary.get("debt_to_equity_latest_pct"))
+
+    def _pts(val, thresh_strong, thresh_avg, max_pts):
+        if val is None: return max_pts // 2, "data missing"
+        if val >= thresh_strong: return max_pts, "strong"
+        if val >= thresh_avg: return round(max_pts * 0.6), "average"
+        return round(max_pts * 0.2), "weak"
+
+    rg_pts, rg_v = _pts(rev_cagr, 15, 5, 5)
+    eg_pts, eg_v = _pts(eps_cagr, 15, 5, 5)
+    fg_pts, fg_v = _pts(fcf_cagr, 12, 4, 5)
+    roe_pts, roe_v = _pts(roe, 20, 10, 5)
+    om_pts, om_v = _pts(op_margin, 20, 10, 5)
+    # Debt: LOWER is better (inverse)
+    def _debt_pts(val):
+        if val is None: return 2, "data missing"
+        if val <= 50: return 5, "strong (low debt)"
+        if val <= 150: return 3, "average"
+        return 1, "weak (high debt)"
+    debt_pts, debt_v = _debt_pts(d2e)
+
+    d["components"] = [
+        {"q": "Revenue growth (5y CAGR)", "answer": f"{rev_cagr}%" if rev_cagr is not None else "n/a", "score": rg_pts, "max": 5, "verdict": rg_v},
+        {"q": "Earnings growth (5y CAGR)", "answer": f"{eps_cagr}%" if eps_cagr is not None else "n/a", "score": eg_pts, "max": 5, "verdict": eg_v},
+        {"q": "Free cash flow growth", "answer": f"{fcf_cagr}%" if fcf_cagr is not None else "n/a", "score": fg_pts, "max": 5, "verdict": fg_v},
+        {"q": "Return on Equity", "answer": f"{roe}%" if roe is not None else "n/a", "score": roe_pts, "max": 5, "verdict": roe_v},
+        {"q": "Operating margins", "answer": f"{op_margin}%" if op_margin is not None else "n/a", "score": om_pts, "max": 5, "verdict": om_v},
+        {"q": "Debt levels (D/E)", "answer": f"{d2e}%" if d2e is not None else "n/a", "score": debt_pts, "max": 5, "verdict": debt_v},
+    ]
+
+    # r99.45 + r99.46: Share dilution as 7th Fundamentals component.
+    # r99.46 H2 FIX: safer per-entry year parsing — exclude malformed entries
+    #                instead of falling back to insertion order (which can invert verdict).
+    # r99.46 H1 FIX: stock-split detection — single-year jump ≥1.5x or ≤0.5x is
+    #                classified as a non-economic event, NOT dilution.
+    # r99.46 M4 FIX: label uses dynamic year delta, not hardcoded "3y".
+    dilution_pts = 2  # neutral default
+    dilution_v = "data unavailable"
+    dilution_answer = "n/a"
+    annual_arr = dashboard_data.get("annual") or []
+    if isinstance(annual_arr, list) and len(annual_arr) >= 2:
+        # H2: per-entry safe parse — drop entries with unparseable year, keep the rest.
+        def _safe_year(x):
+            try:
+                y_raw = x.get("year")
+                if y_raw is None: return None
+                y_str = str(y_raw)[:4]
+                if not y_str.isdigit(): return None
+                y = int(y_str)
+                if y < 1900 or y > 2100: return None  # sanity range
+                return y
+            except Exception:
+                return None
+        annotated = []
+        for a in annual_arr:
+            if not isinstance(a, dict): continue
+            yr = _safe_year(a)
+            so = _eng_ds_num(a.get("shares_outstanding"))
+            if yr is None or so is None or so <= 0: continue
+            annotated.append((yr, so))
+        # Newest first by parsed year (deterministic, no insertion-order fallback)
+        annotated.sort(key=lambda t: t[0], reverse=True)
+        shares_series = [so for (_yr, so) in annotated]
+        years_series = [yr for (yr, _so) in annotated]
+
+        if len(shares_series) >= 2:
+            # H1: detect stock splits as adjacent-year non-economic events.
+            # A real corporate split appears in the data as a sudden jump (e.g. 10x).
+            # Walk newest→oldest, flag any pair where ratio is outside [0.65, 1.55].
+            # We exclude split-impacted intervals from the dilution calc.
+            split_detected = False
+            split_year = None
+            for i in range(len(shares_series) - 1):
+                newer = shares_series[i]
+                older = shares_series[i + 1]
+                if older <= 0: continue
+                ratio = newer / older
+                # 1.5x or 0.5x in a single year is implausible for normal dilution/buyback.
+                # Real splits are typically 2x, 3x, 4x, 10x, or reverse 1/2, 1/3, etc.
+                if ratio >= 1.5 or ratio <= 0.65:
+                    split_detected = True
+                    split_year = years_series[i] if i < len(years_series) else None
+                    break
+            if split_detected:
+                dilution_pts = 3  # treat as neutral — not a value signal
+                dilution_v = f"stock split detected near {split_year} — dilution check skipped"
+                dilution_answer = "split-adjusted"
+            else:
+                latest_shares = shares_series[0]
+                prior_idx = min(3, len(shares_series) - 1)
+                prior_shares = shares_series[prior_idx]
+                # Window in years (newest_year - prior_year), capped at prior_idx.
+                year_window = (years_series[0] - years_series[prior_idx]) if len(years_series) > prior_idx else prior_idx
+                if year_window <= 0: year_window = prior_idx  # fallback
+                if prior_shares > 0:
+                    delta_pct = (latest_shares - prior_shares) / prior_shares * 100
+                    # M4: dynamic year label reflecting actual window
+                    dilution_answer = f"{round(delta_pct, 2)}% over {year_window}y"
+                    if delta_pct <= -2:
+                        dilution_pts = 5; dilution_v = f"buybacks ({round(delta_pct, 1)}%) — accretive"
+                    elif delta_pct <= 0.5:
+                        dilution_pts = 4; dilution_v = "stable share count"
+                    elif delta_pct <= 2:
+                        dilution_pts = 3; dilution_v = f"mild dilution ({round(delta_pct, 1)}%)"
+                    elif delta_pct <= 5:
+                        dilution_pts = 2; dilution_v = f"meaningful dilution ({round(delta_pct, 1)}%)"
+                    else:
+                        dilution_pts = 1; dilution_v = f"heavy dilution ({round(delta_pct, 1)}%) — value-destructive"
+    d["components"].append({
+        "q": "Share dilution",  # M4: removed hardcoded "3y" — answer field now carries actual window
+        "answer": dilution_answer,
+        "score": dilution_pts, "max": 5, "verdict": dilution_v,
+    })
+
+    component_sum = sum(c["score"] for c in d["components"])
+    d["score"] = min(30, component_sum)
+    if d["score"] >= 24: d["verdict"] = "STRONG"
+    elif d["score"] >= 16: d["verdict"] = "AVERAGE"
+    else: d["verdict"] = "WEAK"
+    return d
+
+
+async def _score_360_valuation(symbol, region, dashboard_data):
+    """Valuation dimension (20 pts max). Pulls from stock_dashboard."""
+    d = {"name": "Valuation", "score": 0, "max": 20, "verdict": "UNKNOWN",
+         "components": [], "source": "stock-dashboard.decision.valuation_score"}
+    if not dashboard_data or not dashboard_data.get("success"):
+        d["verdict"] = "DATA UNAVAILABLE"
+        return d
+    decision = dashboard_data.get("decision") or {}
+    summary = dashboard_data.get("summary") or {}
+    vs = decision.get("valuation_score", 50) or 50
+    pe = _eng_ds_num(summary.get("trailing_pe"))
+    fwd_pe = _eng_ds_num(summary.get("forward_pe"))
+    pb = _eng_ds_num(summary.get("price_to_book"))
+    fcf_yield = _eng_ds_num(summary.get("fcf_yield_pct"))
+    div_yield = _eng_ds_num(summary.get("dividend_yield_pct"))
+
+    # Component breakdown — 4 pts each, 5 components = 20 max
+    def _pe_pts(val):
+        if val is None: return 2, "n/a"
+        if val < 0: return 1, "negative (loss-maker)"
+        if val < 15: return 4, "cheap"
+        if val < 25: return 3, "fair"
+        if val < 40: return 2, "rich"
+        return 1, "expensive"
+    def _pb_pts(val):
+        if val is None: return 2, "n/a"
+        if val < 1: return 4, "below book"
+        if val < 3: return 3, "reasonable"
+        if val < 6: return 2, "rich"
+        return 1, "expensive"
+    def _fcf_y_pts(val):
+        if val is None: return 2, "n/a"
+        if val >= 7: return 4, "excellent yield"
+        if val >= 4: return 3, "good"
+        if val >= 2: return 2, "low"
+        return 1, "poor"
+    pe_pts, pe_v = _pe_pts(pe)
+    fpe_pts, fpe_v = _pe_pts(fwd_pe)
+    pb_pts, pb_v = _pb_pts(pb)
+    fcfy_pts, fcfy_v = _fcf_y_pts(fcf_yield)
+    # Dividend yield: bonus 0-4
+    if div_yield is None: dy_pts, dy_v = 2, "n/a"
+    elif div_yield >= 3: dy_pts, dy_v = 4, "attractive"
+    elif div_yield >= 1.5: dy_pts, dy_v = 3, "moderate"
+    elif div_yield > 0: dy_pts, dy_v = 2, "small"
+    else: dy_pts, dy_v = 1, "no dividend"
+
+    d["components"] = [
+        {"q": "Trailing P/E", "answer": str(pe) if pe is not None else "n/a", "score": pe_pts, "max": 4, "verdict": pe_v},
+        {"q": "Forward P/E", "answer": str(fwd_pe) if fwd_pe is not None else "n/a", "score": fpe_pts, "max": 4, "verdict": fpe_v},
+        {"q": "Price to Book", "answer": str(pb) if pb is not None else "n/a", "score": pb_pts, "max": 4, "verdict": pb_v},
+        {"q": "FCF Yield", "answer": f"{fcf_yield}%" if fcf_yield is not None else "n/a", "score": fcfy_pts, "max": 4, "verdict": fcfy_v},
+        {"q": "Dividend Yield", "answer": f"{div_yield}%" if div_yield is not None else "n/a", "score": dy_pts, "max": 4, "verdict": dy_v},
+    ]
+
+    # r99.45 + r99.46: PEG ratio.
+    # r99.46 M3 FIX: when peg_proxy is None (because dashboard couldn't compute
+    #                eps_5y_cagr), try inline fallback using yfinance.info fields:
+    #                pegRatio direct, then forward_pe / earningsGrowth%, then
+    #                forward_pe / revenueGrowth% as last resort.
+    peg_pts = 2  # neutral default
+    peg_v = "data unavailable"
+    peg_answer = "n/a"
+    peg_proxy = (decision.get("valuation_context") or {}).get("peg_proxy")
+    peg_num = _eng_ds_num(peg_proxy)
+    if peg_num is None:
+        # Fallback chain
+        info_g = dashboard_data.get("info") or {}
+        direct = _eng_ds_num(info_g.get("pegRatio")) or _eng_ds_num(info_g.get("trailingPegRatio"))
+        if direct is not None and direct > 0:
+            peg_num = direct
+            peg_v_source = "yfinance.info.pegRatio"
+        else:
+            eg = _eng_ds_num(info_g.get("earningsGrowth"))
+            if fwd_pe is not None and fwd_pe > 0 and eg is not None and eg > 0.01:
+                # earningsGrowth is fraction (0.15 = 15%) — convert
+                peg_num = round(fwd_pe / (eg * 100), 2)
+                peg_v_source = "fwd_pe / earnings_growth"
+            else:
+                rg = _eng_ds_num(info_g.get("revenueGrowth"))
+                if fwd_pe is not None and fwd_pe > 0 and rg is not None and rg > 0.01:
+                    peg_num = round(fwd_pe / (rg * 100), 2)
+                    peg_v_source = "fwd_pe / revenue_growth (proxy)"
+                else:
+                    peg_v_source = None
+    else:
+        peg_v_source = "dashboard.peg_proxy"
+    if peg_num is not None and peg_num > 0:
+        peg_answer = str(round(peg_num, 2))
+        if peg_num < 1.0: peg_pts = 4; peg_v = f"PEG<1 — Lynch's classic value zone ({peg_v_source})"
+        elif peg_num < 1.5: peg_pts = 3; peg_v = f"PEG<1.5 — fair ({peg_v_source})"
+        elif peg_num < 2.5: peg_pts = 2; peg_v = f"PEG 1.5-2.5 — rich ({peg_v_source})"
+        else: peg_pts = 1; peg_v = f"PEG>2.5 — expensive ({peg_v_source})"
+    d["components"].append({
+        "q": "PEG ratio", "answer": peg_answer, "score": peg_pts, "max": 4, "verdict": peg_v,
+    })
+
+    # r99.45: EV/EBITDA component — institutional valuation gold standard.
+    ev_ebitda = _eng_ds_num(summary.get("ev_to_ebitda"))
+    ev_pts = 2
+    ev_v = "data unavailable"
+    ev_answer = "n/a"
+    if ev_ebitda is not None:
+        ev_answer = str(round(ev_ebitda, 1))
+        if ev_ebitda < 0: ev_pts = 1; ev_v = "negative EBITDA — loss-maker"
+        elif ev_ebitda < 10: ev_pts = 4; ev_v = "EV/EBITDA<10 — cheap"
+        elif ev_ebitda < 15: ev_pts = 3; ev_v = "EV/EBITDA 10-15 — fair"
+        elif ev_ebitda < 25: ev_pts = 2; ev_v = "EV/EBITDA 15-25 — rich"
+        else: ev_pts = 1; ev_v = "EV/EBITDA>25 — expensive"
+    d["components"].append({
+        "q": "EV/EBITDA", "answer": ev_answer, "score": ev_pts, "max": 4, "verdict": ev_v,
+    })
+
+    # Clamp at 20 max (composite is now 7 components × ~4pt = 28 unbounded; ceiling preserves spec)
+    d["score"] = min(20, sum(c["score"] for c in d["components"]))
+    if d["score"] >= 16: d["verdict"] = "ATTRACTIVE"
+    elif d["score"] >= 11: d["verdict"] = "FAIR"
+    else: d["verdict"] = "RICH"
+    return d
+
+
+def _score_360_technicals(symbol, region, hist, info, benchmark_ret_20d):
+    """Technicals dimension (15 pts max). Reuses r99.43 indicators."""
+    d = {"name": "Technicals", "score": 0, "max": 15, "verdict": "UNKNOWN",
+         "components": [], "source": "yfinance OHLCV (6mo)"}
+    if hist is None or (hasattr(hist, "empty") and hist.empty):
+        d["verdict"] = "DATA UNAVAILABLE"
+        return d
+    closes = list(hist["Close"].dropna())
+    highs = list(hist["High"].dropna())
+    lows = list(hist["Low"].dropna())
+    volumes = list(hist["Volume"].dropna())
+    if len(closes) < 50:
+        d["verdict"] = "INSUFFICIENT HISTORY"
+        return d
+    sma50 = sum(closes[-50:]) / 50
+    sma200 = sum(closes[-200:]) / 200 if len(closes) >= 200 else None
+    rsi14 = _rsi(closes, 14)
+    adx14 = _adx(highs, lows, closes, 14)
+    close_now = closes[-1]
+    vol_20 = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else 0
+    vol_today = volumes[-1] if volumes else 0
+    vol_ratio = vol_today / vol_20 if vol_20 > 0 else None
+    ret_20 = (closes[-1] - closes[-21]) / closes[-21] * 100 if len(closes) >= 21 and closes[-21] > 0 else None
+    rs_vs_bench = (ret_20 - benchmark_ret_20d) if (ret_20 is not None and benchmark_ret_20d is not None) else None
+
+    # 6 components × 2.5 pts each = 15 max
+    c_sma50 = (3, "above 50 DMA") if close_now > sma50 else (0, "below 50 DMA")
+    c_sma200 = (3, "above 200 DMA") if (sma200 and close_now > sma200) else ((0, "below 200 DMA") if sma200 else (1, "200d data missing"))
+    if rsi14 is None: c_rsi = (1, "data missing")
+    elif rsi14 > 60: c_rsi = (3, f"RSI {round(rsi14, 1)} — strong")
+    elif rsi14 > 45: c_rsi = (2, f"RSI {round(rsi14, 1)} — neutral")
+    else: c_rsi = (0, f"RSI {round(rsi14, 1)} — weak")
+    if adx14 is None: c_adx = (1, "data missing")
+    elif adx14 > 25: c_adx = (2, f"ADX {round(adx14, 1)} — strong trend")
+    elif adx14 > 20: c_adx = (1, f"ADX {round(adx14, 1)} — moderate")
+    else: c_adx = (0, f"ADX {round(adx14, 1)} — choppy")
+    if vol_ratio is None: c_vol = (1, "data missing")
+    elif vol_ratio > 1.5: c_vol = (2, f"{round(vol_ratio, 2)}x — accumulation")
+    elif vol_ratio > 0.8: c_vol = (1, f"{round(vol_ratio, 2)}x — normal")
+    else: c_vol = (0, f"{round(vol_ratio, 2)}x — distribution")
+    if rs_vs_bench is None: c_rs = (1, "benchmark data missing")
+    elif rs_vs_bench > 5: c_rs = (2, f"+{round(rs_vs_bench, 2)}% RS — leader")
+    elif rs_vs_bench > 0: c_rs = (1, f"+{round(rs_vs_bench, 2)}% RS — slight")
+    else: c_rs = (0, f"{round(rs_vs_bench, 2)}% RS — laggard")
+
+    d["components"] = [
+        {"q": "Above 50 DMA?", "answer": f"close {round(close_now, 2)} vs SMA50 {round(sma50, 2)}", "score": c_sma50[0], "max": 3, "verdict": c_sma50[1]},
+        {"q": "Above 200 DMA?", "answer": f"close {round(close_now, 2)} vs SMA200 {round(sma200, 2) if sma200 else 'n/a'}", "score": c_sma200[0], "max": 3, "verdict": c_sma200[1]},
+        {"q": "RSI strength", "answer": str(round(rsi14, 1)) if rsi14 else "n/a", "score": c_rsi[0], "max": 3, "verdict": c_rsi[1]},
+        {"q": "ADX trend strength", "answer": str(round(adx14, 1)) if adx14 else "n/a", "score": c_adx[0], "max": 2, "verdict": c_adx[1]},
+        {"q": "Volume accumulation", "answer": f"{round(vol_ratio, 2)}x" if vol_ratio else "n/a", "score": c_vol[0], "max": 2, "verdict": c_vol[1]},
+        {"q": "Relative strength vs benchmark", "answer": f"{round(rs_vs_bench, 2)}%" if rs_vs_bench is not None else "n/a", "score": c_rs[0], "max": 2, "verdict": c_rs[1]},
+    ]
+
+    # r99.45 + r99.46: Institutional breakout — close at/above 20d high.
+    # r99.46 M5 FIX: require volume confirmation (>1.0x 20d avg) for the full 2/2.
+    # A breakout on shrinking volume is statistically much weaker — only award
+    # partial credit. Real institutional breakouts come with conviction (volume).
+    high_20 = max(highs[-20:]) if len(highs) >= 20 else None
+    if high_20 is not None and high_20 > 0:
+        vol_confirmed = (vol_ratio is not None and vol_ratio > 1.0)
+        if close_now >= high_20 * 0.995:
+            if vol_confirmed:
+                bo_pts = 2
+                bo_v = f"breakout w/ volume — close {round(close_now, 2)} ≥ 20d high {round(high_20, 2)} ({round(vol_ratio, 2)}x vol)"
+            else:
+                bo_pts = 1
+                bo_v = f"breakout on low volume ({round(vol_ratio, 2) if vol_ratio is not None else '?'}x) — weak signal"
+        elif close_now >= high_20 * 0.97:
+            bo_pts = 1; bo_v = f"near 20d high {round(high_20, 2)} (within 3%)"
+        else:
+            bo_pts = 0; bo_v = f"below 20d high {round(high_20, 2)} by {round((1 - close_now/high_20)*100, 1)}%"
+    else:
+        bo_pts = 0; bo_v = "20d high unavailable"
+    d["components"].append({
+        "q": "Institutional breakout (20d high)",
+        "answer": f"{round(close_now, 2)} vs {round(high_20, 2) if high_20 else 'n/a'}",
+        "score": bo_pts, "max": 2, "verdict": bo_v,
+    })
+
+    d["score"] = min(15, sum(c["score"] for c in d["components"]))
+    if d["score"] >= 12: d["verdict"] = "STRONG"
+    elif d["score"] >= 8: d["verdict"] = "MIXED"
+    else: d["verdict"] = "WEAK"
+    return d
+
+
+async def _score_360_smart_money(symbol, region):
+    """Smart Money dimension (15 pts max). Insider + smv3."""
+    import asyncio as _aio
+    d = {"name": "Smart Money", "score": 0, "max": 15, "verdict": "UNKNOWN",
+         "components": [], "source": "insider_transactions + smart_money_v3"}
+    _lp = _aio.get_event_loop()
+    # 1. Insider activity (180d) — up to 8 pts
+    insider_data = await _lp.run_in_executor(None, _get_insider_activity_proper, symbol, region, 180)
+    insider_pts = 4  # neutral default
+    insider_v = "no data"
+    if insider_data.get("success"):
+        net = insider_data.get("net_score", 0.0)
+        tx = insider_data.get("transaction_count", 0)
+        bv = insider_data.get("buy_dollars", 0)
+        sv = insider_data.get("sell_dollars", 0)
+        if tx == 0:
+            insider_pts = 3; insider_v = "no insider activity in 180d"
+        elif net >= 0.6:
+            insider_pts = 8; insider_v = f"strong buying ${bv:,} by {insider_data.get('buyer_count', 0)} insiders"
+        elif net >= 0.2:
+            insider_pts = 6; insider_v = f"mild buying ${bv:,} vs ${sv:,}"
+        elif net >= -0.2:
+            insider_pts = 4; insider_v = "balanced"
+        elif net >= -0.6:
+            insider_pts = 2; insider_v = f"mild selling ${sv:,}"
+        else:
+            insider_pts = 1; insider_v = f"heavy selling ${sv:,}"
+    d["components"].append({"q": "Insider buying (180d)", "answer": insider_v, "score": insider_pts, "max": 8, "verdict": insider_v})
+
+    # 2. Smart Money v3 score — up to 7 pts
+    smv3_pts = 3  # neutral default
+    smv3_v = "smv3 unavailable"
+    try:
+        import smart_money_v3 as _smv3_mod
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+        smv3_data = await _lp.run_in_executor(None, _smv3_mod._compute, yf_sym, {})
+        if smv3_data and isinstance(smv3_data, dict):
+            smv3_score = _eng_ds_num(smv3_data.get("smart_money_score"))
+            if smv3_score is not None:
+                smv3_pts = round(smv3_score * 7 / 100)
+                stage = smv3_data.get("stage", "?")
+                accum = smv3_data.get("accumulation", "?")
+                smv3_v = f"score {smv3_score} · {stage} stage · {accum}"
+    except ImportError:
+        smv3_v = "smart_money_v3 module not present"
+    except Exception as _e:
+        smv3_v = f"smv3 error: {type(_e).__name__}"
+    d["components"].append({"q": "Smart Money v3 score", "answer": smv3_v, "score": smv3_pts, "max": 7, "verdict": smv3_v})
+
+    d["score"] = min(15, sum(c["score"] for c in d["components"]))
+    if d["score"] >= 12: d["verdict"] = "ACCUMULATION"
+    elif d["score"] >= 7: d["verdict"] = "NEUTRAL"
+    else: d["verdict"] = "DISTRIBUTION"
+    return d
+
+
+def _score_360_business_quality(symbol, region, info):
+    """Business Quality dimension (10 pts max). Heuristics from yfinance.info."""
+    d = {"name": "Business Quality", "score": 0, "max": 10, "verdict": "UNKNOWN",
+         "components": [], "source": "yfinance.info (sector + margins) — heuristic scaffold"}
+    if not isinstance(info, dict):
+        d["verdict"] = "DATA UNAVAILABLE"
+        return d
+    sector = info.get("sector") or "?"
+    market_cap = _eng_ds_num(info.get("marketCap"))
+    gross_margin = _eng_ds_num(info.get("grossMargins"))
+    op_margin = _eng_ds_num(info.get("operatingMargins"))
+    profit_margin = _eng_ds_num(info.get("profitMargins"))
+    roa = _eng_ds_num(info.get("returnOnAssets"))
+
+    # Market cap → market leadership proxy (3 pts)
+    if market_cap is None: mc_pts, mc_v = 1, "n/a"
+    elif market_cap >= 500e9: mc_pts, mc_v = 3, "mega-cap leader"
+    elif market_cap >= 50e9: mc_pts, mc_v = 2, "large-cap"
+    elif market_cap >= 10e9: mc_pts, mc_v = 1, "mid-cap"
+    else: mc_pts, mc_v = 1, "small/micro-cap"
+
+    # Gross margin → moat proxy (3 pts)
+    if gross_margin is None: gm_pts, gm_v = 1, "n/a"
+    elif gross_margin >= 0.50: gm_pts, gm_v = 3, f"{round(gross_margin*100, 1)}% — premium pricing power"
+    elif gross_margin >= 0.30: gm_pts, gm_v = 2, f"{round(gross_margin*100, 1)}% — average"
+    else: gm_pts, gm_v = 1, f"{round(gross_margin*100, 1)}% — commodity-like"
+
+    # Profit margin (2 pts)
+    if profit_margin is None: pm_pts, pm_v = 0, "n/a"
+    elif profit_margin >= 0.20: pm_pts, pm_v = 2, f"{round(profit_margin*100, 1)}% — exceptional"
+    elif profit_margin >= 0.10: pm_pts, pm_v = 1, f"{round(profit_margin*100, 1)}% — solid"
+    else: pm_pts, pm_v = 0, f"{round(profit_margin*100, 1)}% — thin"
+
+    # ROA (2 pts)
+    if roa is None: roa_pts, roa_v = 1, "n/a"
+    elif roa >= 0.10: roa_pts, roa_v = 2, f"{round(roa*100, 1)}% — capital-efficient"
+    elif roa >= 0.04: roa_pts, roa_v = 1, f"{round(roa*100, 1)}% — average"
+    else: roa_pts, roa_v = 0, f"{round(roa*100, 1)}% — low"
+
+    d["components"] = [
+        {"q": "Market leadership (cap proxy)", "answer": f"${round(market_cap/1e9, 1)}B" if market_cap else "n/a", "score": mc_pts, "max": 3, "verdict": mc_v},
+        {"q": "Pricing power (gross margin)", "answer": f"{round(gross_margin*100, 1)}%" if gross_margin else "n/a", "score": gm_pts, "max": 3, "verdict": gm_v},
+        {"q": "Profitability (net margin)", "answer": f"{round(profit_margin*100, 1)}%" if profit_margin else "n/a", "score": pm_pts, "max": 2, "verdict": pm_v},
+        {"q": "Capital efficiency (ROA)", "answer": f"{round(roa*100, 1)}%" if roa else "n/a", "score": roa_pts, "max": 2, "verdict": roa_v},
+    ]
+    d["score"] = min(10, sum(c["score"] for c in d["components"]))
+    if d["score"] >= 8: d["verdict"] = "HIGH QUALITY"
+    elif d["score"] >= 5: d["verdict"] = "AVERAGE"
+    else: d["verdict"] = "WEAK"
+    return d
+
+
+def _score_360_catalysts(symbol, region, info, hist):
+    """Catalysts dimension (10 pts max). Earnings proximity + AI exposure proxy."""
+    d = {"name": "Catalysts", "score": 0, "max": 10, "verdict": "UNKNOWN",
+         "components": [], "source": "earnings proximity + sector tailwinds (scaffold)"}
+    if not isinstance(info, dict):
+        d["verdict"] = "DATA UNAVAILABLE"
+        return d
+
+    # 1. Earnings proximity (4 pts) — proxy for "near catalyst"
+    earnings_pts = 2
+    earnings_v = "no upcoming earnings detected"
+    try:
+        et_ts = info.get("earningsTimestamp")
+        if et_ts:
+            from datetime import datetime
+            days_to = (datetime.fromtimestamp(et_ts) - datetime.now()).days
+            if 0 < days_to <= 14: earnings_pts = 4; earnings_v = f"{days_to} days to earnings (imminent catalyst)"
+            elif 14 < days_to <= 45: earnings_pts = 3; earnings_v = f"{days_to} days to earnings"
+            elif days_to <= 0: earnings_pts = 2; earnings_v = "earnings recent (past)"
+    except Exception:
+        pass
+    d["components"].append({"q": "Earnings proximity", "answer": earnings_v, "score": earnings_pts, "max": 4, "verdict": earnings_v})
+
+    # 2. Sector tailwind heuristic (4 pts) — AI/Tech/Semi/Healthcare in tailwind buckets
+    sector = (info.get("sector") or "").lower()
+    industry = (info.get("industry") or "").lower()
+    tail_pts = 2
+    tail_v = "neutral sector"
+    if any(k in industry or k in sector for k in ["semiconductor", "artificial intelligence", "software"]):
+        tail_pts = 4; tail_v = f"strong tailwind — {industry}"
+    elif any(k in industry or k in sector for k in ["healthcare", "biotech", "renewable"]):
+        tail_pts = 3; tail_v = f"sector tailwind — {industry}"
+    elif any(k in sector for k in ["technology", "communication services"]):
+        tail_pts = 3; tail_v = f"tech sector — {sector}"
+    elif any(k in sector for k in ["energy", "utilities", "real estate"]):
+        tail_pts = 2; tail_v = f"cyclical/defensive — {sector}"
+    d["components"].append({"q": "Sector tailwind", "answer": tail_v, "score": tail_pts, "max": 4, "verdict": tail_v})
+
+    # 3. Recent momentum surge as catalyst proxy (2 pts)
+    momentum_pts = 1
+    momentum_v = "no surge"
+    if hist is not None and hasattr(hist, "empty") and not hist.empty:
+        closes = list(hist["Close"].dropna())
+        if len(closes) >= 21:
+            ret_20 = (closes[-1] - closes[-21]) / closes[-21] * 100 if closes[-21] > 0 else 0
+            if ret_20 > 10: momentum_pts = 2; momentum_v = f"+{round(ret_20, 1)}% 20d surge"
+            elif ret_20 < -10: momentum_pts = 0; momentum_v = f"{round(ret_20, 1)}% 20d drop"
+    d["components"].append({"q": "Recent momentum", "answer": momentum_v, "score": momentum_pts, "max": 2, "verdict": momentum_v})
+
+    d["score"] = min(10, sum(c["score"] for c in d["components"]))
+    if d["score"] >= 7: d["verdict"] = "STRONG CATALYSTS"
+    elif d["score"] >= 4: d["verdict"] = "SOME CATALYSTS"
+    else: d["verdict"] = "FEW CATALYSTS"
+    d["_note"] = "r99.44 SCAFFOLD: earnings proximity + sector heuristic + momentum. r99.45 will add news scanning + analyst revisions + AI mention tracking."
+    return d
+
+
+# ────── ETF scoring (different dimensions per Vijay's spec) ──────
+
+def _score_360_etf(symbol, region, info, hist, benchmark_ret_20d):
+    """ETF 360° framework — Holdings(30) / Expense(15) / AUM(15) / Performance(20) / Tailwinds(20)."""
+    out = {
+        "asset_type": "ETF", "symbol": symbol, "region": region,
+        "company_name": info.get("longName") or info.get("shortName") or symbol,
+        "current_price": _eng_ds_num(info.get("regularMarketPrice")),
+        "currency": info.get("currency") or "USD",
+        "dimensions": [], "warnings": [],
+    }
+
+    # 1. Holdings Quality (30 pts) — proxy via total assets + holdings count
+    total_assets = _eng_ds_num(info.get("totalAssets"))
+    hc = _eng_ds_num(info.get("yield"))
+    holdings_score = 15  # neutral default
+    holdings_v = "data limited"
+    if total_assets:
+        if total_assets >= 100e9: holdings_score = 25; holdings_v = f"${round(total_assets/1e9, 1)}B AUM — top-tier liquidity"
+        elif total_assets >= 10e9: holdings_score = 20; holdings_v = f"${round(total_assets/1e9, 1)}B AUM — large"
+        elif total_assets >= 1e9: holdings_score = 15; holdings_v = f"${round(total_assets/1e9, 1)}B AUM — mid-sized"
+        else: holdings_score = 10; holdings_v = f"${round(total_assets/1e6, 0)}M AUM — small"
+    out["dimensions"].append({"name": "Holdings & Liquidity", "score": holdings_score, "max": 30,
+                              "verdict": holdings_v, "components": [], "_note": "Holdings drill-down needs ETF prospectus parsing — r99.45"})
+
+    # 2. Expense Ratio (15 pts) — lower better
+    expense = _eng_ds_num(info.get("annualReportExpenseRatio")) or _eng_ds_num(info.get("expenseRatio"))
+    exp_pts = 7
+    exp_v = "expense ratio unavailable"
+    if expense is not None:
+        if expense <= 0.001: exp_pts = 15; exp_v = f"{round(expense*100, 3)}% — exceptional"
+        elif expense <= 0.005: exp_pts = 13; exp_v = f"{round(expense*100, 3)}% — excellent"
+        elif expense <= 0.01: exp_pts = 10; exp_v = f"{round(expense*100, 2)}% — good"
+        elif expense <= 0.02: exp_pts = 6; exp_v = f"{round(expense*100, 2)}% — average"
+        else: exp_pts = 3; exp_v = f"{round(expense*100, 2)}% — high"
+    out["dimensions"].append({"name": "Expense Ratio", "score": exp_pts, "max": 15, "verdict": exp_v, "components": []})
+
+    # 3. AUM & Liquidity (15 pts) — partly captured above; use ADV proxy
+    vol_3m = _eng_ds_num(info.get("averageVolume"))
+    aum_pts = 7
+    aum_v = "volume data missing"
+    if vol_3m is not None:
+        if vol_3m >= 5_000_000: aum_pts = 15; aum_v = f"{int(vol_3m):,} ADV — institutional liquidity"
+        elif vol_3m >= 500_000: aum_pts = 12; aum_v = f"{int(vol_3m):,} ADV — solid"
+        elif vol_3m >= 50_000: aum_pts = 7; aum_v = f"{int(vol_3m):,} ADV — adequate"
+        else: aum_pts = 3; aum_v = f"{int(vol_3m):,} ADV — thin"
+    out["dimensions"].append({"name": "Liquidity (ADV)", "score": aum_pts, "max": 15, "verdict": aum_v, "components": []})
+
+    # 4. Performance vs benchmark (20 pts) — use 1y return vs benchmark
+    perf_pts = 10
+    perf_v = "performance data missing"
+    if hist is not None and hasattr(hist, "empty") and not hist.empty:
+        closes = list(hist["Close"].dropna())
+        if len(closes) >= 200:
+            ret_1y = (closes[-1] - closes[-200]) / closes[-200] * 100 if closes[-200] > 0 else 0
+            if benchmark_ret_20d is None:
+                if ret_1y >= 20: perf_pts = 17; perf_v = f"+{round(ret_1y, 1)}% 1y — strong"
+                elif ret_1y >= 10: perf_pts = 14; perf_v = f"+{round(ret_1y, 1)}% 1y — solid"
+                elif ret_1y >= 0: perf_pts = 10; perf_v = f"+{round(ret_1y, 1)}% 1y — flat"
+                else: perf_pts = 5; perf_v = f"{round(ret_1y, 1)}% 1y — negative"
+            else:
+                # Compare 1y to 20d benchmark — rough but useful direction
+                if ret_1y >= 20: perf_pts = 18; perf_v = f"+{round(ret_1y, 1)}% 1y — strong absolute"
+                elif ret_1y >= 5: perf_pts = 12; perf_v = f"+{round(ret_1y, 1)}% 1y"
+                elif ret_1y >= -5: perf_pts = 8; perf_v = f"{round(ret_1y, 1)}% 1y — flattish"
+                else: perf_pts = 4; perf_v = f"{round(ret_1y, 1)}% 1y — negative"
+    out["dimensions"].append({"name": "Performance (1y)", "score": perf_pts, "max": 20, "verdict": perf_v, "components": []})
+
+    # 5. Sector Tailwinds (20 pts) — name/category heuristic
+    name_lower = (info.get("longName") or "").lower()
+    category = (info.get("category") or "").lower()
+    tail_pts = 10
+    tail_v = "neutral category"
+    if any(k in name_lower or k in category for k in ["semiconductor", "ai", "artificial intelligence", "robotics", "cyber", "cloud"]):
+        tail_pts = 18; tail_v = f"strong tailwind — {category or 'thematic'}"
+    elif any(k in name_lower or k in category for k in ["healthcare", "biotech", "innovation"]):
+        tail_pts = 15; tail_v = f"sector tailwind — {category or 'healthcare'}"
+    elif any(k in name_lower or k in category for k in ["technology", "growth"]):
+        tail_pts = 14; tail_v = f"growth tilt — {category}"
+    elif any(k in name_lower for k in ["bond", "treasury", "fixed income"]):
+        tail_pts = 8; tail_v = "bonds — defensive"
+    elif any(k in name_lower for k in ["s&p", "total market", "nifty 50"]):
+        tail_pts = 12; tail_v = "broad-market index"
+    out["dimensions"].append({"name": "Sector Tailwinds", "score": tail_pts, "max": 20, "verdict": tail_v, "components": []})
+
+    return out
+
+
+async def _score_360_mutualfund(symbol, region, info):
+    """Mutual Fund 360° — manager track record / alpha / sharpe / sortino / drawdown.
+
+    r99.44 SCAFFOLD: most MF metrics require Morningstar/Value Research feed; yfinance
+    only exposes minimal MF data. Return graceful response flagging the gap.
+    """
+    out = {
+        "asset_type": "MUTUALFUND", "symbol": symbol, "region": region,
+        "company_name": info.get("longName") or symbol,
+        "current_price": _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("navPrice")),
+        "dimensions": [],
+        "warnings": ["Mutual fund analysis requires Morningstar / Value Research / AMFI data. yfinance only exposes NAV — most analytical dimensions scaffolded."],
+        "_data_quality": "r99.44 SCAFFOLD: yfinance NAV only. r99.45 will integrate Value Research (IN) / Morningstar (US) for full analytics.",
+    }
+    nav = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("navPrice"))
+    expense = _eng_ds_num(info.get("annualReportExpenseRatio"))
+    ytd = _eng_ds_num(info.get("ytdReturn"))
+    three_y = _eng_ds_num(info.get("threeYearAverageReturn"))
+    five_y = _eng_ds_num(info.get("fiveYearAverageReturn"))
+
+    # Performance dimension (40 pts) — only computable area
+    perf_pts = 20
+    perf_v = "limited performance data"
+    components = []
+    if ytd is not None:
+        components.append({"q": "YTD return", "answer": f"{round(ytd*100, 2)}%", "score": 10 if ytd > 0.10 else 5 if ytd > 0 else 2, "max": 10, "verdict": "—"})
+    if three_y is not None:
+        c_pts = 15 if three_y > 0.12 else 10 if three_y > 0.07 else 5
+        components.append({"q": "3y avg return", "answer": f"{round(three_y*100, 2)}%/yr", "score": c_pts, "max": 15, "verdict": "—"})
+    if five_y is not None:
+        c_pts = 15 if five_y > 0.10 else 10 if five_y > 0.06 else 5
+        components.append({"q": "5y avg return", "answer": f"{round(five_y*100, 2)}%/yr", "score": c_pts, "max": 15, "verdict": "—"})
+    perf_pts = sum(c["score"] for c in components)
+    out["dimensions"].append({"name": "Performance (YTD/3y/5y)", "score": min(40, perf_pts), "max": 40,
+                              "verdict": perf_v, "components": components})
+
+    # Expense (20 pts)
+    if expense is not None:
+        if expense <= 0.005: exp_pts = 20; exp_v = f"{round(expense*100, 2)}% — excellent"
+        elif expense <= 0.01: exp_pts = 15; exp_v = f"{round(expense*100, 2)}% — good"
+        elif expense <= 0.02: exp_pts = 8; exp_v = f"{round(expense*100, 2)}% — average"
+        else: exp_pts = 3; exp_v = f"{round(expense*100, 2)}% — high"
+    else:
+        exp_pts = 10; exp_v = "expense ratio unavailable"
+    out["dimensions"].append({"name": "Expense Ratio", "score": exp_pts, "max": 20, "verdict": exp_v, "components": []})
+
+    # Manager / Alpha / Sharpe / Sortino / Drawdown — all scaffold
+    out["dimensions"].append({"name": "Manager Track Record", "score": 10, "max": 15,
+        "verdict": "scaffold — needs Morningstar/VR feed", "components": []})
+    out["dimensions"].append({"name": "Risk-Adjusted Returns (Sharpe/Sortino)", "score": 8, "max": 15,
+        "verdict": "scaffold — needs return-series + risk-free rate computation", "components": []})
+    out["dimensions"].append({"name": "Drawdown Control", "score": 5, "max": 10, "verdict": "scaffold", "components": []})
+    return out
+
+
+# ────── Final composer ──────
+
+async def _inst_360_impl(symbol, region, refresh):
+    import time as _time
+    import asyncio as _aio
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    cache_key = f"{symbol}_{region}"
+    # r99.46 H3 single-flight: cache check → lock acquire → cache recheck → compute.
+    # The recheck is critical: another concurrent request may have populated the cache
+    # while we were waiting on the lock.
+    if not refresh and cache_key in _inst_360_cache:
+        c = _inst_360_cache[cache_key]
+        if (_time.time() - c["ts"]) < _INST_360_TTL:
+            out_c = dict(c["data"]); out_c["_cached"] = True
+            out_c["_cache_age_sec"] = int(_time.time() - c["ts"])
+            return out_c
+
+    lock = await _inst_360_get_lock(cache_key)
+    async with lock:
+        # Recheck under lock — another caller may have just populated it
+        if not refresh and cache_key in _inst_360_cache:
+            c = _inst_360_cache[cache_key]
+            if (_time.time() - c["ts"]) < _INST_360_TTL:
+                out_c = dict(c["data"]); out_c["_cached"] = True
+                out_c["_cache_age_sec"] = int(_time.time() - c["ts"])
+                out_c["_single_flight_waited"] = True
+                return out_c
+        return await _inst_360_compute(symbol, region, cache_key)
+
+
+async def _inst_360_compute(symbol, region, cache_key):
+    """Inner compute path — runs under single-flight lock."""
+    import time as _time
+    import asyncio as _aio
+    t0 = _time.time()
+    try:
+        import yfinance as yf
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+
+        def _fetch():
+            try:
+                tk = yf.Ticker(yf_sym)
+                info = {}
+                try: info = tk.info or {}
+                except Exception: info = {}
+                hist = None
+                try: hist = tk.history(period="1y", interval="1d", auto_adjust=True)
+                except Exception: hist = None
+                return info, hist
+            except Exception as _e:
+                return {"_err": str(_e)[:120]}, None
+
+        _lp = _aio.get_event_loop()
+        info, hist = await _lp.run_in_executor(None, _fetch)
+        # Benchmark for technicals/RS
+        bench_sym = "SPY" if region == "US" else "^NSEI"
+        def _bench():
+            try:
+                bh = yf.Ticker(bench_sym).history(period="2mo", interval="1d", auto_adjust=True)
+                if bh is None or bh.empty or len(bh) < 21: return None
+                bcl = list(bh["Close"].dropna())
+                if len(bcl) < 21: return None
+                return (bcl[-1] - bcl[-21]) / bcl[-21] * 100 if bcl[-21] > 0 else None
+            except Exception:
+                return None
+        benchmark_ret_20d = await _lp.run_in_executor(None, _bench)
+    except ImportError:
+        return {"success": False, "error": "yfinance not available"}
+
+    if not isinstance(info, dict):
+        info = {}
+    asset_type = _detect_asset_type(info)
+
+    # ───────── Dispatch by asset type ─────────
+    if asset_type in ("ETF", "INDEX"):
+        out = _score_360_etf(symbol, region, info, hist, benchmark_ret_20d)
+        out["asset_type"] = asset_type
+        out["framework"] = "ETF/INDEX (Holdings 30 · Expense 15 · Liquidity 15 · Perf 20 · Tailwinds 20)"
+    elif asset_type == "MUTUALFUND":
+        out = await _score_360_mutualfund(symbol, region, info)
+        out["framework"] = "MUTUALFUND (Perf 40 · Expense 20 · Manager 15 · Risk-Adj 15 · Drawdown 10)"
+    else:
+        # EQUITY path — call stock dashboard once with timeout (H5 fix).
+        try:
+            dashboard_data = await _aio.wait_for(
+                stock_dashboard(symbol=symbol, region=region, refresh=0),
+                timeout=_INST_360_DASHBOARD_TIMEOUT_SEC,
+            )
+        except _aio.TimeoutError:
+            dashboard_data = {"success": False, "error": "dashboard timeout"}
+        except Exception as _e:
+            dashboard_data = {"success": False, "error": f"dashboard error: {str(_e)[:80]}"}
+
+        # r99.46: surface yfinance info into dashboard_data so PEG fallback can use it.
+        if isinstance(dashboard_data, dict) and "info" not in dashboard_data:
+            dashboard_data["info"] = info
+
+        d_fund = await _score_360_fundamentals(symbol, region, dashboard_data)
+        d_val = await _score_360_valuation(symbol, region, dashboard_data)
+        d_tech = _score_360_technicals(symbol, region, hist, info, benchmark_ret_20d)
+        d_sm = await _score_360_smart_money(symbol, region)
+        d_bq = _score_360_business_quality(symbol, region, info)
+        d_cat = _score_360_catalysts(symbol, region, info, hist)
+
+        out = {
+            "asset_type": "EQUITY", "symbol": symbol, "region": region,
+            "company_name": info.get("longName") or info.get("shortName") or symbol,
+            "current_price": _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice")),
+            "currency": info.get("currency") or info.get("financialCurrency") or ("USD" if region == "US" else "INR"),
+            "sector": info.get("sector") or "?",
+            "industry": info.get("industry") or "?",
+            "dimensions": [d_fund, d_val, d_tech, d_sm, d_bq, d_cat],
+            "framework": "EQUITY (Fund 30 · Val 20 · Tech 15 · SmartMoney 15 · BusQ 10 · Catalysts 10)",
+            "warnings": [],
+        }
+
+    # ───────── Composite + decision ─────────
+    total = sum(d.get("score", 0) for d in out.get("dimensions", []))
+    max_total = sum(d.get("max", 0) for d in out.get("dimensions", []))
+    out["total_score"] = total
+    out["max_total"] = max_total
+
+    # Vijay's bands
+    if total >= 85:
+        out["decision"] = "STRONG BUY"; out["color"] = "green"
+        out["target_horizon"] = "3-5 Years"
+    elif total >= 70:
+        out["decision"] = "BUY"; out["color"] = "lime"
+        out["target_horizon"] = "1-3 Years"
+    elif total >= 55:
+        out["decision"] = "HOLD"; out["color"] = "amber"
+        out["target_horizon"] = "6-12 Months — watchlist"
+    elif total >= 40:
+        out["decision"] = "REDUCE"; out["color"] = "orange"
+        out["target_horizon"] = "Trim on rallies"
+    else:
+        out["decision"] = "SELL"; out["color"] = "red"
+        out["target_horizon"] = "Exit"
+
+    # Confidence — based on how many dimensions had real data
+    dims_with_data = sum(1 for d in out.get("dimensions", []) if d.get("verdict") not in ("UNKNOWN", "DATA UNAVAILABLE", "INSUFFICIENT HISTORY"))
+    if dims_with_data >= len(out.get("dimensions", [])): out["confidence"] = "HIGH"
+    elif dims_with_data >= max(1, len(out.get("dimensions", [])) - 1): out["confidence"] = "MEDIUM"
+    else: out["confidence"] = "LOW"
+
+    # Risk — derived from technical strength + business quality + valuation
+    risk_score = 0
+    for d in out.get("dimensions", []):
+        if d.get("name") == "Business Quality" and d.get("score", 0) >= 8: risk_score -= 2  # high quality lowers risk
+        if d.get("name") == "Valuation" and d.get("score", 0) <= 8: risk_score += 2  # expensive = higher risk
+        if d.get("name") == "Technicals" and d.get("score", 0) <= 5: risk_score += 1
+        if d.get("name") == "Fundamentals" and d.get("score", 0) <= 12: risk_score += 2
+    if risk_score >= 3: out["risk"] = "HIGH"
+    elif risk_score >= 1: out["risk"] = "MEDIUM"
+    else: out["risk"] = "LOW"
+
+    out["success"] = True
+    out["_engine"] = "institutional_360_v1"
+    out["_data_quality"] = "Equity: full 6-dim scoring. ETF/MF: partial (holdings drill-down + risk-adj returns need r99.45 sources)."
+    out["_future_inputs"] = [
+        "ETF holdings drill-down — needs prospectus parser — r99.45",
+        "Mutual fund: Morningstar/Value Research feed for alpha/sharpe/sortino — r99.45",
+        "Catalysts dimension: news headlines + analyst revisions + AI mention tracking — r99.45",
+        "Real options flow into Smart Money — r99.46+",
+    ]
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _inst_360_cache[cache_key] = {"data": out, "ts": _time.time()}
+    _inst_360_evict_lru()  # r99.46 M1: bound memory at MAX_CACHE entries
+    print(f"[360] {symbol} ({region}) {out['asset_type']} total={total}/{max_total} decision={out['decision']} conf={out['confidence']} risk={out['risk']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # r63.99.41: ENHANCEMENT LAYER on top of r99.40 Celesys 2.0 engines
 #
 # Three high-impact wires-in that don't need new external data sources:

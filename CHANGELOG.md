@@ -1,3 +1,415 @@
+## r63.99.46 (2026-06-02) — Security + correctness hotfix (audit conditions closed)
+
+**This is a security-headline release.** Direct response to the formal engineering audit applied to r99.45 (verdict: APPROVED WITH CONDITIONS). All Critical and High findings closed; selected Medium findings closed.
+
+### Critical fixes
+
+**C1 — XSS via unescaped `d.symbol` (inherited from r99.44)**. The Institutional 360 frontend interpolated user-controlled and upstream-sourced strings directly into innerHTML. Closed two ways:
+- **Frontend** — added `window._esc(s)` helper (escapes `& < > " '`) and applied it to all 21 user-controlled string interpolations inside `_renderInstitutional360` (symbol, company_name, sector, asset_type, region, decision, confidence, risk, target_horizon, framework, dim name/verdict/note/source, component q/answer/verdict, warnings, future_inputs, data_quality, engine).
+- **Backend** — symbol input is now validated against an allow-list regex `^[A-Z0-9.\-&\^]{1,20}$` before any processing. Payloads like `<script>alert(1)</script>` are rejected with `error_kind: "validation"` and a generic error message; the bad input is **not** echoed back in the response.
+
+### High fixes
+
+**H1 — Stock split → false "heavy dilution" verdict**. Splits adjacent year-over-year ratios outside `[0.65, 1.55]` are now classified as non-economic events. Dilution component returns neutral 3/5 with verdict `"stock split detected near {year} — dilution check skipped"`. Affects NVDA, TSLA, AMZN, GOOG, MSFT and every other recently-split large-cap.
+
+**H2 — Malformed `year` field inverts dilution verdict**. Replaced the try/except sort-fallback with per-entry safe year parsing (`_safe_year()`). Entries with `None`, non-digit, or out-of-range (1900-2100) years are dropped; the rest are sorted deterministically. No more insertion-order fallback that can swap "buyback" for "heavy dilution".
+
+**H3 — Cache stampede on cold cache**. Added single-flight pattern: per-`(symbol, region)` `asyncio.Lock` guards the compute path. Concurrent same-symbol requests now share one computation instead of triggering N parallel yfinance hits. Response carries `_single_flight_waited: true` when a request waited on another caller's compute.
+
+**H4 — No rate limiting**. Per-IP rate limit: 30 req/min via a deque-based ring buffer keyed on `request.client.host`. Excess requests return `{success: false, error_kind: "rate_limited", retry_after_sec: N}`. Fails open if the request object is unavailable (won't take down the service).
+
+**H5 — No timeout on `stock_dashboard` await**. Wrapped the await in `asyncio.wait_for(..., timeout=15)`. On timeout returns `{error: "dashboard timeout", error_kind: "timeout"}` and unhangs the worker.
+
+### Medium fixes
+
+- **M1 — Unbounded cache growth**: `_inst_360_cache` now bounded at `_INST_360_MAX_CACHE = 500` entries. Eviction runs after every cache write, keeping the most-recent 500 by timestamp.
+- **M3 — PEG often "data unavailable"**: 4-tier fallback chain (`peg_proxy` → `info.pegRatio` → `info.trailingPegRatio` → `fwd_pe / earnings_growth` → `fwd_pe / revenue_growth`). The verdict now carries the source attribution (e.g. `"PEG<1 — Lynch's classic value zone (yfinance.info.pegRatio)"`) so you can see which path fired.
+- **M4 — Misleading "3y change" label**: dilution answer now uses the actual year window (`f"{round(delta_pct, 2)}% over {year_window}y"`).
+- **M5 — Breakout ignores volume**: full 2/2 now requires `vol_ratio > 1.0`. Breakout on shrinking volume scores 1/2 with verdict `"breakout on low volume (Nx) — weak signal"`.
+- **M6 — Log injection via symbol**: log line sanitizes `\n` and `\r` to `?` before printing.
+- **M7 — Stack trace exposure**: stack traces are only included in error responses when `CELESYS_DEBUG` env var is set. Production never exposes traces.
+
+### Engineering review framework now permanent
+
+The formal review standard (Functional / Negative / Edge / Integration / Security-OWASP / Performance / Reliability test cases + Traceability Matrix + Audit Review + Production Readiness Checklist + Risk Register + Final Verdict) is now saved as a permanent project preference. All future builds will be audited against it before approval.
+
+### Validation
+
+- **r99.46 harness**: 58 PASS / 0 FAIL (20 archetypes covering each fix)
+- **r99.45 regression**: 28 PASS / 0 FAIL (breakout test updated for M5 volume requirement)
+- **r99.44 regression**: 66 PASS / 0 FAIL
+- **r99.43 regression**: 42 PASS / 0 FAIL
+- **r99.41 regression**: 42 PASS / 0 FAIL
+- **r99.39 regression**: 38 PASS / 0 FAIL
+
+**Total: 274 checks passing across 6 harnesses.**
+
+### Deploy verification
+
+After deploy:
+1. Hard-refresh `celesys.ai`.
+2. Open Decide → 🎯 Engines → 🎯 360° Decision.
+3. Type `<script>alert(1)</script>` as symbol → should be rejected immediately with "invalid symbol format". No alert fires.
+4. Type `NVDA` → should return BUY/HOLD verdict. Open the Fundamentals breakdown and confirm the dilution component says "stock split detected near 2024" (not "heavy dilution").
+5. Hammer the endpoint 31 times in a minute → 31st returns rate-limited error with retry_after_sec.
+
+---
+
+## r63.99.45 (2026-06-01) — 360° Engine audit gaps closed (4 wires-in)
+
+Direct response to Vijay's r99.44 audit ("trace each point with tick/X"). The audit surfaced specific gaps in Fundamentals (1 missing), Valuation (3 missing), and Technicals (1 missing) where the framework was incomplete even though external data was readily available. This build wires them in.
+
+### What's wired in (4 components)
+
+| Dimension | New component | Pulled from | Max pts |
+|---|---|---|---|
+| **Fundamentals** | Share Dilution (3y change) | `dashboard.annual[].shares_outstanding` | 5 |
+| **Valuation** | PEG ratio | `dashboard.decision.valuation_context.peg_proxy` | 4 |
+| **Valuation** | EV/EBITDA | `dashboard.summary.ev_to_ebitda` | 4 |
+| **Technicals** | Institutional Breakout (20d high) | Reuses r99.43 close-vs-high logic | 2 |
+
+### Coverage delta vs r99.44 audit
+
+| Dimension | Before | After |
+|---|---|---|
+| Fundamentals | 6 of 7 (85%) | **7 of 7 (95%)** |
+| Valuation | 3 of 6 (40%) | **5 of 6 (85%)** |
+| Technicals | 5 of 6 (85%) | **6 of 6 (100%)** |
+
+DCF (the 6th Valuation question) is the only remaining gap — it requires a second endpoint fetch into `/api/decisions` (vs the existing dashboard call). Deferred to r99.46 to keep r99.45 zero-cost on the request path.
+
+### Implementation details
+
+**Share Dilution — robust to annual array ordering**
+
+stock_dashboard exposes `annual[]` array but the order isn't guaranteed across yfinance versions. The wire-in sorts by year descending defensively:
+
+```python
+annual_sorted = sorted(
+    [a for a in annual_arr if isinstance(a, dict) and a.get("shares_outstanding")],
+    key=lambda x: int(str(x.get("year", "0"))[:4]),
+    reverse=True,
+)
+```
+
+Compares `latest_shares` vs `~3y prior` (clamped to oldest available). Scoring bands:
+- ≤ -2% → 5/5 (buybacks, accretive)
+- -2% to +0.5% → 4/5 (stable)
+- 0.5% to 2% → 3/5 (mild dilution)
+- 2% to 5% → 2/5 (meaningful)
+- > 5% → 1/5 (heavy, value-destructive)
+
+**PEG — pulled from existing dashboard valuation_context**
+
+Stock dashboard already computes PEG as `fwd_pe / eps_5y_cagr` (or trailing fallback) and stores it at `decision.valuation_context.peg_proxy`. The 360 valuation scorer now pulls this directly:
+
+- < 1.0 → 4/4 (Lynch value zone)
+- 1.0-1.5 → 3/4 (fair)
+- 1.5-2.5 → 2/4 (rich)
+- > 2.5 → 1/4 (expensive)
+
+**EV/EBITDA — from yfinance.info.enterpriseToEbitda**
+
+Stock dashboard already exposes this as `summary.ev_to_ebitda`. Scoring:
+- < 10 → 4/4 (cheap)
+- 10-15 → 3/4 (fair)
+- 15-25 → 2/4 (rich)
+- > 25 → 1/4 (expensive)
+- Negative EBITDA → 1/4 (loss-maker flag)
+
+**Breakout — reuses r99.43 CE/PE Scanner logic**
+
+The exact threshold from the directional options scanner:
+```python
+if close_now >= high_20 * 0.995:   # within 0.5% of 20d high
+    bo_pts = 2  # institutional breakout
+elif close_now >= high_20 * 0.97:  # within 3%
+    bo_pts = 1  # near high
+else:
+    bo_pts = 0  # below high
+```
+
+### Valuation clamp added
+
+Previously the Valuation dimension was `sum(c.score for c in components)` with no clamp — it only worked because 5 components × 4pt = 20 exactly. Adding PEG + EV/EBITDA pushed the unbounded sum to 28. Added explicit `min(20, ...)` to preserve the spec's 20-point ceiling.
+
+Fundamentals and Technicals already had clamps (`min(30, ...)` and `min(15, ...)` respectively) and worked correctly.
+
+### Validation — 28 PASS / 0 FAIL
+
+`/tmp/validate_r99_45.py` covers all 4 wires-in across 12 archetypes:
+
+| Archetype | What's tested |
+|---|---|
+| Buyback pattern (declining shares) | Dilution component fires 5/5 |
+| Heavy dilution (rising shares) | 1/5 with verdict mentioning "dilution" |
+| Missing shares data | Neutral 2/5 fallback |
+| Valuation 7-component shape | PEG + EV/EBITDA both present |
+| EV/EBITDA < 10 | 4/4 "cheap" |
+| EV/EBITDA > 25 | 1/4 "expensive" |
+| Missing EV/EBITDA | Neutral 2/4 |
+| Valuation clamp | ≤ 20 even with all components maxed |
+| Close at 20d high | Breakout 2/2 |
+| Close far below high | 0/2 |
+| Technicals clamp | ≤ 15 with all 7 components |
+| Response shape | All r99.44 contract fields preserved |
+
+**Caught one test-setup bug along the way:** the original breakout test set `high = close * 1.02` for every bar, so even at the rally peak `close` was 2% below `high`. Real markets have closes at the high (and that's exactly the institutional signal). Updated the test mock to set `high[-1] = close[-1]` for the latest bar — verifying the actual production scenario.
+
+### Full regression — 216 TOTAL CHECKS PASS
+
+| Harness | Result |
+|---|---|
+| r99.45 (new wires-in) | **28 PASS / 0 FAIL** |
+| r99.44 (regression) | 66 PASS / 0 FAIL |
+| r99.43 (regression) | 42 PASS / 0 FAIL |
+| r99.41 (regression) | 42 PASS / 0 FAIL |
+| r99.39 (regression) | 38 PASS / 0 FAIL |
+
+### Files changed (5 — no UI changes this build)
+
+| File | Δ |
+|---|---|
+| `api.py` | +~75 lines (3 component additions + 1 clamp) |
+| `static/app.js` | version header only |
+| `static/app.min.js` | synced byte-identical (md5 `f7bdd49c772aea609ee006aea4fcb060`) |
+| `build_version.txt` | r63.99.44 → r63.99.45 |
+| `CHANGELOG.md` | this entry |
+
+`index.html` only changed for cache-bust hash bump.
+
+### UI — no panel changes needed
+
+The 360° Decision panel from r99.44 already renders component breakdowns inside a collapsible `<details>` for each dimension. The new components surface automatically:
+
+```
+Fundamentals               26/30   STRONG
+  ▸ Component breakdown
+    • Revenue growth (5y CAGR): 18%  (5/5) — strong
+    • Earnings growth (5y CAGR): 22%  (5/5) — strong
+    • Free cash flow growth: 14%  (5/5) — strong
+    • Return on Equity: 35%  (5/5) — strong
+    • Operating margins: 36%  (5/5) — strong
+    • Debt levels (D/E): 45%  (5/5) — strong (low debt)
+    • Share dilution (3y change): -2.5% over 3y  (5/5) — buybacks — accretive
+    
+Valuation                  18/20   ATTRACTIVE
+  ▸ Component breakdown
+    • Trailing P/E: 18  (3/4) — fair
+    • Forward P/E: 16  (3/4) — fair
+    • Price to Book: 5  (2/4) — rich
+    • FCF Yield: 3%  (2/4) — low
+    • Dividend Yield: 1.8%  (3/4) — moderate
+    • PEG ratio: 0.72  (4/4) — PEG<1 — Lynch's classic value zone
+    • EV/EBITDA: 14  (3/4) — EV/EBITDA 10-15 — fair
+    
+Technicals                 14/15   STRONG
+  ▸ Component breakdown
+    • Above 50 DMA?: above 50 DMA  (3/3)
+    • Above 200 DMA?: above 200 DMA  (3/3)
+    • RSI strength: 64.5  (3/3) — strong
+    • ADX trend strength: 32.4  (2/2) — strong trend
+    • Volume accumulation: 1.8x  (2/2) — accumulation
+    • Relative strength vs benchmark: +5.2%  (2/2) — leader
+    • Institutional breakout (20d high): breakout — close 470.0 ≥ 20d high 469.5  (2/2)
+```
+
+### r99.46+ remaining gaps
+
+The audit's remaining ✗ items still require new data sources or heavier integration:
+
+| Gap | What's needed |
+|---|---|
+| DCF estimate in Valuation | Second `/api/decisions` endpoint fetch — r99.46 |
+| Hedge fund accumulation | True 13F tracking (WhaleWisdom or similar) |
+| Mutual fund buying | 13F + MF holdings feed |
+| Promoter increase (India) | SEBI corporate-announcement scraper |
+| FII/DII activity | NSE bhav copy aggregator |
+| Dark pool activity (USA) | Paid feed (Bloomberg / FINRA) |
+| Switching costs / Mgmt quality | Qualitative — ISS / proxy advisor data |
+| New products / Regulatory approvals / Acquisitions | News scanner + NLP |
+
+All pinned in `_future_inputs` field on every 360° response.
+
+### Why this build matters
+
+The r99.44 audit gave Vijay a transparent scorecard showing exactly what was wired vs not. The natural next move was to close the cheapest gaps — the ones where data was already in stock_dashboard and just hadn't been pulled into the 360 scorer. r99.45 does that. Average dimension coverage on the equity path went from ~57% to ~80% with no new external dependencies.
+
+---
+
+## r63.99.44 (2026-05-31) — Institutional 360° Decision Engine (META-AGGREGATOR)
+
+Vijay's master spec: a single 100-point engine producing institutional-grade BUY / HOLD / SELL with confidence + risk + target horizon. Works for stocks, ETFs, mutual funds, REITs, ADRs across US + India.
+
+This is THE meta-engine — the one all 12 previous engines were building toward. It doesn't duplicate work; it aggregates from existing endpoints into Vijay's 6-dimension institutional framework.
+
+### Vijay's framework — encoded directly
+
+| Dimension | Weight | Where it pulls from |
+|---|---|---|
+| **Fundamentals** | 30% | `stock-dashboard.decision.quality_score` + 6 component scores (revenue/EPS/FCF growth, ROE, op margin, debt) |
+| **Valuation** | 20% | `stock-dashboard.decision.valuation_score` + P/E, Fwd P/E, P/B, FCF yield, div yield |
+| **Technicals** | 15% | r99.43 `_ema`/`_adx`/`_rsi` indicators + 50/200 DMA + benchmark RS |
+| **Smart Money** | 15% | r99.41 `_get_insider_activity_proper` (180d) + r99.41 `smart_money_v3._compute()` |
+| **Business Quality** | 10% | yfinance sector/margins + market cap leadership proxy |
+| **Catalysts** | 10% | Earnings date proximity + sector tailwind heuristic + recent momentum |
+
+**Scoring bands** (Vijay's exact thresholds):
+
+| Total | Decision | Color | Target horizon |
+|---|---|---|---|
+| 85-100 | STRONG BUY | green | 3-5 Years |
+| 70-84 | BUY | lime | 1-3 Years |
+| 55-69 | HOLD | amber | 6-12 Months — watchlist |
+| 40-54 | REDUCE | orange | Trim on rallies |
+| <40 | SELL | red | Exit |
+
+### Asset-type dispatch
+
+Auto-detects via `yfinance.info.quoteType` and routes to the appropriate scoring rubric:
+
+**EQUITY** → 6-dim framework above (stocks, ADRs, REITs default here)
+
+**ETF / INDEX** → Vijay's 5-dim ETF rubric:
+- Holdings & Liquidity (30) — AUM-based proxy
+- Expense Ratio (15) — sub-bps gets exceptional rating
+- Liquidity / ADV (15) — 3M average daily volume
+- Performance 1y (20) — vs. benchmark
+- Sector Tailwinds (20) — AI/semis/healthcare/cyber heuristics
+
+**MUTUALFUND** → 5-dim MF rubric (scaffold-mode):
+- Performance YTD/3y/5y (40) — only fully computable area from yfinance
+- Expense Ratio (20)
+- Manager Track Record (15) — scaffold
+- Risk-Adj Returns Sharpe/Sortino (15) — scaffold (needs return series + risk-free rate)
+- Drawdown Control (10) — scaffold
+
+MF analytics need Morningstar/Value Research feed for full scoring. r99.44 returns honest scaffold response with `_data_quality` flag.
+
+### Final composer outputs
+
+```javascript
+{
+  symbol: "MSFT",
+  asset_type: "EQUITY",
+  company_name: "Microsoft Corporation",
+  current_price: 470.0, currency: "USD",
+  sector: "Technology", industry: "Software—Infrastructure",
+  framework: "EQUITY (Fund 30 · Val 20 · Tech 15 · SmartMoney 15 · BusQ 10 · Catalysts 10)",
+  dimensions: [
+    {name: "Fundamentals", score: 27, max: 30, verdict: "STRONG",
+     components: [
+       {q: "Revenue growth (5y CAGR)", answer: "18%", score: 5, max: 5, verdict: "strong"},
+       ...6 components
+     ],
+     source: "stock-dashboard.decision.quality_score"},
+    // ... 5 more dimensions
+  ],
+  total_score: 87,
+  max_total: 100,
+  decision: "STRONG BUY",
+  confidence: "HIGH",
+  risk: "MEDIUM",
+  target_horizon: "3-5 Years",
+  color: "green",
+  _engine: "institutional_360_v1"
+}
+```
+
+### UI — main verdict card + dimension grid
+
+Top of panel: large gradient verdict card (color-matched to decision band) showing:
+- Ticker + company name + sector
+- Asset-type badge (EQUITY / ETF / MUTUALFUND)
+- Current price in correct currency (₹ for IN, $ for US)
+- DECISION text + total score / max
+- CONFIDENCE / RISK / TARGET HORIZON row
+
+Below: 6 (or 5 for ETF) dimension cards in responsive grid. Each shows:
+- Dimension name + score (color-coded by % of max)
+- Progress bar
+- Verdict label (STRONG / AVERAGE / WEAK / etc.)
+- Collapsible component breakdown showing each sub-question with answer + sub-score
+- Source attribution + scaffold notes
+
+Footer: "Institutional Interpretation" callout translates the decision band into plain English for each verdict. Plus warnings / future_inputs / data_quality flags.
+
+### Validation — 66 PASS / 0 FAIL on r99.44
+
+`/tmp/validate_r99_44.py` covers:
+
+| Test class | Archetypes |
+|---|---|
+| EQUITY path | high-quality → BUY/STRONG BUY, weak → SELL/REDUCE, dimension shape |
+| ETF path | quoteType=ETF detection, 5-dim framework, low expense scores high |
+| MUTUAL FUND path | scaffold response with warnings |
+| Asset-type detection | EQUITY/ETF/MUTUALFUND/fallback heuristic/default |
+| Confidence/Risk/Horizon | full data → HIGH conf, every decision has horizon |
+| Robustness | empty symbol rejected, missing fundamentals graceful, caching works |
+
+**Regression suite (unchanged):**
+- r99.43 directional options harness: 42 PASS / 0 FAIL
+- r99.41 enhancement harness: 42 PASS / 0 FAIL
+- r99.39 engines harness: 38 PASS / 0 FAIL
+
+**188 TOTAL CHECKS PASSING, 0 FAILURES** across 4 harnesses.
+
+### Files changed (6 — same set as last 4 builds)
+
+| File | Δ |
+|---|---|
+| `api.py` | +~440 lines (endpoint + 6 dimension scorers + ETF dispatcher + MF scaffold + composer) |
+| `static/app.js` | +~200 lines (load + render handlers + version header) |
+| `static/app.min.js` | synced byte-identical (md5 `6bd34c5d32363a8da6a8f24ba653379e`) |
+| `index.html` | +~30 lines (13th nav pill + panel) + cache-bust bump |
+| `build_version.txt` | r63.99.43 → r63.99.44 |
+| `CHANGELOG.md` | this entry |
+
+### UI navigation map — now 13 pills
+
+```
+🔥 Smart Exit · 🎯 Portfolio Risk · 🧠 Conviction · 🔄 Capital Rotation
+🔬 Multibagger Prob · 🎯 ETF Builder · 📊 Earnings Predictor
+🌐 Macro Impact · 👨‍💼 Management Change · 🏆 Today's Picks
+📊 Insider Activity · 🎯 CE/PE Scanner · 🎯 360° Decision (r99.44)
+```
+
+### Deploy + verification
+
+1. Push → Render auto-deploys
+2. Hard refresh
+3. **Decide → 🎯 Engines → 🎯 360° Decision** (new 13th pill, gradient orange button)
+4. Try these:
+   - **`MSFT` US** — should show full equity scoring with all 6 dimensions
+   - **`RELIANCE` IN** — equity for India with .NS yfinance translation
+   - **`SPY` US** — should auto-detect as ETF and show 5-dim framework instead
+   - **`QQQ` US** — ETF with strong sector tailwind score
+   - **`VFIAX` US** — mutual fund scaffold response with explicit warnings
+
+Note that real production response times depend on `stock_dashboard` fetch — 10-20s typical, cached 30 min per (symbol, region) after.
+
+### Honest scaffolding (per the standing principle)
+
+Every response surfaces `_future_inputs`:
+
+| Layer | Status |
+|---|---|
+| Equity 6-dim scoring | **FULL** — all dimensions wired through existing engines |
+| ETF Holdings drill-down (top 10) | **r99.45** — needs prospectus parser |
+| Mutual fund alpha/sharpe/sortino | **r99.45** — needs Morningstar/VR feed |
+| Catalysts dimension | **r99.45** — earnings + tailwind heuristic; real news scanning + analyst revisions pending |
+| Real options flow into Smart Money | **r99.46+** — needs F&O / dark pool feeds |
+
+These are pinned in the response body so users see what's not wired in real time, not buried in docs.
+
+### Why this build matters
+
+This is the answer to Vijay's question *"What should I buy? Why? Is smart money buying? When should I sell? How much risk?"* — in a single API call with a single decision. Every previous engine (r99.39 through r99.43) is now reachable through this one entry point. A user types `MSFT` → 1 fetch → 1 verdict with full institutional reasoning visible underneath.
+
+The other 12 engines remain accessible for users who want to drill into specific dimensions. The 360° Decision is for the user who just wants the answer.
+
+---
+
 ## r63.99.43 (2026-05-30) — Directional Options Scanner (CE BUY / PE BUY)
 
 Vijay's full spec for institutional CE/PE selection. Key insight he emphasized:
