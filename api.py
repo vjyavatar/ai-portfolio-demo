@@ -8953,6 +8953,275 @@ async def _inst_360_get_lock(key):
     return lk
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# r63.100.0 — CELESYS COGNITIVE ARCHITECTURE v2
+# 3-layer architecture: Ontology → Dependency Graph → Engine
+# Honest NULL scoring; weighted dependency propagation; explainability.
+# ════════════════════════════════════════════════════════════════════════════
+try:
+    import celesys_bootstrap as _csa_bootstrap  # registers dims/signals/edges
+    from celesys_engine import ENGINE as _CSA_ENGINE, FeatureBundle as _FeatureBundle
+    from celesys_ontology import SourceQuality as _SQ
+    _CSA_AVAILABLE = True
+    print(f"[STARTUP] CSA v2 wired — dims={_csa_bootstrap._SUMMARY['ontology_dimensions']} "
+          f"signals={_csa_bootstrap._SUMMARY['ontology_signals']} "
+          f"edges={_csa_bootstrap._SUMMARY['graph_edges']}")
+except Exception as _csa_exc:
+    _CSA_AVAILABLE = False
+    print(f"[STARTUP] CSA v2 not available: {_csa_exc}")
+
+
+_CSA_CACHE = {}
+_CSA_CACHE_TTL = 1800
+_CSA_RATE = {}
+_CSA_RATE_LIMIT_N = 30
+_CSA_RATE_LIMIT_WINDOW = 60
+_CSA_SYMBOL_PATTERN = _re_360.compile(r"^[A-Z0-9.\-&\^]{1,20}$")
+
+
+def _csa_check_rate(ip):
+    import time as _t
+    now = _t.time()
+    q = _CSA_RATE.get(ip)
+    if q is None:
+        q = _deque_360(); _CSA_RATE[ip] = q
+    while q and (now - q[0]) > _CSA_RATE_LIMIT_WINDOW:
+        q.popleft()
+    if len(q) >= _CSA_RATE_LIMIT_N:
+        return False, max(1, int(_CSA_RATE_LIMIT_WINDOW - (now - q[0])) + 1)
+    q.append(now)
+    return True, 0
+
+
+async def _csa_extract_features(symbol_clean, region):
+    """Build a FeatureBundle from yfinance + the existing stock_dashboard.
+
+    Honest NULL contract: any field that can't be derived stays None. The
+    ontology will treat it as INSUFFICIENT_DATA for the affected signal.
+    """
+    import time as _t
+    import asyncio as _aio
+    import yfinance as yf
+    yf_sym = symbol_clean if region == "US" else f"{symbol_clean}.NS"
+
+    def _fetch():
+        try:
+            tk = yf.Ticker(yf_sym)
+            info = {}
+            try: info = tk.info or {}
+            except Exception: info = {}
+            hist = None
+            try: hist = tk.history(period="1y", interval="1d", auto_adjust=True)
+            except Exception: hist = None
+            return info, hist
+        except Exception:
+            return {}, None
+    loop = _aio.get_event_loop()
+    info, hist = await loop.run_in_executor(None, _fetch)
+    if not isinstance(info, dict): info = {}
+
+    # Pull dashboard for fundamentals if available
+    try:
+        dash = await _aio.wait_for(
+            stock_dashboard(symbol=symbol_clean, region=region, refresh=0),
+            timeout=10.0)
+    except Exception:
+        dash = {"success": False}
+    if not isinstance(dash, dict):
+        dash = {"success": False}
+
+    # Build FeatureBundle. Honest NULL — every conversion uses _eng_ds_num
+    # which returns None on garbage. NO fallbacks to plausible-looking floors.
+    summary = (dash.get("summary") or {}) if dash else {}
+    decision = (dash.get("decision") or {}) if dash else {}
+    cagrs = (dash.get("cagrs") or {}) if dash else {}
+    annual = (dash.get("annual") or []) if dash else []
+
+    # Shares outstanding series
+    shares_series = []
+    for a in (annual if isinstance(annual, list) else []):
+        if not isinstance(a, dict): continue
+        try:
+            y_raw = a.get("year")
+            y_str = str(y_raw)[:4] if y_raw is not None else None
+            if not y_str or not y_str.isdigit(): continue
+            y = int(y_str)
+            if not (1900 <= y <= 2100): continue
+            so = _eng_ds_num(a.get("shares_outstanding"))
+            if so is None or so <= 0: continue
+            shares_series.append((y, so))
+        except Exception:
+            continue
+    shares_series = shares_series or None
+
+    # Price/volume features from hist
+    price = None; vwap = None; rvol = None; sma_20 = None; sma_50 = None
+    sma_200 = None; high_20d = None; low_20d = None; rs_pct = None
+    try:
+        if hist is not None and not hist.empty and len(hist) > 0:
+            closes = list(hist["Close"].dropna())
+            highs = list(hist["High"].dropna())
+            lows = list(hist["Low"].dropna())
+            vols = list(hist["Volume"].dropna())
+            if closes:
+                price = float(closes[-1])
+                if len(closes) >= 20: sma_20 = sum(closes[-20:]) / 20
+                if len(closes) >= 50: sma_50 = sum(closes[-50:]) / 50
+                if len(closes) >= 200: sma_200 = sum(closes[-200:]) / 200
+                if len(highs) >= 20: high_20d = max(highs[-20:])
+                if len(lows) >= 20: low_20d = min(lows[-20:])
+                # rvol = today vs 20d avg
+                if len(vols) >= 21:
+                    avg20 = sum(vols[-21:-1]) / 20
+                    if avg20 > 0: rvol = vols[-1] / avg20
+                # VWAP approximation = typical_price weighted by volume over recent 5
+                if len(closes) >= 5 and len(vols) >= 5:
+                    tp = [(highs[-i] + lows[-i] + closes[-i]) / 3 for i in range(1, 6)]
+                    vol5 = vols[-5:]
+                    if sum(vol5) > 0:
+                        vwap = sum(t*v for t, v in zip(tp, vol5)) / sum(vol5)
+                # RS vs market 20d return diff (rough — uses raw close return)
+                if len(closes) >= 21:
+                    stock_20d = (closes[-1] - closes[-21]) / closes[-21] * 100
+                    rs_pct = stock_20d  # benchmark-relative computed in engine layer later
+    except Exception:
+        pass
+
+    bundle = _FeatureBundle(
+        symbol=symbol_clean, region=region, timestamp=_t.time(),
+        regime=None,  # v1.1 will infer regime
+        price=price, vwap=vwap, rvol=rvol,
+        sma_20=sma_20, sma_50=sma_50, sma_200=sma_200,
+        high_20d=high_20d, low_20d=low_20d,
+        revenue_cagr_5y=_eng_ds_num(cagrs.get("revenue_cagr_5y")),
+        eps_cagr_5y=_eng_ds_num(cagrs.get("eps_cagr_5y")),
+        fcf_cagr_5y=_eng_ds_num(cagrs.get("fcf_cagr_5y")),
+        roe=_eng_ds_num(summary.get("roe_5y_avg")) or _eng_ds_num(info.get("returnOnEquity") and info.get("returnOnEquity")*100),
+        op_margin=_eng_ds_num(summary.get("op_margin")) or _eng_ds_num(info.get("operatingMargins") and info.get("operatingMargins")*100),
+        debt_to_equity=_eng_ds_num(summary.get("debt_to_equity")) or _eng_ds_num(info.get("debtToEquity") and info.get("debtToEquity")/100),
+        shares_outstanding_series=shares_series,
+        pe=_eng_ds_num(summary.get("pe")) or _eng_ds_num(info.get("trailingPE")),
+        fwd_pe=_eng_ds_num(summary.get("fwd_pe")) or _eng_ds_num(info.get("forwardPE")),
+        pb=_eng_ds_num(summary.get("pb")) or _eng_ds_num(info.get("priceToBook")),
+        peg=_eng_ds_num((decision.get("valuation_context") or {}).get("peg_proxy"))
+             or _eng_ds_num(info.get("pegRatio"))
+             or _eng_ds_num(info.get("trailingPegRatio")),
+        ev_to_ebitda=_eng_ds_num(summary.get("ev_to_ebitda")) or _eng_ds_num(info.get("enterpriseToEbitda")),
+        fcf_yield=_eng_ds_num(summary.get("fcf_yield")),
+        div_yield=_eng_ds_num(summary.get("dividend_yield")) or _eng_ds_num(info.get("dividendYield") and info.get("dividendYield")*100),
+        institutional_ownership_pct=_eng_ds_num(info.get("heldPercentInstitutions") and info.get("heldPercentInstitutions")*100),
+        days_to_earnings=None,  # TODO v1.1
+        sector_momentum_pct=None,
+        relative_strength_pct=rs_pct,
+        source_quality_actual=_SQ.SECONDARY,
+    )
+    return bundle
+
+
+@app.get("/api/celesys-v2-score")
+async def celesys_v2_score(symbol: str = "", region: str = "US",
+                            refresh: int = 0, request: "Request" = None):
+    """Celesys Cognitive Architecture v2 — 3-layer scoring engine.
+
+    Ontology + Dependency Graph + Engine. Honest NULL scoring throughout.
+    A symbol with no data returns INSUFFICIENT_DATA, never a fake-neutral floor.
+    """
+    if not _CSA_AVAILABLE:
+        return {"success": False, "error": "CSA v2 not loaded",
+                "error_kind": "unavailable"}
+
+    symbol_clean = (symbol or "").strip().upper()
+    if not symbol_clean:
+        return {"success": False, "error": "symbol required",
+                "error_kind": "validation"}
+    if not _CSA_SYMBOL_PATTERN.match(symbol_clean):
+        return {"success": False,
+                "error": "invalid symbol format — must be 1-20 chars [A-Z0-9.\\-&^]",
+                "error_kind": "validation"}
+
+    # Rate limit
+    try:
+        client_ip = "unknown"
+        if request is not None:
+            client = getattr(request, "client", None)
+            if client is not None:
+                client_ip = getattr(client, "host", "unknown") or "unknown"
+        allowed, retry_in = _csa_check_rate(client_ip)
+        if not allowed:
+            return {"success": False, "error": "rate limit exceeded",
+                    "error_kind": "rate_limited", "retry_after_sec": retry_in}
+    except Exception:
+        pass
+
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+
+    import time as _t
+    cache_key = f"{symbol_clean}_{region}"
+    if not refresh and cache_key in _CSA_CACHE:
+        c = _CSA_CACHE[cache_key]
+        if (_t.time() - c["ts"]) < _CSA_CACHE_TTL:
+            r = dict(c["data"]); r["_cached"] = True
+            r["_cache_age_sec"] = int(_t.time() - c["ts"])
+            return r
+
+    safe_log_sym = symbol_clean.replace("\n", "?").replace("\r", "?")
+    try:
+        bundle = await _csa_extract_features(symbol_clean, region)
+        result = _CSA_ENGINE.score_single(bundle)
+        _CSA_CACHE[cache_key] = {"data": result, "ts": _t.time()}
+        # Bound cache memory
+        if len(_CSA_CACHE) > 500:
+            items = sorted(_CSA_CACHE.items(), key=lambda kv: kv[1].get("ts", 0), reverse=True)
+            _CSA_CACHE.clear()
+            _CSA_CACHE.update(dict(items[:500]))
+        print(f"[CSA] {safe_log_sym} ({region}) score={result.get('score')} "
+              f"verdict={result.get('verdict')} coverage={result.get('coverage_pct')}%")
+        return result
+    except Exception as exc:
+        import traceback as _tb
+        err = f"{type(exc).__name__}: {str(exc)[:200]}"
+        print(f"[CSA] {safe_log_sym} ({region}) unhandled: {err}")
+        out = {"success": False, "symbol": symbol_clean, "error": err,
+               "error_kind": "internal"}
+        if _INST_360_DEBUG:
+            out["trace"] = _tb.format_exc()[:1500]
+        return out
+
+
+@app.get("/api/celesys-v2-introspect")
+async def celesys_v2_introspect():
+    """Return the ontology + graph for debugging / auditing."""
+    if not _CSA_AVAILABLE:
+        return {"success": False, "error": "CSA v2 not loaded"}
+    from celesys_ontology import REGISTRY as _REG, ONTOLOGY_VERSION
+    from celesys_graph import GRAPH as _GRAPH, GRAPH_VERSION
+    return {
+        "success": True,
+        "ontology_version": ONTOLOGY_VERSION,
+        "graph_version": GRAPH_VERSION,
+        "dimensions": [
+            {"id": d.id, "name": d.name, "weight": d.weight,
+             "min_coverage": d.min_coverage_for_score, "desc": d.description}
+            for d in _REG.dimensions().values()
+        ],
+        "signals": [
+            {"id": s.id, "name": s.name, "dim": s.dimension,
+             "weight": s.weight, "source_quality": s.source_quality.value,
+             "required": s.required_inputs, "optional": s.optional_inputs,
+             "version": s.version}
+            for s in _REG.signals().values()
+        ],
+        "edges": [
+            {"upstream": e.upstream, "downstream": e.downstream,
+             "required": e.required, "weight_modifier": e.weight_modifier,
+             "desc": e.description}
+            for e in _GRAPH.edges()
+        ],
+        "issues": _REG.validate() + _GRAPH.validate(),
+    }
+
+
 @app.get("/api/institutional-360")
 async def institutional_360(symbol: str = "", region: str = "US", refresh: int = 0, request: "Request" = None):
     """Institutional 360° Decision Engine — final BUY/HOLD/SELL with confidence."""

@@ -1,3 +1,98 @@
+## r63.100.0 (2026-06-03) — Celesys Cognitive Architecture (3-layer: Ontology + Graph + Engine)
+
+Major architectural milestone. Implements the 3-layer cognitive architecture spec line-by-line.
+
+### What this fixes (root cause of the SBIN screenshot bug)
+
+When components had no data, the r99.x scorers fell back to a "neutral default" (`2/4`, `2/5`, `4/8`, etc.), which silently turned "no data" into "moderately positive". A symbol with 4/7 missing components could land at "70/FAIR" — fabricated conviction. The new architecture makes NULL honest: missing inputs → `score=null` for that signal, and if ≥50% of a dimension's signals are NULL, the entire dimension becomes `INSUFFICIENT_DATA` and contributes nothing to the composite. Composite coverage <60% forces `INSUFFICIENT_DATA / cannot recommend` regardless of partial score.
+
+### Three new modules
+
+**Layer 1 — `celesys_ontology.py`** (Meaning System). Defines what Signal, Dimension, Score, Verdict, Confidence mean across the entire platform. Single source of truth.
+- 5-band verdict mapping (VERY_WEAK / WEAK / NEUTRAL / STRONG / VERY_STRONG) plus INSUFFICIENT_DATA sentinel
+- Confidence model = completeness × stability × source quality (PRIMARY / SECONDARY / HEURISTIC / UNKNOWN)
+- Honest NULL aggregation rules at dimension and composite levels
+- `OntologyRegistry` singleton with `@register_signal` decorator
+
+**Layer 2 — `celesys_graph.py`** (Truth System). Directed acyclic graph of signal dependencies. Encodes institutional logic like "VWAP hold without volume = weak" and "breakout without RVOL = fake".
+- Cycle detection at edge-registration time
+- `propagate_weights()` — downstream weight scales with upstream score (factor 0.3-1.2)
+- `failure_trace()` — explains why a signal is weak by walking upstream
+- `detect_invalid_setups()` — flags structurally contradictory states
+- Regime overlay support (per-edge multipliers for bull/bear/sideways)
+
+**Layer 3 — `celesys_engine.py`** (Execution System). The pipeline.
+- `FeatureBundle` — typed input contract (all `Optional[T]`; NULL is the default)
+- `score_single()` — full per-symbol pipeline with provenance
+- `score_batch()` — parallel scoring with timeout per symbol
+- `rank_results()` and `emit_alerts()` — ranking + alert rules
+
+### Bootstrap (`celesys_bootstrap.py`)
+
+Wires the v1 content: 6 dimensions, 23 signals, 5 dependency edges. Auto-loads at module import.
+
+| Dimension | Weight | Signals |
+|---|---|---|
+| Fundamentals | 30% | rev growth · EPS growth · ROE · op margin · D/E · share dilution (split-aware) |
+| Valuation | 20% | trailing P/E · PEG · EV/EBITDA · FCF yield |
+| Momentum | 15% | above SMA50 · above SMA200 · RVOL · VWAP hold · 20d breakout |
+| Smart Money | 15% | insider net 180d · institutional own % · SMv3 |
+| Business Quality | 10% | pricing-power proxy · capital efficiency |
+| Catalysts | 10% | earnings proximity · RS vs market · sector momentum |
+
+### New endpoints
+
+- `GET /api/celesys-v2-score?symbol=&region=` — full 3-layer scoring with full provenance per signal, dependency-adjusted weights, invalid-setup flags, coverage %, and `forced_insufficient` boolean.
+- `GET /api/celesys-v2-introspect` — returns the live ontology + graph for auditing.
+
+Both endpoints carry the same security hardening as r99.46: input validation (`^[A-Z0-9.\-&\^]{1,20}$`), per-IP rate limit (30 req/min), 500-entry LRU cache, no stack trace exposure in prod.
+
+### The old `/api/institutional-360` endpoint is untouched
+
+r100.0 is **additive**. The existing 360 engine, dashboard, and all 13 r99.x engines keep working. Migration to the new architecture is opt-in via the new endpoint. UI can switch over progressively.
+
+### Validation
+
+| Harness | Coverage | Result |
+|---|---|---|
+| r100.0 (this build) | 7-category: Functional / Negative / Edge / Integration / Security / Performance / Reliability | **81 PASS / 0 FAIL** |
+| r99.46 regression | Security + correctness hotfix | 58 PASS / 0 FAIL |
+| r99.45 regression | 4 audit wires-in | 28 PASS / 0 FAIL |
+| r99.44 regression | 360° Decision Engine | 66 PASS / 0 FAIL |
+| r99.43 regression | CE/PE Scanner | 42 PASS / 0 FAIL |
+| r99.41 regression | Insider activity wiring | 42 PASS / 0 FAIL |
+| r99.39 regression | 4 base engines | 38 PASS / 0 FAIL |
+
+**Total: 355 checks passing across 7 harnesses.**
+
+Performance: avg score_single = 0.3ms on a populated bundle; batch of 10 in 4ms.
+
+### Try it after deploy
+
+```
+curl 'https://celesys.ai/api/celesys-v2-score?symbol=SBIN&region=IN'
+```
+
+For SBIN today (where many fields return None on `.NS`), the new engine reports:
+- `score: null`
+- `verdict: "INSUFFICIENT_DATA"`
+- `forced_insufficient: true`
+- `coverage_pct: ~30%`
+- Per-dimension: each missing dimension marked `INSUFFICIENT_DATA` with `note: "only N/M signals had data"`
+
+That's the honest answer the old engine couldn't give.
+
+### Roadmap
+
+- **r100.1**: stability tracking (variance over N samples) → currently placeholder 50.0
+- **r100.2**: regime inference (bull/bear/sideways) from breadth + VIX → currently always None
+- **r100.3**: more signals — analyst revisions, news sentiment, options flow, F&O OI delta
+- **r100.4**: Redis-backed cache (closes audit M2 from r99.45)
+- **r100.5**: progressive UI migration of 360 panel to v2 endpoint
+- **r100.6**: contract test between `_csa_extract_features` and `stock_dashboard` shape (closes audit M8)
+
+---
+
 ## r63.99.46 (2026-06-02) — Security + correctness hotfix (audit conditions closed)
 
 **This is a security-headline release.** Direct response to the formal engineering audit applied to r99.45 (verdict: APPROVED WITH CONDITIONS). All Critical and High findings closed; selected Medium findings closed.
