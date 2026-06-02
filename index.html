@@ -2151,6 +2151,222 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <div id="dashResult" style="min-height:120px"><div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px">Enter a ticker above and click <strong>📊 ANALYZE</strong> to see a full institutional fundamentals dashboard: 10-year history of EPS / Revenue / FCF / ROIC / D-to-A, CAGRs, plus my analytical verdicts on share-action, ROIC quality, FCF conversion, leverage, dividend safety, and growth pattern.</div></div>
 </div></div>
 
+<!-- ═══ TAB: INSTITUTIONAL ENGINES (r63.99.39) — Celesys 2.0 decision engines ═══ -->
+<div class="sc" data-tab="engines" style="border-left:3px solid #7c3aed;display:none">
+<div class="sh"><div class="si" style="background:rgba(124,58,237,.1)">&#127919;</div><div class="st" style="color:#7c3aed">Institutional Engines &mdash; Smart Exit &middot; Risk Radar &middot; Conviction &middot; Rotation</div></div>
+<div class="sbody">
+
+<!-- Header banner -->
+<div style="padding:13px 15px;background:linear-gradient(180deg,#faf5ff,#f3e8ff);border:1px solid #c4b5fd;border-radius:10px;margin-bottom:14px;font-size:11px;color:#5b21b6;line-height:1.6">
+  <strong style="font-family:Sora,sans-serif">&#127919; Decision systems, not more indicators.</strong>
+  Four engines that answer the questions institutional investors actually pay for: <em>What should I buy? When should I exit? How much risk am I taking? Where is capital rotating?</em> Honest about data gaps &mdash; never fabricates inputs that aren&rsquo;t there.
+</div>
+
+<!-- Engine navigation pills -->
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+  <button onclick="window._engShow('exit')" id="engBtnExit" style="padding:7px 14px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128293; Smart Exit</button>
+  <button onclick="window._engShow('risk')" id="engBtnRisk" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127919; Portfolio Risk Radar</button>
+  <button onclick="window._engShow('conviction')" id="engBtnConv" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129504; Conviction Score</button>
+  <button onclick="window._engShow('rotation')" id="engBtnRot" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128260; Capital Rotation</button>
+  <button onclick="window._engShow('multibagger')" id="engBtnMB" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128300; Multibagger Probability</button>
+  <button onclick="window._engShow('etfbuilder')" id="engBtnETF" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127919; ETF Builder</button>
+  <button onclick="window._engShow('earningspred')" id="engBtnEPS" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128202; Earnings Predictor</button>
+  <button onclick="window._engShow('macro')" id="engBtnMacro" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127760; Macro Impact</button>
+  <button onclick="window._engShow('mgmt')" id="engBtnMgmt" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128104;&#8205;&#128188; Management Change</button>
+  <button onclick="window._engShow('picks')" id="engBtnPicks" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127942; Today's Picks</button>
+</div>
+
+<!-- SMART EXIT ENGINE -->
+<div id="engExitPanel" style="display:block">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#128293; Smart Exit Engine</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Should I exit this position? Aggregates 5 institutional exit triggers: institutional selling, relative strength break, valuation stretched, technical structure break, profit-take territory.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <input id="exitSym" type="text" placeholder="MSFT or RELIANCE" style="padding:6px 10px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#4c1d95;width:140px">
+      <input id="exitEntry" type="number" placeholder="entry (optional)" step="0.01" style="padding:6px 10px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#4c1d95;width:130px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="exitRegIN" onclick="window._engSetRegion('exit','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="exitRegUS" onclick="window._engSetRegion('exit','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._loadExitEngine()" id="exitBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128293; ANALYZE EXIT</button>
+    </div>
+    <div id="exitResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter symbol + optional entry price, click ANALYZE EXIT.</div></div>
+  </div>
+</div>
+
+<!-- PORTFOLIO RISK RADAR -->
+<div id="engRiskPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#127919; Portfolio Risk Radar</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Where is the risk in this portfolio? 6 risk dimensions: single-position, top-3, sector, region, beta, cash. Suggests specific fixes.</div>
+    <div style="padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <div style="font-size:10px;color:#5b21b6;font-weight:700;margin-bottom:6px;letter-spacing:0.3px">Holdings (one per line: SYMBOL,WEIGHT%,REGION)</div>
+      <textarea id="riskHoldings" rows="6" placeholder="AAPL,15,US&#10;MSFT,12,US&#10;NVDA,10,US&#10;GOOG,8,US&#10;META,7,US&#10;TSLA,6,US&#10;RELIANCE,12,IN&#10;HDFCBANK,8,IN" style="width:100%;padding:8px;border:1px solid #c4b5fd;border-radius:5px;font-size:10px;font-family:'JetBrains Mono',monospace;color:#4c1d95;background:#fff;resize:vertical"></textarea>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap">
+        <label style="font-size:10px;color:#5b21b6;font-weight:700">CASH %:</label>
+        <input id="riskCash" type="number" value="5" step="0.5" style="padding:5px 8px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;width:70px;font-family:'JetBrains Mono',monospace;color:#4c1d95">
+        <button onclick="window._loadRiskRadar()" id="riskBtn" style="margin-left:auto;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127919; ANALYZE RISK</button>
+      </div>
+    </div>
+    <div id="riskResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Paste holdings (one per line: symbol,weight%,region), click ANALYZE RISK.</div></div>
+  </div>
+</div>
+
+<!-- INSTITUTIONAL CONVICTION -->
+<div id="engConvPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#129504; Institutional Conviction Score</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Is smart money entering before the move? Aggregates 6 components: fundamental quality, valuation, ROIC trajectory, capital return, growth quality, institutional ownership.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <input id="convSym" type="text" placeholder="NVDA or TCS" style="padding:6px 10px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#4c1d95;width:140px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="convRegIN" onclick="window._engSetRegion('conv','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="convRegUS" onclick="window._engSetRegion('conv','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._loadConvictionScore()" id="convBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#129504; SCORE</button>
+    </div>
+    <div id="convResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter symbol, click SCORE for conviction breakdown.</div></div>
+  </div>
+</div>
+
+<!-- CAPITAL ROTATION -->
+<div id="engRotPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#128260; Capital Rotation Engine</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Where is institutional money flowing? Ranks sector ETFs by trailing return &mdash; identifies which sectors are receiving capital vs being abandoned. <em>r99.39 scaffold: pure ETF returns. r99.40 will add 13F flows + options flow.</em></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="rotRegIN" onclick="window._engSetRegion('rot','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="rotRegUS" onclick="window._engSetRegion('rot','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <label style="font-size:10px;color:#5b21b6;font-weight:700">LOOKBACK:</label>
+      <select id="rotLookback" style="padding:5px 8px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;color:#4c1d95;background:#fff">
+        <option value="7">1 week</option>
+        <option value="30" selected>1 month</option>
+        <option value="90">3 months</option>
+        <option value="180">6 months</option>
+      </select>
+      <button onclick="window._loadCapitalRotation()" id="rotBtn" style="margin-left:auto;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128260; SHOW ROTATION</button>
+    </div>
+    <div id="rotResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Pick region + lookback, click SHOW ROTATION.</div></div>
+  </div>
+</div>
+
+<!-- ENGINE 5: MULTIBAGGER PROBABILITY -->
+<div id="engMultibaggerPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#128300; Multibagger Probability</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">What's the probability this stock 5-10x's over 5+ years? Aggregates 7 institutional signals: ROIC trajectory, revenue acceleration, margin expansion, debt discipline, capital efficiency, ownership quality, insider buying.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <input id="mbSym" type="text" placeholder="NVDA or TATAMOTORS" style="padding:6px 10px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#4c1d95;width:160px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="mbRegIN" onclick="window._engSetRegion('mb','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="mbRegUS" onclick="window._engSetRegion('mb','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._loadMultibaggerProb()" id="mbBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128300; SCORE PROBABILITY</button>
+    </div>
+    <div id="mbResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter a symbol you're considering for the long-term — click SCORE PROBABILITY.</div></div>
+  </div>
+</div>
+
+<!-- ENGINE 6: SMART MONEY ETF BUILDER -->
+<div id="engETFBuilderPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#127919; Smart Money ETF Builder</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Pick a risk profile, get a complete ETF allocation. Robo-advisor layer for users who want a sensible starting portfolio without picking individual stocks.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <label style="font-size:10px;color:#5b21b6;font-weight:700">RISK PROFILE:</label>
+      <select id="etfRisk" style="padding:5px 10px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;color:#4c1d95;background:#fff;font-weight:700">
+        <option value="conservative">Conservative (capital preservation)</option>
+        <option value="moderate" selected>Moderate (balanced)</option>
+        <option value="aggressive">Aggressive (growth)</option>
+      </select>
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="etfRegIN" onclick="window._engSetRegion('etf','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="etfRegUS" onclick="window._engSetRegion('etf','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._loadETFBuilder()" id="etfBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127919; BUILD ETF PORTFOLIO</button>
+    </div>
+    <div id="etfResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Pick a risk profile + region, click BUILD ETF PORTFOLIO.</div></div>
+  </div>
+</div>
+
+<!-- ENGINE 7: EARNINGS SURPRISE PREDICTOR -->
+<div id="engEarningsPredPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#128202; Earnings Surprise Predictor</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Probability that this stock beats earnings consensus, with 4 signal components: historical beat pattern, analyst recommendation trend, price target upside, revenue growth momentum. <em>r99.40 PARTIAL: options flow + IV expansion + insider buying wired in r99.41.</em></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <input id="epsSym" type="text" placeholder="NVDA or RELIANCE" style="padding:6px 10px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#4c1d95;width:140px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="epsRegIN" onclick="window._engSetRegion('eps','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="epsRegUS" onclick="window._engSetRegion('eps','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._loadEarningsPredictor()" id="epsBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128202; PREDICT</button>
+    </div>
+    <div id="epsResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter symbol — click PREDICT for pre-earnings probability + signal breakdown.</div></div>
+  </div>
+</div>
+
+<!-- ENGINE 8: MACRO IMPACT -->
+<div id="engMacroPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#127760; Macro Impact Engine</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">How is this stock correlated with key macro factors? 90-day rolling correlation vs 10Y yield / DXY / crude / gold / VIX (US) or Nifty / USD-INR / crude / gold / India VIX (IN). Net Macro Score: -25 (strong headwind) to +25 (strong tailwind).</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <input id="macroSym" type="text" placeholder="MU or TATAMOTORS" style="padding:6px 10px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#4c1d95;width:140px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="macroRegIN" onclick="window._engSetRegion('macro','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="macroRegUS" onclick="window._engSetRegion('macro','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._loadMacroImpact()" id="macroBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127760; COMPUTE IMPACT</button>
+    </div>
+    <div id="macroResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter symbol — click COMPUTE IMPACT for cross-asset correlation breakdown.</div></div>
+  </div>
+</div>
+
+<!-- ENGINE 9: MANAGEMENT CHANGE -->
+<div id="engMgmtPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#128104;&#8205;&#128188; CEO / Management Change Detector</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Current officer roster + structural change proxies (buybacks, spin-offs, M&amp;A signals). Many multibaggers begin with management changes. <em>r99.40 SCAFFOLD: officer roster + proxies only. r99.41 will add SEC 8-K (US) + SEBI corporate-announcement (IN) integration.</em></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <input id="mgmtSym" type="text" placeholder="symbol" style="padding:6px 10px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#4c1d95;width:140px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="mgmtRegIN" onclick="window._engSetRegion('mgmt','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="mgmtRegUS" onclick="window._engSetRegion('mgmt','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._loadMgmtChange()" id="mgmtBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128269; SCAN MANAGEMENT</button>
+    </div>
+    <div id="mgmtResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter symbol — click SCAN MANAGEMENT for officer roster + structural signals.</div></div>
+  </div>
+</div>
+
+<!-- ENGINE 10: TODAY'S INSTITUTIONAL PICKS -->
+<div id="engPicksPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-bottom:8px">&#127942; What Institutions Are Buying Today</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Top-ranked stocks by Institutional Conviction Score, refreshed every 6 hours. Pick region + top-N. <em>r99.40 SCAFFOLD: scores top 25 by market cap. r99.41 will add nightly cron job over Russell 1000 / Nifty 500.</em></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
+      <div style="display:flex;border:1px solid #c4b5fd;border-radius:5px;overflow:hidden">
+        <button id="picksRegIN" onclick="window._engSetRegion('picks','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#5b21b6">IN</button>
+        <button id="picksRegUS" onclick="window._engSetRegion('picks','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #c4b5fd;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <label style="font-size:10px;color:#5b21b6;font-weight:700">TOP N:</label>
+      <select id="picksTopN" style="padding:5px 8px;border:1px solid #c4b5fd;border-radius:5px;font-size:11px;color:#4c1d95;background:#fff">
+        <option value="5">Top 5</option>
+        <option value="10" selected>Top 10</option>
+        <option value="15">Top 15</option>
+        <option value="25">Top 25</option>
+      </select>
+      <button onclick="window._loadInstitutionalPicks()" id="picksBtn" style="margin-left:auto;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127942; SHOW PICKS</button>
+    </div>
+    <div id="picksResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px"><strong>First load takes ~30-60s</strong> while we score the universe. After that, cached for 6 hours.</div></div>
+  </div>
+</div>
+
+</div></div>
+
 <div class="sc" data-tab="proscan" style="border-left:3px solid #1A3A78;display:none">
 <div class="sh"><div class="si" style="background:rgba(124,58,237,.1)">&#128300;</div><div class="st" style="color:#1A3A78">Wealth Engine Pro — Institutional Deep Scan</div></div>
 <div class="sbody" id="proScanBody">
@@ -2584,7 +2800,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=1779727200"></script>
+<script src="/static/app.min.js?v=1779900000"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>

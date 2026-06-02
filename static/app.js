@@ -468,9 +468,55 @@
 //       WHY no verdict was generated.
 //   AFTER FIXES: 30/30 archetypes pass with sensible verdicts. No crash,
 //   no illogical verdict, no silent skip.
-window.CELESYS_VERSION = "r63.99.38";
-window.CELESYS_BUILD_TIME = 1779727200;
-window.CELESYS_BUILD_DATE = "2026-05-25 14:00:00 UTC";
+// r63.99.39: INSTITUTIONAL ENGINES — Celesys 2.0 decision-oriented features.
+// Vijay's full Celesys 2.0 product brief: 10 institutional engines, 5 marked
+// as core. Honest scope assessment up front — depth over breadth:
+//   1. Smart Exit Engine         FULL  /api/smart-exit-engine
+//   2. Portfolio Risk Radar      FULL  /api/portfolio-risk-radar
+//   3. Institutional Conviction  AGGR  /api/institutional-conviction
+//   4. Capital Rotation Engine   SCAF  /api/capital-rotation
+//   5. Multibagger Probability   r99.40 (Multibagger Hunter already exists)
+//   6-10. Earnings Surprise / Macro / CEO Change / Today's Picks / ETF Builder
+//        → r99.40 roadmap, documented in CHANGELOG.
+// SMART EXIT ENGINE: 5 trigger signals (institutional selling, RS deterioration,
+//   valuation stretched, technical break, profit-take territory). Each scores
+//   0-20, total 0-100. Verdict bands: HOLD / TIGHTEN STOP / TRIM / SELL MAJORITY /
+//   FULL EXIT. Sanity gate: no price → INSUFFICIENT_DATA.
+// PORTFOLIO RISK RADAR: POST endpoint accepts holdings + cash %, scores 6 risk
+//   components: single-position concentration, top-3, sector, region, beta,
+//   cash buffer. Returns ordered suggested_fixes with reasons.
+// INSTITUTIONAL CONVICTION: aggregator over existing dashboard signals — maps
+//   quality/valuation/ROIC/buyback/growth/institutional ownership to a single
+//   0-100 score. Includes _future_inputs spec for r99.40 enhancements
+//   (smart-money-v3, dd-positioning, options skew, NSE delivery).
+// CAPITAL ROTATION: r99.39 SCAFFOLD using sector ETF returns only. Identifies
+//   top 3 entering / bottom 3 leaving across 11 US sector ETFs or 8 India
+//   sector ETFs. r99.40 will add 13F flows, options flow, FII/DII.
+// All endpoints carry r99.37 wrapper + r99.38 _ds_num sanitization + sanity
+// gates. UI lives in Decide → 🎯 Engines subtab (4 panels via nav pills).
+// VALIDATION: 20-archetype harness across 4 engines = 38 checks, 38 PASS,
+// 0 FAIL, 0 WARN. Dashboard r99.38 30-archetype harness still 30/30 clean.
+// r63.99.40: CELESYS 2.0 COMPLETION — 6 final engines from Vijay's spec.
+//   r99.39 shipped 4 of 10. r99.40 completes the remaining 6:
+//     5. Multibagger Probability       /api/multibagger-probability       FULL
+//     6. Smart Money ETF Builder       /api/smart-money-etf-builder       FULL
+//     7. Earnings Surprise Predictor   /api/earnings-surprise-predictor   PARTIAL
+//     8. Macro Impact Engine           /api/macro-impact                  FULL
+//     9. Management Change Detector    /api/management-change             SCAFFOLD
+//    10. Today's Institutional Picks   /api/institutional-picks-today     SCAFFOLD
+//   All carry r99.37 wrapper + r99.38 _eng_ds_num + r99.39 sanity-gate pattern.
+//   UI: 6 new pills in Decide → 🎯 Engines subtab (Multibagger, ETF Builder,
+//   Earnings Pred, Macro, Mgmt, Today's Picks). Each panel reuses the design
+//   language from r99.39 (purple gradient, JetBrains Mono for scores).
+//   VALIDATION:
+//     • r99.40 engines harness: PASS=36 FAIL=0 WARN=0 across 23 archetypes
+//     • r99.39 engines harness: PASS=38 FAIL=0 WARN=0 (no regression)
+//     • r99.38 dashboard harness: 30/30 PASS (no regression — verified direct)
+//   r99.41 enhancement roadmap documented in CHANGELOG.md (per-engine _note
+//   and _future_inputs surface gaps to users in real time, not buried in docs).
+window.CELESYS_VERSION = "r63.99.40";
+window.CELESYS_BUILD_TIME = 1779900000;
+window.CELESYS_BUILD_DATE = "2026-05-27 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -3137,7 +3183,7 @@ var TAB_GROUPS = {
   // institutional terminals are text-first; saturated emojis (🧠 pink, 🎯 red,
   // ⚡ yellow, 🔥 orange, 💎 cyan, 📊 blue) make the nav visually noisy. Removing
   // them. The tab content already self-identifies via its own header.
-  decide:   {tabs: ['decision','tomorrowbrief','fundadashboard','toptrades','topinvest','smv3','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','etfscanner','reports','pms'], labels: ['Analyze Stock','🌅 Tomorrow\'s Open','📊 Dashboard','Top Trades','Top Investments','🧠 Smart Money v3','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','📊 ETF Scanner','Reports','PMS'], default: 'decision'},
+  decide:   {tabs: ['decision','tomorrowbrief','fundadashboard','engines','toptrades','topinvest','smv3','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','etfscanner','reports','pms'], labels: ['Analyze Stock','🌅 Tomorrow\'s Open','📊 Dashboard','🎯 Engines','Top Trades','Top Investments','🧠 Smart Money v3','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','📊 ETF Scanner','Reports','PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -4802,6 +4848,10 @@ if(tab==='tomorrowbrief'){
 // r63.99.32: Stock Dashboard — own subtab
 if(tab==='fundadashboard'){
   // Don't auto-fetch; let user enter symbol first
+  return;
+}
+// r63.99.39: Institutional Engines subtab — no auto-fetch
+if(tab==='engines'){
   return;
 }
 // r63.72: Institutional Positioning Scanner
@@ -11524,6 +11574,876 @@ window._dashWatchStuckLoaders = function(symbol, region) {
       console.warn('[r99.36 watchdog] ' + stuck + ' card(s) stuck on "Calculating" 25s after render — replaced with honest message');
     }
   }, 25000);
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// r63.99.39: INSTITUTIONAL ENGINES UI — Smart Exit / Risk Radar / Conviction / Rotation
+// Lives in Decide → 🎯 Engines subtab. Each engine is independent — load
+// only what user requests. No auto-fetch on tab open.
+// ════════════════════════════════════════════════════════════════════════════
+
+window._engState = {exit: {region: 'US'}, risk: {region: 'US'},
+                    conv: {region: 'US'}, rot: {region: 'US'},
+                    mb: {region: 'US'}, etf: {region: 'US'},
+                    eps: {region: 'US'}, macro: {region: 'US'},
+                    mgmt: {region: 'US'}, picks: {region: 'US'}};
+
+window._engShow = function(panel) {
+  // Hide all panels, show selected, update button styling
+  var panelMap = {
+    'exit': 'engExitPanel', 'risk': 'engRiskPanel',
+    'conviction': 'engConvPanel', 'rotation': 'engRotPanel',
+    'multibagger': 'engMultibaggerPanel', 'etfbuilder': 'engETFBuilderPanel',
+    'earningspred': 'engEarningsPredPanel', 'macro': 'engMacroPanel',
+    'mgmt': 'engMgmtPanel', 'picks': 'engPicksPanel',
+  };
+  Object.keys(panelMap).forEach(function(k) {
+    var el = document.getElementById(panelMap[k]);
+    if (el) el.style.display = (k === panel) ? 'block' : 'none';
+  });
+  // Update nav button styling
+  var btnMap = {
+    'exit': 'engBtnExit', 'risk': 'engBtnRisk',
+    'conviction': 'engBtnConv', 'rotation': 'engBtnRot',
+    'multibagger': 'engBtnMB', 'etfbuilder': 'engBtnETF',
+    'earningspred': 'engBtnEPS', 'macro': 'engBtnMacro',
+    'mgmt': 'engBtnMgmt', 'picks': 'engBtnPicks',
+  };
+  Object.keys(btnMap).forEach(function(k) {
+    var btn = document.getElementById(btnMap[k]);
+    if (!btn) return;
+    if (k === panel) {
+      btn.style.background = 'linear-gradient(135deg,#7c3aed,#6d28d9)'; btn.style.color = '#fff'; btn.style.border = 'none';
+    } else {
+      btn.style.background = '#fff'; btn.style.color = '#5b21b6'; btn.style.border = '1px solid #c4b5fd';
+    }
+  });
+};
+
+window._engSetRegion = function(eng, reg) {
+  if (!window._engState[eng]) return;
+  window._engState[eng].region = reg;
+  var inBtn = document.getElementById(eng + 'RegIN');
+  var usBtn = document.getElementById(eng + 'RegUS');
+  if (!inBtn || !usBtn) return;
+  var active = 'linear-gradient(135deg,#7c3aed,#6d28d9)';
+  if (reg === 'IN') {
+    inBtn.style.background = active; inBtn.style.color = '#fff';
+    usBtn.style.background = '#fff'; usBtn.style.color = '#5b21b6';
+  } else {
+    usBtn.style.background = active; usBtn.style.color = '#fff';
+    inBtn.style.background = '#fff'; inBtn.style.color = '#5b21b6';
+  }
+};
+
+// ───── Shared error rendering ─────
+window._engRenderError = function(elId, sym, errMsg, trace) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var traceHtml = trace ?
+    '<details style="margin-top:8px;font-size:9px"><summary style="cursor:pointer;color:#991b1b;font-weight:700">▸ Backend trace</summary>' +
+    '<pre style="margin-top:5px;padding:6px;background:#fff;border:1px solid #fca5a5;border-radius:4px;font-size:9px;color:#7f1d1d;overflow:auto;max-height:160px;font-family:\'JetBrains Mono\',monospace;white-space:pre-wrap">' +
+    String(trace).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre></details>' : '';
+  el.innerHTML = '<div style="padding:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px">' +
+    '<strong>Error analyzing ' + (sym || '?') + ':</strong> ' + errMsg + traceHtml + '</div>';
+};
+
+// ═══════════════════ SMART EXIT ENGINE ═══════════════════
+window._loadExitEngine = function() {
+  var inp = document.getElementById('exitSym');
+  var entryInp = document.getElementById('exitEntry');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  var entry = parseFloat((entryInp && entryInp.value) || '0') || 0;
+  if (!sym) {
+    document.getElementById('exitResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please enter a symbol first.</div>';
+    return;
+  }
+  var reg = window._engState.exit.region;
+  var btn = document.getElementById('exitBtn');
+  var resEl = document.getElementById('exitResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ COMPUTING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Running 5-trigger exit analysis for ' + sym + '…</div>';
+  var url = '/api/smart-exit-engine?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg) + (entry > 0 ? '&entry_price=' + entry : '');
+  fetch(url, {cache: 'no-store'}).then(function(r) { return r.json().catch(function(){return null;}); }).then(function(d) {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔥 ANALYZE EXIT'; }
+    if (!d || !d.success) {
+      var msg = (d && (d.error || d.detail)) || 'unknown';
+      window._engRenderError('exitResult', sym, msg, d && d.trace);
+      return;
+    }
+    resEl.innerHTML = window._renderExitEngine(d);
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔥 ANALYZE EXIT'; }
+    window._engRenderError('exitResult', sym, 'Network error: ' + e.message);
+  });
+};
+
+window._renderExitEngine = function(d) {
+  var colors = {green: '#10b981', lime: '#84cc16', amber: '#d97706', red: '#dc2626'};
+  var color = colors[(d.action_now && d.action_now.color) || 'amber'];
+  var score = d.exit_confidence_score || 0;
+  var firedCount = (d.triggers || []).filter(function(t) { return t.fired; }).length;
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">EXIT VERDICT · ' + (d.symbol || '?') + '</div>';
+  h += '<div style="font-size:24px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;line-height:1.1;margin-top:2px">' + (d.verdict || 'HOLD') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b;letter-spacing:0.5px">EXIT CONFIDENCE</div>';
+  h += '<div style="font-size:32px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;line-height:1">' + score + '</div>';
+  h += '<div style="font-size:9px;color:#64748b">/100 · ' + firedCount + '/5 triggers</div></div></div>';
+  if (d.action_now) {
+    h += '<div style="background:#fff;border-left:3px solid ' + color + ';padding:10px 12px;border-radius:0 6px 6px 0;margin-top:8px">';
+    h += '<div style="font-size:11px;font-weight:900;color:' + color + ';letter-spacing:0.3px;margin-bottom:3px">' + d.action_now.action + ' · <span style="color:#64748b;font-weight:700">' + d.action_now.urgency + '</span></div>';
+    h += '<div style="font-size:11px;color:#374151;line-height:1.5">' + d.action_now.rationale + '</div></div>';
+  }
+  if (d.current_price !== null && d.current_price !== undefined) {
+    h += '<div style="margin-top:8px;font-size:10px;color:#64748b">Current: <strong>$' + d.current_price + '</strong>';
+    if (d.entry_price) h += ' · Entry: $' + d.entry_price;
+    if (d.gain_pct !== null && d.gain_pct !== undefined) {
+      var gColor = d.gain_pct >= 0 ? '#10b981' : '#dc2626';
+      h += ' · <span style="color:' + gColor + ';font-weight:800">' + (d.gain_pct > 0 ? '+' : '') + d.gain_pct + '%</span>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  // Trigger breakdown
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:10px">';
+  (d.triggers || []).forEach(function(t) {
+    var tColor = t.fired ? '#dc2626' : '#9ca3af';
+    h += '<div style="background:#fff;border:1px solid ' + (t.fired ? '#fca5a5' : '#e5e7eb') + ';border-left:3px solid ' + tColor + ';border-radius:8px;padding:9px 11px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px">';
+    h += '<span style="font-size:10.5px;font-weight:800;color:' + tColor + ';font-family:Sora,sans-serif">' + (t.fired ? '🔴 ' : '⚪ ') + t.name + '</span>';
+    h += '<span style="font-size:10px;color:#64748b;font-family:JetBrains Mono,monospace">' + t.score + '/' + t.max + '</span>';
+    h += '</div>';
+    h += '<div style="font-size:9px;color:#94a3b8;margin-bottom:4px">' + (t.weight_explain || '') + '</div>';
+    if (t.evidence && t.evidence.length) {
+      h += '<ul style="margin:0;padding-left:14px;font-size:10px;color:#475569;line-height:1.5">';
+      t.evidence.forEach(function(e) { h += '<li>' + String(e).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+      h += '</ul>';
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  // Warnings + provenance
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:8px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's' + (d._cached ? ' · cached ' + d._cache_age_sec + 's' : '') + ' · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ PORTFOLIO RISK RADAR ═══════════════════
+window._loadRiskRadar = function() {
+  var raw = (document.getElementById('riskHoldings').value || '').trim();
+  if (!raw) {
+    document.getElementById('riskResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please paste holdings (one per line).</div>';
+    return;
+  }
+  var cashPct = parseFloat(document.getElementById('riskCash').value || '0') || 0;
+  var lines = raw.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+  var holdings = [];
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split(',').map(function(s) { return s.trim(); });
+    if (parts.length < 2) continue;
+    var sym = parts[0].toUpperCase();
+    var wt = parseFloat(parts[1]);
+    var reg = (parts[2] || 'US').toUpperCase();
+    if (sym && !isNaN(wt) && wt > 0) holdings.push({symbol: sym, weight_pct: wt, region: reg});
+  }
+  if (holdings.length === 0) {
+    document.getElementById('riskResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">No valid holdings parsed. Format: SYMBOL,WEIGHT%,REGION (one per line).</div>';
+    return;
+  }
+  var btn = document.getElementById('riskBtn');
+  var resEl = document.getElementById('riskResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ COMPUTING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Analyzing ' + holdings.length + ' positions across 6 risk dimensions…</div>';
+  fetch('/api/portfolio-risk-radar', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({holdings: holdings, cash_pct: cashPct})
+  }).then(function(r) { return r.json().catch(function(){return null;}); }).then(function(d) {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 ANALYZE RISK'; }
+    if (!d || !d.success) {
+      var msg = (d && (d.error || d.detail)) || 'unknown';
+      window._engRenderError('riskResult', holdings.length + ' holdings', msg, d && d.trace);
+      return;
+    }
+    resEl.innerHTML = window._renderRiskRadar(d);
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 ANALYZE RISK'; }
+    window._engRenderError('riskResult', 'portfolio', 'Network error: ' + e.message);
+  });
+};
+
+window._renderRiskRadar = function(d) {
+  var colors = {green: '#10b981', lime: '#84cc16', amber: '#d97706', red: '#dc2626'};
+  var color = colors[d.color || 'amber'];
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">PORTFOLIO RISK</div>';
+  h += '<div style="font-size:20px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;margin-top:2px">' + (d.overall_verdict || '?') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b">RISK SCORE</div>';
+  h += '<div style="font-size:32px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;line-height:1">' + d.risk_score + '</div>';
+  h += '<div style="font-size:9px;color:#64748b">/100 (higher = more risk)</div></div></div>';
+  h += '<div style="font-size:10px;color:#64748b;margin-top:6px">' + d.holdings_count + ' holdings · ' + d.total_weight_pct + '% deployed · ' + d.cash_pct + '% cash</div>';
+  h += '</div>';
+  // 6 component breakdown
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:10px">';
+  var verdictColor = function(v) {
+    if (v === 'EXTREME' || v === 'NO DRY POWDER' || v === 'AGGRESSIVE' || v === 'CONCENTRATED') return '#dc2626';
+    if (v === 'HIGH' || v === 'DOMINANT' || v === 'ELEVATED' || v === 'THIN' || v === 'EXCESS') return '#d97706';
+    if (v === 'BALANCED' || v === 'DIVERSIFIED' || v === 'APPROPRIATE' || v === 'OK') return '#10b981';
+    return '#64748b';
+  };
+  (d.components || []).forEach(function(c) {
+    var cColor = verdictColor(c.verdict);
+    h += '<div style="background:#fff;border:1px solid ' + cColor + '40;border-left:3px solid ' + cColor + ';border-radius:8px;padding:10px 12px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">';
+    h += '<span style="font-size:11px;font-weight:800;color:#374151;font-family:Sora,sans-serif">' + c.name + '</span>';
+    h += '<span style="font-size:9px;font-weight:800;color:' + cColor + ';background:' + cColor + '20;padding:2px 7px;border-radius:4px;letter-spacing:0.4px">' + c.verdict + '</span>';
+    h += '</div>';
+    h += '<div style="font-size:9px;color:#94a3b8;margin-bottom:4px;font-family:JetBrains Mono,monospace">' + c.score + '/' + c.max + ' risk pts</div>';
+    if (c.evidence && c.evidence.length) {
+      h += '<ul style="margin:0;padding-left:14px;font-size:10px;color:#475569;line-height:1.5">';
+      c.evidence.forEach(function(e) { h += '<li>' + String(e).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+      h += '</ul>';
+    }
+    if (c.sector_breakdown) {
+      h += '<div style="margin-top:6px;font-size:9px;color:#64748b">Breakdown: ';
+      var first = true;
+      Object.keys(c.sector_breakdown).forEach(function(k) {
+        h += (first ? '' : ' · ') + '<strong>' + k + '</strong>:' + c.sector_breakdown[k] + '%'; first = false;
+      });
+      h += '</div>';
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  // Top risks + suggested fixes
+  if (d.top_risks && d.top_risks.length) {
+    h += '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;margin-bottom:10px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#991b1b;letter-spacing:0.3px;margin-bottom:6px">⚠ TOP RISKS</div>';
+    h += '<ul style="margin:0;padding-left:18px;font-size:10.5px;color:#7f1d1d;line-height:1.6">';
+    d.top_risks.forEach(function(r) { h += '<li>' + r.msg + '</li>'; });
+    h += '</ul></div>';
+  }
+  if (d.suggested_fixes && d.suggested_fixes.length) {
+    h += '<div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;padding:10px 14px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#065f46;letter-spacing:0.3px;margin-bottom:6px">✓ SUGGESTED FIXES (priority order)</div>';
+    h += '<ol style="margin:0;padding-left:20px;font-size:10.5px;color:#064e3b;line-height:1.7">';
+    d.suggested_fixes.forEach(function(f) { h += '<li><strong>' + f.action + '</strong> &mdash; <span style="color:#047857">' + f.reason + '</span></li>'; });
+    h += '</ol></div>';
+  }
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:8px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ CONVICTION SCORE ═══════════════════
+window._loadConvictionScore = function() {
+  var inp = document.getElementById('convSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  if (!sym) {
+    document.getElementById('convResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please enter a symbol first.</div>';
+    return;
+  }
+  var reg = window._engState.conv.region;
+  var btn = document.getElementById('convBtn');
+  var resEl = document.getElementById('convResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ COMPUTING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Aggregating 6 conviction components for ' + sym + '…</div>';
+  fetch('/api/institutional-conviction?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg), {cache:'no-store'}).then(function(r) { return r.json().catch(function(){return null;}); }).then(function(d) {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🧠 SCORE'; }
+    if (!d || !d.success) {
+      var msg = (d && (d.error || d.detail)) || 'unknown';
+      window._engRenderError('convResult', sym, msg, d && d.trace);
+      return;
+    }
+    resEl.innerHTML = window._renderConvictionScore(d);
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🧠 SCORE'; }
+    window._engRenderError('convResult', sym, 'Network error: ' + e.message);
+  });
+};
+
+window._renderConvictionScore = function(d) {
+  var colors = {green: '#10b981', lime: '#84cc16', amber: '#d97706', red: '#dc2626', gray: '#64748b'};
+  var color = colors[d.color || 'amber'];
+  var score = d.conviction_score || 0;
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">CONVICTION · ' + (d.symbol || '?') + '</div>';
+  h += '<div style="font-size:22px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;line-height:1.1;margin-top:3px">' + (d.verdict || 'UNKNOWN') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b">CONVICTION SCORE</div>';
+  h += '<div style="font-size:32px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;line-height:1">' + score + '</div>';
+  h += '<div style="font-size:9px;color:#64748b">/100</div></div></div>';
+  h += '</div>';
+  // Component breakdown
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:10px">';
+  (d.components || []).forEach(function(c) {
+    var pct = c.max > 0 ? (c.score / c.max * 100) : 0;
+    var cColor = pct >= 70 ? '#10b981' : pct >= 40 ? '#d97706' : '#dc2626';
+    h += '<div style="background:#fff;border:1px solid #e5e7eb;border-left:3px solid ' + cColor + ';border-radius:8px;padding:10px 12px">';
+    h += '<div style="font-size:11px;font-weight:800;color:#374151;font-family:Sora,sans-serif;margin-bottom:3px">' + c.name + '</div>';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">';
+    h += '<div style="flex:1;background:#f1f5f9;border-radius:3px;height:6px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:' + cColor + '"></div></div>';
+    h += '<span style="font-size:10px;font-weight:800;color:' + cColor + ';font-family:JetBrains Mono,monospace">' + c.score + '/' + c.max + '</span>';
+    h += '</div>';
+    h += '<div style="font-size:10px;color:#64748b;line-height:1.4">' + (c.note || '') + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  if (d._future_inputs && d._future_inputs.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#64748b"><summary style="cursor:pointer;font-weight:700">▸ Inputs that will be added in r99.40+</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d._future_inputs.forEach(function(f) { h += '<li>' + f + '</li>'; });
+    h += '</ul></details>';
+  }
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ CAPITAL ROTATION ═══════════════════
+window._loadCapitalRotation = function() {
+  var reg = window._engState.rot.region;
+  var lookback = parseInt(document.getElementById('rotLookback').value || '30');
+  var btn = document.getElementById('rotBtn');
+  var resEl = document.getElementById('rotResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ FETCHING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Fetching ' + lookback + 'd sector returns for ' + reg + '…</div>';
+  fetch('/api/capital-rotation?region=' + encodeURIComponent(reg) + '&lookback_days=' + lookback, {cache:'no-store'}).then(function(r) { return r.json().catch(function(){return null;}); }).then(function(d) {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔄 SHOW ROTATION'; }
+    if (!d || !d.success) {
+      var msg = (d && (d.error || d.detail)) || 'unknown';
+      window._engRenderError('rotResult', reg, msg, d && d.trace);
+      return;
+    }
+    resEl.innerHTML = window._renderCapitalRotation(d);
+  }).catch(function(e) {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔄 SHOW ROTATION'; }
+    window._engRenderError('rotResult', reg, 'Network error: ' + e.message);
+  });
+};
+
+window._renderCapitalRotation = function(d) {
+  var h = '';
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:10px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px">';
+  h += '<div style="font-size:13px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif">' + d.region + ' · ' + d.lookback_days + '-day sector rotation</div>';
+  if (d.benchmark_return_pct !== null) {
+    var bColor = d.benchmark_return_pct >= 0 ? '#10b981' : '#dc2626';
+    h += '<div style="font-size:11px;color:#64748b">Benchmark: <strong style="color:' + bColor + '">' + (d.benchmark_return_pct > 0 ? '+' : '') + d.benchmark_return_pct + '%</strong></div>';
+  }
+  h += '</div></div>';
+  // Money entering / leaving
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">';
+  // Entering
+  h += '<div style="background:#ecfdf5;border:2px solid #6ee7b7;border-radius:10px;padding:12px 14px">';
+  h += '<div style="font-size:11px;font-weight:900;color:#065f46;letter-spacing:0.5px;margin-bottom:8px">💰 MONEY ENTERING (top 3)</div>';
+  (d.money_entering || []).forEach(function(s) {
+    h += '<div style="background:#fff;border:1px solid #6ee7b7;border-radius:6px;padding:8px 10px;margin-bottom:6px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:12px;font-weight:800;color:#065f46;font-family:Sora,sans-serif">#' + s.rank + ' ' + s.sector + '</div><div style="font-size:9px;color:#64748b;font-family:JetBrains Mono,monospace">' + s.etf + '</div></div>';
+    h += '<div style="text-align:right"><div style="font-size:14px;font-weight:900;color:#065f46;font-family:JetBrains Mono,monospace">+' + s.return_pct + '%</div>';
+    if (s.relative_to_benchmark !== undefined) h += '<div style="font-size:9px;color:#047857">' + (s.relative_to_benchmark >= 0 ? '+' : '') + s.relative_to_benchmark + '% vs bm</div>';
+    h += '</div></div></div>';
+  });
+  h += '</div>';
+  // Leaving
+  h += '<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:12px 14px">';
+  h += '<div style="font-size:11px;font-weight:900;color:#991b1b;letter-spacing:0.5px;margin-bottom:8px">📉 MONEY LEAVING (bottom 3)</div>';
+  (d.money_leaving || []).forEach(function(s) {
+    h += '<div style="background:#fff;border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-bottom:6px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:12px;font-weight:800;color:#991b1b;font-family:Sora,sans-serif">#' + s.rank + ' ' + s.sector + '</div><div style="font-size:9px;color:#64748b;font-family:JetBrains Mono,monospace">' + s.etf + '</div></div>';
+    var rColor = s.return_pct >= 0 ? '#065f46' : '#991b1b';
+    h += '<div style="text-align:right"><div style="font-size:14px;font-weight:900;color:' + rColor + ';font-family:JetBrains Mono,monospace">' + (s.return_pct > 0 ? '+' : '') + s.return_pct + '%</div>';
+    if (s.relative_to_benchmark !== undefined) h += '<div style="font-size:9px;color:#7f1d1d">' + (s.relative_to_benchmark >= 0 ? '+' : '') + s.relative_to_benchmark + '% vs bm</div>';
+    h += '</div></div></div>';
+  });
+  h += '</div></div>';
+  // Full table
+  h += '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:10px;color:#5b21b6;font-weight:700">▸ Full sector leaderboard</summary>';
+  h += '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:10.5px">';
+  h += '<thead><tr style="background:#faf5ff"><th style="padding:6px 8px;text-align:left;color:#5b21b6;font-weight:800">SECTOR</th><th style="padding:6px 8px;text-align:left;color:#5b21b6;font-weight:800">ETF</th><th style="padding:6px 8px;text-align:right;color:#5b21b6;font-weight:800">RETURN</th></tr></thead><tbody>';
+  (d.sectors || []).sort(function(a,b){return (b.return_pct||-999) - (a.return_pct||-999);}).forEach(function(s) {
+    var sColor = s.return_pct === null ? '#94a3b8' : (s.return_pct >= 0 ? '#065f46' : '#991b1b');
+    h += '<tr style="border-top:1px solid #f1f5f9"><td style="padding:5px 8px;color:#374151">' + s.sector + '</td>';
+    h += '<td style="padding:5px 8px;color:#64748b;font-family:JetBrains Mono,monospace">' + s.etf + '</td>';
+    h += '<td style="padding:5px 8px;text-align:right;color:' + sColor + ';font-weight:800;font-family:JetBrains Mono,monospace">' + (s.return_pct === null ? 'n/a' : ((s.return_pct > 0 ? '+' : '') + s.return_pct + '%')) + '</td></tr>';
+  });
+  h += '</tbody></table></details>';
+  if (d._note) h += '<div style="margin-top:8px;padding:6px 10px;background:#faf5ff;border-radius:6px;font-size:10px;color:#5b21b6;font-style:italic">' + d._note + '</div>';
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// r63.99.40: 6 ADDITIONAL ENGINE UI HANDLERS — Celesys 2.0 completion
+// Multibagger Probability · ETF Builder · Earnings Predictor · Macro Impact
+// · Management Change · Today's Institutional Picks
+// ════════════════════════════════════════════════════════════════════════════
+
+// ─────── helper: color from verdict string ───────
+window._engVerdictColor = function(v) {
+  var s = String(v || '').toUpperCase();
+  if (s.indexOf('STRONG') >= 0 || s.indexOf('HEAVY') >= 0 || s.indexOf('HIGH-PROBABILITY') >= 0 ||
+      s.indexOf('BULLISH') >= 0 || s.indexOf('TAILWIND') >= 0 || s.indexOf('POSITIVE') >= 0 ||
+      s === 'STRONG BUY' || s.indexOf('IMPROVING') >= 0) return '#10b981';
+  if (s.indexOf('WATCHLIST') >= 0 || s.indexOf('BUYING') >= 0 || s.indexOf('NEUTRAL-BULL') >= 0 ||
+      s.indexOf('PARTIAL') >= 0 || s.indexOf('LEAN') >= 0) return '#84cc16';
+  if (s.indexOf('NEUTRAL') >= 0 || s.indexOf('NO MAJOR') >= 0 || s === 'HOLD') return '#d97706';
+  if (s.indexOf('DISTRIBUTION') >= 0 || s.indexOf('HEADWIND') >= 0 || s.indexOf('AVOID') >= 0 ||
+      s.indexOf('EXIT') >= 0 || s.indexOf('IGNORE') >= 0 || s.indexOf('NEGATIVE') >= 0) return '#dc2626';
+  if (s.indexOf('UNKNOWN') >= 0 || s.indexOf('INSUFFICIENT') >= 0) return '#64748b';
+  return '#7c3aed';
+};
+
+// ═══════════════════ ENGINE 5: MULTIBAGGER PROBABILITY ═══════════════════
+window._loadMultibaggerProb = function() {
+  var inp = document.getElementById('mbSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  if (!sym) {
+    document.getElementById('mbResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please enter a symbol first.</div>';
+    return;
+  }
+  var reg = window._engState.mb.region;
+  var btn = document.getElementById('mbBtn');
+  var resEl = document.getElementById('mbResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ ANALYZING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Scoring 7 multibagger criteria for ' + sym + '…</div>';
+  fetch('/api/multibagger-probability?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg), {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔬 SCORE PROBABILITY'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown';
+        window._engRenderError('mbResult', sym, msg, d && d.trace);
+        return;
+      }
+      resEl.innerHTML = window._renderMultibaggerProb(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔬 SCORE PROBABILITY'; }
+      window._engRenderError('mbResult', sym, 'Network error: ' + e.message);
+    });
+};
+
+window._renderMultibaggerProb = function(d) {
+  var color = window._engVerdictColor(d.verdict);
+  var prob = d.probability_pct || 0;
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">MULTIBAGGER PROBABILITY · ' + (d.symbol || '?') + '</div>';
+  h += '<div style="font-size:20px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;margin-top:2px;line-height:1.1">' + (d.verdict || 'UNKNOWN') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b">PROBABILITY</div>';
+  h += '<div style="font-size:32px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;line-height:1">' + prob + '%</div></div></div>';
+  h += '<div style="margin-top:8px;font-size:10px;color:#64748b">5-10x potential over 5+ years &middot; 7 institutional criteria scored</div>';
+  h += '</div>';
+  // Component breakdown
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:10px">';
+  (d.components || []).forEach(function(c) {
+    var pct = c.max > 0 ? (c.score / c.max * 100) : 0;
+    var cColor = pct >= 70 ? '#10b981' : pct >= 40 ? '#d97706' : '#dc2626';
+    h += '<div style="background:#fff;border:1px solid #e5e7eb;border-left:3px solid ' + cColor + ';border-radius:8px;padding:10px 12px">';
+    h += '<div style="font-size:11px;font-weight:800;color:#374151;font-family:Sora,sans-serif;margin-bottom:3px">' + c.name + '</div>';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">';
+    h += '<div style="flex:1;background:#f1f5f9;border-radius:3px;height:6px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:' + cColor + '"></div></div>';
+    h += '<span style="font-size:10px;font-weight:800;color:' + cColor + ';font-family:JetBrains Mono,monospace">' + c.score + '/' + c.max + '</span></div>';
+    h += '<div style="font-size:10px;color:#64748b;line-height:1.4">' + (c.note || '') + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ ENGINE 6: SMART MONEY ETF BUILDER ═══════════════════
+window._loadETFBuilder = function() {
+  var risk = (document.getElementById('etfRisk').value || 'moderate');
+  var reg = window._engState.etf.region;
+  var btn = document.getElementById('etfBtn');
+  var resEl = document.getElementById('etfResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ BUILDING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Building ' + risk + ' ' + reg + ' ETF allocation…</div>';
+  fetch('/api/smart-money-etf-builder?risk_profile=' + encodeURIComponent(risk) + '&region=' + encodeURIComponent(reg), {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 BUILD ETF PORTFOLIO'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown';
+        window._engRenderError('etfResult', risk + '/' + reg, msg, d && d.trace);
+        return;
+      }
+      resEl.innerHTML = window._renderETFBuilder(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 BUILD ETF PORTFOLIO'; }
+      window._engRenderError('etfResult', risk, 'Network error: ' + e.message);
+    });
+};
+
+window._renderETFBuilder = function(d) {
+  var riskColors = {conservative: '#10b981', moderate: '#d97706', aggressive: '#dc2626'};
+  var color = riskColors[d.risk_profile] || '#7c3aed';
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">' + d.region + ' · ' + String(d.risk_profile || '').toUpperCase() + ' PORTFOLIO</div>';
+  h += '<div style="font-size:18px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;margin-top:2px">Suggested ETF Allocation</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b">TOTAL</div>';
+  h += '<div style="font-size:22px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace">' + (d.total_weight_pct || 0) + '%</div></div></div>';
+  if (d.expected_characteristics) {
+    var ec = d.expected_characteristics;
+    h += '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;font-size:10px;color:#64748b">';
+    Object.keys(ec).forEach(function(k) {
+      h += '<span><strong style="color:#374151">' + k.replace(/_/g, ' ') + ':</strong> ' + ec[k] + '</span>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
+  // Allocation table
+  h += '<table style="width:100%;border-collapse:collapse;margin-bottom:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">';
+  h += '<thead><tr style="background:#faf5ff"><th style="padding:8px 10px;text-align:left;font-size:10px;color:#5b21b6;font-weight:800;letter-spacing:0.3px">ETF</th><th style="padding:8px 10px;text-align:left;font-size:10px;color:#5b21b6;font-weight:800;letter-spacing:0.3px">ROLE</th><th style="padding:8px 10px;text-align:right;font-size:10px;color:#5b21b6;font-weight:800;letter-spacing:0.3px">WEIGHT</th></tr></thead><tbody>';
+  (d.allocation || []).forEach(function(a) {
+    var pct = a.weight_pct || 0;
+    h += '<tr style="border-top:1px solid #f1f5f9"><td style="padding:8px 10px"><strong style="color:#1e293b;font-family:JetBrains Mono,monospace">' + (a.etf || '?') + '</strong>';
+    if (a.name) h += ' <span style="color:#64748b;font-size:10px">— ' + a.name + '</span>';
+    h += '</td><td style="padding:8px 10px;color:#64748b;font-size:10.5px">' + (a.role || '') + '</td>';
+    h += '<td style="padding:8px 10px;text-align:right"><div style="display:flex;align-items:center;justify-content:flex-end;gap:6px"><div style="background:#f1f5f9;border-radius:3px;width:50px;height:6px;overflow:hidden"><div style="width:' + Math.min(100, pct) + '%;height:100%;background:' + color + '"></div></div><strong style="font-family:JetBrains Mono,monospace;color:' + color + ';font-size:11px">' + pct + '%</strong></div></td></tr>';
+  });
+  h += '</tbody></table>';
+  // Monitoring criteria
+  if (d.monitoring_criteria && d.monitoring_criteria.length) {
+    h += '<div style="background:#ecfeff;border:1px solid #67e8f9;border-radius:8px;padding:10px 14px;margin-bottom:8px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#0e7490;letter-spacing:0.3px;margin-bottom:6px">📡 MONITORING CRITERIA</div>';
+    h += '<ul style="margin:0;padding-left:18px;font-size:10.5px;color:#155e75;line-height:1.6">';
+    d.monitoring_criteria.forEach(function(m) { h += '<li>' + String(m).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></div>';
+  }
+  if (d.rebalance_recommendation) {
+    h += '<div style="font-size:10px;color:#64748b;font-style:italic;margin-bottom:6px"><strong>Rebalance:</strong> ' + d.rebalance_recommendation + '</div>';
+  }
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ ENGINE 7: EARNINGS SURPRISE PREDICTOR ═══════════════════
+window._loadEarningsPredictor = function() {
+  var inp = document.getElementById('epsSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  if (!sym) {
+    document.getElementById('epsResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please enter a symbol first.</div>';
+    return;
+  }
+  var reg = window._engState.eps.region;
+  var btn = document.getElementById('epsBtn');
+  var resEl = document.getElementById('epsResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ PREDICTING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Aggregating pre-earnings signals for ' + sym + '…</div>';
+  fetch('/api/earnings-surprise-predictor?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg), {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '📊 PREDICT'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown';
+        window._engRenderError('epsResult', sym, msg, d && d.trace);
+        return;
+      }
+      resEl.innerHTML = window._renderEarningsPredictor(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '📊 PREDICT'; }
+      window._engRenderError('epsResult', sym, 'Network error: ' + e.message);
+    });
+};
+
+window._renderEarningsPredictor = function(d) {
+  var colors = {green: '#10b981', lime: '#84cc16', amber: '#d97706', red: '#dc2626', gray: '#64748b'};
+  var color = colors[d.color || 'amber'];
+  var prob = d.beat_probability_pct || 50;
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">EARNINGS OUTLOOK · ' + (d.symbol || '?') + '</div>';
+  h += '<div style="font-size:20px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;margin-top:2px;line-height:1.1">' + (d.verdict || 'NEUTRAL') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b">BEAT PROBABILITY</div>';
+  h += '<div style="font-size:32px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;line-height:1">' + prob + '%</div></div></div>';
+  if (d.earnings_date) {
+    var dte = d.days_to_earnings !== null && d.days_to_earnings !== undefined ?
+              (' &middot; <strong>' + Math.abs(d.days_to_earnings) + '</strong> day' + (Math.abs(d.days_to_earnings) === 1 ? '' : 's') + ' ' + (d.days_to_earnings >= 0 ? 'away' : 'ago')) : '';
+    h += '<div style="margin-top:8px;font-size:10px;color:#64748b">Next earnings: <strong>' + d.earnings_date + '</strong>' + dte + '</div>';
+  } else {
+    h += '<div style="margin-top:8px;font-size:10px;color:#94a3b8">Earnings date unavailable from data source</div>';
+  }
+  h += '</div>';
+  // Signal breakdown
+  if (d.signals && d.signals.length) {
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:10px">';
+    d.signals.forEach(function(s) {
+      var sCol = s.bullish === true ? '#10b981' : s.bullish === false ? '#dc2626' : '#64748b';
+      h += '<div style="background:#fff;border:1px solid #e5e7eb;border-left:3px solid ' + sCol + ';border-radius:8px;padding:10px 12px">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px">';
+      h += '<span style="font-size:11px;font-weight:800;color:#374151;font-family:Sora,sans-serif">' + (s.bullish === true ? '🟢 ' : s.bullish === false ? '🔴 ' : '⚪ ') + s.name + '</span>';
+      if (s.score !== undefined) h += '<span style="font-size:10px;color:#64748b;font-family:JetBrains Mono,monospace">' + s.score + '</span>';
+      h += '</div>';
+      h += '<div style="font-size:10px;color:#475569;line-height:1.5">' + (s.note || '') + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ ENGINE 8: MACRO IMPACT ═══════════════════
+window._loadMacroImpact = function() {
+  var inp = document.getElementById('macroSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  if (!sym) {
+    document.getElementById('macroResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please enter a symbol first.</div>';
+    return;
+  }
+  var reg = window._engState.macro.region;
+  var btn = document.getElementById('macroBtn');
+  var resEl = document.getElementById('macroResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ COMPUTING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Computing 90-day macro correlations for ' + sym + '…</div>';
+  fetch('/api/macro-impact?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg), {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🌐 COMPUTE IMPACT'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown';
+        window._engRenderError('macroResult', sym, msg, d && d.trace);
+        return;
+      }
+      resEl.innerHTML = window._renderMacroImpact(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🌐 COMPUTE IMPACT'; }
+      window._engRenderError('macroResult', sym, 'Network error: ' + e.message);
+    });
+};
+
+window._renderMacroImpact = function(d) {
+  var score = d.net_macro_score || 0;
+  var color = score >= 10 ? '#10b981' : score >= 5 ? '#84cc16' : score >= -5 ? '#d97706' : score >= -10 ? '#dc2626' : '#991b1b';
+  var verdict = score >= 15 ? 'STRONG TAILWIND' : score >= 5 ? 'TAILWIND' : score >= -5 ? 'NEUTRAL MACRO' : score >= -15 ? 'HEADWIND' : 'STRONG HEADWIND';
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">MACRO IMPACT · ' + (d.symbol || '?') + '</div>';
+  h += '<div style="font-size:20px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;margin-top:2px;line-height:1.1">' + verdict + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b">NET MACRO SCORE</div>';
+  h += '<div style="font-size:32px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;line-height:1">' + (score > 0 ? '+' : '') + score + '</div>';
+  h += '<div style="font-size:9px;color:#64748b">range: -25 to +25</div></div></div>';
+  h += '</div>';
+  // Factor breakdown
+  if (d.factors && d.factors.length) {
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:10px">';
+    d.factors.forEach(function(f) {
+      var fScore = f.score || 0;
+      var fCol = fScore > 1 ? '#10b981' : fScore < -1 ? '#dc2626' : '#64748b';
+      var arrow = fScore > 0 ? '↑' : fScore < 0 ? '↓' : '→';
+      h += '<div style="background:#fff;border:1px solid #e5e7eb;border-left:3px solid ' + fCol + ';border-radius:8px;padding:10px 12px">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">';
+      h += '<span style="font-size:11px;font-weight:800;color:#374151;font-family:Sora,sans-serif">' + arrow + ' ' + f.name + '</span>';
+      h += '<span style="font-size:14px;font-weight:900;color:' + fCol + ';font-family:JetBrains Mono,monospace">' + (fScore > 0 ? '+' : '') + fScore + '</span>';
+      h += '</div>';
+      if (f.correlation !== undefined && f.correlation !== null) {
+        h += '<div style="font-size:9px;color:#94a3b8;margin-bottom:3px;font-family:JetBrains Mono,monospace">Correlation: ' + (typeof f.correlation === 'number' ? f.correlation.toFixed(2) : f.correlation) + '</div>';
+      }
+      h += '<div style="font-size:10px;color:#475569;line-height:1.5">' + (f.interpretation || f.note || '') + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ ENGINE 9: MANAGEMENT CHANGE ═══════════════════
+window._loadMgmtChange = function() {
+  var inp = document.getElementById('mgmtSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  if (!sym) {
+    document.getElementById('mgmtResult').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please enter a symbol first.</div>';
+    return;
+  }
+  var reg = window._engState.mgmt.region;
+  var btn = document.getElementById('mgmtBtn');
+  var resEl = document.getElementById('mgmtResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ SCANNING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Scanning management roster + structural signals for ' + sym + '…</div>';
+  fetch('/api/management-change?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg), {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔍 SCAN MANAGEMENT'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown';
+        window._engRenderError('mgmtResult', sym, msg, d && d.trace);
+        return;
+      }
+      resEl.innerHTML = window._renderMgmtChange(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔍 SCAN MANAGEMENT'; }
+      window._engRenderError('mgmtResult', sym, 'Network error: ' + e.message);
+    });
+};
+
+window._renderMgmtChange = function(d) {
+  var score = d.structural_change_score || 0;
+  var color = score >= 60 ? '#10b981' : score >= 30 ? '#d97706' : '#64748b';
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,' + color + '15,#fff);border:2px solid ' + color + ';border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:0.8px">MANAGEMENT · ' + (d.symbol || '?') + '</div>';
+  h += '<div style="font-size:18px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif;margin-top:2px;line-height:1.1">' + (d.verdict || 'NO MAJOR CHANGE DETECTED') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b">STRUCTURAL CHANGE</div>';
+  h += '<div style="font-size:32px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;line-height:1">' + score + '</div>';
+  h += '<div style="font-size:9px;color:#64748b">/100</div></div></div>';
+  h += '</div>';
+  // Current officers
+  if (d.current_officers && d.current_officers.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:10px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#5b21b6;letter-spacing:0.3px;margin-bottom:8px">👥 CURRENT OFFICERS</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">';
+    d.current_officers.forEach(function(o) {
+      h += '<div style="background:#faf5ff;border-radius:6px;padding:7px 10px">';
+      h += '<div style="font-size:11px;font-weight:800;color:#1e293b">' + (o.name || '?') + '</div>';
+      h += '<div style="font-size:10px;color:#5b21b6">' + (o.title || '?') + '</div>';
+      if (o.age) h += '<div style="font-size:9px;color:#94a3b8">age ' + o.age + '</div>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+  }
+  // Structural change proxies
+  if (d.structural_change_proxies && d.structural_change_proxies.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:10px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#5b21b6;letter-spacing:0.3px;margin-bottom:6px">🔍 STRUCTURAL CHANGE PROXIES</div>';
+    h += '<ul style="margin:0;padding-left:18px;font-size:10.5px;color:#475569;line-height:1.7">';
+    d.structural_change_proxies.forEach(function(p) {
+      var icon = p.detected ? '🟢' : '⚪';
+      h += '<li>' + icon + ' <strong style="color:#374151">' + (p.name || '?') + ':</strong> ' + (p.note || '') + '</li>';
+    });
+    h += '</ul></div>';
+  }
+  if (d._note) h += '<div style="padding:8px 12px;background:#faf5ff;border-radius:6px;font-size:10px;color:#5b21b6;font-style:italic;margin-bottom:6px">' + d._note + '</div>';
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
+};
+
+// ═══════════════════ ENGINE 10: TODAY'S INSTITUTIONAL PICKS ═══════════════════
+window._loadInstPicks = function() {
+  var topN = parseInt(document.getElementById('picksTopN').value || '10');
+  var reg = window._engState.picks.region;
+  var btn = document.getElementById('picksBtn');
+  var resEl = document.getElementById('picksResult');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ RANKING…'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Ranking ' + reg + ' universe by conviction score (this may take 20-40s on first call)…</div>';
+  fetch('/api/institutional-picks-today?region=' + encodeURIComponent(reg) + '&top_n=' + topN, {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🏆 SHOW PICKS'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown';
+        window._engRenderError('picksResult', reg, msg, d && d.trace);
+        return;
+      }
+      resEl.innerHTML = window._renderInstPicks(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🏆 SHOW PICKS'; }
+      window._engRenderError('picksResult', reg, 'Network error: ' + e.message);
+    });
+};
+
+window._renderInstPicks = function(d) {
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,#7c3aed15,#fff);border:2px solid #7c3aed;border-radius:12px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:#7c3aed;letter-spacing:0.8px">🏆 ' + d.region + " · TODAY'S TOP INSTITUTIONAL CONVICTION</div>";
+  h += '<div style="font-size:18px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-top:2px">Top ' + (d.top_n || 0) + ' from ' + (d.universe_size || 0) + ' tickers</div></div>';
+  if (d._cached) h += '<div style="font-size:10px;color:#94a3b8">cached ' + (d._cache_age_sec || 0) + 's ago</div>';
+  h += '</div></div>';
+  // Rankings table
+  if (d.rankings && d.rankings.length) {
+    h += '<table style="width:100%;border-collapse:collapse;margin-bottom:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">';
+    h += '<thead><tr style="background:#faf5ff"><th style="padding:8px 10px;text-align:left;font-size:10px;color:#5b21b6;font-weight:800">RANK</th><th style="padding:8px 10px;text-align:left;font-size:10px;color:#5b21b6;font-weight:800">SYMBOL</th><th style="padding:8px 10px;text-align:left;font-size:10px;color:#5b21b6;font-weight:800">VERDICT</th><th style="padding:8px 10px;text-align:right;font-size:10px;color:#5b21b6;font-weight:800">SCORE</th></tr></thead><tbody>';
+    d.rankings.forEach(function(r, i) {
+      var score = r.score || 0;
+      var rColor = score >= 90 ? '#10b981' : score >= 70 ? '#84cc16' : score >= 50 ? '#d97706' : '#dc2626';
+      h += '<tr style="border-top:1px solid #f1f5f9">';
+      h += '<td style="padding:8px 10px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">#' + (i + 1) + '</td>';
+      h += '<td style="padding:8px 10px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">' + (r.symbol || '?') + '</td>';
+      h += '<td style="padding:8px 10px;color:#475569;font-size:10.5px">' + (r.verdict || '?') + '</td>';
+      h += '<td style="padding:8px 10px;text-align:right;font-weight:900;color:' + rColor + ';font-family:JetBrains Mono,monospace;font-size:13px">' + score + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+  } else {
+    h += '<div style="padding:16px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#64748b;text-align:center">No rankings could be computed — all tickers in universe failed to score.</div>';
+  }
+  if (d.fallback_count > 0) {
+    h += '<div style="font-size:10px;color:#94a3b8;margin-bottom:6px"><strong>' + d.fallback_count + '</strong> tickers in universe could not be scored (yfinance data gap)</div>';
+  }
+  if (d._note) h += '<div style="padding:8px 12px;background:#faf5ff;border-radius:6px;font-size:10px;color:#5b21b6;font-style:italic;margin-bottom:6px">' + d._note + '</div>';
+  if (d.warnings && d.warnings.length) {
+    h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">▸ Warnings (' + d.warnings.length + ')</summary>';
+    h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
+    d.warnings.forEach(function(w) { h += '<li>' + String(w).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</li>'; });
+    h += '</ul></details>';
+  }
+  h += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">computed in ' + (d.elapsed_sec || '?') + 's · engine: ' + (d._engine || '?') + '</div>';
+  return h;
 };
 
 window.loadDashboard = function() {

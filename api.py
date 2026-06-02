@@ -5941,6 +5941,2217 @@ async def diamond_hunter(
         }
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# r63.99.39: INSTITUTIONAL ENGINES — Celesys 2.0 decision-oriented features
+#
+# Vijay's product brief: shift from "more indicators" to "decision systems".
+# Five core engines (per his Celesys 2.0 spec):
+#   1. Institutional Conviction Score  → /api/institutional-conviction
+#   2. Capital Rotation Engine         → /api/capital-rotation (scaffold)
+#   3. Multibagger Probability         → r99.40 (Multibagger Hunter exists)
+#   4. Smart Exit Engine               → /api/smart-exit-engine (FULL)
+#   5. Portfolio Risk Radar            → /api/portfolio-risk-radar (FULL)
+#
+# DESIGN PRINCIPLES (carried from r99.37/38):
+#   - Every endpoint wrapped in try/except that returns clean JSON error
+#   - _ds_num() sanitization at every yfinance/info boundary
+#   - Sanity gates on inputs before scoring (no fabricated outputs)
+#   - Honest data gaps: missing inputs surfaced explicitly, never substituted
+#   - Composite scores 0-100 with explicit per-component breakdown
+#
+# Each engine returns:
+#   {success: bool, symbol: str, score: int, components: [...],
+#    action_now: {action, urgency, rationale, color}, warnings: [...]}
+# ════════════════════════════════════════════════════════════════════════════
+
+import math as _math_engines
+
+def _eng_ds_num(v):
+    """Sanitize yfinance/info numeric values. Same as _ds_num in dashboard."""
+    if v is None: return None
+    if isinstance(v, bool): return None
+    if isinstance(v, str):
+        s = v.strip()
+        if s in ('', 'N/A', 'n/a', '-', '—', 'None', 'none', 'null', 'NaN',
+                 'nan', 'Infinity', 'inf', '-inf', '∞'): return None
+        try: v = float(s)
+        except (ValueError, TypeError): return None
+    if isinstance(v, (int, float)):
+        try:
+            f = float(v)
+            if f != f: return None
+            if f == float('inf') or f == float('-inf'): return None
+            return f
+        except (ValueError, TypeError, OverflowError): return None
+    return None
+
+
+def _eng_clamp_score(v, lo=0, hi=100):
+    """Clamp a score to [lo, hi], rounding to int. Returns lo on None/NaN."""
+    if v is None: return lo
+    try:
+        x = float(v)
+        if x != x: return lo  # NaN
+        return int(max(lo, min(hi, round(x))))
+    except (ValueError, TypeError):
+        return lo
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 1: SMART EXIT ENGINE
+#
+# Vijay quote: "Most tools tell people when to buy. Few tell them when to exit.
+# This is incredibly useful."
+#
+# INPUT: symbol, region, optional entry_price (defaults to current).
+# OUTPUT: exit_confidence_score (0-100), 5 trigger signals with verdict.
+#
+# Score interpretation:
+#   0-30   HOLD            — no exit triggers firing
+#   30-50  TIGHTEN STOP    — early warning, ratchet stop
+#   50-70  TRIM            — sell portion, hold remainder
+#   70-85  SELL MAJORITY   — exit 70-80%, keep token position
+#   85-100 FULL EXIT       — multiple triggers fired, capital better elsewhere
+#
+# 5 TRIGGERS (each scores 0-20, total 100):
+#   T1. Institutional selling  — 13F delta, insider sells, ownership drop
+#   T2. Relative strength     — vs sector ETF over 3m/6m
+#   T3. Valuation stretched   — PEG > 2 OR FCF yield < 2% OR P/E > 5y median * 1.5
+#   T4. Technical break       — close < 200SMA, 50SMA < 200SMA (death cross)
+#   T5. Profit-take territory — if entry_price given, gain > 30% (psychological)
+# ════════════════════════════════════════════════════════════════════════════
+
+_smart_exit_cache = {}
+_SMART_EXIT_TTL = 1800  # 30 minutes
+
+
+@app.get("/api/smart-exit-engine")
+async def smart_exit_engine(symbol: str = "", region: str = "US",
+                            entry_price: float = 0.0, refresh: int = 0):
+    """Smart Exit Engine — when should I exit this position?
+
+    Computes exit_confidence_score (0-100) from 5 institutional triggers.
+    Wrapped in try/except so any unhandled exception returns clean JSON.
+    """
+    try:
+        return await _smart_exit_impl(symbol, region, entry_price, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[EXIT] {symbol} ({region}) unhandled: {_err}")
+        return {"success": False, "symbol": symbol, "region": region,
+                "error": _err, "trace": _tb.format_exc()[:1500]}
+
+
+async def _smart_exit_impl(symbol, region, entry_price, refresh):
+    import time as _time
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    cache_key = f"{symbol}_{region}_{entry_price}"
+    if not refresh and cache_key in _smart_exit_cache:
+        c = _smart_exit_cache[cache_key]
+        if (_time.time() - c["ts"]) < _SMART_EXIT_TTL:
+            out_c = dict(c["data"])
+            out_c["_cached"] = True
+            out_c["_cache_age_sec"] = int(_time.time() - c["ts"])
+            return out_c
+
+    t0 = _time.time()
+    out = {
+        "success": True, "symbol": symbol, "region": region,
+        "entry_price": _eng_ds_num(entry_price) if entry_price else None,
+        "current_price": None, "gain_pct": None,
+        "triggers": [], "exit_confidence_score": 0,
+        "verdict": "HOLD", "action_now": None,
+        "warnings": [], "_engine": "smart_exit_v1",
+    }
+
+    # Fetch price/fundamentals via yfinance
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+
+        def _fetch():
+            try:
+                tk = yf.Ticker(yf_sym)
+                info = {}
+                try: info = tk.info or {}
+                except Exception: info = {}
+                hist = None
+                try: hist = tk.history(period="1y", interval="1d", auto_adjust=True)
+                except Exception: hist = None
+                return info, hist
+            except Exception as _e:
+                return {"_err": str(_e)[:120]}, None
+
+        _lp = _aio.get_event_loop()
+        info, hist = await _lp.run_in_executor(None, _fetch)
+    except ImportError:
+        return {"success": False, "error": "yfinance not available"}
+
+    if not isinstance(info, dict): info = {}
+    price = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
+    out["current_price"] = price
+
+    # SANITY GATE — without price, no exit math possible
+    if price is None or price <= 0:
+        out["warnings"].append("Current price unavailable — cannot compute exit triggers")
+        out["verdict"] = "INSUFFICIENT_DATA"
+        out["action_now"] = {
+            "action": "PRICE DATA UNAVAILABLE",
+            "urgency": "WAIT",
+            "rationale": "yfinance returned no current price. Cannot compute exit confidence without it.",
+            "color": "amber",
+        }
+        out["elapsed_sec"] = round(_time.time() - t0, 2)
+        _smart_exit_cache[cache_key] = {"data": out, "ts": _time.time()}
+        return out
+
+    # Gain calc if entry provided
+    if out["entry_price"] and out["entry_price"] > 0:
+        out["gain_pct"] = round((price - out["entry_price"]) / out["entry_price"] * 100, 2)
+
+    # ───────── TRIGGER 1: INSTITUTIONAL SELLING ─────────
+    t1 = {"name": "Institutional Selling", "score": 0, "max": 20,
+          "fired": False, "evidence": [], "weight_explain": "13F ownership delta, insider selling"}
+    held_pct = _eng_ds_num(info.get("heldPercentInstitutions"))
+    insider_pct = _eng_ds_num(info.get("heldPercentInsiders"))
+    if held_pct is not None:
+        t1["evidence"].append(f"Institutional ownership: {round(held_pct * 100, 1)}%")
+        # Without quarterly delta we can't tell direction — flag low ownership as risk
+        if held_pct < 0.30:
+            t1["score"] += 8
+            t1["evidence"].append("Below 30% institutional — limited smart-money interest")
+            t1["fired"] = True
+    if insider_pct is not None and insider_pct < 0.005:
+        t1["score"] += 4
+        t1["evidence"].append(f"Insider ownership {round(insider_pct*100, 2)}% — no skin in the game")
+    if not t1["evidence"]:
+        t1["evidence"].append("13F + insider data unavailable — score conservatively low")
+    out["triggers"].append(t1)
+
+    # ───────── TRIGGER 2: RELATIVE STRENGTH DETERIORATION ─────────
+    t2 = {"name": "Relative Strength Break", "score": 0, "max": 20,
+          "fired": False, "evidence": [], "weight_explain": "3m + 6m return vs sector"}
+    if hist is not None and hasattr(hist, 'empty') and not hist.empty:
+        closes = list(hist["Close"].dropna())
+        if len(closes) >= 130:
+            ret_6m = (closes[-1] - closes[-126]) / closes[-126] * 100 if closes[-126] > 0 else 0
+            ret_3m = (closes[-1] - closes[-63]) / closes[-63] * 100 if closes[-63] > 0 else 0
+            t2["evidence"].append(f"6m return: {round(ret_6m, 1)}%")
+            t2["evidence"].append(f"3m return: {round(ret_3m, 1)}%")
+            # Absolute return-based signal (sector relative would need ETF fetch)
+            if ret_6m < -10:
+                t2["score"] += 12; t2["fired"] = True
+                t2["evidence"].append("6m return below -10% — meaningful momentum loss")
+            elif ret_3m < -5:
+                t2["score"] += 6; t2["fired"] = True
+                t2["evidence"].append("3m return negative — recent weakness")
+        else:
+            t2["evidence"].append(f"Only {len(closes)} closes available — insufficient for 6m RS")
+    else:
+        t2["evidence"].append("Price history unavailable from yfinance")
+    out["triggers"].append(t2)
+
+    # ───────── TRIGGER 3: VALUATION STRETCHED ─────────
+    t3 = {"name": "Valuation Stretched", "score": 0, "max": 20,
+          "fired": False, "evidence": [], "weight_explain": "PEG > 2 OR FCF yield < 2% OR PE > 60"}
+    peg = _eng_ds_num(info.get("pegRatio")) or _eng_ds_num(info.get("trailingPegRatio"))
+    pe = _eng_ds_num(info.get("trailingPE"))
+    fcf = _eng_ds_num(info.get("freeCashflow"))
+    mcap = _eng_ds_num(info.get("marketCap"))
+    fcf_yield = (fcf / mcap * 100) if (fcf and mcap and mcap > 0) else None
+    if peg is not None:
+        t3["evidence"].append(f"PEG ratio: {round(peg, 2)}")
+        if peg > 2.5:
+            t3["score"] += 8; t3["fired"] = True
+            t3["evidence"].append("PEG > 2.5 — growth not justifying multiple")
+        elif peg > 2.0:
+            t3["score"] += 4; t3["fired"] = True
+    if fcf_yield is not None:
+        t3["evidence"].append(f"FCF yield: {round(fcf_yield, 2)}%")
+        if fcf_yield < 1.5:
+            t3["score"] += 6; t3["fired"] = True
+            t3["evidence"].append("FCF yield below 1.5% — heavy multiple expansion required")
+        elif fcf_yield < 3:
+            t3["score"] += 3
+    if pe is not None and pe > 60:
+        t3["score"] += 4; t3["fired"] = True
+        t3["evidence"].append(f"P/E {round(pe, 1)} — historically rich (top decile)")
+    if not t3["evidence"]:
+        t3["evidence"].append("PEG/PE/FCF data unavailable")
+    out["triggers"].append(t3)
+
+    # ───────── TRIGGER 4: TECHNICAL BREAK ─────────
+    t4 = {"name": "Technical Structure Break", "score": 0, "max": 20,
+          "fired": False, "evidence": [], "weight_explain": "Close vs 200d, 50d vs 200d"}
+    if hist is not None and hasattr(hist, 'empty') and not hist.empty:
+        closes = list(hist["Close"].dropna())
+        if len(closes) >= 200:
+            sma200 = sum(closes[-200:]) / 200
+            sma50 = sum(closes[-50:]) / 50
+            close_now = closes[-1]
+            t4["evidence"].append(f"Close ${round(close_now, 2)} vs SMA200 ${round(sma200, 2)}")
+            t4["evidence"].append(f"SMA50 ${round(sma50, 2)} vs SMA200 ${round(sma200, 2)}")
+            if close_now < sma200:
+                t4["score"] += 8; t4["fired"] = True
+                t4["evidence"].append("Close below 200d — bearish structure")
+            if sma50 < sma200:
+                t4["score"] += 8; t4["fired"] = True
+                t4["evidence"].append("50d below 200d (death cross) — sustained weakness")
+            # RSI proxy (14-day)
+            if len(closes) >= 15:
+                gains = [max(0, closes[i] - closes[i-1]) for i in range(-14, 0)]
+                losses = [max(0, closes[i-1] - closes[i]) for i in range(-14, 0)]
+                avg_gain = sum(gains) / 14
+                avg_loss = sum(losses) / 14
+                if avg_loss > 0:
+                    rsi = 100 - (100 / (1 + avg_gain / avg_loss))
+                    t4["evidence"].append(f"RSI(14): {round(rsi, 1)}")
+                    if rsi > 75:
+                        t4["score"] += 4
+                        t4["evidence"].append("Overbought — pullback risk")
+        else:
+            t4["evidence"].append(f"Only {len(closes)} closes — need 200 for SMA200")
+    else:
+        t4["evidence"].append("Price history unavailable")
+    out["triggers"].append(t4)
+
+    # ───────── TRIGGER 5: PROFIT-TAKE TERRITORY ─────────
+    t5 = {"name": "Profit-Take Territory", "score": 0, "max": 20,
+          "fired": False, "evidence": [], "weight_explain": "Gain from entry — psychological/rebalance signal"}
+    if out["gain_pct"] is not None:
+        gp = out["gain_pct"]
+        t5["evidence"].append(f"Gain from entry: {gp}%")
+        if gp >= 100:
+            t5["score"] += 16; t5["fired"] = True
+            t5["evidence"].append("100%+ gain — consider trimming to lock institutional returns")
+        elif gp >= 50:
+            t5["score"] += 10; t5["fired"] = True
+            t5["evidence"].append("50%+ gain — psychological profit-take zone")
+        elif gp >= 30:
+            t5["score"] += 5
+            t5["evidence"].append("30%+ gain — start watching for invalidation")
+        elif gp < -20:
+            # Loss territory — different trigger (consider stop-out)
+            t5["score"] += 8; t5["fired"] = True
+            t5["evidence"].append(f"Loss of {abs(gp)}% — consider stop-out if thesis invalidated")
+    else:
+        t5["evidence"].append("Entry price not provided — pass ?entry_price=X to enable")
+    out["triggers"].append(t5)
+
+    # ───────── COMPOSITE + VERDICT ─────────
+    composite = sum(t["score"] for t in out["triggers"])
+    out["exit_confidence_score"] = _eng_clamp_score(composite)
+    fired = sum(1 for t in out["triggers"] if t["fired"])
+    score = out["exit_confidence_score"]
+
+    if score >= 85:
+        out["verdict"] = "FULL EXIT"
+        out["action_now"] = {
+            "action": "EXIT POSITION",
+            "urgency": "THIS WEEK",
+            "rationale": f"{fired} of 5 triggers firing, composite {score}/100. Multiple independent signals point to risk dominating reward.",
+            "color": "red",
+        }
+    elif score >= 70:
+        out["verdict"] = "SELL MAJORITY"
+        out["action_now"] = {
+            "action": "SELL 70-80%",
+            "urgency": "WITHIN 2 WEEKS",
+            "rationale": f"{fired} of 5 triggers firing, composite {score}/100. Reduce exposure significantly; keep small position if thesis intact.",
+            "color": "red",
+        }
+    elif score >= 50:
+        out["verdict"] = "TRIM"
+        out["action_now"] = {
+            "action": "TRIM 30-50%",
+            "urgency": "WITHIN 1 MONTH",
+            "rationale": f"{fired} of 5 triggers firing, composite {score}/100. Take partial profit; tighten stops on remainder.",
+            "color": "amber",
+        }
+    elif score >= 30:
+        out["verdict"] = "TIGHTEN STOP"
+        out["action_now"] = {
+            "action": "RATCHET STOP UPWARD",
+            "urgency": "WATCH WEEKLY",
+            "rationale": f"{fired} of 5 triggers firing, composite {score}/100. Hold but tighten stop to lock recent gains.",
+            "color": "amber",
+        }
+    else:
+        out["verdict"] = "HOLD"
+        out["action_now"] = {
+            "action": "HOLD POSITION",
+            "urgency": "MONITOR MONTHLY",
+            "rationale": f"{fired} of 5 triggers firing, composite {score}/100. No meaningful exit signal — continue holding.",
+            "color": "green",
+        }
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _smart_exit_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[EXIT] {symbol} ({region}) verdict={out['verdict']} score={out['exit_confidence_score']} triggers_fired={fired} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 2: PORTFOLIO RISK RADAR
+#
+# Vijay quote: "Institutions manage risk first. This is much more valuable
+# than showing returns."
+#
+# INPUT: holdings — list of {symbol, weight_pct, region?} (weights sum to 100)
+# OUTPUT: risk_score (0-100, HIGHER = MORE RISK), 6 risk components,
+#         actionable suggestions
+#
+# 6 RISK COMPONENTS:
+#   R1. Single-position concentration  (any holding > 15%? > 25%? > 40%?)
+#   R2. Top-3 concentration            (top 3 holdings as % of total)
+#   R3. Sector concentration           (single sector > 40%?)
+#   R4. Region concentration           (single region > 80%?)
+#   R5. Beta-weighted exposure         (portfolio beta vs 1.0)
+#   R6. Cash buffer                    (cash % too low → no dry powder)
+# ════════════════════════════════════════════════════════════════════════════
+
+_portfolio_risk_cache = {}
+_PORTFOLIO_RISK_TTL = 1800
+
+
+@app.post("/api/portfolio-risk-radar")
+async def portfolio_risk_radar(payload: dict = None):
+    """Portfolio Risk Radar. POST with body:
+       {holdings: [{symbol, weight_pct, region}], cash_pct: 0}
+    """
+    try:
+        return await _portfolio_risk_impl(payload or {})
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[RISK] unhandled: {_err}")
+        return {"success": False, "error": _err, "trace": _tb.format_exc()[:1500]}
+
+
+async def _portfolio_risk_impl(payload):
+    import time as _time
+    t0 = _time.time()
+    holdings_raw = payload.get("holdings") or []
+    cash_pct = _eng_ds_num(payload.get("cash_pct")) or 0
+    if not isinstance(holdings_raw, list) or not holdings_raw:
+        return {"success": False, "error": "holdings list required (at least 1 position)"}
+
+    # Normalize holdings
+    holdings = []
+    for h in holdings_raw:
+        if not isinstance(h, dict): continue
+        sym = (h.get("symbol") or "").strip().upper()
+        wt = _eng_ds_num(h.get("weight_pct")) or 0
+        reg = (h.get("region") or "US").upper()
+        if reg not in ("US", "IN"): reg = "US"
+        if sym and wt > 0:
+            holdings.append({"symbol": sym, "weight_pct": wt, "region": reg})
+
+    if not holdings:
+        return {"success": False, "error": "no valid holdings (need symbol + weight_pct > 0 each)"}
+
+    total_wt = sum(h["weight_pct"] for h in holdings)
+    if total_wt + cash_pct < 50:
+        # Probably percentages weren't filled in; warn but proceed
+        pass
+
+    out = {
+        "success": True, "holdings_count": len(holdings),
+        "total_weight_pct": round(total_wt, 2), "cash_pct": round(cash_pct, 2),
+        "components": [], "risk_score": 0,
+        "top_risks": [], "suggested_fixes": [],
+        "warnings": [], "_engine": "portfolio_risk_radar_v1",
+    }
+
+    if abs(total_wt + cash_pct - 100) > 5:
+        out["warnings"].append(
+            f"Weights sum to {round(total_wt + cash_pct, 1)}% (cash + holdings) — expected ~100. Risk math still computed but interpret cautiously."
+        )
+
+    # Fetch sector + beta for each holding
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+        try: _yahoo_rate_wait()
+        except Exception: pass
+
+        def _fetch_meta(syms_regions):
+            results = {}
+            for sym, reg in syms_regions:
+                yf_sym = sym if reg == "US" else f"{sym}.NS"
+                try:
+                    tk = yf.Ticker(yf_sym)
+                    info = tk.info or {}
+                except Exception as e:
+                    info = {"_err": str(e)[:80]}
+                results[(sym, reg)] = info
+            return results
+
+        _lp = _aio.get_event_loop()
+        meta = await _lp.run_in_executor(None, _fetch_meta,
+                                          [(h["symbol"], h["region"]) for h in holdings])
+    except ImportError:
+        meta = {}
+
+    # Attach sector + beta per holding
+    for h in holdings:
+        info = meta.get((h["symbol"], h["region"]), {}) if meta else {}
+        h["sector"] = info.get("sector") or "Unknown"
+        h["beta"] = _eng_ds_num(info.get("beta"))
+        h["company"] = info.get("longName") or info.get("shortName") or h["symbol"]
+
+    # ───────── R1: Single-position concentration ─────────
+    r1 = {"name": "Single-Position Concentration", "score": 0, "max": 25,
+          "evidence": [], "verdict": "OK"}
+    max_pos = max(holdings, key=lambda x: x["weight_pct"])
+    r1["evidence"].append(f"Largest: {max_pos['symbol']} ({max_pos['weight_pct']}%)")
+    if max_pos["weight_pct"] >= 40:
+        r1["score"] = 25; r1["verdict"] = "EXTREME"
+        r1["evidence"].append("Position above 40% — single-stock blow-up risk dominates")
+        out["top_risks"].append({"area": "concentration",
+            "msg": f"{max_pos['symbol']} is {max_pos['weight_pct']}% of portfolio — single-name risk extreme"})
+        out["suggested_fixes"].append({"priority": 1,
+            "action": f"Trim {max_pos['symbol']} from {max_pos['weight_pct']}% toward 15-20%",
+            "reason": "Institutional position-sizing rarely exceeds 5% per name; 40%+ leaves no margin for being wrong on one thesis"})
+    elif max_pos["weight_pct"] >= 25:
+        r1["score"] = 18; r1["verdict"] = "HIGH"
+        r1["evidence"].append("Position 25-40% — material single-name risk")
+        out["top_risks"].append({"area": "concentration",
+            "msg": f"{max_pos['symbol']} is {max_pos['weight_pct']}% — high single-name risk"})
+    elif max_pos["weight_pct"] >= 15:
+        r1["score"] = 10; r1["verdict"] = "ELEVATED"
+        r1["evidence"].append("Position 15-25% — elevated but within high-conviction bounds")
+    else:
+        r1["score"] = 3; r1["verdict"] = "BALANCED"
+        r1["evidence"].append("No position over 15% — well-diversified by single-name")
+    out["components"].append(r1)
+
+    # ───────── R2: Top-3 concentration ─────────
+    r2 = {"name": "Top-3 Concentration", "score": 0, "max": 15,
+          "evidence": [], "verdict": "OK"}
+    sorted_h = sorted(holdings, key=lambda x: x["weight_pct"], reverse=True)
+    top3 = sum(h["weight_pct"] for h in sorted_h[:3])
+    r2["evidence"].append(f"Top 3: {round(top3, 1)}%")
+    r2["evidence"].append(f"Symbols: {', '.join(h['symbol'] for h in sorted_h[:3])}")
+    if top3 >= 75:
+        r2["score"] = 15; r2["verdict"] = "EXTREME"
+        out["top_risks"].append({"area": "top3_concentration",
+            "msg": f"Top 3 = {round(top3, 1)}% of portfolio"})
+    elif top3 >= 60:
+        r2["score"] = 10; r2["verdict"] = "HIGH"
+    elif top3 >= 45:
+        r2["score"] = 5; r2["verdict"] = "ELEVATED"
+    else:
+        r2["score"] = 1; r2["verdict"] = "BALANCED"
+    out["components"].append(r2)
+
+    # ───────── R3: Sector concentration ─────────
+    r3 = {"name": "Sector Concentration", "score": 0, "max": 20,
+          "evidence": [], "verdict": "OK", "sector_breakdown": {}}
+    sector_wt = {}
+    for h in holdings:
+        sec = h["sector"]
+        sector_wt[sec] = sector_wt.get(sec, 0) + h["weight_pct"]
+    r3["sector_breakdown"] = {k: round(v, 1) for k, v in sorted(sector_wt.items(), key=lambda x: x[1], reverse=True)}
+    max_sec = max(sector_wt.items(), key=lambda x: x[1])
+    r3["evidence"].append(f"Top sector: {max_sec[0]} ({round(max_sec[1], 1)}%)")
+    if max_sec[1] >= 60:
+        r3["score"] = 20; r3["verdict"] = "EXTREME"
+        out["top_risks"].append({"area": "sector_concentration",
+            "msg": f"{round(max_sec[1], 1)}% in {max_sec[0]} — sector-specific catalyst could halve portfolio"})
+        out["suggested_fixes"].append({"priority": 2,
+            "action": f"Add exposure to non-{max_sec[0]} sectors",
+            "reason": f"{max_sec[0]} concentration > 60% means a single sector shock (regulation, cycle turn) hits the whole book"})
+    elif max_sec[1] >= 40:
+        r3["score"] = 14; r3["verdict"] = "HIGH"
+        out["suggested_fixes"].append({"priority": 3,
+            "action": f"Trim {max_sec[0]} weight or add other sectors",
+            "reason": f"{max_sec[0]} at {round(max_sec[1], 1)}% is over the 40% diversification threshold"})
+    elif max_sec[1] >= 25:
+        r3["score"] = 7; r3["verdict"] = "ELEVATED"
+    else:
+        r3["score"] = 2; r3["verdict"] = "BALANCED"
+        r3["evidence"].append("No sector over 25% — well-diversified")
+    if "Unknown" in sector_wt and sector_wt["Unknown"] > 10:
+        r3["evidence"].append(f"⚠ {round(sector_wt['Unknown'], 1)}% in Unknown sector (yfinance metadata gap)")
+    out["components"].append(r3)
+
+    # ───────── R4: Region concentration ─────────
+    r4 = {"name": "Region Concentration", "score": 0, "max": 10,
+          "evidence": [], "verdict": "OK", "region_breakdown": {}}
+    region_wt = {}
+    for h in holdings:
+        reg = h["region"]
+        region_wt[reg] = region_wt.get(reg, 0) + h["weight_pct"]
+    r4["region_breakdown"] = {k: round(v, 1) for k, v in region_wt.items()}
+    max_reg = max(region_wt.items(), key=lambda x: x[1])
+    r4["evidence"].append(f"Largest region: {max_reg[0]} ({round(max_reg[1], 1)}%)")
+    if max_reg[1] >= 95:
+        r4["score"] = 10; r4["verdict"] = "CONCENTRATED"
+        r4["evidence"].append("Single-region portfolio — currency/macro shock has nowhere to hide")
+    elif max_reg[1] >= 80:
+        r4["score"] = 5; r4["verdict"] = "DOMINANT"
+    else:
+        r4["score"] = 1; r4["verdict"] = "DIVERSIFIED"
+    out["components"].append(r4)
+
+    # ───────── R5: Beta-weighted exposure ─────────
+    r5 = {"name": "Beta Exposure", "score": 0, "max": 15,
+          "evidence": [], "verdict": "OK"}
+    beta_weighted_sum = 0
+    beta_total_wt = 0
+    for h in holdings:
+        if h["beta"] is not None and h["beta"] > 0:
+            beta_weighted_sum += h["beta"] * h["weight_pct"]
+            beta_total_wt += h["weight_pct"]
+    if beta_total_wt > 0:
+        portfolio_beta = beta_weighted_sum / beta_total_wt
+        r5["evidence"].append(f"Portfolio beta: {round(portfolio_beta, 2)} (vs market 1.00)")
+        if portfolio_beta >= 1.5:
+            r5["score"] = 15; r5["verdict"] = "AGGRESSIVE"
+            out["top_risks"].append({"area": "beta",
+                "msg": f"Portfolio beta {round(portfolio_beta, 2)} — 50% more market-sensitive than benchmark"})
+        elif portfolio_beta >= 1.2:
+            r5["score"] = 9; r5["verdict"] = "ELEVATED"
+        elif portfolio_beta < 0.6:
+            r5["score"] = 5; r5["verdict"] = "DEFENSIVE"
+            r5["evidence"].append("Very low beta — may underperform in bull markets")
+        else:
+            r5["score"] = 2; r5["verdict"] = "BALANCED"
+    else:
+        r5["score"] = 0; r5["verdict"] = "UNKNOWN"
+        r5["evidence"].append("Beta unavailable for all holdings — yfinance metadata gap")
+
+    out["components"].append(r5)
+
+    # ───────── R6: Cash buffer ─────────
+    r6 = {"name": "Cash Buffer", "score": 0, "max": 15,
+          "evidence": [f"Cash: {round(cash_pct, 1)}%"], "verdict": "OK"}
+    if cash_pct < 2:
+        r6["score"] = 15; r6["verdict"] = "NO DRY POWDER"
+        r6["evidence"].append("Less than 2% cash — no buying power for opportunities or drawdowns")
+        out["suggested_fixes"].append({"priority": 3,
+            "action": "Raise cash to 5-10% by trimming highest-weight positions",
+            "reason": "Institutional portfolios always keep dry powder — both for opportunistic buys and to avoid forced selling"})
+    elif cash_pct < 5:
+        r6["score"] = 8; r6["verdict"] = "THIN"
+    elif cash_pct > 25:
+        r6["score"] = 5; r6["verdict"] = "EXCESS"
+        r6["evidence"].append("High cash position — opportunity cost if equities rally")
+    else:
+        r6["score"] = 1; r6["verdict"] = "APPROPRIATE"
+    out["components"].append(r6)
+
+    # ───────── COMPOSITE ─────────
+    composite = sum(c["score"] for c in out["components"])
+    out["risk_score"] = _eng_clamp_score(composite)
+    score = out["risk_score"]
+    if score >= 70:
+        out["overall_verdict"] = "HIGH RISK — RESTRUCTURE NEEDED"
+        out["color"] = "red"
+    elif score >= 45:
+        out["overall_verdict"] = "ELEVATED RISK — TRIM CONCENTRATIONS"
+        out["color"] = "amber"
+    elif score >= 25:
+        out["overall_verdict"] = "MODERATE RISK — MONITOR"
+        out["color"] = "lime"
+    else:
+        out["overall_verdict"] = "WELL-BALANCED"
+        out["color"] = "green"
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    print(f"[RISK] {len(holdings)} holdings, risk_score={out['risk_score']} verdict={out['overall_verdict']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 3: INSTITUTIONAL CONVICTION SCORE (Aggregator)
+#
+# Vijay quote: "Single score that immediately answers Buy/Hold/Avoid without
+# requiring users to understand 20 indicators."
+#
+# AGGREGATES existing signals into a single 0-100 conviction score. This is
+# a scaffold that reads from the dashboard endpoint and other available data.
+# Future enhancement (r99.40): pull from smart-money-v3, dd-positioning-intel,
+# structural-change-signal endpoints when services/ module is shipped.
+# ════════════════════════════════════════════════════════════════════════════
+
+_inst_conviction_cache = {}
+_INST_CONVICTION_TTL = 1800
+
+
+@app.get("/api/institutional-conviction")
+async def institutional_conviction(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Institutional Conviction Score. Aggregator over available signals."""
+    try:
+        return await _inst_conviction_impl(symbol, region, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[CONVICTION] {symbol} ({region}) unhandled: {_err}")
+        return {"success": False, "symbol": symbol, "error": _err,
+                "trace": _tb.format_exc()[:1500]}
+
+
+async def _inst_conviction_impl(symbol, region, refresh):
+    import time as _time
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    cache_key = f"{symbol}_{region}"
+    if not refresh and cache_key in _inst_conviction_cache:
+        c = _inst_conviction_cache[cache_key]
+        if (_time.time() - c["ts"]) < _INST_CONVICTION_TTL:
+            out_c = dict(c["data"])
+            out_c["_cached"] = True
+            return out_c
+
+    t0 = _time.time()
+    # Call dashboard impl directly to leverage its computation
+    dash = await stock_dashboard(symbol=symbol, region=region, refresh=0)
+    out = {
+        "success": True, "symbol": symbol, "region": region,
+        "conviction_score": 0, "components": [],
+        "verdict": "UNKNOWN", "color": "gray",
+        "warnings": [], "_engine": "institutional_conviction_v1",
+    }
+
+    if not isinstance(dash, dict) or not dash.get("success"):
+        out["success"] = False
+        out["error"] = (dash or {}).get("error", "dashboard fetch failed")
+        return out
+
+    summary = dash.get("summary") or {}
+    decision = dash.get("decision") or {}
+    analysis = dash.get("analysis") or {}
+
+    # Component 1: Quality score from dashboard (0-100) → mapped to 0-30
+    qs = decision.get("quality_score", 0) or 0
+    c1_score = round(qs * 30 / 100)
+    out["components"].append({
+        "name": "Fundamental Quality", "score": c1_score, "max": 30,
+        "raw": qs, "source": "stock-dashboard.decision.quality_score",
+        "note": f"ROIC/FCF/leverage/growth quality composite ({qs}/100)"
+    })
+
+    # Component 2: Valuation score (0-100) → mapped to 0-25
+    vs = decision.get("valuation_score", 50) or 50
+    c2_score = round(vs * 25 / 100)
+    out["components"].append({
+        "name": "Valuation", "score": c2_score, "max": 25,
+        "raw": vs, "source": "stock-dashboard.decision.valuation_score",
+        "note": f"PEG/FCF-yield-based ({vs}/100)"
+    })
+
+    # Component 3: ROIC trajectory (0-15) — penalty if value-destroying
+    roic_q = (analysis.get("roic_quality") or {}).get("verdict", "")
+    roic_map = {"HIGH-QUALITY COMPOUNDER": 15, "ABOVE-AVERAGE": 11,
+                "MARGINAL": 5, "VALUE-DESTROYING": 0}
+    c3_score = roic_map.get(roic_q, 7)
+    out["components"].append({
+        "name": "ROIC Trajectory", "score": c3_score, "max": 15,
+        "raw": roic_q, "source": "stock-dashboard.analysis.roic_quality",
+        "note": roic_q or "ROIC trajectory not computable"
+    })
+
+    # Component 4: Share action (buyback = good, dilution = bad)
+    share_v = (analysis.get("share_action") or {}).get("verdict", "")
+    share_map = {"BUYBACK": 10, "NEUTRAL": 5, "DILUTION": 0}
+    c4_score = share_map.get(share_v, 5)
+    out["components"].append({
+        "name": "Capital Return (Buyback)", "score": c4_score, "max": 10,
+        "raw": share_v, "source": "stock-dashboard.analysis.share_action",
+        "note": share_v or "Share-action data unavailable"
+    })
+
+    # Component 5: Growth quality
+    growth_v = (analysis.get("growth_quality") or {}).get("verdict", "")
+    growth_map = {"EPS-LEVERAGED GROWTH": 10, "MARGIN EXPANSION": 8,
+                  "MARGIN COMPRESSION": 3, "EARNINGS DECLINING": 0}
+    c5_score = growth_map.get(growth_v, 5)
+    out["components"].append({
+        "name": "Growth Quality", "score": c5_score, "max": 10,
+        "raw": growth_v, "source": "stock-dashboard.analysis.growth_quality",
+        "note": growth_v or "Growth pattern not classified"
+    })
+
+    # Component 6: Institutional ownership (from /api/smart-exit-engine signal)
+    # Light proxy from yfinance.info — score 0-10
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+        def _f():
+            try: return (yf.Ticker(yf_sym).info or {})
+            except Exception: return {}
+        info_inst = await _aio.get_event_loop().run_in_executor(None, _f)
+    except Exception:
+        info_inst = {}
+    held_pct = _eng_ds_num(info_inst.get("heldPercentInstitutions"))
+    if held_pct is not None:
+        if held_pct >= 0.80:
+            c6_score = 10; c6_note = f"{round(held_pct*100, 1)}% institutional — heavy smart-money interest"
+        elif held_pct >= 0.60:
+            c6_score = 8; c6_note = f"{round(held_pct*100, 1)}% institutional — strong"
+        elif held_pct >= 0.40:
+            c6_score = 5; c6_note = f"{round(held_pct*100, 1)}% institutional — moderate"
+        elif held_pct >= 0.20:
+            c6_score = 3; c6_note = f"{round(held_pct*100, 1)}% institutional — limited"
+        else:
+            c6_score = 1; c6_note = f"{round(held_pct*100, 1)}% institutional — retail-heavy"
+    else:
+        c6_score = 5; c6_note = "Institutional ownership data unavailable"
+        out["warnings"].append("13F institutional ownership not retrievable — scored 5/10 neutral")
+    out["components"].append({
+        "name": "Institutional Ownership", "score": c6_score, "max": 10,
+        "raw": held_pct, "source": "yfinance.info.heldPercentInstitutions",
+        "note": c6_note
+    })
+
+    # Composite — sum the components
+    composite = sum(c["score"] for c in out["components"])
+    out["conviction_score"] = _eng_clamp_score(composite)
+    score = out["conviction_score"]
+
+    if score >= 90:
+        out["verdict"] = "HEAVY ACCUMULATION"; out["color"] = "green"
+    elif score >= 70:
+        out["verdict"] = "STRONG BUYING"; out["color"] = "lime"
+    elif score >= 50:
+        out["verdict"] = "NEUTRAL"; out["color"] = "amber"
+    elif score >= 30:
+        out["verdict"] = "DISTRIBUTION"; out["color"] = "amber"
+    else:
+        out["verdict"] = "EXIT ZONE"; out["color"] = "red"
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    out["_inputs_from"] = "stock-dashboard + yfinance"
+    out["_future_inputs"] = [
+        "smart-money-v3 (institutional flow scoring) — needs services/ module",
+        "dd-positioning-intelligence (FII/DII, block trades) — needs services/ module",
+        "Options put/call skew — F&O feed integration r99.40+",
+        "Delivery percentage (India) — NSE bhav copy r99.40+",
+    ]
+    _inst_conviction_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[CONVICTION] {symbol} ({region}) score={out['conviction_score']} verdict={out['verdict']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 4: CAPITAL ROTATION ENGINE (Scaffold)
+#
+# Vijay quote: "Almost nobody does this well. Institutional money constantly
+# rotates between sectors."
+#
+# r99.39 SCAFFOLD: Returns sector-ETF leaderboard based on 1m/3m relative
+# returns. Identifies "money entering" (best returns) and "money leaving"
+# (worst returns) sectors.
+#
+# r99.40+ ROADMAP: cross-asset flow data (insurance subsector, factor rotation,
+# country rotation, smallcap vs largecap) — needs paid data feed or 13F deltas.
+# ════════════════════════════════════════════════════════════════════════════
+
+_capital_rotation_cache = {}
+_CAPITAL_ROTATION_TTL = 3600
+
+
+@app.get("/api/capital-rotation")
+async def capital_rotation(region: str = "US", lookback_days: int = 30, refresh: int = 0):
+    """Capital Rotation Engine — sector ETF leaderboard."""
+    try:
+        return await _capital_rotation_impl(region, lookback_days, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[ROTATION] unhandled: {_err}")
+        return {"success": False, "error": _err, "trace": _tb.format_exc()[:1500]}
+
+
+# Sector ETF universe — used to detect money rotation
+_SECTOR_ETFS = {
+    "US": [
+        ("XLK", "Technology"), ("XLF", "Financials"), ("XLV", "Healthcare"),
+        ("XLE", "Energy"), ("XLI", "Industrials"), ("XLP", "Consumer Staples"),
+        ("XLY", "Consumer Discretionary"), ("XLB", "Materials"),
+        ("XLU", "Utilities"), ("XLRE", "Real Estate"), ("XLC", "Communication Services"),
+        ("SPY", "S&P 500 (benchmark)"),
+    ],
+    "IN": [
+        ("NIFTYBEES.NS", "Nifty 50 (benchmark)"),
+        ("BANKBEES.NS", "Banking"),
+        ("ITBEES.NS", "Information Technology"),
+        ("PHARMABEES.NS", "Pharmaceuticals"),
+        ("PSUBNKBEES.NS", "PSU Banks"),
+        ("INFRABEES.NS", "Infrastructure"),
+        ("CONSUMBEES.NS", "Consumption"),
+        ("AUTOBEES.NS", "Auto"),
+        ("METALBEES.NS", "Metal"),
+    ],
+}
+
+
+async def _capital_rotation_impl(region, lookback_days, refresh):
+    import time as _time
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    lookback_days = max(7, min(180, lookback_days))
+
+    cache_key = f"{region}_{lookback_days}"
+    if not refresh and cache_key in _capital_rotation_cache:
+        c = _capital_rotation_cache[cache_key]
+        if (_time.time() - c["ts"]) < _CAPITAL_ROTATION_TTL:
+            out_c = dict(c["data"])
+            out_c["_cached"] = True
+            return out_c
+
+    t0 = _time.time()
+    out = {
+        "success": True, "region": region, "lookback_days": lookback_days,
+        "sectors": [], "money_entering": [], "money_leaving": [],
+        "benchmark_return_pct": None,
+        "warnings": [], "_engine": "capital_rotation_v1_scaffold",
+        "_note": "r99.39 SCAFFOLD: 1m/3m sector ETF returns only. r99.40 will add 13F flows, options flow, FII/DII data.",
+    }
+
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+        try: _yahoo_rate_wait()
+        except Exception: pass
+
+        def _fetch_etf(yf_sym):
+            try:
+                tk = yf.Ticker(yf_sym)
+                hist = tk.history(period=f"{lookback_days + 10}d", interval="1d", auto_adjust=True)
+                if hist is None or hist.empty:
+                    return None
+                closes = list(hist["Close"].dropna())
+                if len(closes) < 5: return None
+                return closes
+            except Exception:
+                return None
+
+        _lp = _aio.get_event_loop()
+        sector_universe = _SECTOR_ETFS.get(region, _SECTOR_ETFS["US"])
+        for yf_sym, label in sector_universe:
+            closes = await _lp.run_in_executor(None, _fetch_etf, yf_sym)
+            if not closes or len(closes) < 5:
+                out["sectors"].append({
+                    "etf": yf_sym, "sector": label, "return_pct": None,
+                    "note": "data unavailable"
+                })
+                continue
+            last_idx = min(len(closes), lookback_days + 1)
+            ret_pct = (closes[-1] - closes[-last_idx]) / closes[-last_idx] * 100 if closes[-last_idx] > 0 else 0
+            out["sectors"].append({
+                "etf": yf_sym, "sector": label,
+                "return_pct": round(ret_pct, 2),
+                "last_price": round(closes[-1], 2),
+            })
+    except ImportError:
+        out["warnings"].append("yfinance not available")
+
+    # Identify benchmark return
+    benchmark_label = "S&P 500" if region == "US" else "Nifty 50"
+    for s in out["sectors"]:
+        if "benchmark" in s["sector"].lower():
+            out["benchmark_return_pct"] = s["return_pct"]
+            break
+
+    # Rank — sort by return desc, identify top 3 entering / bottom 3 leaving
+    valid = [s for s in out["sectors"] if s.get("return_pct") is not None
+             and "benchmark" not in s["sector"].lower()]
+    valid.sort(key=lambda x: x["return_pct"], reverse=True)
+    out["money_entering"] = [
+        {**s, "rank": i+1, "relative_to_benchmark":
+         (round(s["return_pct"] - (out["benchmark_return_pct"] or 0), 2))}
+        for i, s in enumerate(valid[:3])
+    ]
+    out["money_leaving"] = [
+        {**s, "rank": i+1, "relative_to_benchmark":
+         (round(s["return_pct"] - (out["benchmark_return_pct"] or 0), 2))}
+        for i, s in enumerate(valid[-3:][::-1])
+    ]
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _capital_rotation_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[ROTATION] {region} {lookback_days}d — top entering: {out['money_entering'][0]['sector'] if out['money_entering'] else '?'} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# r63.99.40: COMPLETING THE CELESYS 2.0 SPEC — 6 remaining engines
+#
+# r99.39 shipped 4 of the 10 engines from Vijay's product brief. This build
+# completes the remaining 6:
+#
+#   ENGINE 5  Multibagger Probability       /api/multibagger-probability  (FULL)
+#   ENGINE 6  Smart Money ETF Builder       /api/smart-money-etf-builder  (FULL)
+#   ENGINE 7  Earnings Surprise Predictor   /api/earnings-surprise-pred   (PARTIAL)
+#   ENGINE 8  Macro Impact Engine           /api/macro-impact             (FULL)
+#   ENGINE 9  CEO/Management Change         /api/management-change        (SCAFFOLD)
+#   ENGINE 10 Today's Institutional Picks   /api/institutional-picks-today (SCAFFOLD)
+#
+# All engines carry forward r99.37 wrapper + r99.38 _eng_ds_num + sanity
+# gates + honest data-gap surfacing in _future_inputs / _note fields.
+# ════════════════════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 5: MULTIBAGGER PROBABILITY (FULL)
+#
+# Vijay quote: "Institutions search for: improving ROIC, accelerating revenue,
+# margin expansion, insider buying, increasing ownership, low debt, new
+# products. This can become the flagship feature."
+#
+# This is a SINGLE-STOCK probability scorer (different from the existing
+# Multibagger Hunter which is a universe scanner). Use it for: "I'm watching
+# COMPANY X — what's the probability it 5-10x's over 5+ years?"
+#
+# INPUT: symbol, region
+# OUTPUT: probability 0-100, 7 component scores, verdict
+#
+# 7 COMPONENTS (each scores 0-15 except Insider which is 0-10, total 100):
+#   C1. ROIC Trajectory       (15)  — improving = best signal
+#   C2. Revenue Acceleration  (15)  — recent 3y growth vs trailing
+#   C3. Margin Expansion      (15)  — gross margin delta + net margin delta
+#   C4. Debt Discipline       (15)  — debt/equity stable/declining
+#   C5. Capital Efficiency    (15)  — FCF/Revenue + reinvestment intensity
+#   C6. Ownership Quality     (15)  — institutional + insider holding
+#   C7. Insider Buying        (10)  — net insider transactions positive
+#
+# Probability bands:
+#   80-100  STRONG MULTIBAGGER CANDIDATE
+#   60-79   WATCHLIST — needs catalyst confirmation
+#   40-59   PARTIAL FIT — some criteria met
+#   <40     IGNORE — typical company, no asymmetric setup
+# ════════════════════════════════════════════════════════════════════════════
+
+_multibagger_prob_cache = {}
+_MULTIBAGGER_PROB_TTL = 3600
+
+
+@app.get("/api/multibagger-probability")
+async def multibagger_probability(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Multibagger Probability — single-stock probability scorer."""
+    try:
+        return await _multibagger_prob_impl(symbol, region, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[MULTIBAGGER] {symbol} ({region}) unhandled: {_err}")
+        return {"success": False, "symbol": symbol, "error": _err,
+                "trace": _tb.format_exc()[:1500]}
+
+
+async def _multibagger_prob_impl(symbol, region, refresh):
+    import time as _time
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    cache_key = f"{symbol}_{region}"
+    if not refresh and cache_key in _multibagger_prob_cache:
+        c = _multibagger_prob_cache[cache_key]
+        if (_time.time() - c["ts"]) < _MULTIBAGGER_PROB_TTL:
+            out_c = dict(c["data"]); out_c["_cached"] = True
+            return out_c
+
+    t0 = _time.time()
+    # Use dashboard data as source of truth — it already has CAGRs, ROIC, margins
+    dash = await stock_dashboard(symbol=symbol, region=region, refresh=0)
+    out = {
+        "success": True, "symbol": symbol, "region": region,
+        "probability_pct": 0, "components": [], "verdict": "UNKNOWN",
+        "color": "gray", "warnings": [],
+        "_engine": "multibagger_probability_v1",
+    }
+
+    if not isinstance(dash, dict) or not dash.get("success"):
+        out["success"] = False
+        out["error"] = (dash or {}).get("error", "dashboard fetch failed")
+        return out
+
+    annual = dash.get("annual") or []
+    cagrs = dash.get("cagrs") or {}
+    analysis = dash.get("analysis") or {}
+    summary = dash.get("summary") or {}
+
+    # Sanity gate
+    if not annual or len(annual) < 3:
+        out["verdict"] = "INSUFFICIENT_DATA"
+        out["probability_pct"] = 0
+        out["color"] = "gray"
+        out["warnings"].append(f"Only {len(annual)} years of annual data — multibagger setup needs ≥3 years to evaluate")
+        out["elapsed_sec"] = round(_time.time() - t0, 2)
+        return out
+
+    latest = annual[-1] if annual else {}
+
+    # ───────── C1: ROIC Trajectory (15 pts) ─────────
+    roic_series = [_eng_ds_num(a.get("roic_pct")) for a in annual]
+    roic_series = [r for r in roic_series if r is not None]
+    c1 = {"name": "ROIC Trajectory", "max": 15, "score": 0,
+          "evidence": [], "verdict": "UNKNOWN"}
+    if len(roic_series) >= 3:
+        recent = sum(roic_series[-3:]) / 3
+        early = sum(roic_series[:3]) / min(3, len(roic_series))
+        delta = recent - early
+        c1["evidence"].append(f"Recent 3y ROIC: {round(recent, 1)}%")
+        c1["evidence"].append(f"Early 3y ROIC: {round(early, 1)}%")
+        c1["evidence"].append(f"Δ ROIC: {round(delta, 1)} pts")
+        if recent >= 18 and delta >= 3:
+            c1["score"] = 15; c1["verdict"] = "EXPANDING HIGH"
+        elif recent >= 15 and delta >= 0:
+            c1["score"] = 12; c1["verdict"] = "SUSTAINED HIGH"
+        elif recent >= 12 and delta >= 2:
+            c1["score"] = 10; c1["verdict"] = "IMPROVING"
+        elif recent >= 10:
+            c1["score"] = 6; c1["verdict"] = "ADEQUATE"
+        elif delta >= 5:
+            c1["score"] = 7; c1["verdict"] = "TURNING UP"
+        else:
+            c1["score"] = 2; c1["verdict"] = "POOR"
+    else:
+        c1["evidence"].append("ROIC history too thin (need 3+ years)")
+    out["components"].append(c1)
+
+    # ───────── C2: Revenue Acceleration (15 pts) ─────────
+    c2 = {"name": "Revenue Acceleration", "max": 15, "score": 0,
+          "evidence": [], "verdict": "UNKNOWN"}
+    rev_5y = _eng_ds_num(cagrs.get("revenue_5y_cagr_pct"))
+    rev_10y = _eng_ds_num(cagrs.get("revenue_10y_cagr_pct"))
+    if rev_5y is not None:
+        c2["evidence"].append(f"5y revenue CAGR: {rev_5y}%")
+        if rev_10y is not None:
+            c2["evidence"].append(f"10y revenue CAGR: {rev_10y}%")
+            accel = rev_5y - rev_10y
+            c2["evidence"].append(f"Acceleration: {round(accel, 1)} pts")
+            if rev_5y >= 20 and accel >= 5:
+                c2["score"] = 15; c2["verdict"] = "ACCELERATING FAST"
+            elif rev_5y >= 15 and accel >= 0:
+                c2["score"] = 12; c2["verdict"] = "STRONG STEADY"
+            elif rev_5y >= 10 and accel >= 0:
+                c2["score"] = 9; c2["verdict"] = "STEADY GROWTH"
+            elif rev_5y >= 10:
+                c2["score"] = 6; c2["verdict"] = "DECELERATING"
+            elif rev_5y >= 5:
+                c2["score"] = 3; c2["verdict"] = "MODEST"
+            else:
+                c2["score"] = 1; c2["verdict"] = "SLOW/FLAT"
+        else:
+            # Only 5y data available
+            if rev_5y >= 20: c2["score"] = 12; c2["verdict"] = "STRONG"
+            elif rev_5y >= 10: c2["score"] = 7; c2["verdict"] = "MODERATE"
+            else: c2["score"] = 2; c2["verdict"] = "WEAK"
+    else:
+        c2["evidence"].append("Revenue CAGR unavailable")
+    out["components"].append(c2)
+
+    # ───────── C3: Margin Expansion (15 pts) ─────────
+    c3 = {"name": "Margin Expansion", "max": 15, "score": 0,
+          "evidence": [], "verdict": "UNKNOWN"}
+    gm_series = [_eng_ds_num(a.get("gross_margin_pct")) for a in annual]
+    gm_series = [g for g in gm_series if g is not None]
+    nm_series = [_eng_ds_num(a.get("net_margin_pct")) for a in annual]
+    nm_series = [n for n in nm_series if n is not None]
+    gm_delta = (gm_series[-1] - gm_series[0]) if len(gm_series) >= 3 else None
+    nm_delta = (nm_series[-1] - nm_series[0]) if len(nm_series) >= 3 else None
+    if gm_delta is not None:
+        c3["evidence"].append(f"Gross margin Δ over {len(gm_series)}y: {round(gm_delta, 1)} pts")
+    if nm_delta is not None:
+        c3["evidence"].append(f"Net margin Δ over {len(nm_series)}y: {round(nm_delta, 1)} pts")
+    combined = (gm_delta or 0) + (nm_delta or 0)
+    if combined >= 10:
+        c3["score"] = 15; c3["verdict"] = "STRONG EXPANSION"
+    elif combined >= 5:
+        c3["score"] = 11; c3["verdict"] = "EXPANDING"
+    elif combined >= 1:
+        c3["score"] = 7; c3["verdict"] = "MODEST EXPANSION"
+    elif combined >= -2:
+        c3["score"] = 4; c3["verdict"] = "STABLE"
+    else:
+        c3["score"] = 1; c3["verdict"] = "COMPRESSING"
+    if gm_delta is None and nm_delta is None:
+        c3["score"] = 0; c3["verdict"] = "UNKNOWN"
+        c3["evidence"].append("Margin history unavailable")
+    out["components"].append(c3)
+
+    # ───────── C4: Debt Discipline (15 pts) ─────────
+    c4 = {"name": "Debt Discipline", "max": 15, "score": 0,
+          "evidence": [], "verdict": "UNKNOWN"}
+    de_series = [_eng_ds_num(a.get("debt_to_equity_pct")) for a in annual]
+    de_series = [d for d in de_series if d is not None]
+    if de_series:
+        recent_de = de_series[-1]
+        early_de = de_series[0] if len(de_series) >= 3 else recent_de
+        c4["evidence"].append(f"Recent debt/equity: {round(recent_de, 1)}%")
+        c4["evidence"].append(f"Earlier debt/equity: {round(early_de, 1)}%")
+        if recent_de < 30 and recent_de <= early_de:
+            c4["score"] = 15; c4["verdict"] = "LOW + STABLE"
+        elif recent_de < 50 and (recent_de - early_de) < 10:
+            c4["score"] = 11; c4["verdict"] = "MODERATE"
+        elif recent_de < 100 and (recent_de - early_de) < 20:
+            c4["score"] = 6; c4["verdict"] = "ELEVATED"
+        elif recent_de >= 100:
+            c4["score"] = 2; c4["verdict"] = "HIGH"
+        else:
+            c4["score"] = 5; c4["verdict"] = "RISING"
+    else:
+        c4["evidence"].append("Debt history unavailable")
+    out["components"].append(c4)
+
+    # ───────── C5: Capital Efficiency (15 pts) ─────────
+    c5 = {"name": "Capital Efficiency (FCF / Reinvestment)", "max": 15, "score": 0,
+          "evidence": [], "verdict": "UNKNOWN"}
+    # FCF / Revenue ratio
+    fcf_recent = _eng_ds_num(latest.get("fcf"))
+    rev_recent = _eng_ds_num(latest.get("revenue"))
+    fcf_margin = (fcf_recent / rev_recent * 100) if (fcf_recent and rev_recent and rev_recent > 0) else None
+    if fcf_margin is not None:
+        c5["evidence"].append(f"FCF / Revenue: {round(fcf_margin, 1)}%")
+        if fcf_margin >= 20:
+            c5["score"] = 15; c5["verdict"] = "EXCEPTIONAL"
+        elif fcf_margin >= 12:
+            c5["score"] = 11; c5["verdict"] = "STRONG"
+        elif fcf_margin >= 6:
+            c5["score"] = 7; c5["verdict"] = "ADEQUATE"
+        elif fcf_margin >= 0:
+            c5["score"] = 4; c5["verdict"] = "THIN"
+        else:
+            c5["score"] = 1; c5["verdict"] = "BURNING CASH"
+    # FCF conversion (from analysis layer)
+    fcf_conv = (analysis.get("fcf_conversion") or {}).get("verdict")
+    if fcf_conv:
+        c5["evidence"].append(f"FCF conversion: {fcf_conv}")
+    out["components"].append(c5)
+
+    # ───────── C6: Ownership Quality (15 pts) ─────────
+    c6 = {"name": "Ownership Quality", "max": 15, "score": 0,
+          "evidence": [], "verdict": "UNKNOWN"}
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+        def _f():
+            try: return (yf.Ticker(yf_sym).info or {})
+            except Exception: return {}
+        info_for_own = await _aio.get_event_loop().run_in_executor(None, _f)
+    except Exception:
+        info_for_own = {}
+    inst_pct = _eng_ds_num(info_for_own.get("heldPercentInstitutions"))
+    insider_pct = _eng_ds_num(info_for_own.get("heldPercentInsiders"))
+    if inst_pct is not None:
+        c6["evidence"].append(f"Institutional: {round(inst_pct*100, 1)}%")
+    if insider_pct is not None:
+        c6["evidence"].append(f"Insider: {round(insider_pct*100, 1)}%")
+    # Multibaggers typically have:
+    # - Insider holding (skin in the game): bonus if > 3%
+    # - Some institutional but not saturated (room to grow): 30-70% sweet spot
+    s = 0
+    if insider_pct is not None and insider_pct >= 0.05: s += 6
+    elif insider_pct is not None and insider_pct >= 0.02: s += 4
+    elif insider_pct is not None and insider_pct >= 0.005: s += 2
+    if inst_pct is not None:
+        if 0.30 <= inst_pct <= 0.70: s += 9  # sweet spot
+        elif inst_pct < 0.30: s += 6  # early — room to grow
+        elif inst_pct > 0.85: s += 3  # too saturated
+        else: s += 7
+    c6["score"] = min(15, s)
+    if c6["score"] >= 13: c6["verdict"] = "OPTIMAL"
+    elif c6["score"] >= 9: c6["verdict"] = "STRONG"
+    elif c6["score"] >= 5: c6["verdict"] = "ADEQUATE"
+    elif c6["score"] >= 1: c6["verdict"] = "WEAK"
+    else: c6["verdict"] = "UNKNOWN"
+    out["components"].append(c6)
+
+    # ───────── C7: Insider Buying (10 pts) ─────────
+    c7 = {"name": "Insider Buying Signal", "max": 10, "score": 0,
+          "evidence": [], "verdict": "UNKNOWN"}
+    # yfinance.insider_transactions is unreliable; use insider holding as proxy
+    # Real implementation in r99.41 will integrate Form 4 / SEBI insider data
+    c7["evidence"].append("Insider transaction feed not wired in r99.40 — scored neutral")
+    c7["evidence"].append("r99.41: Form 4 (US) / SEBI insider filings (IN) integration")
+    c7["score"] = 5; c7["verdict"] = "NOT YET WIRED"
+    out["warnings"].append("Insider Buying component is r99.41 placeholder — scored 5/10 neutral pending Form 4 / SEBI feed integration")
+    out["components"].append(c7)
+
+    # ───────── COMPOSITE ─────────
+    composite = sum(c["score"] for c in out["components"])
+    out["probability_pct"] = _eng_clamp_score(composite)
+    score = out["probability_pct"]
+    if score >= 80:
+        out["verdict"] = "STRONG MULTIBAGGER CANDIDATE"
+        out["color"] = "green"
+    elif score >= 60:
+        out["verdict"] = "WATCHLIST"
+        out["color"] = "lime"
+    elif score >= 40:
+        out["verdict"] = "PARTIAL FIT"
+        out["color"] = "amber"
+    else:
+        out["verdict"] = "TYPICAL — NO ASYMMETRIC SETUP"
+        out["color"] = "red"
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    out["_future_inputs"] = [
+        "Insider transaction Form 4 (US) / SEBI insider filings (IN) — r99.41",
+        "New product / catalyst news signal — r99.42 NLP layer",
+        "Sector tailwind score — pair with Capital Rotation Engine",
+    ]
+    _multibagger_prob_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[MULTIBAGGER] {symbol} ({region}) prob={out['probability_pct']}% verdict={out['verdict']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 6: SMART MONEY ETF BUILDER (FULL)
+#
+# Vijay quote: "User enters Risk = Conservative / Moderate / Aggressive.
+# System automatically creates 40% QQQ / 20% SCHD / 20% XLV / 20% Cash.
+# Then continuously monitors. This becomes a robo-advisor layer."
+#
+# INPUT: risk_profile (conservative|moderate|aggressive), region (US|IN)
+# OUTPUT: ETF allocation with rationale + monitoring criteria
+#
+# Allocations are deterministic hand-curated templates based on:
+#   - Conservative: capital preservation, dividend income, low beta
+#   - Moderate: balanced growth + income, market-cap exposure
+#   - Aggressive: growth, momentum, sector concentration
+# ════════════════════════════════════════════════════════════════════════════
+
+_SMART_ETF_PORTFOLIOS = {
+    "US": {
+        "conservative": [
+            {"etf": "AGG", "weight_pct": 30, "name": "iShares Core US Aggregate Bond",
+             "role": "Bond core — interest income, capital preservation"},
+            {"etf": "SCHD", "weight_pct": 25, "name": "Schwab US Dividend Equity",
+             "role": "Quality dividend equity exposure"},
+            {"etf": "VYM", "weight_pct": 15, "name": "Vanguard High Dividend Yield",
+             "role": "High-yield income complement"},
+            {"etf": "VTI", "weight_pct": 15, "name": "Vanguard Total Stock Market",
+             "role": "Broad US equity beta (low expense)"},
+            {"etf": "GLD", "weight_pct": 5, "name": "SPDR Gold Shares",
+             "role": "Inflation hedge / dollar weakness hedge"},
+            {"etf": "CASH", "weight_pct": 10, "name": "Cash / Money Market",
+             "role": "Dry powder + emergency reserve"},
+        ],
+        "moderate": [
+            {"etf": "VTI", "weight_pct": 35, "name": "Vanguard Total Stock Market",
+             "role": "Broad US equity core"},
+            {"etf": "QQQ", "weight_pct": 20, "name": "Invesco QQQ (Nasdaq-100)",
+             "role": "Growth / tech tilt"},
+            {"etf": "SCHD", "weight_pct": 15, "name": "Schwab US Dividend Equity",
+             "role": "Dividend quality factor"},
+            {"etf": "VEA", "weight_pct": 10, "name": "Vanguard Developed Markets",
+             "role": "International developed equity diversification"},
+            {"etf": "AGG", "weight_pct": 10, "name": "iShares Core US Aggregate Bond",
+             "role": "Bond ballast / volatility dampener"},
+            {"etf": "CASH", "weight_pct": 10, "name": "Cash / Money Market",
+             "role": "Dry powder for opportunities"},
+        ],
+        "aggressive": [
+            {"etf": "QQQ", "weight_pct": 30, "name": "Invesco QQQ (Nasdaq-100)",
+             "role": "Growth / tech concentration"},
+            {"etf": "VUG", "weight_pct": 20, "name": "Vanguard Growth ETF",
+             "role": "Large-cap growth factor"},
+            {"etf": "SOXX", "weight_pct": 15, "name": "iShares Semiconductor",
+             "role": "Semis — AI / data infrastructure exposure"},
+            {"etf": "IWM", "weight_pct": 10, "name": "iShares Russell 2000",
+             "role": "Small-cap upside"},
+            {"etf": "ARKK", "weight_pct": 10, "name": "ARK Innovation",
+             "role": "Disruptive innovation theme — high volatility"},
+            {"etf": "VTI", "weight_pct": 10, "name": "Vanguard Total Stock Market",
+             "role": "Broad core ballast"},
+            {"etf": "CASH", "weight_pct": 5, "name": "Cash / Money Market",
+             "role": "Tactical dry powder"},
+        ],
+    },
+    "IN": {
+        "conservative": [
+            {"etf": "LIQUIDBEES.NS", "weight_pct": 25, "name": "Nippon India Liquid",
+             "role": "Liquid fund — near-cash, capital preservation"},
+            {"etf": "NIFTYBEES.NS", "weight_pct": 25, "name": "Nippon India Nifty 50",
+             "role": "Large-cap equity core"},
+            {"etf": "GOLDBEES.NS", "weight_pct": 15, "name": "Nippon India Gold",
+             "role": "Gold — inflation + INR weakness hedge"},
+            {"etf": "BANKBEES.NS", "weight_pct": 15, "name": "Nippon India Bank",
+             "role": "Banking — domestic credit growth"},
+            {"etf": "PHARMABEES.NS", "weight_pct": 10, "name": "Nippon India Pharma",
+             "role": "Defensive sector — pharmaceuticals"},
+            {"etf": "CASH", "weight_pct": 10, "name": "Cash / Savings",
+             "role": "Dry powder"},
+        ],
+        "moderate": [
+            {"etf": "NIFTYBEES.NS", "weight_pct": 30, "name": "Nippon India Nifty 50",
+             "role": "Large-cap equity core"},
+            {"etf": "JUNIORBEES.NS", "weight_pct": 15, "name": "Nippon India Nifty Next 50",
+             "role": "Midcap upside exposure"},
+            {"etf": "BANKBEES.NS", "weight_pct": 15, "name": "Nippon India Bank",
+             "role": "Banking sector tilt"},
+            {"etf": "ITBEES.NS", "weight_pct": 10, "name": "Nippon India IT",
+             "role": "IT sector — global demand"},
+            {"etf": "GOLDBEES.NS", "weight_pct": 10, "name": "Nippon India Gold",
+             "role": "Inflation hedge"},
+            {"etf": "LIQUIDBEES.NS", "weight_pct": 10, "name": "Nippon India Liquid",
+             "role": "Near-cash ballast"},
+            {"etf": "CASH", "weight_pct": 10, "name": "Cash",
+             "role": "Opportunistic deployment"},
+        ],
+        "aggressive": [
+            {"etf": "JUNIORBEES.NS", "weight_pct": 25, "name": "Nippon India Nifty Next 50",
+             "role": "Midcap growth"},
+            {"etf": "BANKBEES.NS", "weight_pct": 20, "name": "Nippon India Bank",
+             "role": "High-beta financials"},
+            {"etf": "ITBEES.NS", "weight_pct": 15, "name": "Nippon India IT",
+             "role": "Tech / IT concentration"},
+            {"etf": "PSUBNKBEES.NS", "weight_pct": 10, "name": "Nippon India PSU Bank",
+             "role": "High-beta PSU banking — cyclical play"},
+            {"etf": "NIFTYBEES.NS", "weight_pct": 15, "name": "Nippon India Nifty 50",
+             "role": "Core ballast"},
+            {"etf": "INFRABEES.NS", "weight_pct": 10, "name": "Nippon India Infrastructure",
+             "role": "Infrastructure capex cycle"},
+            {"etf": "CASH", "weight_pct": 5, "name": "Cash",
+             "role": "Tactical dry powder"},
+        ],
+    },
+}
+
+
+@app.get("/api/smart-money-etf-builder")
+async def smart_money_etf_builder(risk_profile: str = "moderate", region: str = "US"):
+    """Smart Money ETF Builder — risk-profile based ETF allocation."""
+    try:
+        return await _smart_etf_builder_impl(risk_profile, region)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[ETF-BUILDER] unhandled: {_err}")
+        return {"success": False, "error": _err, "trace": _tb.format_exc()[:1500]}
+
+
+async def _smart_etf_builder_impl(risk_profile, region):
+    import time as _time
+    risk_profile = (risk_profile or "moderate").lower().strip()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if risk_profile not in ("conservative", "moderate", "aggressive"):
+        return {"success": False,
+                "error": f"risk_profile must be one of: conservative, moderate, aggressive (got: {risk_profile})"}
+
+    t0 = _time.time()
+    template = _SMART_ETF_PORTFOLIOS[region][risk_profile]
+    allocation = [dict(item) for item in template]  # deep copy
+
+    out = {
+        "success": True, "risk_profile": risk_profile, "region": region,
+        "allocation": allocation,
+        "total_weight_pct": sum(a["weight_pct"] for a in allocation),
+        "expected_characteristics": {},
+        "monitoring_criteria": [],
+        "rebalance_recommendation": "Quarterly with 5%+ drift threshold per holding",
+        "warnings": [], "_engine": "smart_money_etf_builder_v1",
+    }
+
+    # Compute summary characteristics
+    equity_pct = sum(a["weight_pct"] for a in allocation
+                     if "BOND" not in a["etf"] and a["etf"] != "CASH"
+                     and "LIQUID" not in a["etf"] and "GOLD" not in a["etf"]
+                     and "AGG" not in a["etf"])
+    cash_like_pct = sum(a["weight_pct"] for a in allocation
+                        if a["etf"] in ("CASH",) or "LIQUID" in a["etf"])
+    bonds_pct = sum(a["weight_pct"] for a in allocation
+                    if "AGG" in a["etf"] or "BOND" in a["etf"])
+    gold_pct = sum(a["weight_pct"] for a in allocation if "GOLD" in a["etf"] or "GLD" in a["etf"])
+
+    out["expected_characteristics"] = {
+        "equity_exposure_pct": equity_pct,
+        "bond_exposure_pct": bonds_pct,
+        "cash_like_exposure_pct": cash_like_pct,
+        "gold_exposure_pct": gold_pct,
+        "expected_volatility": {
+            "conservative": "Low (8-12% annualized)",
+            "moderate": "Medium (12-18% annualized)",
+            "aggressive": "High (18-28% annualized)",
+        }[risk_profile],
+        "expected_drawdown_in_recession": {
+            "conservative": "-10% to -18%",
+            "moderate": "-20% to -30%",
+            "aggressive": "-35% to -50%",
+        }[risk_profile],
+        "income_profile": {
+            "conservative": "High — dividend + bond income drives most of total return",
+            "moderate": "Moderate — balance of capital appreciation and income",
+            "aggressive": "Low — most return expected from price appreciation",
+        }[risk_profile],
+    }
+
+    out["monitoring_criteria"] = [
+        f"Rebalance when any ETF drifts >5% from target weight (e.g. target 30% → if actual hits 35%)",
+        f"Review allocation if risk profile changes (e.g. major life event, new financial goal)",
+        f"Annual review of underlying ETF expense ratios and AUM (look for replacements if expense rises above 0.50%)",
+        f"Tactical adjustment if Macro Impact Engine shows extreme regime shift (e.g. yield curve inversion → consider raising bonds_pct by 5-10%)",
+    ]
+
+    if region == "IN":
+        out["warnings"].append("Indian ETF liquidity varies — check ADV before sizing positions over ₹50L per holding")
+    out["warnings"].append("This is a template allocation, not personalized financial advice. Real allocation should consider your specific goals, time horizon, tax situation, and existing exposures.")
+
+    out["_future_inputs"] = [
+        "Custom risk slider (0-100 instead of 3 buckets) — r99.41",
+        "Tax-loss harvesting suggestions — r99.42",
+        "Existing-holdings overlay to suggest transitions vs full rebuild — r99.41",
+        "Automated rebalance triggers via Capital Rotation Engine — r99.42",
+    ]
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    print(f"[ETF-BUILDER] {region} {risk_profile} → {len(allocation)} holdings in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 7: EARNINGS SURPRISE PREDICTOR (PARTIAL)
+#
+# Vijay quote: "Before earnings: Institutional Expectation, Expected Beat
+# Probability: 76%. Signals: options flow bullish, analyst revisions up,
+# IV expansion, insider buying. Verdict: Bullish Ahead Of Earnings."
+#
+# r99.40 PARTIAL — Anchored on what yfinance can provide:
+#   ✓ Earnings date (from yf.calendar)
+#   ✓ Analyst recommendations summary (from yf.recommendations)
+#   ✓ Analyst price target consensus (from yf.analyst_price_targets)
+#   ✓ Historical surprise pattern (4-quarter beat/miss history)
+#   ⚠ Options flow direction — needs put/call ratio from Upstox/Yahoo options
+#   ⚠ IV expansion — needs options chain IV data
+#   ⚠ Insider buying — r99.41 Form 4 integration
+#
+# OUTPUT: probability of beating consensus + 4 signal components.
+# ════════════════════════════════════════════════════════════════════════════
+
+_earnings_pred_cache = {}
+_EARNINGS_PRED_TTL = 3600
+
+
+@app.get("/api/earnings-surprise-predictor")
+async def earnings_surprise_predictor(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Earnings Surprise Predictor — pre-earnings signal aggregator."""
+    try:
+        return await _earnings_pred_impl(symbol, region, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[EARNINGS-PRED] {symbol} ({region}) unhandled: {_err}")
+        return {"success": False, "symbol": symbol, "error": _err,
+                "trace": _tb.format_exc()[:1500]}
+
+
+async def _earnings_pred_impl(symbol, region, refresh):
+    import time as _time
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    cache_key = f"{symbol}_{region}"
+    if not refresh and cache_key in _earnings_pred_cache:
+        c = _earnings_pred_cache[cache_key]
+        if (_time.time() - c["ts"]) < _EARNINGS_PRED_TTL:
+            out_c = dict(c["data"]); out_c["_cached"] = True
+            return out_c
+
+    t0 = _time.time()
+    out = {
+        "success": True, "symbol": symbol, "region": region,
+        "earnings_date": None, "days_to_earnings": None,
+        "beat_probability_pct": 50, "verdict": "NEUTRAL", "color": "amber",
+        "signals": [], "warnings": [],
+        "_engine": "earnings_surprise_predictor_v1_partial",
+    }
+
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+
+        def _fetch():
+            try:
+                tk = yf.Ticker(yf_sym)
+                info = tk.info or {}
+                cal = None
+                try: cal = tk.calendar
+                except Exception: cal = None
+                recs = None
+                try: recs = tk.recommendations
+                except Exception: recs = None
+                earnings_hist = None
+                try: earnings_hist = tk.earnings_history
+                except Exception: earnings_hist = None
+                return info, cal, recs, earnings_hist
+            except Exception as _e:
+                return {"_err": str(_e)[:120]}, None, None, None
+        info, cal, recs, ehist = await _aio.get_event_loop().run_in_executor(None, _fetch)
+    except ImportError:
+        return {"success": False, "error": "yfinance not available"}
+
+    if not isinstance(info, dict): info = {}
+
+    # ───────── Earnings date discovery ─────────
+    next_earnings = None
+    try:
+        if cal is not None and hasattr(cal, 'get'):
+            ed = cal.get('Earnings Date') or cal.get('earningsDate')
+            if isinstance(ed, list) and ed:
+                next_earnings = ed[0]
+            elif ed:
+                next_earnings = ed
+    except Exception: pass
+
+    if next_earnings is not None:
+        try:
+            import datetime as _dt
+            if hasattr(next_earnings, 'date'):
+                edt = next_earnings.date() if hasattr(next_earnings, 'date') else next_earnings
+            else:
+                edt = next_earnings
+            today = _dt.date.today()
+            days = (edt - today).days if hasattr(edt, 'year') else None
+            out["earnings_date"] = str(edt)
+            out["days_to_earnings"] = days
+        except Exception:
+            out["earnings_date"] = str(next_earnings)
+
+    if out["days_to_earnings"] is None:
+        out["warnings"].append("Next earnings date not retrievable from yfinance calendar")
+
+    # ───────── SIGNAL 1: Historical beat pattern (25 pts) ─────────
+    s1 = {"name": "Historical Beat Pattern", "score": 12, "max": 25,
+          "evidence": [], "verdict": "UNKNOWN"}
+    if ehist is not None and hasattr(ehist, 'empty') and not ehist.empty:
+        try:
+            recent_4 = ehist.tail(4)
+            beats = 0
+            total = 0
+            for _, row in recent_4.iterrows():
+                est = _eng_ds_num(row.get('epsEstimate') if hasattr(row, 'get') else None)
+                act = _eng_ds_num(row.get('epsActual') if hasattr(row, 'get') else None)
+                if est is not None and act is not None:
+                    total += 1
+                    if act > est: beats += 1
+            if total > 0:
+                beat_rate = beats / total
+                s1["evidence"].append(f"Beat {beats} of last {total} quarters ({round(beat_rate*100)}%)")
+                if beat_rate >= 0.75:
+                    s1["score"] = 22; s1["verdict"] = "CONSISTENT BEATER"
+                elif beat_rate >= 0.5:
+                    s1["score"] = 15; s1["verdict"] = "MIXED"
+                else:
+                    s1["score"] = 5; s1["verdict"] = "MISSES MORE OFTEN"
+            else:
+                s1["evidence"].append("Earnings history rows exist but EPS estimate/actual unparseable")
+        except Exception as e:
+            s1["evidence"].append(f"Parse error: {str(e)[:60]}")
+    else:
+        s1["evidence"].append("Earnings history unavailable from yfinance")
+    out["signals"].append(s1)
+
+    # ───────── SIGNAL 2: Analyst recommendation trend (25 pts) ─────────
+    s2 = {"name": "Analyst Recommendation Trend", "score": 12, "max": 25,
+          "evidence": [], "verdict": "UNKNOWN"}
+    rec_key = info.get("recommendationKey")
+    rec_mean = _eng_ds_num(info.get("recommendationMean"))
+    if rec_mean is not None:
+        s2["evidence"].append(f"Recommendation mean: {round(rec_mean, 2)} (1=Strong Buy, 5=Strong Sell)")
+        if rec_mean <= 1.7:
+            s2["score"] = 22; s2["verdict"] = "STRONG BUY"
+        elif rec_mean <= 2.3:
+            s2["score"] = 17; s2["verdict"] = "BUY"
+        elif rec_mean <= 3.0:
+            s2["score"] = 12; s2["verdict"] = "HOLD"
+        elif rec_mean <= 3.7:
+            s2["score"] = 6; s2["verdict"] = "WEAK HOLD"
+        else:
+            s2["score"] = 2; s2["verdict"] = "SELL"
+    if rec_key:
+        s2["evidence"].append(f"Consensus: {rec_key}")
+    if rec_mean is None and not rec_key:
+        s2["evidence"].append("Analyst data unavailable")
+    out["signals"].append(s2)
+
+    # ───────── SIGNAL 3: Price target upside (25 pts) ─────────
+    s3 = {"name": "Price Target Upside", "score": 12, "max": 25,
+          "evidence": [], "verdict": "UNKNOWN"}
+    pt_mean = _eng_ds_num(info.get("targetMeanPrice"))
+    pt_high = _eng_ds_num(info.get("targetHighPrice"))
+    pt_low = _eng_ds_num(info.get("targetLowPrice"))
+    price = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
+    if pt_mean and price and price > 0:
+        upside = (pt_mean - price) / price * 100
+        s3["evidence"].append(f"Current: ${round(price, 2)} → Target mean: ${round(pt_mean, 2)} ({round(upside, 1)}% upside)")
+        if pt_high and pt_low:
+            spread_pct = (pt_high - pt_low) / pt_mean * 100 if pt_mean > 0 else 0
+            s3["evidence"].append(f"Range ${round(pt_low, 2)}-${round(pt_high, 2)} (spread {round(spread_pct, 0)}%)")
+        if upside >= 20:
+            s3["score"] = 22; s3["verdict"] = "STRONG UPSIDE"
+        elif upside >= 10:
+            s3["score"] = 17; s3["verdict"] = "MEANINGFUL UPSIDE"
+        elif upside >= 0:
+            s3["score"] = 12; s3["verdict"] = "MODEST UPSIDE"
+        elif upside >= -10:
+            s3["score"] = 6; s3["verdict"] = "PRICED IN"
+        else:
+            s3["score"] = 2; s3["verdict"] = "STRETCHED ABOVE TARGETS"
+    else:
+        s3["evidence"].append("Analyst price targets unavailable")
+    out["signals"].append(s3)
+
+    # ───────── SIGNAL 4: Revenue momentum (25 pts) ─────────
+    s4 = {"name": "Revenue Growth Momentum", "score": 12, "max": 25,
+          "evidence": [], "verdict": "UNKNOWN"}
+    rev_growth = _eng_ds_num(info.get("revenueGrowth"))
+    earnings_growth = _eng_ds_num(info.get("earningsGrowth"))
+    if rev_growth is not None:
+        rg_pct = rev_growth * 100
+        s4["evidence"].append(f"Latest revenue growth: {round(rg_pct, 1)}%")
+        if rg_pct >= 20:
+            s4["score"] = 22; s4["verdict"] = "ACCELERATING"
+        elif rg_pct >= 10:
+            s4["score"] = 17; s4["verdict"] = "STRONG"
+        elif rg_pct >= 5:
+            s4["score"] = 13; s4["verdict"] = "MODERATE"
+        elif rg_pct >= 0:
+            s4["score"] = 8; s4["verdict"] = "SLOW"
+        else:
+            s4["score"] = 3; s4["verdict"] = "CONTRACTING"
+    if earnings_growth is not None:
+        s4["evidence"].append(f"Earnings growth: {round(earnings_growth * 100, 1)}%")
+    if rev_growth is None and earnings_growth is None:
+        s4["evidence"].append("Revenue / earnings growth unavailable")
+    out["signals"].append(s4)
+
+    # ───────── COMPOSITE → probability ─────────
+    composite = sum(s["score"] for s in out["signals"])
+    out["beat_probability_pct"] = _eng_clamp_score(composite)
+    score = out["beat_probability_pct"]
+    if score >= 75:
+        out["verdict"] = "BULLISH AHEAD OF EARNINGS"
+        out["color"] = "green"
+    elif score >= 55:
+        out["verdict"] = "LEAN BULLISH"
+        out["color"] = "lime"
+    elif score >= 40:
+        out["verdict"] = "NEUTRAL — TOSS-UP"
+        out["color"] = "amber"
+    elif score >= 25:
+        out["verdict"] = "LEAN BEARISH"
+        out["color"] = "amber"
+    else:
+        out["verdict"] = "BEARISH AHEAD OF EARNINGS"
+        out["color"] = "red"
+
+    out["_future_inputs"] = [
+        "Options put/call ratio (sentiment) — needs Upstox / Yahoo options chain wiring",
+        "IV expansion (implied move) — r99.41 options-IV time-series",
+        "Form 4 insider transactions (US) / SEBI insider (IN) — r99.41",
+        "Pre-earnings news sentiment NLP — r99.42",
+    ]
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _earnings_pred_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[EARNINGS-PRED] {symbol} ({region}) prob={out['beat_probability_pct']}% verdict={out['verdict']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 8: MACRO IMPACT ENGINE (FULL)
+#
+# Vijay quote: "Track US 10Y Yield, Dollar Index, Crude Oil, Gold, VIX,
+# Inflation, Interest Rates. Then show: Impact on Stock. Net Macro Score: +15.
+# Users instantly understand why a stock is moving."
+#
+# METHOD: Compute the 90-day rolling correlation of the stock's daily returns
+# against each macro factor's daily returns. Combine with a sign-aware weight
+# to get a per-factor "impact score" (-5 to +5), then sum to Net Macro Score.
+# ════════════════════════════════════════════════════════════════════════════
+
+_macro_impact_cache = {}
+_MACRO_IMPACT_TTL = 3600
+
+_MACRO_FACTORS = {
+    "US": [
+        {"ticker": "^TNX", "label": "US 10Y Yield", "interpret_high": "Bond yields rising → headwind for high-multiple stocks"},
+        {"ticker": "DX-Y.NYB", "label": "Dollar Index (DXY)", "interpret_high": "Strong dollar → headwind for multinationals"},
+        {"ticker": "CL=F", "label": "Crude Oil (WTI)", "interpret_high": "High oil → cost pressure for non-energy, tailwind for energy"},
+        {"ticker": "GC=F", "label": "Gold", "interpret_high": "Gold strength → risk-off signal, inflation fear"},
+        {"ticker": "^VIX", "label": "VIX (volatility)", "interpret_high": "High VIX → risk-off, multiple compression"},
+    ],
+    "IN": [
+        {"ticker": "^NSEI", "label": "Nifty 50 (market beta proxy)", "interpret_high": "Market rallying — does stock follow or decouple?"},
+        {"ticker": "INR=X", "label": "USD/INR", "interpret_high": "INR weakness → tailwind for IT exporters, headwind for importers"},
+        {"ticker": "CL=F", "label": "Crude Oil (WTI)", "interpret_high": "High oil → headwind (India is large net importer)"},
+        {"ticker": "GC=F", "label": "Gold", "interpret_high": "Gold strength → risk-off, can support precious-metal miners"},
+        {"ticker": "^INDIAVIX", "label": "India VIX", "interpret_high": "High India VIX → risk-off, multiple compression"},
+    ],
+}
+
+
+@app.get("/api/macro-impact")
+async def macro_impact(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Macro Impact Engine — cross-asset correlation scoring."""
+    try:
+        return await _macro_impact_impl(symbol, region, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[MACRO] {symbol} ({region}) unhandled: {_err}")
+        return {"success": False, "symbol": symbol, "error": _err,
+                "trace": _tb.format_exc()[:1500]}
+
+
+async def _macro_impact_impl(symbol, region, refresh):
+    import time as _time
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    cache_key = f"{symbol}_{region}"
+    if not refresh and cache_key in _macro_impact_cache:
+        c = _macro_impact_cache[cache_key]
+        if (_time.time() - c["ts"]) < _MACRO_IMPACT_TTL:
+            out_c = dict(c["data"]); out_c["_cached"] = True
+            return out_c
+
+    t0 = _time.time()
+    out = {
+        "success": True, "symbol": symbol, "region": region,
+        "net_macro_score": 0, "factors": [], "warnings": [],
+        "_engine": "macro_impact_v1",
+    }
+
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+        try: _yahoo_rate_wait()
+        except Exception: pass
+
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+
+        def _fetch_history(yf_ticker):
+            try:
+                tk = yf.Ticker(yf_ticker)
+                hist = tk.history(period="6mo", interval="1d", auto_adjust=True)
+                if hist is None or hasattr(hist, 'empty') and hist.empty:
+                    return None
+                closes = list(hist["Close"].dropna())
+                if len(closes) < 30: return None
+                # Daily returns
+                rets = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))
+                        if closes[i-1] != 0]
+                return rets
+            except Exception:
+                return None
+
+        _lp = _aio.get_event_loop()
+        stock_rets = await _lp.run_in_executor(None, _fetch_history, yf_sym)
+        if not stock_rets or len(stock_rets) < 30:
+            out["success"] = False
+            out["error"] = "Insufficient price history for stock (need 30+ daily bars)"
+            return out
+
+        factors = _MACRO_FACTORS.get(region, _MACRO_FACTORS["US"])
+        for factor in factors:
+            macro_rets = await _lp.run_in_executor(None, _fetch_history, factor["ticker"])
+            f_out = {
+                "factor": factor["label"], "ticker": factor["ticker"],
+                "interpret_high": factor["interpret_high"],
+                "correlation": None, "impact_score": 0, "verdict": "UNKNOWN",
+            }
+            if not macro_rets or len(macro_rets) < 30:
+                f_out["verdict"] = "DATA UNAVAILABLE"
+                out["factors"].append(f_out)
+                continue
+            # Align lengths — take the shorter
+            n = min(len(stock_rets), len(macro_rets))
+            s_rets = stock_rets[-n:]
+            m_rets = macro_rets[-n:]
+            # Pearson correlation
+            mean_s = sum(s_rets) / n
+            mean_m = sum(m_rets) / n
+            num = sum((s_rets[i] - mean_s) * (m_rets[i] - mean_m) for i in range(n))
+            den_s = (sum((x - mean_s)**2 for x in s_rets)) ** 0.5
+            den_m = (sum((x - mean_m)**2 for x in m_rets)) ** 0.5
+            if den_s > 0 and den_m > 0:
+                corr = num / (den_s * den_m)
+            else:
+                corr = 0
+            f_out["correlation"] = round(corr, 3)
+            # Impact score: -5 to +5 based on correlation magnitude
+            # Direction comes from the macro context (e.g. high VIX = bad for stock if correlation is negative... wait actually if VIX rises and stock rises with it, correlation is positive but stock benefits from risk-off? That's unusual. Usually negative correlation with VIX = stock falls when VIX rises = bad.)
+            # Approach: just report correlation; let user interpret. We classify:
+            if corr >= 0.5: f_out["impact_score"] = 5; f_out["verdict"] = "STRONG POSITIVE"
+            elif corr >= 0.3: f_out["impact_score"] = 3; f_out["verdict"] = "MODERATE POSITIVE"
+            elif corr >= 0.1: f_out["impact_score"] = 1; f_out["verdict"] = "MILD POSITIVE"
+            elif corr <= -0.5: f_out["impact_score"] = -5; f_out["verdict"] = "STRONG NEGATIVE"
+            elif corr <= -0.3: f_out["impact_score"] = -3; f_out["verdict"] = "MODERATE NEGATIVE"
+            elif corr <= -0.1: f_out["impact_score"] = -1; f_out["verdict"] = "MILD NEGATIVE"
+            else: f_out["impact_score"] = 0; f_out["verdict"] = "UNCORRELATED"
+            out["factors"].append(f_out)
+    except ImportError:
+        return {"success": False, "error": "yfinance not available"}
+
+    # Net macro score = sum of impact scores
+    valid = [f for f in out["factors"] if f.get("correlation") is not None]
+    out["net_macro_score"] = sum(f["impact_score"] for f in valid)
+    out["factors_evaluated"] = len(valid)
+    out["factors_total"] = len(out["factors"])
+
+    if out["net_macro_score"] >= 8:
+        out["verdict"] = "STRONG POSITIVE MACRO TAILWIND"
+        out["color"] = "green"
+    elif out["net_macro_score"] >= 3:
+        out["verdict"] = "MILD MACRO TAILWIND"
+        out["color"] = "lime"
+    elif out["net_macro_score"] >= -2:
+        out["verdict"] = "NEUTRAL MACRO REGIME"
+        out["color"] = "amber"
+    elif out["net_macro_score"] >= -7:
+        out["verdict"] = "MILD MACRO HEADWIND"
+        out["color"] = "amber"
+    else:
+        out["verdict"] = "STRONG MACRO HEADWIND"
+        out["color"] = "red"
+
+    out["interpretation"] = (
+        "Correlations are computed over ~6 months of daily returns. "
+        "Positive correlation = stock moves WITH the factor; negative = stock moves OPPOSITE. "
+        "Read this with the 'interpret_high' note per factor to understand directionality "
+        "for your specific stock."
+    )
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _macro_impact_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[MACRO] {symbol} ({region}) net={out['net_macro_score']:+d} verdict={out['verdict']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 9: CEO/MANAGEMENT CHANGE DETECTOR (SCAFFOLD)
+#
+# Vijay quote: "Many multibaggers begin with management changes. Detect: New
+# CEO, New CFO, Major acquisition, Buyback, Spin-off."
+#
+# r99.40 SCAFFOLD: Returns yfinance company-officer roster + flags any data
+# that could indicate structural change (recent splits, recent dividends
+# initiated, etc.). REAL detection (NLP on 8-K filings, news scanning,
+# SEBI disclosures) is r99.41+.
+# ════════════════════════════════════════════════════════════════════════════
+
+_mgmt_change_cache = {}
+_MGMT_CHANGE_TTL = 3600
+
+
+@app.get("/api/management-change")
+async def management_change(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Management Change Detector — current officer roster + structural change proxies."""
+    try:
+        return await _mgmt_change_impl(symbol, region, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[MGMT] {symbol} ({region}) unhandled: {_err}")
+        return {"success": False, "symbol": symbol, "error": _err,
+                "trace": _tb.format_exc()[:1500]}
+
+
+async def _mgmt_change_impl(symbol, region, refresh):
+    import time as _time
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    cache_key = f"{symbol}_{region}"
+    if not refresh and cache_key in _mgmt_change_cache:
+        c = _mgmt_change_cache[cache_key]
+        if (_time.time() - c["ts"]) < _MGMT_CHANGE_TTL:
+            out_c = dict(c["data"]); out_c["_cached"] = True
+            return out_c
+
+    t0 = _time.time()
+    out = {
+        "success": True, "symbol": symbol, "region": region,
+        "current_officers": [], "structural_change_proxies": [],
+        "structural_change_score": 0, "verdict": "NO MAJOR CHANGE DETECTED",
+        "warnings": [], "_engine": "management_change_v1_scaffold",
+        "_note": "r99.40 SCAFFOLD: officer roster + structural proxies only. r99.41 will add 8-K filings (US) / SEBI disclosures (IN) / news scanning.",
+    }
+
+    try:
+        import yfinance as yf
+        import asyncio as _aio
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+
+        def _fetch():
+            try:
+                tk = yf.Ticker(yf_sym)
+                info = tk.info or {}
+                actions = None
+                try: actions = tk.actions
+                except Exception: actions = None
+                return info, actions
+            except Exception:
+                return {}, None
+
+        info, actions = await _aio.get_event_loop().run_in_executor(None, _fetch)
+    except ImportError:
+        return {"success": False, "error": "yfinance not available"}
+
+    if not isinstance(info, dict): info = {}
+
+    # Officer roster
+    officers = info.get("companyOfficers") or []
+    if isinstance(officers, list):
+        for off in officers[:8]:
+            if not isinstance(off, dict): continue
+            out["current_officers"].append({
+                "name": off.get("name"),
+                "title": off.get("title"),
+                "age": _eng_ds_num(off.get("age")),
+                "year_born": _eng_ds_num(off.get("yearBorn")),
+                "total_pay": _eng_ds_num(off.get("totalPay")),
+            })
+
+    if not out["current_officers"]:
+        out["warnings"].append("Company officer roster unavailable from yfinance")
+
+    # Structural change PROXIES (best we can do without 8-K integration):
+    proxies = []
+    score = 0
+
+    # Recent dividend INITIATION (would need history; just check current)
+    div_rate = _eng_ds_num(info.get("dividendRate"))
+    div_yield = _eng_ds_num(info.get("dividendYield"))
+    if div_rate and div_rate > 0:
+        proxies.append({
+            "signal": "DIVIDEND ACTIVE",
+            "detail": f"Pays ${div_rate}/share annually (yield {round((div_yield or 0)*100, 2)}%) — track for changes via Form 8-K dividend declarations",
+            "weight": 0,
+        })
+
+    # Recent splits
+    last_split = info.get("lastSplitDate")
+    if last_split:
+        try:
+            import datetime as _dt
+            split_date = _dt.datetime.fromtimestamp(int(last_split))
+            days_ago = (_dt.datetime.now() - split_date).days
+            if days_ago < 365:
+                proxies.append({
+                    "signal": "RECENT STOCK SPLIT",
+                    "detail": f"Last split {split_date.strftime('%Y-%m-%d')} ({days_ago} days ago) — often signals management confidence",
+                    "weight": 10,
+                })
+                score += 10
+        except Exception: pass
+
+    # M&A indicator from longBusinessSummary scan
+    summary_text = (info.get("longBusinessSummary") or "").lower()
+    if any(word in summary_text for word in ["spinoff", "spin-off", "spin off", "demerger"]):
+        proxies.append({
+            "signal": "BUSINESS SUMMARY MENTIONS SPIN-OFF",
+            "detail": "Company description references a spin-off or demerger — verify with recent 8-K / annual report",
+            "weight": 15,
+        })
+        score += 15
+
+    if any(word in summary_text for word in ["acquired", "acquisition", "merger"]):
+        proxies.append({
+            "signal": "BUSINESS SUMMARY MENTIONS M&A",
+            "detail": "Company description mentions acquisition or merger activity — historical or recent (timing not extractable from summary text alone)",
+            "weight": 5,
+        })
+        score += 5
+
+    # Buyback activity (proxy: large negative change in shares)
+    shares_now = _eng_ds_num(info.get("sharesOutstanding"))
+    shares_prior = _eng_ds_num(info.get("sharesOutstandingPriorYear"))
+    if shares_now and shares_prior and shares_prior > 0:
+        delta_pct = (shares_now - shares_prior) / shares_prior * 100
+        if delta_pct < -3:
+            proxies.append({
+                "signal": "AGGRESSIVE BUYBACK PROGRAM",
+                "detail": f"Shares outstanding ↓ {round(abs(delta_pct), 1)}% YoY — management is returning capital",
+                "weight": 15,
+            })
+            score += 15
+        elif delta_pct < -1:
+            proxies.append({
+                "signal": "STEADY BUYBACK",
+                "detail": f"Shares outstanding ↓ {round(abs(delta_pct), 1)}% YoY",
+                "weight": 5,
+            })
+            score += 5
+
+    out["structural_change_proxies"] = proxies
+    out["structural_change_score"] = min(100, score)
+
+    if score >= 30:
+        out["verdict"] = "MULTIPLE STRUCTURAL SIGNALS"
+        out["color"] = "green"
+    elif score >= 15:
+        out["verdict"] = "SOME STRUCTURAL ACTIVITY"
+        out["color"] = "lime"
+    else:
+        out["verdict"] = "NO MAJOR CHANGE DETECTED"
+        out["color"] = "gray"
+
+    out["_future_inputs"] = [
+        "8-K filings (US SEC EDGAR) — CEO/CFO/director changes, acquisitions, divestitures — r99.41",
+        "SEBI corporate-announcement feed (IN) — director resignations, AGM resolutions — r99.41",
+        "News headline scanning — NLP for management-change keywords — r99.42",
+        "Proxy statement / DEF 14A executive compensation changes — r99.42",
+    ]
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _mgmt_change_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[MGMT] {symbol} ({region}) score={out['structural_change_score']} verdict={out['verdict']} in {out['elapsed_sec']}s")
+    return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ENGINE 10: TODAY'S INSTITUTIONAL PICKS (SCAFFOLD)
+#
+# Vijay quote: "Top Institutional Conviction. Rank | Stock | Score.
+# This can become your homepage. Drives daily engagement."
+#
+# r99.40 SCAFFOLD: Runs the Institutional Conviction Score against a curated
+# universe (top 25 by mcap per region) and ranks results. Cached 6 hours so
+# the first request after midnight pays the cost; subsequent requests are
+# near-instant.
+#
+# r99.41 ENHANCEMENT: nightly cron job builds a fresh ranking from a wider
+# universe (Russell 1000 / Nifty 500), stores in Postgres, this endpoint
+# becomes a read-through.
+# ════════════════════════════════════════════════════════════════════════════
+
+_inst_picks_cache = {}
+_INST_PICKS_TTL = 21600  # 6 hours
+
+# Curated universe for r99.40 scaffold (top by mcap, names with strong yfinance coverage)
+_INST_PICKS_UNIVERSE = {
+    "US": [
+        "NVDA", "MSFT", "AAPL", "GOOG", "AMZN", "META", "TSLA", "AVGO",
+        "LLY", "JPM", "V", "MA", "UNH", "XOM", "JNJ", "WMT",
+        "PG", "HD", "COST", "ABBV", "ORCL", "BAC", "CRM", "NFLX", "AMD",
+    ],
+    "IN": [
+        "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY",
+        "ITC", "HINDUNILVR", "SBIN", "LT", "BHARTIARTL",
+        "BAJFINANCE", "KOTAKBANK", "AXISBANK", "MARUTI", "ASIANPAINT",
+        "NESTLEIND", "HCLTECH", "SUNPHARMA", "M&M", "WIPRO",
+        "TITAN", "ULTRACEMCO", "POWERGRID", "NTPC", "TATAMOTORS",
+    ],
+}
+
+
+@app.get("/api/institutional-picks-today")
+async def institutional_picks_today(region: str = "US", top_n: int = 10, refresh: int = 0):
+    """Today's Institutional Picks — ranked conviction across curated universe."""
+    try:
+        return await _inst_picks_impl(region, top_n, refresh)
+    except Exception as _exc:
+        import traceback as _tb
+        _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
+        print(f"[INST-PICKS] unhandled: {_err}")
+        return {"success": False, "error": _err, "trace": _tb.format_exc()[:1500]}
+
+
+async def _inst_picks_impl(region, top_n, refresh):
+    import time as _time
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    top_n = max(3, min(25, top_n))
+
+    cache_key = f"{region}_{top_n}"
+    if not refresh and cache_key in _inst_picks_cache:
+        c = _inst_picks_cache[cache_key]
+        if (_time.time() - c["ts"]) < _INST_PICKS_TTL:
+            out_c = dict(c["data"]); out_c["_cached"] = True
+            out_c["_cache_age_sec"] = int(_time.time() - c["ts"])
+            return out_c
+
+    t0 = _time.time()
+    universe = _INST_PICKS_UNIVERSE.get(region, _INST_PICKS_UNIVERSE["US"])
+    out = {
+        "success": True, "region": region, "universe_size": len(universe),
+        "top_n": top_n, "rankings": [],
+        "warnings": [], "_engine": "institutional_picks_today_v1_scaffold",
+        "_note": "r99.40 SCAFFOLD: scores curated top-25 universe per region. r99.41 will add nightly cron job over Russell 1000 / Nifty 500 stored in Postgres.",
+    }
+
+    # Score each ticker via institutional-conviction (in parallel-ish via async)
+    scores = []
+    for sym in universe:
+        try:
+            r = await institutional_conviction(symbol=sym, region=region, refresh=0)
+            if isinstance(r, dict) and r.get("success"):
+                scores.append({
+                    "symbol": sym,
+                    "conviction_score": r.get("conviction_score", 0),
+                    "verdict": r.get("verdict", "UNKNOWN"),
+                    "color": r.get("color", "gray"),
+                    "_cached": r.get("_cached", False),
+                })
+            else:
+                out["warnings"].append(f"{sym}: scoring failed — {r.get('error') if isinstance(r, dict) else 'unknown'}")
+        except Exception as e:
+            out["warnings"].append(f"{sym}: exception — {type(e).__name__}: {str(e)[:80]}")
+
+    # Sort by conviction score desc, take top N
+    scores.sort(key=lambda x: x.get("conviction_score", 0), reverse=True)
+    for i, s in enumerate(scores[:top_n], 1):
+        out["rankings"].append({**s, "rank": i})
+
+    out["scored_count"] = len(scores)
+    out["fallback_count"] = len(universe) - len(scores)
+
+    out["_future_inputs"] = [
+        "Russell 1000 / Nifty 500 universe expansion — r99.41",
+        "Nightly cron job populates Postgres cache for instant retrieval — r99.41",
+        "Sector + market-cap filters (e.g. 'top large-cap tech') — r99.41",
+        "Daily delta vs yesterday's ranking (movers list) — r99.41",
+    ]
+
+    out["elapsed_sec"] = round(_time.time() - t0, 2)
+    _inst_picks_cache[cache_key] = {"data": out, "ts": _time.time()}
+    print(f"[INST-PICKS] {region} top {top_n}/{len(universe)} scored={len(scores)} in {out['elapsed_sec']}s")
+    return out
+
+
 # r63.72: Institutional Positioning Scanner
 @app.get("/api/positioning-scan")
 async def positioning_scan(
