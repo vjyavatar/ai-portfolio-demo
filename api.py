@@ -8273,6 +8273,10 @@ _INST_PICKS_UNIVERSE = {
         "NVDA", "MSFT", "AAPL", "GOOG", "AMZN", "META", "TSLA", "AVGO",
         "LLY", "JPM", "V", "MA", "UNH", "XOM", "JNJ", "WMT",
         "PG", "HD", "COST", "ABBV", "ORCL", "BAC", "CRM", "NFLX", "AMD",
+        # Indexes / ETF proxies — liquid CE/PE options, directional signals
+        "SPY",   # S&P 500 — most liquid US options
+        "QQQ",   # NASDAQ 100 — tech-heavy, high CE/PE activity
+        "IWM",   # Russell 2000 — small-cap sentiment gauge
     ],
     "IN": [
         "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY",
@@ -8280,7 +8284,18 @@ _INST_PICKS_UNIVERSE = {
         "BAJFINANCE", "KOTAKBANK", "AXISBANK", "MARUTI", "ASIANPAINT",
         "NESTLEIND", "HCLTECH", "SUNPHARMA", "M&M", "WIPRO",
         "TITAN", "ULTRACEMCO", "POWERGRID", "NTPC", "TATAMOTORS",
+        # Indexes — NIFTY F&O is the highest-volume CE/PE market in India
+        "^NSEI",     # NIFTY 50 — most liquid F&O
+        "^NSEBANK",  # BANK NIFTY — second-highest F&O volume
     ],
+}
+
+# Symbols that are indexes or ETF proxies — yfinance uses them verbatim
+# (no .NS suffix for Indian indexes, no modification for US).
+_INDEX_SYMBOLS = {
+    "SPY", "QQQ", "IWM", "DIA", "GLD", "SLV",
+    "^NSEI", "^NSEBANK", "^CNXNIFTY", "^CNXFIN",
+    "^SPX", "^NDX", "^DJI", "^VIX", "^IXIC",
 }
 
 
@@ -8477,10 +8492,18 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
       pe_signals, indicators, options_hint, data_quality
     """
     import yfinance as yf
-    yf_sym = symbol if region == "US" else f"{symbol}.NS"
+    # r100.1+: index/ETF-proxy symbols must NOT get .NS suffix — they are used
+    # verbatim by yfinance (^NSEI, SPY, QQQ, etc.).
+    _is_index = (symbol in _INDEX_SYMBOLS or symbol.startswith("^"))
+    if _is_index:
+        yf_sym = symbol
+    else:
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
     out = {
         "symbol": symbol, "region": region, "yf_sym": yf_sym,
-        "sector": "Unknown", "price": None,
+        "sector": "Index" if _is_index else "Unknown",
+        "is_index": _is_index,
+        "price": None,
         "ce_score": 0, "pe_score": 0,
         "ce_signals_passed": 0, "pe_signals_passed": 0,
         "ce_signals": [], "pe_signals": [],
@@ -8492,7 +8515,12 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
         info = {}
         try: info = tk.info or {}
         except Exception: info = {}
-        out["sector"] = (info.get("sector") or "Unknown")
+        # Indexes don't have a "sector" field — preserve "Index" label set above.
+        if not _is_index:
+            out["sector"] = (info.get("sector") or "Unknown")
+        else:
+            # Use longName/shortName as display label if available
+            out["index_name"] = (info.get("longName") or info.get("shortName") or symbol)
         out["price"] = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
         hist = tk.history(period="6mo", interval="1d", auto_adjust=True)
         if hist is None or hist.empty or len(hist) < 30:
@@ -8802,7 +8830,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     def _strip_for_response(r, direction):
         """Trim irrelevant signals for either CE or PE side."""
         relevant_signals = r["ce_signals"] if direction == "CE" else r["pe_signals"]
-        return {
+        row = {
             "symbol": r["symbol"], "yf_sym": r["yf_sym"], "sector": r["sector"],
             "price": r["price"],
             "score": r["ce_score"] if direction == "CE" else r["pe_score"],
@@ -8811,6 +8839,10 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
             "indicators": r["indicators"],
             "options_hint": r["options_hint"],
         }
+        if r.get("is_index"):
+            row["is_index"] = True
+            row["index_name"] = r.get("index_name", r["symbol"])
+        return row
 
     ce_top = [_strip_for_response(r, "CE") for r in ce_passing[:top_n]]
     pe_top = [_strip_for_response(r, "PE") for r in pe_passing[:top_n]]
@@ -9292,23 +9324,97 @@ def _detect_asset_type(info):
 
 # ────── Dimension scorers — each returns {score, max, verdict, components} ──────
 
+# r100.1 — Honest-NULL aggregation. Configurable thresholds (per audit requirement
+# from r100.0 review: hard-coded thresholds create future governance problems).
+# Tune these in one place; do NOT hard-code coverage thresholds anywhere else.
+_CFG_360 = {
+    # If a dimension has < this fraction of its components covered, the
+    # dimension reports INSUFFICIENT_DATA (score=None) and contributes
+    # nothing to the composite.
+    "DIMENSION_MIN_COVERAGE": 0.50,
+    # If overall (cross-dimension) coverage is below this, the composite
+    # decision is forced to INSUFFICIENT_DATA / Recommendation Refused.
+    "RECOMMENDATION_MIN_COVERAGE": 0.60,
+    # Coverage floors for confidence bands.
+    "CONFIDENCE_HIGH_MIN_COVERAGE": 0.85,
+    "CONFIDENCE_MEDIUM_MIN_COVERAGE": 0.60,
+    # If overall coverage falls below LOW_MIN, confidence collapses to NONE.
+    "CONFIDENCE_LOW_MIN_COVERAGE": 0.30,
+}
+
+
+def _aggregate_360_dim_v2(d):
+    """r100.1 honest-NULL aggregator for a 360° dimension.
+
+    Replaces the per-scorer `d["score"] = min(max, sum(c["score"] ...))`
+    pattern. Counts components that have real data (score is not None),
+    computes coverage = real / total, and:
+
+      - if coverage < DIMENSION_MIN_COVERAGE → d["score"] = None,
+        d["verdict"] = "INSUFFICIENT_DATA", d["note"] explains why.
+      - else d["score"] = round(real_sum × dim.max / real_max), preserving
+        the dim.max so band thresholds remain comparable. d["note"] flags
+        "partial — N/M components" when coverage < 100%.
+
+    Always populates: d["coverage"], d["_components_total"],
+    d["_components_with_data"], and (when scored) d["_real_sum"]/d["_real_max"].
+
+    Callers are responsible for setting the verdict TEXT (STRONG/AVERAGE/
+    WEAK, ATTRACTIVE/FAIR/RICH, etc.) after this returns IF d["score"] is
+    not None. When d["score"] is None, this function has already set
+    d["verdict"] to "INSUFFICIENT_DATA".
+    """
+    components = d.get("components") or []
+    total_count = len(components)
+    real_components = [c for c in components if c.get("score") is not None]
+    real_count = len(real_components)
+    coverage = (real_count / total_count) if total_count > 0 else 0.0
+    d["coverage"] = round(coverage, 3)
+    d["_components_total"] = total_count
+    d["_components_with_data"] = real_count
+
+    min_cov = _CFG_360["DIMENSION_MIN_COVERAGE"]
+    if total_count == 0 or coverage < min_cov:
+        d["score"] = None
+        d["verdict"] = "INSUFFICIENT_DATA"
+        if total_count == 0:
+            d["note"] = "no components present — upstream data unavailable"
+        else:
+            d["note"] = (f"only {real_count}/{total_count} components "
+                         f"({int(coverage*100)}%) — below "
+                         f"{int(min_cov*100)}% threshold")
+        return d
+
+    real_sum = sum(c.get("score", 0) for c in real_components)
+    real_max = sum(c.get("max", 0) for c in real_components)
+    if real_max <= 0:
+        d["score"] = None
+        d["verdict"] = "INSUFFICIENT_DATA"
+        d["note"] = "real components have zero total max"
+        return d
+
+    dim_max = d.get("max", real_max)
+    scaled = real_sum * dim_max / real_max
+    d["score"] = round(scaled)
+    d["_real_sum"] = real_sum
+    d["_real_max"] = real_max
+    d["note"] = (f"partial — {real_count}/{total_count} components "
+                 f"({int(coverage*100)}%)") if coverage < 1.0 else ""
+    return d
+
+
 async def _score_360_fundamentals(symbol, region, dashboard_data):
-    """Fundamentals dimension (30 pts max). Pulls from stock_dashboard."""
+    """Fundamentals dimension (30 pts max). Pulls from stock_dashboard.
+    r100.1: honest-NULL — missing components return score=None (no fake floor).
+    """
     d = {"name": "Fundamentals", "score": 0, "max": 30, "verdict": "UNKNOWN",
          "components": [], "source": "stock-dashboard.decision.quality_score"}
     if not dashboard_data or not dashboard_data.get("success"):
-        d["verdict"] = "DATA UNAVAILABLE"
-        d["components"].append({
-            "q": "Dashboard fetch", "answer": "Failed — couldn't load fundamentals",
-            "score": 0, "max": 30,
-        })
-        return d
+        # r100.1: no components → aggregator sets INSUFFICIENT_DATA
+        return _aggregate_360_dim_v2(d)
     decision = dashboard_data.get("decision") or {}
     analysis = dashboard_data.get("analysis") or {}
     summary = dashboard_data.get("summary") or {}
-    qs = decision.get("quality_score", 0) or 0  # 0-100
-    d["score"] = round(qs * 30 / 100)
-    # Component breakdown — translate dashboard fields to Vijay's questions
     rev_cagr = _eng_ds_num((dashboard_data.get("cagrs") or {}).get("revenue_5y_cagr_pct"))
     eps_cagr = _eng_ds_num((dashboard_data.get("cagrs") or {}).get("eps_5y_cagr_pct"))
     fcf_cagr = _eng_ds_num((dashboard_data.get("cagrs") or {}).get("fcf_5y_cagr_pct"))
@@ -9317,7 +9423,8 @@ async def _score_360_fundamentals(symbol, region, dashboard_data):
     d2e = _eng_ds_num(summary.get("debt_to_equity_latest_pct"))
 
     def _pts(val, thresh_strong, thresh_avg, max_pts):
-        if val is None: return max_pts // 2, "data missing"
+        # r100.1 FIX: honest NULL — absence of evidence is not evidence
+        if val is None: return None, "data missing"
         if val >= thresh_strong: return max_pts, "strong"
         if val >= thresh_avg: return round(max_pts * 0.6), "average"
         return round(max_pts * 0.2), "weak"
@@ -9327,9 +9434,10 @@ async def _score_360_fundamentals(symbol, region, dashboard_data):
     fg_pts, fg_v = _pts(fcf_cagr, 12, 4, 5)
     roe_pts, roe_v = _pts(roe, 20, 10, 5)
     om_pts, om_v = _pts(op_margin, 20, 10, 5)
-    # Debt: LOWER is better (inverse)
+
     def _debt_pts(val):
-        if val is None: return 2, "data missing"
+        # r100.1 FIX: honest NULL
+        if val is None: return None, "data missing"
         if val <= 50: return 5, "strong (low debt)"
         if val <= 150: return 3, "average"
         return 1, "weak (high debt)"
@@ -9345,17 +9453,16 @@ async def _score_360_fundamentals(symbol, region, dashboard_data):
     ]
 
     # r99.45 + r99.46: Share dilution as 7th Fundamentals component.
-    # r99.46 H2 FIX: safer per-entry year parsing — exclude malformed entries
-    #                instead of falling back to insertion order (which can invert verdict).
-    # r99.46 H1 FIX: stock-split detection — single-year jump ≥1.5x or ≤0.5x is
-    #                classified as a non-economic event, NOT dilution.
-    # r99.46 M4 FIX: label uses dynamic year delta, not hardcoded "3y".
-    dilution_pts = 2  # neutral default
+    # r99.46 H2 FIX: safer per-entry year parsing — exclude malformed entries.
+    # r99.46 H1 FIX: stock-split detection — single-year jump ≥1.5x or ≤0.5x
+    #                is classified as a non-economic event, NOT dilution.
+    # r99.46 M4 FIX: label uses dynamic year delta.
+    # r100.1 FIX: when no/insufficient data, dilution_pts = None (was 2).
+    dilution_pts = None  # r100.1: honest NULL default
     dilution_v = "data unavailable"
     dilution_answer = "n/a"
     annual_arr = dashboard_data.get("annual") or []
     if isinstance(annual_arr, list) and len(annual_arr) >= 2:
-        # H2: per-entry safe parse — drop entries with unparseable year, keep the rest.
         def _safe_year(x):
             try:
                 y_raw = x.get("year")
@@ -9363,7 +9470,7 @@ async def _score_360_fundamentals(symbol, region, dashboard_data):
                 y_str = str(y_raw)[:4]
                 if not y_str.isdigit(): return None
                 y = int(y_str)
-                if y < 1900 or y > 2100: return None  # sanity range
+                if y < 1900 or y > 2100: return None
                 return y
             except Exception:
                 return None
@@ -9374,16 +9481,11 @@ async def _score_360_fundamentals(symbol, region, dashboard_data):
             so = _eng_ds_num(a.get("shares_outstanding"))
             if yr is None or so is None or so <= 0: continue
             annotated.append((yr, so))
-        # Newest first by parsed year (deterministic, no insertion-order fallback)
         annotated.sort(key=lambda t: t[0], reverse=True)
         shares_series = [so for (_yr, so) in annotated]
         years_series = [yr for (yr, _so) in annotated]
 
         if len(shares_series) >= 2:
-            # H1: detect stock splits as adjacent-year non-economic events.
-            # A real corporate split appears in the data as a sudden jump (e.g. 10x).
-            # Walk newest→oldest, flag any pair where ratio is outside [0.65, 1.55].
-            # We exclude split-impacted intervals from the dilution calc.
             split_detected = False
             split_year = None
             for i in range(len(shares_series) - 1):
@@ -9391,26 +9493,22 @@ async def _score_360_fundamentals(symbol, region, dashboard_data):
                 older = shares_series[i + 1]
                 if older <= 0: continue
                 ratio = newer / older
-                # 1.5x or 0.5x in a single year is implausible for normal dilution/buyback.
-                # Real splits are typically 2x, 3x, 4x, 10x, or reverse 1/2, 1/3, etc.
                 if ratio >= 1.5 or ratio <= 0.65:
                     split_detected = True
                     split_year = years_series[i] if i < len(years_series) else None
                     break
             if split_detected:
-                dilution_pts = 3  # treat as neutral — not a value signal
+                dilution_pts = 3  # neutral but REAL — split flagged honestly
                 dilution_v = f"stock split detected near {split_year} — dilution check skipped"
                 dilution_answer = "split-adjusted"
             else:
                 latest_shares = shares_series[0]
                 prior_idx = min(3, len(shares_series) - 1)
                 prior_shares = shares_series[prior_idx]
-                # Window in years (newest_year - prior_year), capped at prior_idx.
                 year_window = (years_series[0] - years_series[prior_idx]) if len(years_series) > prior_idx else prior_idx
-                if year_window <= 0: year_window = prior_idx  # fallback
+                if year_window <= 0: year_window = prior_idx
                 if prior_shares > 0:
                     delta_pct = (latest_shares - prior_shares) / prior_shares * 100
-                    # M4: dynamic year label reflecting actual window
                     dilution_answer = f"{round(delta_pct, 2)}% over {year_window}y"
                     if delta_pct <= -2:
                         dilution_pts = 5; dilution_v = f"buybacks ({round(delta_pct, 1)}%) — accretive"
@@ -9423,51 +9521,51 @@ async def _score_360_fundamentals(symbol, region, dashboard_data):
                     else:
                         dilution_pts = 1; dilution_v = f"heavy dilution ({round(delta_pct, 1)}%) — value-destructive"
     d["components"].append({
-        "q": "Share dilution",  # M4: removed hardcoded "3y" — answer field now carries actual window
-        "answer": dilution_answer,
+        "q": "Share dilution", "answer": dilution_answer,
         "score": dilution_pts, "max": 5, "verdict": dilution_v,
     })
 
-    component_sum = sum(c["score"] for c in d["components"])
-    d["score"] = min(30, component_sum)
-    if d["score"] >= 24: d["verdict"] = "STRONG"
-    elif d["score"] >= 16: d["verdict"] = "AVERAGE"
-    else: d["verdict"] = "WEAK"
+    # r100.1: aggregator handles NULL→INSUFFICIENT and partial-coverage scaling.
+    _aggregate_360_dim_v2(d)
+    if d.get("score") is not None:
+        if d["score"] >= 24: d["verdict"] = "STRONG"
+        elif d["score"] >= 16: d["verdict"] = "AVERAGE"
+        else: d["verdict"] = "WEAK"
     return d
 
 
 async def _score_360_valuation(symbol, region, dashboard_data):
-    """Valuation dimension (20 pts max). Pulls from stock_dashboard."""
+    """Valuation dimension (20 pts max). Pulls from stock_dashboard.
+    r100.1: honest NULL — missing P/E/PB/PEG/EV-EBITDA → None, not 2/4 floor.
+    """
     d = {"name": "Valuation", "score": 0, "max": 20, "verdict": "UNKNOWN",
          "components": [], "source": "stock-dashboard.decision.valuation_score"}
     if not dashboard_data or not dashboard_data.get("success"):
-        d["verdict"] = "DATA UNAVAILABLE"
-        return d
+        return _aggregate_360_dim_v2(d)  # no components → INSUFFICIENT_DATA
     decision = dashboard_data.get("decision") or {}
     summary = dashboard_data.get("summary") or {}
-    vs = decision.get("valuation_score", 50) or 50
     pe = _eng_ds_num(summary.get("trailing_pe"))
     fwd_pe = _eng_ds_num(summary.get("forward_pe"))
     pb = _eng_ds_num(summary.get("price_to_book"))
     fcf_yield = _eng_ds_num(summary.get("fcf_yield_pct"))
     div_yield = _eng_ds_num(summary.get("dividend_yield_pct"))
 
-    # Component breakdown — 4 pts each, 5 components = 20 max
+    # r100.1 FIX: every _pts returns None for None input (was 2/4 floor)
     def _pe_pts(val):
-        if val is None: return 2, "n/a"
+        if val is None: return None, "data missing"
         if val < 0: return 1, "negative (loss-maker)"
         if val < 15: return 4, "cheap"
         if val < 25: return 3, "fair"
         if val < 40: return 2, "rich"
         return 1, "expensive"
     def _pb_pts(val):
-        if val is None: return 2, "n/a"
+        if val is None: return None, "data missing"
         if val < 1: return 4, "below book"
         if val < 3: return 3, "reasonable"
         if val < 6: return 2, "rich"
         return 1, "expensive"
     def _fcf_y_pts(val):
-        if val is None: return 2, "n/a"
+        if val is None: return None, "data missing"
         if val >= 7: return 4, "excellent yield"
         if val >= 4: return 3, "good"
         if val >= 2: return 2, "low"
@@ -9476,8 +9574,7 @@ async def _score_360_valuation(symbol, region, dashboard_data):
     fpe_pts, fpe_v = _pe_pts(fwd_pe)
     pb_pts, pb_v = _pb_pts(pb)
     fcfy_pts, fcfy_v = _fcf_y_pts(fcf_yield)
-    # Dividend yield: bonus 0-4
-    if div_yield is None: dy_pts, dy_v = 2, "n/a"
+    if div_yield is None: dy_pts, dy_v = None, "data missing"
     elif div_yield >= 3: dy_pts, dy_v = 4, "attractive"
     elif div_yield >= 1.5: dy_pts, dy_v = 3, "moderate"
     elif div_yield > 0: dy_pts, dy_v = 2, "small"
@@ -9491,18 +9588,13 @@ async def _score_360_valuation(symbol, region, dashboard_data):
         {"q": "Dividend Yield", "answer": f"{div_yield}%" if div_yield is not None else "n/a", "score": dy_pts, "max": 4, "verdict": dy_v},
     ]
 
-    # r99.45 + r99.46: PEG ratio.
-    # r99.46 M3 FIX: when peg_proxy is None (because dashboard couldn't compute
-    #                eps_5y_cagr), try inline fallback using yfinance.info fields:
-    #                pegRatio direct, then forward_pe / earningsGrowth%, then
-    #                forward_pe / revenueGrowth% as last resort.
-    peg_pts = 2  # neutral default
+    # PEG ratio — r100.1: None when no source produces a value (was 2/4 floor)
+    peg_pts = None
     peg_v = "data unavailable"
     peg_answer = "n/a"
     peg_proxy = (decision.get("valuation_context") or {}).get("peg_proxy")
     peg_num = _eng_ds_num(peg_proxy)
     if peg_num is None:
-        # Fallback chain
         info_g = dashboard_data.get("info") or {}
         direct = _eng_ds_num(info_g.get("pegRatio")) or _eng_ds_num(info_g.get("trailingPegRatio"))
         if direct is not None and direct > 0:
@@ -9511,7 +9603,6 @@ async def _score_360_valuation(symbol, region, dashboard_data):
         else:
             eg = _eng_ds_num(info_g.get("earningsGrowth"))
             if fwd_pe is not None and fwd_pe > 0 and eg is not None and eg > 0.01:
-                # earningsGrowth is fraction (0.15 = 15%) — convert
                 peg_num = round(fwd_pe / (eg * 100), 2)
                 peg_v_source = "fwd_pe / earnings_growth"
             else:
@@ -9533,9 +9624,9 @@ async def _score_360_valuation(symbol, region, dashboard_data):
         "q": "PEG ratio", "answer": peg_answer, "score": peg_pts, "max": 4, "verdict": peg_v,
     })
 
-    # r99.45: EV/EBITDA component — institutional valuation gold standard.
+    # EV/EBITDA — r100.1: None when not available (was 2/4 floor)
     ev_ebitda = _eng_ds_num(summary.get("ev_to_ebitda"))
-    ev_pts = 2
+    ev_pts = None
     ev_v = "data unavailable"
     ev_answer = "n/a"
     if ev_ebitda is not None:
@@ -9549,28 +9640,31 @@ async def _score_360_valuation(symbol, region, dashboard_data):
         "q": "EV/EBITDA", "answer": ev_answer, "score": ev_pts, "max": 4, "verdict": ev_v,
     })
 
-    # Clamp at 20 max (composite is now 7 components × ~4pt = 28 unbounded; ceiling preserves spec)
-    d["score"] = min(20, sum(c["score"] for c in d["components"]))
-    if d["score"] >= 16: d["verdict"] = "ATTRACTIVE"
-    elif d["score"] >= 11: d["verdict"] = "FAIR"
-    else: d["verdict"] = "RICH"
+    # r100.1: aggregator handles partial-coverage scaling + INSUFFICIENT verdict
+    _aggregate_360_dim_v2(d)
+    if d.get("score") is not None:
+        if d["score"] >= 16: d["verdict"] = "ATTRACTIVE"
+        elif d["score"] >= 11: d["verdict"] = "FAIR"
+        else: d["verdict"] = "RICH"
     return d
 
 
 def _score_360_technicals(symbol, region, hist, info, benchmark_ret_20d):
-    """Technicals dimension (15 pts max). Reuses r99.43 indicators."""
+    """Technicals dimension (15 pts max). Reuses r99.43 indicators.
+    r100.1: honest NULL — missing indicator values report None, not 1/3 floor.
+    """
     d = {"name": "Technicals", "score": 0, "max": 15, "verdict": "UNKNOWN",
          "components": [], "source": "yfinance OHLCV (6mo)"}
     if hist is None or (hasattr(hist, "empty") and hist.empty):
-        d["verdict"] = "DATA UNAVAILABLE"
-        return d
+        return _aggregate_360_dim_v2(d)  # no components → INSUFFICIENT_DATA
     closes = list(hist["Close"].dropna())
     highs = list(hist["High"].dropna())
     lows = list(hist["Low"].dropna())
     volumes = list(hist["Volume"].dropna())
     if len(closes) < 50:
-        d["verdict"] = "INSUFFICIENT HISTORY"
-        return d
+        # r100.1: report INSUFFICIENT_DATA via aggregator path
+        d["note"] = "insufficient OHLCV history (<50 bars)"
+        return _aggregate_360_dim_v2(d)
     sma50 = sum(closes[-50:]) / 50
     sma200 = sum(closes[-200:]) / 200 if len(closes) >= 200 else None
     rsi14 = _rsi(closes, 14)
@@ -9582,22 +9676,23 @@ def _score_360_technicals(symbol, region, hist, info, benchmark_ret_20d):
     ret_20 = (closes[-1] - closes[-21]) / closes[-21] * 100 if len(closes) >= 21 and closes[-21] > 0 else None
     rs_vs_bench = (ret_20 - benchmark_ret_20d) if (ret_20 is not None and benchmark_ret_20d is not None) else None
 
-    # 6 components × 2.5 pts each = 15 max
+    # 6 components × varying weights = 15 max
     c_sma50 = (3, "above 50 DMA") if close_now > sma50 else (0, "below 50 DMA")
-    c_sma200 = (3, "above 200 DMA") if (sma200 and close_now > sma200) else ((0, "below 200 DMA") if sma200 else (1, "200d data missing"))
-    if rsi14 is None: c_rsi = (1, "data missing")
+    # r100.1: missing SMA200 → None (was fake 1/3)
+    c_sma200 = (3, "above 200 DMA") if (sma200 and close_now > sma200) else ((0, "below 200 DMA") if sma200 else (None, "200d data missing"))
+    if rsi14 is None: c_rsi = (None, "data missing")  # r100.1: honest NULL
     elif rsi14 > 60: c_rsi = (3, f"RSI {round(rsi14, 1)} — strong")
     elif rsi14 > 45: c_rsi = (2, f"RSI {round(rsi14, 1)} — neutral")
     else: c_rsi = (0, f"RSI {round(rsi14, 1)} — weak")
-    if adx14 is None: c_adx = (1, "data missing")
+    if adx14 is None: c_adx = (None, "data missing")  # r100.1: honest NULL
     elif adx14 > 25: c_adx = (2, f"ADX {round(adx14, 1)} — strong trend")
     elif adx14 > 20: c_adx = (1, f"ADX {round(adx14, 1)} — moderate")
     else: c_adx = (0, f"ADX {round(adx14, 1)} — choppy")
-    if vol_ratio is None: c_vol = (1, "data missing")
+    if vol_ratio is None: c_vol = (None, "data missing")  # r100.1: honest NULL
     elif vol_ratio > 1.5: c_vol = (2, f"{round(vol_ratio, 2)}x — accumulation")
     elif vol_ratio > 0.8: c_vol = (1, f"{round(vol_ratio, 2)}x — normal")
     else: c_vol = (0, f"{round(vol_ratio, 2)}x — distribution")
-    if rs_vs_bench is None: c_rs = (1, "benchmark data missing")
+    if rs_vs_bench is None: c_rs = (None, "benchmark data missing")  # r100.1
     elif rs_vs_bench > 5: c_rs = (2, f"+{round(rs_vs_bench, 2)}% RS — leader")
     elif rs_vs_bench > 0: c_rs = (1, f"+{round(rs_vs_bench, 2)}% RS — slight")
     else: c_rs = (0, f"{round(rs_vs_bench, 2)}% RS — laggard")
@@ -9613,8 +9708,6 @@ def _score_360_technicals(symbol, region, hist, info, benchmark_ret_20d):
 
     # r99.45 + r99.46: Institutional breakout — close at/above 20d high.
     # r99.46 M5 FIX: require volume confirmation (>1.0x 20d avg) for the full 2/2.
-    # A breakout on shrinking volume is statistically much weaker — only award
-    # partial credit. Real institutional breakouts come with conviction (volume).
     high_20 = max(highs[-20:]) if len(highs) >= 20 else None
     if high_20 is not None and high_20 > 0:
         vol_confirmed = (vol_ratio is not None and vol_ratio > 1.0)
@@ -9630,37 +9723,46 @@ def _score_360_technicals(symbol, region, hist, info, benchmark_ret_20d):
         else:
             bo_pts = 0; bo_v = f"below 20d high {round(high_20, 2)} by {round((1 - close_now/high_20)*100, 1)}%"
     else:
-        bo_pts = 0; bo_v = "20d high unavailable"
+        # r100.1: 20d high unavailable → honest NULL (was bo_pts=0)
+        bo_pts = None; bo_v = "20d high unavailable"
     d["components"].append({
         "q": "Institutional breakout (20d high)",
         "answer": f"{round(close_now, 2)} vs {round(high_20, 2) if high_20 else 'n/a'}",
         "score": bo_pts, "max": 2, "verdict": bo_v,
     })
 
-    d["score"] = min(15, sum(c["score"] for c in d["components"]))
-    if d["score"] >= 12: d["verdict"] = "STRONG"
-    elif d["score"] >= 8: d["verdict"] = "MIXED"
-    else: d["verdict"] = "WEAK"
+    # r100.1: aggregator handles INSUFFICIENT + partial scaling
+    _aggregate_360_dim_v2(d)
+    if d.get("score") is not None:
+        if d["score"] >= 12: d["verdict"] = "STRONG"
+        elif d["score"] >= 8: d["verdict"] = "MIXED"
+        else: d["verdict"] = "WEAK"
     return d
 
 
 async def _score_360_smart_money(symbol, region):
-    """Smart Money dimension (15 pts max). Insider + smv3."""
+    """Smart Money dimension (15 pts max). Insider + smv3.
+    r100.1: distinguish fetch-failure (None) from real "no activity" (4/8).
+    """
     import asyncio as _aio
     d = {"name": "Smart Money", "score": 0, "max": 15, "verdict": "UNKNOWN",
          "components": [], "source": "insider_transactions + smart_money_v3"}
     _lp = _aio.get_event_loop()
     # 1. Insider activity (180d) — up to 8 pts
-    insider_data = await _lp.run_in_executor(None, _get_insider_activity_proper, symbol, region, 180)
-    insider_pts = 4  # neutral default
-    insider_v = "no data"
+    try:
+        insider_data = await _lp.run_in_executor(None, _get_insider_activity_proper, symbol, region, 180)
+    except Exception:
+        insider_data = {"success": False}
+    # r100.1: None when fetch failed; real numeric score when fetch succeeded
+    insider_pts = None
+    insider_v = "data unavailable"
     if insider_data.get("success"):
         net = insider_data.get("net_score", 0.0)
         tx = insider_data.get("transaction_count", 0)
         bv = insider_data.get("buy_dollars", 0)
         sv = insider_data.get("sell_dollars", 0)
         if tx == 0:
-            insider_pts = 3; insider_v = "no insider activity in 180d"
+            insider_pts = 4; insider_v = "no insider activity in 180d"
         elif net >= 0.6:
             insider_pts = 8; insider_v = f"strong buying ${bv:,} by {insider_data.get('buyer_count', 0)} insiders"
         elif net >= 0.2:
@@ -9674,8 +9776,9 @@ async def _score_360_smart_money(symbol, region):
     d["components"].append({"q": "Insider buying (180d)", "answer": insider_v, "score": insider_pts, "max": 8, "verdict": insider_v})
 
     # 2. Smart Money v3 score — up to 7 pts
-    smv3_pts = 3  # neutral default
-    smv3_v = "smv3 unavailable"
+    # r100.1: None when smv3 unavailable (was 3/7 floor)
+    smv3_pts = None
+    smv3_v = "data unavailable"
     try:
         import smart_money_v3 as _smv3_mod
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
@@ -9693,20 +9796,23 @@ async def _score_360_smart_money(symbol, region):
         smv3_v = f"smv3 error: {type(_e).__name__}"
     d["components"].append({"q": "Smart Money v3 score", "answer": smv3_v, "score": smv3_pts, "max": 7, "verdict": smv3_v})
 
-    d["score"] = min(15, sum(c["score"] for c in d["components"]))
-    if d["score"] >= 12: d["verdict"] = "ACCUMULATION"
-    elif d["score"] >= 7: d["verdict"] = "NEUTRAL"
-    else: d["verdict"] = "DISTRIBUTION"
+    # r100.1: aggregator handles INSUFFICIENT_DATA when both sources fail
+    _aggregate_360_dim_v2(d)
+    if d.get("score") is not None:
+        if d["score"] >= 12: d["verdict"] = "ACCUMULATION"
+        elif d["score"] >= 7: d["verdict"] = "NEUTRAL"
+        else: d["verdict"] = "DISTRIBUTION"
     return d
 
 
 def _score_360_business_quality(symbol, region, info):
-    """Business Quality dimension (10 pts max). Heuristics from yfinance.info."""
+    """Business Quality dimension (10 pts max). Heuristics from yfinance.info.
+    r100.1: honest NULL — missing marketCap/margins/ROA → None (was 1-pt floor).
+    """
     d = {"name": "Business Quality", "score": 0, "max": 10, "verdict": "UNKNOWN",
          "components": [], "source": "yfinance.info (sector + margins) — heuristic scaffold"}
     if not isinstance(info, dict):
-        d["verdict"] = "DATA UNAVAILABLE"
-        return d
+        return _aggregate_360_dim_v2(d)
     sector = info.get("sector") or "?"
     market_cap = _eng_ds_num(info.get("marketCap"))
     gross_margin = _eng_ds_num(info.get("grossMargins"))
@@ -9714,27 +9820,27 @@ def _score_360_business_quality(symbol, region, info):
     profit_margin = _eng_ds_num(info.get("profitMargins"))
     roa = _eng_ds_num(info.get("returnOnAssets"))
 
-    # Market cap → market leadership proxy (3 pts)
-    if market_cap is None: mc_pts, mc_v = 1, "n/a"
+    # Market cap → market leadership proxy (3 pts) — r100.1: None on missing
+    if market_cap is None: mc_pts, mc_v = None, "data missing"
     elif market_cap >= 500e9: mc_pts, mc_v = 3, "mega-cap leader"
     elif market_cap >= 50e9: mc_pts, mc_v = 2, "large-cap"
     elif market_cap >= 10e9: mc_pts, mc_v = 1, "mid-cap"
     else: mc_pts, mc_v = 1, "small/micro-cap"
 
-    # Gross margin → moat proxy (3 pts)
-    if gross_margin is None: gm_pts, gm_v = 1, "n/a"
+    # Gross margin → moat proxy (3 pts) — r100.1: None on missing
+    if gross_margin is None: gm_pts, gm_v = None, "data missing"
     elif gross_margin >= 0.50: gm_pts, gm_v = 3, f"{round(gross_margin*100, 1)}% — premium pricing power"
     elif gross_margin >= 0.30: gm_pts, gm_v = 2, f"{round(gross_margin*100, 1)}% — average"
     else: gm_pts, gm_v = 1, f"{round(gross_margin*100, 1)}% — commodity-like"
 
-    # Profit margin (2 pts)
-    if profit_margin is None: pm_pts, pm_v = 0, "n/a"
+    # Profit margin (2 pts) — r100.1: None on missing
+    if profit_margin is None: pm_pts, pm_v = None, "data missing"
     elif profit_margin >= 0.20: pm_pts, pm_v = 2, f"{round(profit_margin*100, 1)}% — exceptional"
     elif profit_margin >= 0.10: pm_pts, pm_v = 1, f"{round(profit_margin*100, 1)}% — solid"
     else: pm_pts, pm_v = 0, f"{round(profit_margin*100, 1)}% — thin"
 
-    # ROA (2 pts)
-    if roa is None: roa_pts, roa_v = 1, "n/a"
+    # ROA (2 pts) — r100.1: None on missing
+    if roa is None: roa_pts, roa_v = None, "data missing"
     elif roa >= 0.10: roa_pts, roa_v = 2, f"{round(roa*100, 1)}% — capital-efficient"
     elif roa >= 0.04: roa_pts, roa_v = 1, f"{round(roa*100, 1)}% — average"
     else: roa_pts, roa_v = 0, f"{round(roa*100, 1)}% — low"
@@ -9745,67 +9851,82 @@ def _score_360_business_quality(symbol, region, info):
         {"q": "Profitability (net margin)", "answer": f"{round(profit_margin*100, 1)}%" if profit_margin else "n/a", "score": pm_pts, "max": 2, "verdict": pm_v},
         {"q": "Capital efficiency (ROA)", "answer": f"{round(roa*100, 1)}%" if roa else "n/a", "score": roa_pts, "max": 2, "verdict": roa_v},
     ]
-    d["score"] = min(10, sum(c["score"] for c in d["components"]))
-    if d["score"] >= 8: d["verdict"] = "HIGH QUALITY"
-    elif d["score"] >= 5: d["verdict"] = "AVERAGE"
-    else: d["verdict"] = "WEAK"
+    _aggregate_360_dim_v2(d)
+    if d.get("score") is not None:
+        if d["score"] >= 8: d["verdict"] = "HIGH QUALITY"
+        elif d["score"] >= 5: d["verdict"] = "AVERAGE"
+        else: d["verdict"] = "WEAK"
     return d
 
 
 def _score_360_catalysts(symbol, region, info, hist):
-    """Catalysts dimension (10 pts max). Earnings proximity + AI exposure proxy."""
+    """Catalysts dimension (10 pts max). Earnings proximity + sector + momentum.
+    r100.1: earnings_pts = None when no timestamp (was 2/4 floor).
+    Sector and momentum stay numeric — those values are always *real* (we have
+    info.sector and hist; "neutral sector" is a legitimate signal, not absence).
+    """
     d = {"name": "Catalysts", "score": 0, "max": 10, "verdict": "UNKNOWN",
          "components": [], "source": "earnings proximity + sector tailwinds (scaffold)"}
     if not isinstance(info, dict):
-        d["verdict"] = "DATA UNAVAILABLE"
-        return d
+        return _aggregate_360_dim_v2(d)
 
-    # 1. Earnings proximity (4 pts) — proxy for "near catalyst"
-    earnings_pts = 2
-    earnings_v = "no upcoming earnings detected"
+    # 1. Earnings proximity (4 pts) — r100.1: None when no timestamp at all
+    earnings_pts = None
+    earnings_v = "data unavailable"
     try:
         et_ts = info.get("earningsTimestamp")
         if et_ts:
             from datetime import datetime
             days_to = (datetime.fromtimestamp(et_ts) - datetime.now()).days
-            if 0 < days_to <= 14: earnings_pts = 4; earnings_v = f"{days_to} days to earnings (imminent catalyst)"
-            elif 14 < days_to <= 45: earnings_pts = 3; earnings_v = f"{days_to} days to earnings"
-            elif days_to <= 0: earnings_pts = 2; earnings_v = "earnings recent (past)"
+            if 0 < days_to <= 14:
+                earnings_pts = 4; earnings_v = f"{days_to} days to earnings (imminent catalyst)"
+            elif 14 < days_to <= 45:
+                earnings_pts = 3; earnings_v = f"{days_to} days to earnings"
+            elif days_to <= 0:
+                earnings_pts = 2; earnings_v = "earnings recent (past)"
+            else:
+                earnings_pts = 1; earnings_v = f"{days_to} days to earnings (distant)"
     except Exception:
         pass
     d["components"].append({"q": "Earnings proximity", "answer": earnings_v, "score": earnings_pts, "max": 4, "verdict": earnings_v})
 
-    # 2. Sector tailwind heuristic (4 pts) — AI/Tech/Semi/Healthcare in tailwind buckets
-    sector = (info.get("sector") or "").lower()
-    industry = (info.get("industry") or "").lower()
-    tail_pts = 2
-    tail_v = "neutral sector"
-    if any(k in industry or k in sector for k in ["semiconductor", "artificial intelligence", "software"]):
-        tail_pts = 4; tail_v = f"strong tailwind — {industry}"
-    elif any(k in industry or k in sector for k in ["healthcare", "biotech", "renewable"]):
-        tail_pts = 3; tail_v = f"sector tailwind — {industry}"
-    elif any(k in sector for k in ["technology", "communication services"]):
-        tail_pts = 3; tail_v = f"tech sector — {sector}"
-    elif any(k in sector for k in ["energy", "utilities", "real estate"]):
-        tail_pts = 2; tail_v = f"cyclical/defensive — {sector}"
+    # 2. Sector tailwind heuristic (4 pts) — r100.1: None when sector unknown
+    sector_raw = info.get("sector") or ""
+    industry_raw = info.get("industry") or ""
+    sector = sector_raw.lower()
+    industry = industry_raw.lower()
+    if not sector and not industry:
+        tail_pts = None; tail_v = "sector unknown"
+    else:
+        tail_pts = 2; tail_v = "neutral sector"
+        if any(k in industry or k in sector for k in ["semiconductor", "artificial intelligence", "software"]):
+            tail_pts = 4; tail_v = f"strong tailwind — {industry}"
+        elif any(k in industry or k in sector for k in ["healthcare", "biotech", "renewable"]):
+            tail_pts = 3; tail_v = f"sector tailwind — {industry}"
+        elif any(k in sector for k in ["technology", "communication services"]):
+            tail_pts = 3; tail_v = f"tech sector — {sector}"
+        elif any(k in sector for k in ["energy", "utilities", "real estate"]):
+            tail_pts = 2; tail_v = f"cyclical/defensive — {sector}"
     d["components"].append({"q": "Sector tailwind", "answer": tail_v, "score": tail_pts, "max": 4, "verdict": tail_v})
 
-    # 3. Recent momentum surge as catalyst proxy (2 pts)
-    momentum_pts = 1
-    momentum_v = "no surge"
+    # 3. Recent momentum surge as catalyst proxy (2 pts) — r100.1: None when hist missing
+    momentum_pts = None
+    momentum_v = "data unavailable"
     if hist is not None and hasattr(hist, "empty") and not hist.empty:
         closes = list(hist["Close"].dropna())
-        if len(closes) >= 21:
-            ret_20 = (closes[-1] - closes[-21]) / closes[-21] * 100 if closes[-21] > 0 else 0
+        if len(closes) >= 21 and closes[-21] > 0:
+            ret_20 = (closes[-1] - closes[-21]) / closes[-21] * 100
             if ret_20 > 10: momentum_pts = 2; momentum_v = f"+{round(ret_20, 1)}% 20d surge"
             elif ret_20 < -10: momentum_pts = 0; momentum_v = f"{round(ret_20, 1)}% 20d drop"
+            else: momentum_pts = 1; momentum_v = f"{round(ret_20, 1)}% 20d — neutral"
     d["components"].append({"q": "Recent momentum", "answer": momentum_v, "score": momentum_pts, "max": 2, "verdict": momentum_v})
 
-    d["score"] = min(10, sum(c["score"] for c in d["components"]))
-    if d["score"] >= 7: d["verdict"] = "STRONG CATALYSTS"
-    elif d["score"] >= 4: d["verdict"] = "SOME CATALYSTS"
-    else: d["verdict"] = "FEW CATALYSTS"
-    d["_note"] = "r99.44 SCAFFOLD: earnings proximity + sector heuristic + momentum. r99.45 will add news scanning + analyst revisions + AI mention tracking."
+    _aggregate_360_dim_v2(d)
+    if d.get("score") is not None:
+        if d["score"] >= 7: d["verdict"] = "STRONG CATALYSTS"
+        elif d["score"] >= 4: d["verdict"] = "SOME CATALYSTS"
+        else: d["verdict"] = "FEW CATALYSTS"
+    d["_note"] = "r99.44 SCAFFOLD: earnings proximity + sector heuristic + momentum. r100.1: honest NULL when sources unavailable."
     return d
 
 
@@ -10075,59 +10196,119 @@ async def _inst_360_compute(symbol, region, cache_key):
             "warnings": [],
         }
 
-    # ───────── Composite + decision ─────────
-    total = sum(d.get("score", 0) for d in out.get("dimensions", []))
-    max_total = sum(d.get("max", 0) for d in out.get("dimensions", []))
+    # ───────── r100.1 Composite + decision (honest-NULL aware) ─────────
+    # Aggregate ONLY dimensions where score is not None (INSUFFICIENT_DATA
+    # contributes NOTHING — that's the whole point). Build the coverage
+    # object the audit requires so the frontend can render evidence/missing
+    # checklists.
+    dims_list = out.get("dimensions", [])
+    scored_dims = [d for d in dims_list if d.get("score") is not None]
+    null_dims = [d for d in dims_list if d.get("score") is None]
+    total = sum(d.get("score", 0) for d in scored_dims)
+    max_total = sum(d.get("max", 0) for d in scored_dims)
+    # Preserve original (full-framework) max for response transparency
+    full_max = sum(d.get("max", 0) for d in dims_list)
     out["total_score"] = total
-    out["max_total"] = max_total
+    out["max_total"] = max_total       # max of SCORED dims only
+    out["max_total_full"] = full_max   # max if every dim were scored
+    # Percent on covered max — the band thresholds compare against this
+    score_pct = (total / max_total * 100) if max_total > 0 else 0.0
 
-    # Vijay's bands
-    if total >= 85:
-        out["decision"] = "STRONG BUY"; out["color"] = "green"
-        out["target_horizon"] = "3-5 Years"
-    elif total >= 70:
-        out["decision"] = "BUY"; out["color"] = "lime"
-        out["target_horizon"] = "1-3 Years"
-    elif total >= 55:
-        out["decision"] = "HOLD"; out["color"] = "amber"
-        out["target_horizon"] = "6-12 Months — watchlist"
-    elif total >= 40:
-        out["decision"] = "REDUCE"; out["color"] = "orange"
-        out["target_horizon"] = "Trim on rallies"
+    # Coverage object — per-dim 0.0-1.0 + overall (mean weighted by dim.max)
+    cov = {}
+    weighted_cov_num = 0.0
+    weighted_cov_den = 0.0
+    for d in dims_list:
+        key = (d.get("name") or "").lower().replace(" ", "_")
+        c = d.get("coverage", 0.0) or 0.0
+        cov[key] = round(c, 3)
+        w = d.get("max", 0) or 0
+        weighted_cov_num += c * w
+        weighted_cov_den += w
+    overall_cov = (weighted_cov_num / weighted_cov_den) if weighted_cov_den > 0 else 0.0
+    cov["overall"] = round(overall_cov, 3)
+    out["coverage"] = cov
+
+    # Forced-INSUFFICIENT gate
+    rec_min = _CFG_360["RECOMMENDATION_MIN_COVERAGE"]
+    if overall_cov < rec_min or len(scored_dims) == 0:
+        out["decision"] = "INSUFFICIENT_DATA"
+        out["color"] = "grey"
+        out["target_horizon"] = "Recommendation Refused"
+        out["forced_insufficient"] = True
+        out["forced_insufficient_reason"] = (
+            f"overall coverage {int(overall_cov*100)}% < required {int(rec_min*100)}%"
+            if overall_cov < rec_min else "no dimensions scored")
     else:
-        out["decision"] = "SELL"; out["color"] = "red"
-        out["target_horizon"] = "Exit"
+        out["forced_insufficient"] = False
+        # Band thresholds applied to the % of covered max (decision is on
+        # comparable scale regardless of how many dims scored).
+        if score_pct >= 85:
+            out["decision"] = "STRONG BUY"; out["color"] = "green"
+            out["target_horizon"] = "3-5 Years"
+        elif score_pct >= 70:
+            out["decision"] = "BUY"; out["color"] = "lime"
+            out["target_horizon"] = "1-3 Years"
+        elif score_pct >= 55:
+            out["decision"] = "HOLD"; out["color"] = "amber"
+            out["target_horizon"] = "6-12 Months — watchlist"
+        elif score_pct >= 40:
+            out["decision"] = "REDUCE"; out["color"] = "orange"
+            out["target_horizon"] = "Trim on rallies"
+        else:
+            out["decision"] = "SELL"; out["color"] = "red"
+            out["target_horizon"] = "Exit"
 
-    # Confidence — based on how many dimensions had real data
-    dims_with_data = sum(1 for d in out.get("dimensions", []) if d.get("verdict") not in ("UNKNOWN", "DATA UNAVAILABLE", "INSUFFICIENT HISTORY"))
-    if dims_with_data >= len(out.get("dimensions", [])): out["confidence"] = "HIGH"
-    elif dims_with_data >= max(1, len(out.get("dimensions", [])) - 1): out["confidence"] = "MEDIUM"
-    else: out["confidence"] = "LOW"
+    # Confidence — driven by overall coverage (not just dim count)
+    if overall_cov >= _CFG_360["CONFIDENCE_HIGH_MIN_COVERAGE"]:
+        out["confidence"] = "HIGH"
+    elif overall_cov >= _CFG_360["CONFIDENCE_MEDIUM_MIN_COVERAGE"]:
+        out["confidence"] = "MEDIUM"
+    elif overall_cov >= _CFG_360["CONFIDENCE_LOW_MIN_COVERAGE"]:
+        out["confidence"] = "LOW"
+    else:
+        out["confidence"] = "NONE"
 
-    # Risk — derived from technical strength + business quality + valuation
-    risk_score = 0
-    for d in out.get("dimensions", []):
-        if d.get("name") == "Business Quality" and d.get("score", 0) >= 8: risk_score -= 2  # high quality lowers risk
-        if d.get("name") == "Valuation" and d.get("score", 0) <= 8: risk_score += 2  # expensive = higher risk
-        if d.get("name") == "Technicals" and d.get("score", 0) <= 5: risk_score += 1
-        if d.get("name") == "Fundamentals" and d.get("score", 0) <= 12: risk_score += 2
-    if risk_score >= 3: out["risk"] = "HIGH"
-    elif risk_score >= 1: out["risk"] = "MEDIUM"
-    else: out["risk"] = "LOW"
+    # Risk — only meaningful when not forced-insufficient
+    if out.get("forced_insufficient"):
+        out["risk"] = "UNKNOWN"
+    else:
+        risk_score = 0
+        for d in dims_list:
+            sc = d.get("score")
+            if sc is None: continue  # NULL dim contributes no risk signal
+            if d.get("name") == "Business Quality" and sc >= 8: risk_score -= 2
+            if d.get("name") == "Valuation" and sc <= 8: risk_score += 2
+            if d.get("name") == "Technicals" and sc <= 5: risk_score += 1
+            if d.get("name") == "Fundamentals" and sc <= 12: risk_score += 2
+        if risk_score >= 3: out["risk"] = "HIGH"
+        elif risk_score >= 1: out["risk"] = "MEDIUM"
+        else: out["risk"] = "LOW"
+
+    # Audit transparency — which dims have evidence vs which are missing
+    out["evidence_summary"] = {
+        "available": [d.get("name") for d in scored_dims],
+        "missing": [d.get("name") for d in null_dims],
+    }
 
     out["success"] = True
-    out["_engine"] = "institutional_360_v1"
-    out["_data_quality"] = "Equity: full 6-dim scoring. ETF/MF: partial (holdings drill-down + risk-adj returns need r99.45 sources)."
+    out["_engine"] = "institutional_360_v1_r100.1"
+    out["_data_quality"] = ("Equity: full 6-dim scoring. r100.1: honest-NULL "
+                            "aggregation — missing data is reported as INSUFFICIENT, "
+                            "not converted into fake-neutral floors.")
+    out["_thresholds"] = dict(_CFG_360)  # surface for audit
     out["_future_inputs"] = [
-        "ETF holdings drill-down — needs prospectus parser — r99.45",
-        "Mutual fund: Morningstar/Value Research feed for alpha/sharpe/sortino — r99.45",
-        "Catalysts dimension: news headlines + analyst revisions + AI mention tracking — r99.45",
-        "Real options flow into Smart Money — r99.46+",
+        "ETF holdings drill-down — needs prospectus parser",
+        "Mutual fund: Morningstar/Value Research feed for alpha/sharpe/sortino",
+        "Catalysts: news headlines + analyst revisions + AI mention tracking",
+        "Real options flow into Smart Money",
     ]
     out["elapsed_sec"] = round(_time.time() - t0, 2)
     _inst_360_cache[cache_key] = {"data": out, "ts": _time.time()}
     _inst_360_evict_lru()  # r99.46 M1: bound memory at MAX_CACHE entries
-    print(f"[360] {symbol} ({region}) {out['asset_type']} total={total}/{max_total} decision={out['decision']} conf={out['confidence']} risk={out['risk']} in {out['elapsed_sec']}s")
+    print(f"[360] {symbol} ({region}) {out['asset_type']} total={total}/{max_total} "
+          f"decision={out['decision']} conf={out['confidence']} risk={out['risk']} "
+          f"cov={int(overall_cov*100)}% in {out['elapsed_sec']}s")
     return out
 
 

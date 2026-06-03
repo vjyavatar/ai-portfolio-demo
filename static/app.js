@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.100.0";
-window.CELESYS_BUILD_TIME = 1780504800;
-window.CELESYS_BUILD_DATE = "2026-06-03 14:00:00 UTC";
+window.CELESYS_VERSION = "r63.100.2";
+window.CELESYS_BUILD_TIME = 1780594800;
+window.CELESYS_BUILD_DATE = "2026-06-04 15:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12770,8 +12770,18 @@ window._renderDirectionalOptions = function(d) {
     html += '<div style="background:#fff;border:1px solid ' + border + ';border-left:4px solid ' + color + ';border-radius:8px;padding:12px 14px;margin-bottom:8px">';
     // Top row: symbol + score + price
     html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">';
-    html += '<div><span style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + c.symbol + '</span>';
-    html += ' <span style="font-size:10px;color:#64748b;margin-left:6px">' + (c.sector || '?') + '</span></div>';
+    html += '<div>';
+    html += '<span style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + c.symbol + '</span>';
+    // Index badge + name
+    if (c.is_index) {
+      html += ' <span style="font-size:9px;font-weight:700;color:#7c3aed;background:#f3e8ff;border:1px solid #c4b5fd;border-radius:4px;padding:1px 6px;vertical-align:middle">INDEX</span>';
+      if (c.index_name && c.index_name !== c.symbol) {
+        html += ' <span style="font-size:10px;color:#64748b;margin-left:4px">' + c.index_name + '</span>';
+      }
+    } else {
+      html += ' <span style="font-size:10px;color:#64748b;margin-left:6px">' + (c.sector || '?') + '</span>';
+    }
+    html += '</div>';
     html += '<div style="display:flex;align-items:center;gap:10px">';
     html += '<span style="font-size:10px;color:#64748b">$' + (c.price || '?') + '</span>';
     html += '<span style="font-size:9px;color:#64748b">' + c.signals_passed + '/7 checks</span>';
@@ -12897,41 +12907,87 @@ window._loadInstitutional360 = function() {
 
 window._renderInstitutional360 = function(d) {
   // r99.46 C1 FIX: Every interpolation of user-controlled or upstream data uses _esc().
-  // Numeric values are coerced via Number() before insertion (safer than passthrough).
+  // r100.1: handle INSUFFICIENT_DATA decision + per-dim score=null without converting
+  // absence of evidence into fake-neutral floors.
   var decisionColors = {
     'STRONG BUY': {bg: '#065f46', light: '#ecfdf5', border: '#10b981'},
     'BUY': {bg: '#15803d', light: '#f0fdf4', border: '#84cc16'},
     'HOLD': {bg: '#a16207', light: '#fefce8', border: '#eab308'},
     'REDUCE': {bg: '#c2410c', light: '#fff7ed', border: '#f97316'},
     'SELL': {bg: '#991b1b', light: '#fef2f2', border: '#dc2626'},
+    'INSUFFICIENT_DATA': {bg: '#475569', light: '#f1f5f9', border: '#94a3b8'},
   };
   var dc = decisionColors[d.decision] || decisionColors['HOLD'];
   var E = window._esc;
   var num = function(x, def) { var n = Number(x); return isNaN(n) ? (def || 0) : n; };
+  var isInsuf = (d.decision === 'INSUFFICIENT_DATA') || d.forced_insufficient === true;
   var h = '';
 
   // ───────── MAIN VERDICT CARD ─────────
   h += '<div style="background:linear-gradient(135deg,' + dc.bg + ',' + dc.bg + 'dd);color:#fff;border-radius:14px;padding:18px 22px;margin-bottom:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1)">';
   h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px">';
-  // Left: ticker + name (all user/upstream — must escape)
   h += '<div style="min-width:200px">';
   h += '<div style="font-size:11px;opacity:0.8;letter-spacing:0.8px;font-weight:700">' + E(d.asset_type || 'EQUITY') + ' · ' + E(d.region || '?') + (d.sector ? ' · ' + E(d.sector) : '') + '</div>';
   h += '<div style="font-size:26px;font-weight:900;font-family:JetBrains Mono,monospace;line-height:1.1;margin-top:4px">' + E(d.symbol || '?') + '</div>';
   if (d.company_name) h += '<div style="font-size:12px;opacity:0.9;margin-top:2px">' + E(d.company_name) + '</div>';
   if (d.current_price != null) h += '<div style="font-size:11px;opacity:0.85;margin-top:4px;font-family:JetBrains Mono,monospace">' + (d.currency === 'INR' ? '₹' : '$') + num(d.current_price) + '</div>';
   h += '</div>';
-  // Right: decision (decision is one of 5 known values, but escape defensively)
+  // Right: decision label + score (or "Refused" when INSUFFICIENT)
   h += '<div style="text-align:right">';
   h += '<div style="font-size:10px;opacity:0.85;letter-spacing:0.5px;font-weight:700">DECISION</div>';
-  h += '<div style="font-size:30px;font-weight:900;font-family:Sora,sans-serif;line-height:1;margin-top:2px">' + E(d.decision || '?') + '</div>';
-  h += '<div style="font-size:34px;font-weight:900;font-family:JetBrains Mono,monospace;margin-top:4px">' + num(d.total_score) + '<span style="font-size:18px;opacity:0.7">/' + num(d.max_total, 100) + '</span></div>';
+  if (isInsuf) {
+    h += '<div style="font-size:20px;font-weight:900;font-family:Sora,sans-serif;line-height:1.1;margin-top:2px">INSUFFICIENT DATA</div>';
+    h += '<div style="font-size:13px;font-weight:700;font-family:Sora,sans-serif;margin-top:6px;opacity:0.9">Recommendation Refused</div>';
+  } else {
+    h += '<div style="font-size:30px;font-weight:900;font-family:Sora,sans-serif;line-height:1;margin-top:2px">' + E(d.decision || '?') + '</div>';
+    h += '<div style="font-size:34px;font-weight:900;font-family:JetBrains Mono,monospace;margin-top:4px">' + num(d.total_score) + '<span style="font-size:18px;opacity:0.7">/' + num(d.max_total, 100) + '</span></div>';
+  }
   h += '</div></div>';
-  // Bottom row: confidence / risk / horizon (all escape)
+  // Bottom row: confidence / risk / horizon (skip horizon detail when refused)
   h += '<div style="display:flex;gap:18px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.2);flex-wrap:wrap">';
   h += '<div><div style="font-size:9px;opacity:0.8;letter-spacing:0.5px;font-weight:700">CONFIDENCE</div><div style="font-size:13px;font-weight:900;color:#fff;margin-top:1px">' + E(d.confidence || '?') + '</div></div>';
   h += '<div><div style="font-size:9px;opacity:0.8;letter-spacing:0.5px;font-weight:700">RISK</div><div style="font-size:13px;font-weight:900;color:#fff;margin-top:1px">' + E(d.risk || '?') + '</div></div>';
-  h += '<div><div style="font-size:9px;opacity:0.8;letter-spacing:0.5px;font-weight:700">TARGET HORIZON</div><div style="font-size:13px;font-weight:900;color:#fff;margin-top:1px">' + E(d.target_horizon || '?') + '</div></div>';
+  if (d.coverage && d.coverage.overall != null) {
+    var ovPct = Math.round(num(d.coverage.overall) * 100);
+    h += '<div><div style="font-size:9px;opacity:0.8;letter-spacing:0.5px;font-weight:700">COVERAGE</div><div style="font-size:13px;font-weight:900;color:#fff;margin-top:1px">' + ovPct + '%</div></div>';
+  }
+  if (!isInsuf) {
+    h += '<div><div style="font-size:9px;opacity:0.8;letter-spacing:0.5px;font-weight:700">TARGET HORIZON</div><div style="font-size:13px;font-weight:900;color:#fff;margin-top:1px">' + E(d.target_horizon || '?') + '</div></div>';
+  }
   h += '</div></div>';
+
+  // ───────── r100.1 INSUFFICIENT-DATA EVIDENCE BANNER ─────────
+  // When the engine refuses to recommend, surface WHY: which dims have evidence,
+  // which are missing, and overall coverage. This is the audit-grade explanation.
+  if (isInsuf && d.evidence_summary) {
+    var avail = (d.evidence_summary.available || []);
+    var missing = (d.evidence_summary.missing || []);
+    h += '<div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:14px 18px;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#475569;letter-spacing:0.3px;margin-bottom:8px">⚠ EVIDENCE TRACE — WHY RECOMMENDATION REFUSED</div>';
+    if (d.forced_insufficient_reason) {
+      h += '<div style="font-size:11px;color:#475569;margin-bottom:10px;font-style:italic">' + E(d.forced_insufficient_reason) + '</div>';
+    }
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+    h += '<div>';
+    h += '<div style="font-size:10px;font-weight:700;color:#15803d;letter-spacing:0.3px;margin-bottom:4px">✓ AVAILABLE EVIDENCE (' + avail.length + ')</div>';
+    if (avail.length) {
+      h += '<ul style="margin:0;padding-left:18px;font-size:11px;line-height:1.7;color:#334155">';
+      avail.forEach(function(n) { h += '<li style="color:#15803d;font-weight:600">' + E(n) + '</li>'; });
+      h += '</ul>';
+    } else {
+      h += '<div style="font-size:11px;color:#94a3b8;font-style:italic">none</div>';
+    }
+    h += '</div><div>';
+    h += '<div style="font-size:10px;font-weight:700;color:#b91c1c;letter-spacing:0.3px;margin-bottom:4px">✗ MISSING EVIDENCE (' + missing.length + ')</div>';
+    if (missing.length) {
+      h += '<ul style="margin:0;padding-left:18px;font-size:11px;line-height:1.7;color:#334155">';
+      missing.forEach(function(n) { h += '<li style="color:#b91c1c">' + E(n) + '</li>'; });
+      h += '</ul>';
+    } else {
+      h += '<div style="font-size:11px;color:#94a3b8;font-style:italic">none</div>';
+    }
+    h += '</div></div></div>';
+  }
 
   // ───────── FRAMEWORK NOTE ─────────
   if (d.framework) {
@@ -12942,28 +12998,55 @@ window._renderInstitutional360 = function(d) {
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:12px">';
   (d.dimensions || []).forEach(function(dim) {
     var dMax = num(dim.max, 1);
-    var dScore = num(dim.score);
-    var pct = dMax > 0 ? (dScore / dMax * 100) : 0;
+    var hasScore = (dim.score !== null && dim.score !== undefined);
+    var dScore = hasScore ? num(dim.score) : null;
+    var pct = (hasScore && dMax > 0) ? (dScore / dMax * 100) : 0;
     if (pct < 0) pct = 0; if (pct > 100) pct = 100;
-    var dColor = pct >= 75 ? '#10b981' : pct >= 50 ? '#d97706' : pct >= 25 ? '#ea580c' : '#dc2626';
+    // r100.1: grey when no score (INSUFFICIENT), otherwise band color
+    var dColor = !hasScore ? '#94a3b8'
+      : (pct >= 75 ? '#10b981' : pct >= 50 ? '#d97706' : pct >= 25 ? '#ea580c' : '#dc2626');
+    var dimCov = (dim.coverage != null) ? Math.round(num(dim.coverage) * 100) : null;
     h += '<div style="background:#fff;border:1px solid #e5e7eb;border-left:4px solid ' + dColor + ';border-radius:8px;padding:12px 14px">';
     h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
     h += '<div style="font-size:12px;font-weight:900;color:#1e293b;font-family:Sora,sans-serif">' + E(dim.name) + '</div>';
-    h += '<div style="font-size:18px;font-weight:900;color:' + dColor + ';font-family:JetBrains Mono,monospace">' + dScore + '<span style="font-size:11px;opacity:0.6">/' + dMax + '</span></div>';
+    if (hasScore) {
+      h += '<div style="font-size:18px;font-weight:900;color:' + dColor + ';font-family:JetBrains Mono,monospace">' + dScore + '<span style="font-size:11px;opacity:0.6">/' + dMax + '</span></div>';
+    } else {
+      h += '<div style="font-size:11px;font-weight:900;color:#94a3b8;font-family:Sora,sans-serif;letter-spacing:0.3px">INSUFFICIENT</div>';
+    }
     h += '</div>';
-    // Progress bar
-    h += '<div style="background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden;margin-bottom:8px"><div style="width:' + pct + '%;height:100%;background:' + dColor + '"></div></div>';
-    // Verdict
-    h += '<div style="font-size:10.5px;color:#374151;font-weight:700;margin-bottom:4px">' + E(dim.verdict || '?') + '</div>';
-    // Components (collapsible)
+    // Progress bar — grey hatched when INSUFFICIENT
+    if (hasScore) {
+      h += '<div style="background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden;margin-bottom:8px"><div style="width:' + pct + '%;height:100%;background:' + dColor + '"></div></div>';
+    } else {
+      h += '<div style="background:repeating-linear-gradient(45deg,#f1f5f9,#f1f5f9 4px,#e2e8f0 4px,#e2e8f0 8px);border-radius:4px;height:6px;margin-bottom:8px"></div>';
+    }
+    // Verdict line
+    var vColor = hasScore ? '#374151' : '#94a3b8';
+    h += '<div style="font-size:10.5px;color:' + vColor + ';font-weight:700;margin-bottom:4px">' + E(dim.verdict || '?');
+    if (dimCov !== null) {
+      h += ' <span style="font-size:10px;color:#94a3b8;font-weight:500">· coverage ' + dimCov + '%</span>';
+    }
+    h += '</div>';
+    // r100.1 note (e.g. "only 2/7 components" or "partial — 5/7")
+    if (dim.note) {
+      h += '<div style="font-size:10px;color:#94a3b8;font-style:italic;margin-bottom:4px">' + E(dim.note) + '</div>';
+    }
+    // Components — render each, with NULL cells shown explicitly as "no data"
     if (dim.components && dim.components.length) {
-      h += '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:10px;color:' + dColor + ';font-weight:700">▸ Component breakdown</summary>';
+      h += '<details style="margin-top:6px"' + (hasScore ? '' : ' open') + '><summary style="cursor:pointer;font-size:10px;color:' + dColor + ';font-weight:700">▸ Component breakdown</summary>';
       h += '<ul style="margin:6px 0 0 0;padding-left:14px;font-size:10px;line-height:1.6;color:#475569">';
       dim.components.forEach(function(c) {
         var cAns = E(c.answer || '?');
         var cVerdict = E(c.verdict || '');
         var cQ = E(c.q || '');
-        h += '<li><strong style="color:#1e293b">' + cQ + ':</strong> ' + cAns + ' <span style="color:#94a3b8">(' + num(c.score) + '/' + num(c.max, 1) + ')</span>' + (c.verdict && c.verdict !== c.answer ? ' — <em style="color:#64748b">' + cVerdict + '</em>' : '') + '</li>';
+        var cHasScore = (c.score !== null && c.score !== undefined);
+        // r100.1: NULL component is rendered as "no data" with grey strikethrough-style
+        if (!cHasScore) {
+          h += '<li style="opacity:0.7"><strong style="color:#1e293b">' + cQ + ':</strong> <em style="color:#94a3b8">no data</em> <span style="color:#94a3b8">(–/' + num(c.max, 1) + ')</span></li>';
+        } else {
+          h += '<li><strong style="color:#1e293b">' + cQ + ':</strong> ' + cAns + ' <span style="color:#94a3b8">(' + num(c.score) + '/' + num(c.max, 1) + ')</span>' + (c.verdict && c.verdict !== c.answer ? ' — <em style="color:#64748b">' + cVerdict + '</em>' : '') + '</li>';
+        }
       });
       h += '</ul></details>';
     }
@@ -12977,12 +13060,14 @@ window._renderInstitutional360 = function(d) {
   });
   h += '</div>';
 
-  // ───────── INSTITUTIONAL CONVICTION FOOTER ─────────
-  // Interpretation strings are HARDCODED in this file — safe to insert raw HTML for these.
+  // ───────── INSTITUTIONAL INTERPRETATION ─────────
+  // Hardcoded interpretation strings — safe HTML.
   h += '<div style="background:linear-gradient(180deg,#f8fafc,#fff);border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:10px">';
   h += '<div style="font-size:11px;font-weight:900;color:#5b21b6;letter-spacing:0.3px;margin-bottom:6px">🧠 INSTITUTIONAL INTERPRETATION</div>';
   var interp = '';
-  if (d.decision === 'STRONG BUY') {
+  if (isInsuf) {
+    interp = 'The engine has insufficient evidence to issue a recommendation. Absence of data is not evidence of weakness — it is absence. Verdicts have been WITHHELD on the dimensions marked INSUFFICIENT above. Do not assume a position thesis from this card. The "Available Evidence" panel shows what we know; everything else is silent.';
+  } else if (d.decision === 'STRONG BUY') {
     interp = 'All four institutional pillars aligned — high-quality business, attractive valuation, accumulation signals present, and catalyst-rich. This is the rare profile institutions pay for. Position size = full conviction.';
   } else if (d.decision === 'BUY') {
     interp = 'Strong setup with most dimensions favorable. Some axis may need monitoring (check the dimension with the lowest score for the watch-item). Position size = standard.';
@@ -12996,7 +13081,7 @@ window._renderInstitutional360 = function(d) {
   h += '<div style="font-size:11px;color:#374151;line-height:1.6">' + interp + '</div>';
   h += '</div>';
 
-  // ───────── WARNINGS / FUTURE INPUTS (all escape — these are upstream-sourced strings) ─────────
+  // ───────── WARNINGS / FUTURE INPUTS ─────────
   if (d.warnings && d.warnings.length) {
     h += '<details style="margin-top:6px;font-size:10px;color:#78350f"><summary style="cursor:pointer;font-weight:700">⚠ Warnings (' + d.warnings.length + ')</summary>';
     h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5">';
@@ -13004,7 +13089,7 @@ window._renderInstitutional360 = function(d) {
     h += '</ul></details>';
   }
   if (d._future_inputs && d._future_inputs.length) {
-    h += '<details style="margin-top:6px;font-size:10px"><summary style="cursor:pointer;color:#7c3aed;font-weight:700">▸ Will improve in r99.47+</summary>';
+    h += '<details style="margin-top:6px;font-size:10px"><summary style="cursor:pointer;color:#7c3aed;font-weight:700">▸ Future inputs (not yet wired)</summary>';
     h += '<ul style="margin:6px 0 0 0;padding-left:18px;line-height:1.5;color:#5b21b6">';
     d._future_inputs.forEach(function(f) { h += '<li>' + E(f) + '</li>'; });
     h += '</ul></details>';

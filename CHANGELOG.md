@@ -1,3 +1,88 @@
+## r63.100.1 (2026-06-04) — Honest-NULL backport to legacy /api/institutional-360
+
+### THE BUG
+DRAM (and every low-coverage stock) was producing "REDUCE 44/100, MEDIUM
+confidence, Trim on rallies" with only ~17% real coverage. The legacy
+`/api/institutional-360` endpoint converted absence of evidence into evidence:
+every `_pts(None)` returned `max_pts // 2` as a fake-neutral floor. Six dims
+× ~3 fake-neutral points per missing component produced a 44/100 verdict
+from zero real data on Fundamentals, Valuation, Smart Money, Business Quality.
+
+### THE FIX — surgical, configurable, audit-grade
+- **Honest-NULL scorers.** All 6 `_score_360_*` helpers now return `(None,
+  "data missing")` for missing inputs (was `(max//2, ...)`).
+- **Uniform aggregator.** New `_aggregate_360_dim_v2(d)` computes coverage =
+  real_components / total_components per dim; below the configured threshold
+  the dim reports `score=None, verdict="INSUFFICIENT_DATA"` and contributes
+  ZERO to the composite. Above threshold, partial coverage is scaled to
+  dim.max so band thresholds stay comparable.
+- **Forced-INSUFFICIENT gate.** Composite computes weighted overall coverage;
+  if below `RECOMMENDATION_MIN_COVERAGE` the decision becomes
+  `INSUFFICIENT_DATA` with target_horizon `"Recommendation Refused"`. No
+  band-color verdict is produced.
+- **Configurable thresholds.** Thresholds live in a single `_CFG_360` dict:
+  `DIMENSION_MIN_COVERAGE=0.50`, `RECOMMENDATION_MIN_COVERAGE=0.60`,
+  `CONFIDENCE_HIGH_MIN_COVERAGE=0.85`, `CONFIDENCE_MEDIUM_MIN_COVERAGE=0.60`,
+  `CONFIDENCE_LOW_MIN_COVERAGE=0.30`. Echoed in the response as
+  `_thresholds` for audit transparency.
+- **Coverage object** in response: per-dim 0.0-1.0 fractions plus a weighted
+  `overall`. Frontend renders coverage % per dim card and a top-level
+  COVERAGE stat alongside CONFIDENCE / RISK.
+- **Evidence summary** in response: `{available: [...], missing: [...]}`
+  surfaced in the UI as a "Why Recommendation Refused" banner with two
+  columns (✓ available evidence, ✗ missing evidence).
+- **Confidence driven by coverage**, not by dim count. ≥85% → HIGH, ≥60%
+  → MEDIUM, ≥30% → LOW, else NONE.
+- **Engine tag** bumped to `institutional_360_v1_r100.1`.
+
+### FRONTEND
+`_renderInstitutional360` rewritten:
+- INSUFFICIENT_DATA decision renders as a grey card with "INSUFFICIENT DATA
+  / Recommendation Refused" instead of "REDUCE 44/100".
+- Dim cards with `score=null` show grey "INSUFFICIENT" pill, hatched
+  progress bar, components opened by default so the audit trail is visible.
+- NULL components rendered as "no data (–/N)" with grey strikethrough —
+  no fabricated numeric score.
+- Evidence-trace banner appears whenever `forced_insufficient` is true.
+
+### BEFORE / AFTER (DRAM-like input)
+| State | Before r100.1 | After r100.1 |
+|-------|---------------|--------------|
+| decision | REDUCE | INSUFFICIENT_DATA |
+| score | 44/100 | n/a |
+| target_horizon | "Trim on rallies" | "Recommendation Refused" |
+| confidence | MEDIUM | NONE / LOW |
+| coverage | (not reported) | overall 17% |
+
+### CHANGES
+- `api.py` — `_CFG_360` + `_aggregate_360_dim_v2` helper added; 6 scorers
+  patched (`_score_360_fundamentals/valuation/technicals/smart_money/
+  business_quality/catalysts`); composite block rewritten to compute
+  coverage object + forced-INSUFFICIENT gate; `_thresholds` echoed.
+- `static/app.js` — `_renderInstitutional360` (~250 lines) rewritten with
+  INSUFFICIENT_DATA grey card, evidence-trace banner, per-dim coverage %,
+  NULL component rendering. `static/app.min.js` synced (md5 match).
+- `index.html` — cache-bust `app.min.js?v=1780591200`.
+
+### TESTING
+- `/tmp/validate_r100_1.py` — 186 checks across 8 categories (Functional /
+  Negative / Edge / Integration / Security / Performance / Regression /
+  Honest-NULL invariants). 186 PASS, 0 FAIL.
+- Full regression battery on all 8 prior harnesses (r100.0, r99.46, r99.45,
+  r99.44, r99.43, r99.41, engines, dashboard_v2). Two r99.45 tests updated:
+  they asserted the OLD fake-floor PEG=2 / EV-EBITDA=2 on missing data; now
+  assert honest score=None. 385 PASS total across all 9 harnesses, 0 FAIL.
+
+### MIGRATION
+- The new `/api/celesys-v2-score` endpoint (added r100.0) is the long-term
+  home. r100.1 brings the LEGACY endpoint to the same honest-data discipline
+  so production UI consumers stop seeing fabricated verdicts immediately.
+- Watchlist / batch-scan / export consumers: response shape is
+  backward-compatible — all existing keys preserved. New keys (`coverage`,
+  `evidence_summary`, `forced_insufficient`, `_thresholds`,
+  `max_total_full`) are additive. `decision` may now be the string
+  `"INSUFFICIENT_DATA"` which existing band-based code must handle.
+
 ## r63.100.0 (2026-06-03) — Celesys Cognitive Architecture (3-layer: Ontology + Graph + Engine)
 
 Major architectural milestone. Implements the 3-layer cognitive architecture spec line-by-line.
