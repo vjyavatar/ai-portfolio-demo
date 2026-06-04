@@ -27471,16 +27471,14 @@ def _mw_build_prompt(symbol, region, ohlcv, vix_val, vix_regime, themes,
         l_parts = ", ".join(str(m["symbol"]) + " " + str(m["change_pct"]) + "%" for m in bot_movers[:3])
         movers_str = f"Top gainers: {g_parts}. Top losers: {l_parts}. "
     prompt = (
-        f"You are a professional market analyst. Explain in 4-6 clear, direct sentences WHY "
-        f"{symbol} ({region}) {direction} {abs(chg)}% today. "
-        f"Price: {close}. Gap at open: {gap:+}%. Volume: {vol_str}. "
+        f"You are a professional market analyst. WHY did {symbol} ({region}) {direction} {abs(chg)}% today? "
+        f"Price: {close}. Gap: {gap:+}%. Volume: {vol_str}. "
         f"RSI: {rsi or 'N/A'}. Trend: {ma_str or 'N/A'}. "
         f"VIX: {vix_val or 'N/A'} ({vix_regime}). "
         f"{mkt_str}{theme_str}{movers_str}"
-        f"Identify: (1) the primary driver (macro/sector/stock-specific), "
-        f"(2) whether this is broad selling or concentrated, "
-        f"(3) one technical level to watch. "
-        f"Be specific, factual, and institutional in tone. No disclaimers. No markdown."
+        f"Reply with EXACTLY 4 bullet points. Each bullet: one line, max 15 words, starts with '• '. "
+        f"Cover: primary driver, breadth (broad vs concentrated), volume/conviction, key level to watch. "
+        f"Be specific with numbers. No paragraphs. No headers. No disclaimers. Output only the 4 bullets."
     )
     return prompt
 

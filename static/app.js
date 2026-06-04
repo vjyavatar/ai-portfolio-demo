@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.100.6";
-window.CELESYS_BUILD_TIME = 1780609200;
-window.CELESYS_BUILD_DATE = "2026-06-04 19:00:00 UTC";
+window.CELESYS_VERSION = "r63.100.8";
+window.CELESYS_BUILD_TIME = 1780616400;
+window.CELESYS_BUILD_DATE = "2026-06-04 21:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12979,172 +12979,200 @@ window._loadMarketWhy = function(sym, region) {
 
 window._renderMarketWhy = function(d) {
   if (!d || !d.success) {
-    return '<div style="padding:20px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;font-size:14px;font-weight:600;color:#dc2626;text-align:center">'
-      + '⚠ ' + ((d && d.error) || 'Could not load market data') + '</div>';
+    return '<div style="padding:20px;background:#fef2f2;border:2px solid #fecaca;border-radius:14px;font-size:15px;font-weight:700;color:#dc2626;text-align:center">⚠ ' + ((d && d.error) || 'Could not load data') + '</div>';
   }
-  var E = window._esc || function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
-  var today = d.today || {};
-  var chg = today.change_pct || 0;
-  var isUp = chg >= 0.1, isDown = chg <= -0.1;
-  var chgColor = isDown ? '#ef4444' : (isUp ? '#22c55e' : '#f59e0b');
-  var chgBg    = isDown ? 'linear-gradient(135deg,#450a0a,#7f1d1d)' : (isUp ? 'linear-gradient(135deg,#052e16,#14532d)' : 'linear-gradient(135deg,#451a03,#78350f)');
-  var chgSign  = chg >= 0 ? '+' : '';
-  var vix      = (d.vix || {}).value;
-  var vixReg   = (d.vix || {}).regime || 'normal';
-  var vixColor = vixReg === 'high' ? '#ef4444' : vixReg === 'elevated' ? '#f59e0b' : '#22c55e';
+  var E = window._esc || function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  var t = d.today || {};
+  var chg = t.change_pct || 0;
+  var isUp = chg >= 0.15, isDown = chg <= -0.15;
+  var mainColor  = isDown ? '#ef4444' : (isUp ? '#22c55e' : '#f59e0b');
+  var heroBg     = isDown ? 'linear-gradient(135deg,#3b0000 0%,#7f1d1d 100%)'
+                          : (isUp ? 'linear-gradient(135deg,#001a0a 0%,#14532d 100%)'
+                                  : 'linear-gradient(135deg,#1c1400 0%,#78350f 100%)');
+  var sign       = chg >= 0 ? '+' : '';
+  var vix        = (d.vix || {}).value;
+  var vixReg     = (d.vix || {}).regime || 'normal';
   var h = '';
 
-  /* ═══ 1. HERO HEADER ═══════════════════════════════════════════════════════ */
-  h += '<div style="background:' + chgBg + ';border-radius:16px;padding:20px 24px;margin-bottom:16px;position:relative;overflow:hidden">';
-  // subtle grid pattern overlay
-  h += '<div style="position:absolute;inset:0;opacity:0.03;background-image:repeating-linear-gradient(0deg,transparent,transparent 20px,rgba(255,255,255,1) 20px,rgba(255,255,255,1) 21px),repeating-linear-gradient(90deg,transparent,transparent 20px,rgba(255,255,255,1) 20px,rgba(255,255,255,1) 21px)"></div>';
-  h += '<div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">';
-  // Left — symbol + asset type
-  h += '<div>';
-  h += '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,0.5);text-transform:uppercase;margin-bottom:6px">' + E(d.asset_type||'EQUITY') + ' · ' + E(d.region||'IN') + '</div>';
-  h += '<div style="font-size:32px;font-weight:900;color:#fff;font-family:Sora,sans-serif;line-height:1;letter-spacing:-0.5px">' + E(d.symbol||'?') + '</div>';
-  if (today.close) h += '<div style="font-size:15px;font-weight:600;color:rgba(255,255,255,0.7);margin-top:6px;font-family:JetBrains Mono,monospace">' + today.close + '</div>';
+  /* ── 1. HERO ──────────────────────────────────────────────────────────── */
+  h += '<div style="background:' + heroBg + ';border-radius:18px;padding:22px 26px 18px;margin-bottom:14px;position:relative;overflow:hidden">';
+  // grid shimmer
+  h += '<div style="position:absolute;inset:0;background-image:radial-gradient(circle at 80% 50%,' + mainColor + '18 0%,transparent 60%),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(255,255,255,.03) 39px,rgba(255,255,255,.03) 40px)"></div>';
+  h += '<div style="position:relative">';
+  // top row
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">';
+  h += '<div><div style="font-size:11px;font-weight:700;letter-spacing:2.5px;color:rgba(255,255,255,.45);text-transform:uppercase;margin-bottom:5px">' + E(d.asset_type||'EQUITY') + ' · ' + E(d.region||'IN') + '</div>';
+  h += '<div style="font-size:34px;font-weight:900;color:#fff;font-family:Sora,sans-serif;line-height:1;letter-spacing:-1px">' + E(d.symbol||'?') + '</div>';
+  if (t.close) h += '<div style="font-size:14px;font-weight:600;color:rgba(255,255,255,.55);margin-top:5px;font-family:JetBrains Mono,monospace">' + t.close + '</div>';
   h += '</div>';
-  // Right — big % change
-  h += '<div style="text-align:right">';
-  h += '<div style="font-size:48px;font-weight:900;color:' + chgColor + ';font-family:JetBrains Mono,monospace;line-height:1;text-shadow:0 0 30px ' + chgColor + '60">' + chgSign + chg.toFixed(2) + '%</div>';
-  h += '<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);margin-top:4px">' + (isDown ? '▼ DECLINING' : isUp ? '▲ RISING' : '◆ FLAT') + ' TODAY</div>';
-  h += '</div></div>';
-  // Pill stats row
-  h += '<div style="position:relative;display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1)">';
+  h += '<div style="text-align:right"><div style="font-size:54px;font-weight:900;color:' + mainColor + ';font-family:JetBrains Mono,monospace;line-height:1;filter:drop-shadow(0 0 16px ' + mainColor + '80)">' + sign + chg.toFixed(2) + '%</div>';
+  h += '<div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.4);letter-spacing:1.5px;margin-top:5px;text-transform:uppercase">' + (isDown ? '▼ DECLINING' : isUp ? '▲ RISING' : '◆ FLAT') + '</div></div></div>';
+  // stat pills
+  h += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
   var pills = [];
-  if (vix) pills.push(['VIX', vix, vixColor]);
-  if (today.gap_pct != null) pills.push(['Gap', (today.gap_pct >= 0 ? '+' : '') + today.gap_pct.toFixed(2) + '%', Math.abs(today.gap_pct) > 0.5 ? '#f59e0b' : 'rgba(255,255,255,0.6)']);
-  if (today.rsi)   pills.push(['RSI', today.rsi, today.rsi >= 70 ? '#ef4444' : today.rsi <= 30 ? '#22c55e' : 'rgba(255,255,255,0.7)']);
-  if (today.volume_ratio) pills.push(['Vol', today.volume_ratio + 'x avg', today.volume_ratio >= 1.5 ? '#22c55e' : today.volume_ratio < 0.7 ? '#f59e0b' : 'rgba(255,255,255,0.6)']);
-  if (today.above_sma50 != null) pills.push(['50 DMA', today.above_sma50 ? 'ABOVE' : 'BELOW', today.above_sma50 ? '#22c55e' : '#ef4444']);
-  if (today.above_sma200 != null) pills.push(['200 DMA', today.above_sma200 ? 'ABOVE' : 'BELOW', today.above_sma200 ? '#22c55e' : '#ef4444']);
-  pills.forEach(function(p) {
-    h += '<div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px 12px">';
-    h += '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;color:rgba(255,255,255,0.45);text-transform:uppercase">' + p[0] + '</span>';
-    h += '<span style="font-size:13px;font-weight:800;color:' + p[2] + ';font-family:JetBrains Mono,monospace">' + p[1] + '</span>';
-    h += '</div>';
+  if (vix)             pills.push({l:'VIX', v:vix, c: vixReg==='high'?'#ef4444':vixReg==='elevated'?'#f59e0b':'#22c55e'});
+  if (t.gap_pct!=null) pills.push({l:'GAP', v:(t.gap_pct>=0?'+':'')+t.gap_pct.toFixed(2)+'%', c:Math.abs(t.gap_pct)>.5?'#f59e0b':'rgba(255,255,255,.6)'});
+  if (t.rsi)           pills.push({l:'RSI', v:t.rsi, c:t.rsi>=70?'#ef4444':t.rsi<=30?'#22c55e':'rgba(255,255,255,.7)'});
+  if (t.volume_ratio)  pills.push({l:'VOL', v:t.volume_ratio+'x avg', c:t.volume_ratio>=1.5?'#22c55e':t.volume_ratio<0.7?'#f59e0b':'rgba(255,255,255,.6)'});
+  if (t.above_sma50!=null) pills.push({l:'50D', v:t.above_sma50?'ABOVE':'BELOW', c:t.above_sma50?'#22c55e':'#ef4444'});
+  if (t.above_sma200!=null) pills.push({l:'200D', v:t.above_sma200?'ABOVE':'BELOW', c:t.above_sma200?'#22c55e':'#ef4444'});
+  pills.forEach(function(p){
+    h += '<div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:7px 13px;display:flex;align-items:center;gap:7px">';
+    h += '<span style="font-size:10px;font-weight:800;letter-spacing:1px;color:rgba(255,255,255,.4)">' + p.l + '</span>';
+    h += '<span style="font-size:14px;font-weight:900;color:' + p.c + ';font-family:JetBrains Mono,monospace">' + p.v + '</span></div>';
   });
-  // Market context pill
-  if (d.market_today && d.symbol !== 'NIFTY' && d.symbol !== 'SPY') {
-    var mc = d.market_today.change_pct || 0;
-    h += '<div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px 12px">';
-    h += '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;color:rgba(255,255,255,0.45);text-transform:uppercase">MARKET</span>';
-    h += '<span style="font-size:13px;font-weight:800;color:' + (mc >= 0 ? '#22c55e' : '#ef4444') + ';font-family:JetBrains Mono,monospace">' + (mc >= 0 ? '+' : '') + mc.toFixed(2) + '%</span>';
-    h += '</div>';
-  }
-  h += '</div></div>';
+  h += '</div></div></div>';
 
-  /* ═══ 2. AI NARRATIVE ═══════════════════════════════════════════════════════ */
-  if (d.why_narrative) {
-    var narrative = d.why_narrative;
-    // Strip markdown # headers if present
-    if (narrative.charAt(0) === '#') { var nl = narrative.indexOf('\n'); if (nl > 0) narrative = narrative.substring(nl + 1).trim(); }
-    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-left:5px solid ' + chgColor + ';border-radius:12px;padding:20px 24px;margin-bottom:16px">';
-    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">';
-    h += '<div style="width:32px;height:32px;background:' + (isDown ? '#fef2f2' : isUp ? '#f0fdf4' : '#fffbeb') + ';border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🧠</div>';
-    h += '<div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:0.5px;text-transform:uppercase">Why ' + E(d.symbol) + ' Is Moving</div>';
-    h += '</div>';
-    h += '<div style="font-size:14px;font-weight:500;color:#1e293b;line-height:1.85;letter-spacing:0.1px">' + E(narrative) + '</div>';
-    h += '</div>';
-  }
-
-  /* ═══ 3. SIGNAL CHIPS ═══════════════════════════════════════════════════════ */
-  if (d.why_bullets && d.why_bullets.length) {
-    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px">';
-    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">';
-    h += '<div style="width:32px;height:32px;background:#f0f9ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📡</div>';
-    h += '<div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:0.5px;text-transform:uppercase">Signal Breakdown</div>';
-    h += '</div>';
-    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
-    var sigIcons = {'Price':' 💹','Volume':'📊','RSI':'📈','VIX':'⚡','Trend':'📉','Gap':'↕️','Top gainers':'🟢','Top losers':'🔴','Strongest':'🏆','Weakest':'📉'};
-    d.why_bullets.forEach(function(b) {
-      var icon = '◆';
-      Object.keys(sigIcons).forEach(function(k) { if (b.toLowerCase().indexOf(k.toLowerCase()) >= 0) icon = sigIcons[k]; });
-      var isPos = b.indexOf('+') >= 0 || b.toLowerCase().indexOf('above') >= 0 || b.toLowerCase().indexOf('gainer') >= 0;
-      var isNeg = b.indexOf('fell') >= 0 || b.toLowerCase().indexOf('below') >= 0 || b.toLowerCase().indexOf('loser') >= 0 || b.toLowerCase().indexOf('weak') >= 0;
-      var chipBorder = isNeg ? '#fecaca' : isPos ? '#bbf7d0' : '#e2e8f0';
-      var chipBg     = isNeg ? '#fef9f9' : isPos ? '#f9fff9' : '#fafafa';
-      h += '<div style="background:' + chipBg + ';border:1px solid ' + chipBorder + ';border-radius:10px;padding:12px 14px;display:flex;align-items:flex-start;gap:10px">';
-      h += '<span style="font-size:18px;line-height:1;flex-shrink:0;margin-top:1px">' + icon + '</span>';
-      h += '<span style="font-size:13px;font-weight:600;color:#1e293b;line-height:1.5">' + E(b) + '</span>';
-      h += '</div>';
-    });
-    h += '</div></div>';
-  }
-
-  /* ═══ 4. THEMES GRID ════════════════════════════════════════════════════════ */
-  if (d.themes && d.themes.length) {
-    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px">';
-    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">';
-    h += '<div style="width:32px;height:32px;background:#f5f3ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🗺️</div>';
-    h += '<div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:0.5px;text-transform:uppercase">Sector Themes Today</div>';
-    h += '</div>';
-    // Sort: strongest first
-    var themes = d.themes.slice().sort(function(a,b){return b.avg_change_pct - a.avg_change_pct;});
-    // Find max abs for bar scaling
-    var maxAbs = Math.max.apply(null, themes.map(function(t){return Math.abs(t.avg_change_pct);})) || 1;
-    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">';
-    themes.forEach(function(t) {
-      var tc   = t.avg_change_pct >= 0.3 ? '#16a34a' : (t.avg_change_pct <= -0.3 ? '#dc2626' : '#d97706');
-      var tbg  = t.avg_change_pct >= 0.3 ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : (t.avg_change_pct <= -0.3 ? 'linear-gradient(135deg,#fef2f2,#fee2e2)' : 'linear-gradient(135deg,#fffbeb,#fef3c7)');
-      var barW = Math.round(Math.abs(t.avg_change_pct) / maxAbs * 100);
-      var barColor = t.avg_change_pct >= 0 ? '#22c55e' : '#ef4444';
-      var arrow = t.avg_change_pct >= 0.3 ? '▲' : (t.avg_change_pct <= -0.3 ? '▼' : '◆');
-      h += '<div style="background:' + tbg + ';border:1px solid ' + tc + '33;border-radius:12px;padding:14px 16px;position:relative;overflow:hidden">';
-      // Background subtle bar
-      h += '<div style="position:absolute;bottom:0;left:0;height:3px;width:' + barW + '%;background:' + barColor + ';border-radius:0 2px 0 12px;opacity:0.6"></div>';
-      h += '<div style="font-size:12px;font-weight:800;color:#475569;letter-spacing:0.3px;margin-bottom:6px;text-transform:uppercase">' + E(t.theme) + '</div>';
-      h += '<div style="font-size:28px;font-weight:900;color:' + tc + ';font-family:JetBrains Mono,monospace;line-height:1;margin-bottom:8px">' + arrow + ' ' + (t.avg_change_pct >= 0 ? '+' : '') + t.avg_change_pct.toFixed(2) + '%</div>';
-      if (t.top_gainer) h += '<div style="font-size:12px;font-weight:700;color:#16a34a;margin-bottom:2px">▲ ' + E(t.top_gainer.symbol) + ' <span style="font-family:JetBrains Mono,monospace">+' + t.top_gainer.change_pct.toFixed(1) + '%</span></div>';
-      if (t.top_loser)  h += '<div style="font-size:12px;font-weight:700;color:#dc2626">▼ ' + E(t.top_loser.symbol) + ' <span style="font-family:JetBrains Mono,monospace">' + t.top_loser.change_pct.toFixed(1) + '%</span></div>';
-      h += '</div>';
-    });
-    h += '</div></div>';
-  }
-
-  /* ═══ 5. TOP MOVERS ═════════════════════════════════════════════════════════ */
-  if (d.top_gainers && d.top_gainers.length && d.top_losers && d.top_losers.length) {
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
-    // Gainers
-    h += '<div style="background:#fff;border:1px solid #bbf7d0;border-radius:12px;overflow:hidden">';
-    h += '<div style="background:linear-gradient(135deg,#052e16,#14532d);padding:12px 16px;display:flex;align-items:center;gap:8px">';
-    h += '<span style="font-size:16px">▲</span><span style="font-size:13px;font-weight:900;color:#fff;letter-spacing:0.5px">TOP GAINERS</span>';
-    h += '</div>';
-    d.top_gainers.slice(0,5).forEach(function(m, i) {
-      var pct = (m.change_pct||0).toFixed(2);
-      var barW = Math.min(100, Math.round(Math.abs(m.change_pct||0) * 15));
-      h += '<div style="padding:10px 16px;' + (i > 0 ? 'border-top:1px solid #f0fdf4;' : '') + 'display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">';
-      h += '<div style="position:absolute;left:0;top:0;bottom:0;width:' + barW + '%;background:rgba(34,197,94,0.07)"></div>';
-      h += '<span style="position:relative;font-size:14px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(m.symbol) + '</span>';
-      h += '<span style="position:relative;font-size:14px;font-weight:900;color:#16a34a;font-family:JetBrains Mono,monospace">+' + pct + '%</span>';
-      h += '</div>';
-    });
-    h += '</div>';
-    // Losers
-    h += '<div style="background:#fff;border:1px solid #fecaca;border-radius:12px;overflow:hidden">';
-    h += '<div style="background:linear-gradient(135deg,#450a0a,#7f1d1d);padding:12px 16px;display:flex;align-items:center;gap:8px">';
-    h += '<span style="font-size:16px">▼</span><span style="font-size:13px;font-weight:900;color:#fff;letter-spacing:0.5px">TOP LOSERS</span>';
-    h += '</div>';
-    d.top_losers.slice(0,5).forEach(function(m, i) {
-      var pct = (m.change_pct||0).toFixed(2);
-      var barW = Math.min(100, Math.round(Math.abs(m.change_pct||0) * 15));
-      h += '<div style="padding:10px 16px;' + (i > 0 ? 'border-top:1px solid #fff1f2;' : '') + 'display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">';
-      h += '<div style="position:absolute;right:0;top:0;bottom:0;width:' + barW + '%;background:rgba(239,68,68,0.07)"></div>';
-      h += '<span style="position:relative;font-size:14px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(m.symbol) + '</span>';
-      h += '<span style="position:relative;font-size:14px;font-weight:900;color:#dc2626;font-family:JetBrains Mono,monospace">' + pct + '%</span>';
-      h += '</div>';
-    });
-    h += '</div>';
-    h += '</div>';
-  }
-
-  /* ═══ FOOTER ════════════════════════════════════════════════════════════════ */
-  h += '<div style="text-align:right;font-size:10px;font-weight:600;color:#94a3b8;font-family:JetBrains Mono,monospace;padding:0 4px">';
-  h += 'market-why v2 · ' + E(d.symbol) + ' · ' + (d.elapsed_sec||'?') + 's' + (d._cached ? ' · cached' : '');
+  /* ── 2. AT-A-GLANCE ROW ────────────────────────────────────────────────── */
+  // Compute breadth from themes
+  var themes = (d.themes||[]).slice();
+  var themeUp = themes.filter(function(t){return t.avg_change_pct>=0.1;}).length;
+  var themeDn = themes.filter(function(t){return t.avg_change_pct<=-0.1;}).length;
+  var themeFlat = themes.length - themeUp - themeDn;
+  var breadthPct = themes.length > 0 ? Math.round(themeUp / themes.length * 100) : 50;
+  var sentimentLabel = breadthPct >= 65 ? 'BULLISH' : breadthPct <= 35 ? 'BEARISH' : 'MIXED';
+  var sentimentColor = breadthPct >= 65 ? '#22c55e' : breadthPct <= 35 ? '#ef4444' : '#f59e0b';
+  // Best/worst theme
+  var bestTheme  = themes.length ? themes.slice().sort(function(a,b){return b.avg_change_pct-a.avg_change_pct;})[0] : null;
+  var worstTheme = themes.length ? themes.slice().sort(function(a,b){return a.avg_change_pct-b.avg_change_pct;})[0] : null;
+  h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">';
+  // Card: Sentiment
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;text-align:center">';
+  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:10px">Sentiment</div>';
+  // Simple semicircle gauge via SVG
+  var gaugeAngle = Math.round(breadthPct * 1.8); // 0-180 degrees
+  h += '<svg width="80" height="44" viewBox="0 0 80 44" style="display:block;margin:0 auto 8px">';
+  h += '<path d="M8,40 A32,32 0 0,1 72,40" stroke="#e2e8f0" stroke-width="8" fill="none" stroke-linecap="round"/>';
+  // Colored arc — approximate with stroke-dasharray on a 100.5 circumference half-arc
+  var arcLen = 100;
+  var filled = Math.round(breadthPct * arcLen / 100);
+  h += '<path d="M8,40 A32,32 0 0,1 72,40" stroke="' + sentimentColor + '" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="' + filled + ' ' + (arcLen - filled + 5) + '" opacity="0.9"/>';
+  h += '<text x="40" y="38" text-anchor="middle" font-size="12" font-weight="900" fill="' + sentimentColor + '" font-family="JetBrains Mono,monospace">' + breadthPct + '%</text>';
+  h += '</svg>';
+  h += '<div style="font-size:16px;font-weight:900;color:' + sentimentColor + ';letter-spacing:1px">' + sentimentLabel + '</div>';
+  h += '<div style="font-size:11px;font-weight:600;color:#94a3b8;margin-top:4px">' + themeUp + ' up · ' + themeFlat + ' flat · ' + themeDn + ' down</div>';
   h += '</div>';
+  // Card: Leading sector
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;text-align:center">';
+  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:8px">Leading</div>';
+  if (bestTheme) {
+    var btColor = bestTheme.avg_change_pct >= 0 ? '#22c55e' : '#ef4444';
+    h += '<div style="font-size:22px;font-weight:900;color:' + btColor + ';font-family:JetBrains Mono,monospace;margin-bottom:4px">' + (bestTheme.avg_change_pct>=0?'+':'') + bestTheme.avg_change_pct.toFixed(2) + '%</div>';
+    h += '<div style="font-size:16px;font-weight:900;color:#1e293b">' + E(bestTheme.theme) + '</div>';
+    if (bestTheme.top_gainer) h += '<div style="font-size:12px;font-weight:700;color:#22c55e;margin-top:6px">▲ ' + E(bestTheme.top_gainer.symbol) + ' +' + bestTheme.top_gainer.change_pct.toFixed(1) + '%</div>';
+  } else { h += '<div style="color:#94a3b8;font-size:13px">—</div>'; }
+  h += '</div>';
+  // Card: Lagging sector
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;text-align:center">';
+  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:8px">Lagging</div>';
+  if (worstTheme) {
+    var wtColor = worstTheme.avg_change_pct >= 0 ? '#22c55e' : '#ef4444';
+    h += '<div style="font-size:22px;font-weight:900;color:' + wtColor + ';font-family:JetBrains Mono,monospace;margin-bottom:4px">' + (worstTheme.avg_change_pct>=0?'+':'') + worstTheme.avg_change_pct.toFixed(2) + '%</div>';
+    h += '<div style="font-size:16px;font-weight:900;color:#1e293b">' + E(worstTheme.theme) + '</div>';
+    if (worstTheme.top_loser) h += '<div style="font-size:12px;font-weight:700;color:#ef4444;margin-top:6px">▼ ' + E(worstTheme.top_loser.symbol) + ' ' + worstTheme.top_loser.change_pct.toFixed(1) + '%</div>';
+  } else { h += '<div style="color:#94a3b8;font-size:13px">—</div>'; }
+  h += '</div>';
+  h += '</div>';
+
+  /* ── 3. KEY INSIGHTS — AI bullets + deterministic signals ──────────────── */
+  // Parse AI narrative into bullet points (Haiku now returns "• point" format)
+  var aiBullets = [];
+  if (d.why_narrative) {
+    var raw = d.why_narrative;
+    // Split on bullet markers
+    var parts = raw.split(/\n|(?=•)/g).map(function(s){return s.replace(/^[•\-\*]\s*/,'').trim();}).filter(function(s){return s.length > 4;});
+    // If no bullet split, fall back to sentence split (old paragraph format)
+    if (parts.length <= 1 && raw.length > 30) {
+      parts = raw.replace(/([.!?])\s+/g, '$1|').split('|').map(function(s){return s.trim();}).filter(function(s){return s.length > 8;});
+    }
+    aiBullets = parts.slice(0,5);
+  }
+
+  var allInsights = aiBullets.length ? aiBullets : (d.why_bullets || []);
+  var isAI = aiBullets.length > 0;
+
+  if (allInsights.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    h += '<div style="font-size:11px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase">📍 Key Insights</div>';
+    if (isAI) h += '<div style="font-size:10px;font-weight:700;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:3px 10px">🧠 AI Analysis</div>';
+    h += '</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:8px">';
+    allInsights.forEach(function(b, idx){
+      var short = b.length > 90 ? b.substring(0,87) + '…' : b;
+      // Detect tone
+      var isP = /\+|above|strong|gain|bull|buy|support|rally|lead/i.test(b);
+      var isN = /fell|below|weak|sell|bear|drop|loss|decline|break/i.test(b);
+      var leftColor = isN ? '#ef4444' : isP ? '#22c55e' : '#94a3b8';
+      var bgColor   = isN ? '#fff9f9' : isP ? '#f9fff9' : '#fafafa';
+      // Number badge for ordering
+      h += '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;background:' + bgColor + ';border-radius:10px;border-left:4px solid ' + leftColor + '">';
+      h += '<div style="min-width:22px;height:22px;background:' + leftColor + ';border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">';
+      h += '<span style="font-size:11px;font-weight:900;color:#fff">' + (idx+1) + '</span></div>';
+      h += '<span style="font-size:13px;font-weight:600;color:#1e293b;line-height:1.5">' + E(short) + '</span>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+  }
+
+  /* ── 4. THEME LEADERBOARD (horizontal bars) ────────────────────────────── */
+  if (themes.length) {
+    var sorted = themes.slice().sort(function(a,b){return b.avg_change_pct-a.avg_change_pct;});
+    var maxAbsT = Math.max.apply(null, sorted.map(function(t){return Math.abs(t.avg_change_pct);})) || 1;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin-bottom:14px">';
+    h += '<div style="font-size:11px;font-weight:800;letter-spacing:1.5px;color:#64748b;text-transform:uppercase;margin-bottom:14px">🗺️ Sector Performance</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:6px">';
+    sorted.forEach(function(t){
+      var tc  = t.avg_change_pct >= 0.2 ? '#16a34a' : (t.avg_change_pct <= -0.2 ? '#dc2626' : '#d97706');
+      var barW = Math.round(Math.abs(t.avg_change_pct) / maxAbsT * 55); // max 55% width
+      var barSide = t.avg_change_pct >= 0 ? 'left' : 'right';
+      var chgStr = (t.avg_change_pct>=0?'+':'') + t.avg_change_pct.toFixed(2) + '%';
+      var moverStr = '';
+      if (t.avg_change_pct >= 0 && t.top_gainer) moverStr = '▲ ' + t.top_gainer.symbol + ' +' + t.top_gainer.change_pct.toFixed(1) + '%';
+      else if (t.avg_change_pct < 0 && t.top_loser) moverStr = '▼ ' + t.top_loser.symbol + ' ' + t.top_loser.change_pct.toFixed(1) + '%';
+      h += '<div style="display:grid;grid-template-columns:100px 1fr 70px 120px;align-items:center;gap:10px;padding:6px 0">';
+      h += '<span style="font-size:13px;font-weight:800;color:#374151">' + E(t.theme) + '</span>';
+      // bar track
+      h += '<div style="height:10px;background:#f1f5f9;border-radius:6px;overflow:hidden;position:relative">';
+      h += '<div style="position:absolute;top:0;bottom:0;' + barSide + ':0;width:' + barW + '%;background:' + tc + ';border-radius:6px;transition:width .3s"></div>';
+      h += '</div>';
+      h += '<span style="font-size:14px;font-weight:900;color:' + tc + ';font-family:JetBrains Mono,monospace;text-align:right">' + chgStr + '</span>';
+      h += '<span style="font-size:11px;font-weight:700;color:' + tc + ';white-space:nowrap">' + moverStr + '</span>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+  }
+
+  /* ── 5. TOP MOVERS ─────────────────────────────────────────────────────── */
+  if ((d.top_gainers||[]).length && (d.top_losers||[]).length) {
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
+    ['gainers','losers'].forEach(function(side){
+      var items = side==='gainers' ? (d.top_gainers||[]) : (d.top_losers||[]);
+      var hc = side==='gainers' ? '#052e16' : '#450a0a';
+      var tc2= side==='gainers' ? '#16a34a' : '#dc2626';
+      var label = side==='gainers' ? '▲ TOP GAINERS' : '▼ TOP LOSERS';
+      var maxPct = Math.max.apply(null, items.map(function(m){return Math.abs(m.change_pct||0);})) || 1;
+      h += '<div style="background:#fff;border:1px solid ' + tc2 + '33;border-radius:14px;overflow:hidden">';
+      h += '<div style="background:' + hc + ';padding:11px 16px"><span style="font-size:12px;font-weight:900;color:#fff;letter-spacing:1px">' + label + '</span></div>';
+      items.slice(0,5).forEach(function(m,i){
+        var p   = (m.change_pct||0);
+        var bW  = Math.round(Math.abs(p) / maxPct * 45);
+        var pos = side==='gainers' ? 'left' : 'right';
+        h += '<div style="padding:9px 16px;' + (i>0?'border-top:1px solid #f8fafc;':'') + 'display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">';
+        h += '<div style="position:absolute;top:0;bottom:0;' + pos + ':0;width:' + bW + '%;background:' + tc2 + '12"></div>';
+        h += '<span style="position:relative;font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(m.symbol) + '</span>';
+        h += '<span style="position:relative;font-size:14px;font-weight:900;color:' + tc2 + ';font-family:JetBrains Mono,monospace">' + (side==='gainers'?'+':'') + p.toFixed(2) + '%</span>';
+        h += '</div>';
+      });
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  h += '<div style="text-align:right;font-size:10px;font-weight:600;color:#cbd5e1;font-family:JetBrains Mono,monospace">market-why v3 · ' + E(d.symbol) + ' · ' + (d.elapsed_sec||'?') + 's' + (d._cached?' · cached':'') + '</div>';
   return h;
 };
+
 
 window._renderInstitutional360 = function(d) {
   // r99.46 C1 FIX: Every interpolation of user-controlled or upstream data uses _esc().
