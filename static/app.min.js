@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.100.5";
-window.CELESYS_BUILD_TIME = 1780605600;
-window.CELESYS_BUILD_DATE = "2026-06-04 18:00:00 UTC";
+window.CELESYS_VERSION = "r63.100.6";
+window.CELESYS_BUILD_TIME = 1780609200;
+window.CELESYS_BUILD_DATE = "2026-06-04 19:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12979,106 +12979,170 @@ window._loadMarketWhy = function(sym, region) {
 
 window._renderMarketWhy = function(d) {
   if (!d || !d.success) {
-    return '<div style="padding:10px;background:#fef2f2;border-radius:8px;font-size:11px;color:#dc2626">'
+    return '<div style="padding:20px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;font-size:14px;font-weight:600;color:#dc2626;text-align:center">'
       + '⚠ ' + ((d && d.error) || 'Could not load market data') + '</div>';
   }
   var E = window._esc || function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
   var today = d.today || {};
-  var chg = today.change_pct;
-  var chgColor = (chg < -0.5) ? '#dc2626' : (chg > 0.5) ? '#16a34a' : '#d97706';
-  var chgSign = chg >= 0 ? '+' : '';
+  var chg = today.change_pct || 0;
+  var isUp = chg >= 0.1, isDown = chg <= -0.1;
+  var chgColor = isDown ? '#ef4444' : (isUp ? '#22c55e' : '#f59e0b');
+  var chgBg    = isDown ? 'linear-gradient(135deg,#450a0a,#7f1d1d)' : (isUp ? 'linear-gradient(135deg,#052e16,#14532d)' : 'linear-gradient(135deg,#451a03,#78350f)');
+  var chgSign  = chg >= 0 ? '+' : '';
+  var vix      = (d.vix || {}).value;
+  var vixReg   = (d.vix || {}).regime || 'normal';
+  var vixColor = vixReg === 'high' ? '#ef4444' : vixReg === 'elevated' ? '#f59e0b' : '#22c55e';
   var h = '';
 
-  // ── Header card ──
-  h += '<div style="background:linear-gradient(135deg,#0f172a,#1e293b);color:#e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:10px">';
-  h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
+  /* ═══ 1. HERO HEADER ═══════════════════════════════════════════════════════ */
+  h += '<div style="background:' + chgBg + ';border-radius:16px;padding:20px 24px;margin-bottom:16px;position:relative;overflow:hidden">';
+  // subtle grid pattern overlay
+  h += '<div style="position:absolute;inset:0;opacity:0.03;background-image:repeating-linear-gradient(0deg,transparent,transparent 20px,rgba(255,255,255,1) 20px,rgba(255,255,255,1) 21px),repeating-linear-gradient(90deg,transparent,transparent 20px,rgba(255,255,255,1) 20px,rgba(255,255,255,1) 21px)"></div>';
+  h += '<div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">';
+  // Left — symbol + asset type
   h += '<div>';
-  h += '<div style="font-size:10px;opacity:0.7;letter-spacing:0.5px">' + E(d.asset_type) + ' · ' + E(d.region) + '</div>';
-  h += '<div style="font-size:20px;font-weight:900;font-family:JetBrains Mono,monospace">' + E(d.symbol) + '</div>';
+  h += '<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,0.5);text-transform:uppercase;margin-bottom:6px">' + E(d.asset_type||'EQUITY') + ' · ' + E(d.region||'IN') + '</div>';
+  h += '<div style="font-size:32px;font-weight:900;color:#fff;font-family:Sora,sans-serif;line-height:1;letter-spacing:-0.5px">' + E(d.symbol||'?') + '</div>';
+  if (today.close) h += '<div style="font-size:15px;font-weight:600;color:rgba(255,255,255,0.7);margin-top:6px;font-family:JetBrains Mono,monospace">' + today.close + '</div>';
   h += '</div>';
+  // Right — big % change
   h += '<div style="text-align:right">';
-  h += '<div style="font-size:28px;font-weight:900;color:' + chgColor + ';font-family:JetBrains Mono,monospace">' + chgSign + (chg||0).toFixed(2) + '%</div>';
-  h += '<div style="font-size:11px;opacity:0.8">' + E(today.close) + ' · Vol ' + (today.volume_ratio ? today.volume_ratio + 'x avg' : 'N/A') + '</div>';
+  h += '<div style="font-size:48px;font-weight:900;color:' + chgColor + ';font-family:JetBrains Mono,monospace;line-height:1;text-shadow:0 0 30px ' + chgColor + '60">' + chgSign + chg.toFixed(2) + '%</div>';
+  h += '<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);margin-top:4px">' + (isDown ? '▼ DECLINING' : isUp ? '▲ RISING' : '◆ FLAT') + ' TODAY</div>';
   h += '</div></div>';
-  // VIX + market context strip
-  h += '<div style="display:flex;gap:18px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.1);flex-wrap:wrap;font-size:10px">';
-  if (d.vix && d.vix.value) {
-    var vColor = d.vix.regime === 'high' ? '#f87171' : d.vix.regime === 'elevated' ? '#fbbf24' : '#86efac';
-    h += '<div>VIX <strong style="color:' + vColor + '">' + d.vix.value + '</strong> <span style="opacity:0.7">(' + E(d.vix.regime) + ')</span></div>';
-  }
+  // Pill stats row
+  h += '<div style="position:relative;display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1)">';
+  var pills = [];
+  if (vix) pills.push(['VIX', vix, vixColor]);
+  if (today.gap_pct != null) pills.push(['Gap', (today.gap_pct >= 0 ? '+' : '') + today.gap_pct.toFixed(2) + '%', Math.abs(today.gap_pct) > 0.5 ? '#f59e0b' : 'rgba(255,255,255,0.6)']);
+  if (today.rsi)   pills.push(['RSI', today.rsi, today.rsi >= 70 ? '#ef4444' : today.rsi <= 30 ? '#22c55e' : 'rgba(255,255,255,0.7)']);
+  if (today.volume_ratio) pills.push(['Vol', today.volume_ratio + 'x avg', today.volume_ratio >= 1.5 ? '#22c55e' : today.volume_ratio < 0.7 ? '#f59e0b' : 'rgba(255,255,255,0.6)']);
+  if (today.above_sma50 != null) pills.push(['50 DMA', today.above_sma50 ? 'ABOVE' : 'BELOW', today.above_sma50 ? '#22c55e' : '#ef4444']);
+  if (today.above_sma200 != null) pills.push(['200 DMA', today.above_sma200 ? 'ABOVE' : 'BELOW', today.above_sma200 ? '#22c55e' : '#ef4444']);
+  pills.forEach(function(p) {
+    h += '<div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px 12px">';
+    h += '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;color:rgba(255,255,255,0.45);text-transform:uppercase">' + p[0] + '</span>';
+    h += '<span style="font-size:13px;font-weight:800;color:' + p[2] + ';font-family:JetBrains Mono,monospace">' + p[1] + '</span>';
+    h += '</div>';
+  });
+  // Market context pill
   if (d.market_today && d.symbol !== 'NIFTY' && d.symbol !== 'SPY') {
     var mc = d.market_today.change_pct || 0;
-    h += '<div>Market <strong style="color:' + (mc >= 0 ? '#86efac' : '#f87171') + '">' + (mc >= 0 ? '+' : '') + mc.toFixed(2) + '%</strong></div>';
-  }
-  if (today.gap_pct && Math.abs(today.gap_pct) >= 0.2) {
-    h += '<div>Gap <strong>' + (today.gap_pct >= 0 ? '+' : '') + today.gap_pct.toFixed(2) + '%</strong></div>';
-  }
-  if (today.rsi) {
-    var rsiColor = today.rsi >= 70 ? '#f87171' : today.rsi <= 30 ? '#86efac' : '#e2e8f0';
-    h += '<div>RSI <strong style="color:' + rsiColor + '">' + today.rsi + '</strong></div>';
+    h += '<div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px 12px">';
+    h += '<span style="font-size:10px;font-weight:700;letter-spacing:0.5px;color:rgba(255,255,255,0.45);text-transform:uppercase">MARKET</span>';
+    h += '<span style="font-size:13px;font-weight:800;color:' + (mc >= 0 ? '#22c55e' : '#ef4444') + ';font-family:JetBrains Mono,monospace">' + (mc >= 0 ? '+' : '') + mc.toFixed(2) + '%</span>';
+    h += '</div>';
   }
   h += '</div></div>';
 
-  // ── AI Narrative ──
-  h += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:13px 16px;margin-bottom:10px">';
-  h += '<div style="font-size:10px;font-weight:900;color:#15803d;letter-spacing:0.3px;margin-bottom:6px">🧠 WHY ' + E(d.symbol) + ' IS MOVING</div>';
-  h += '<div style="font-size:11.5px;color:#1e293b;line-height:1.7">' + E(d.why_narrative) + '</div>';
-  h += '</div>';
-
-  // ── Why Bullets ──
-  if (d.why_bullets && d.why_bullets.length) {
-    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:10px">';
-    h += '<div style="font-size:10px;font-weight:900;color:#475569;letter-spacing:0.3px;margin-bottom:8px">📋 SIGNAL BREAKDOWN</div>';
-    h += '<ul style="margin:0;padding-left:16px;font-size:10.5px;line-height:1.8;color:#334155">';
-    d.why_bullets.forEach(function(b) { h += '<li>' + E(b) + '</li>'; });
-    h += '</ul></div>';
+  /* ═══ 2. AI NARRATIVE ═══════════════════════════════════════════════════════ */
+  if (d.why_narrative) {
+    var narrative = d.why_narrative;
+    // Strip markdown # headers if present
+    if (narrative.charAt(0) === '#') { var nl = narrative.indexOf('\n'); if (nl > 0) narrative = narrative.substring(nl + 1).trim(); }
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-left:5px solid ' + chgColor + ';border-radius:12px;padding:20px 24px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">';
+    h += '<div style="width:32px;height:32px;background:' + (isDown ? '#fef2f2' : isUp ? '#f0fdf4' : '#fffbeb') + ';border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🧠</div>';
+    h += '<div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:0.5px;text-transform:uppercase">Why ' + E(d.symbol) + ' Is Moving</div>';
+    h += '</div>';
+    h += '<div style="font-size:14px;font-weight:500;color:#1e293b;line-height:1.85;letter-spacing:0.1px">' + E(narrative) + '</div>';
+    h += '</div>';
   }
 
-  // ── Themes grid ──
-  if (d.themes && d.themes.length) {
-    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:10px">';
-    h += '<div style="font-size:10px;font-weight:900;color:#475569;letter-spacing:0.3px;margin-bottom:8px">📊 THEMES TODAY</div>';
-    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px">';
-    d.themes.forEach(function(t) {
-      var tc = t.avg_change_pct >= 0.3 ? '#16a34a' : (t.avg_change_pct <= -0.3 ? '#dc2626' : '#d97706');
-      var tbg = t.avg_change_pct >= 0.3 ? '#f0fdf4' : (t.avg_change_pct <= -0.3 ? '#fef2f2' : '#fffbeb');
-      h += '<div style="background:' + tbg + ';border:1px solid ' + tc + '40;border-radius:7px;padding:8px 10px">';
-      h += '<div style="font-size:10px;font-weight:900;color:#1e293b">' + E(t.theme) + '</div>';
-      h += '<div style="font-size:16px;font-weight:900;color:' + tc + ';font-family:JetBrains Mono,monospace">' + (t.avg_change_pct >= 0 ? '+' : '') + t.avg_change_pct.toFixed(2) + '%</div>';
-      if (t.top_gainer) h += '<div style="font-size:9px;color:#16a34a">▲ ' + E(t.top_gainer.symbol) + ' +' + t.top_gainer.change_pct.toFixed(1) + '%</div>';
-      if (t.top_loser)  h += '<div style="font-size:9px;color:#dc2626">▼ ' + E(t.top_loser.symbol) + ' ' + t.top_loser.change_pct.toFixed(1) + '%</div>';
+  /* ═══ 3. SIGNAL CHIPS ═══════════════════════════════════════════════════════ */
+  if (d.why_bullets && d.why_bullets.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">';
+    h += '<div style="width:32px;height:32px;background:#f0f9ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📡</div>';
+    h += '<div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:0.5px;text-transform:uppercase">Signal Breakdown</div>';
+    h += '</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
+    var sigIcons = {'Price':' 💹','Volume':'📊','RSI':'📈','VIX':'⚡','Trend':'📉','Gap':'↕️','Top gainers':'🟢','Top losers':'🔴','Strongest':'🏆','Weakest':'📉'};
+    d.why_bullets.forEach(function(b) {
+      var icon = '◆';
+      Object.keys(sigIcons).forEach(function(k) { if (b.toLowerCase().indexOf(k.toLowerCase()) >= 0) icon = sigIcons[k]; });
+      var isPos = b.indexOf('+') >= 0 || b.toLowerCase().indexOf('above') >= 0 || b.toLowerCase().indexOf('gainer') >= 0;
+      var isNeg = b.indexOf('fell') >= 0 || b.toLowerCase().indexOf('below') >= 0 || b.toLowerCase().indexOf('loser') >= 0 || b.toLowerCase().indexOf('weak') >= 0;
+      var chipBorder = isNeg ? '#fecaca' : isPos ? '#bbf7d0' : '#e2e8f0';
+      var chipBg     = isNeg ? '#fef9f9' : isPos ? '#f9fff9' : '#fafafa';
+      h += '<div style="background:' + chipBg + ';border:1px solid ' + chipBorder + ';border-radius:10px;padding:12px 14px;display:flex;align-items:flex-start;gap:10px">';
+      h += '<span style="font-size:18px;line-height:1;flex-shrink:0;margin-top:1px">' + icon + '</span>';
+      h += '<span style="font-size:13px;font-weight:600;color:#1e293b;line-height:1.5">' + E(b) + '</span>';
       h += '</div>';
     });
     h += '</div></div>';
   }
 
-  // ── Top movers (for indices) ──
-  if (d.top_gainers && d.top_losers && d.top_gainers.length) {
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
+  /* ═══ 4. THEMES GRID ════════════════════════════════════════════════════════ */
+  if (d.themes && d.themes.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">';
+    h += '<div style="width:32px;height:32px;background:#f5f3ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🗺️</div>';
+    h += '<div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:0.5px;text-transform:uppercase">Sector Themes Today</div>';
+    h += '</div>';
+    // Sort: strongest first
+    var themes = d.themes.slice().sort(function(a,b){return b.avg_change_pct - a.avg_change_pct;});
+    // Find max abs for bar scaling
+    var maxAbs = Math.max.apply(null, themes.map(function(t){return Math.abs(t.avg_change_pct);})) || 1;
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">';
+    themes.forEach(function(t) {
+      var tc   = t.avg_change_pct >= 0.3 ? '#16a34a' : (t.avg_change_pct <= -0.3 ? '#dc2626' : '#d97706');
+      var tbg  = t.avg_change_pct >= 0.3 ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : (t.avg_change_pct <= -0.3 ? 'linear-gradient(135deg,#fef2f2,#fee2e2)' : 'linear-gradient(135deg,#fffbeb,#fef3c7)');
+      var barW = Math.round(Math.abs(t.avg_change_pct) / maxAbs * 100);
+      var barColor = t.avg_change_pct >= 0 ? '#22c55e' : '#ef4444';
+      var arrow = t.avg_change_pct >= 0.3 ? '▲' : (t.avg_change_pct <= -0.3 ? '▼' : '◆');
+      h += '<div style="background:' + tbg + ';border:1px solid ' + tc + '33;border-radius:12px;padding:14px 16px;position:relative;overflow:hidden">';
+      // Background subtle bar
+      h += '<div style="position:absolute;bottom:0;left:0;height:3px;width:' + barW + '%;background:' + barColor + ';border-radius:0 2px 0 12px;opacity:0.6"></div>';
+      h += '<div style="font-size:12px;font-weight:800;color:#475569;letter-spacing:0.3px;margin-bottom:6px;text-transform:uppercase">' + E(t.theme) + '</div>';
+      h += '<div style="font-size:28px;font-weight:900;color:' + tc + ';font-family:JetBrains Mono,monospace;line-height:1;margin-bottom:8px">' + arrow + ' ' + (t.avg_change_pct >= 0 ? '+' : '') + t.avg_change_pct.toFixed(2) + '%</div>';
+      if (t.top_gainer) h += '<div style="font-size:12px;font-weight:700;color:#16a34a;margin-bottom:2px">▲ ' + E(t.top_gainer.symbol) + ' <span style="font-family:JetBrains Mono,monospace">+' + t.top_gainer.change_pct.toFixed(1) + '%</span></div>';
+      if (t.top_loser)  h += '<div style="font-size:12px;font-weight:700;color:#dc2626">▼ ' + E(t.top_loser.symbol) + ' <span style="font-family:JetBrains Mono,monospace">' + t.top_loser.change_pct.toFixed(1) + '%</span></div>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+  }
+
+  /* ═══ 5. TOP MOVERS ═════════════════════════════════════════════════════════ */
+  if (d.top_gainers && d.top_gainers.length && d.top_losers && d.top_losers.length) {
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
     // Gainers
-    h += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px">';
-    h += '<div style="font-size:10px;font-weight:900;color:#15803d;margin-bottom:6px">▲ TOP GAINERS</div>';
-    d.top_gainers.slice(0,5).forEach(function(m) {
-      h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0">';
-      h += '<span style="font-family:JetBrains Mono,monospace;font-weight:700">' + E(m.symbol) + '</span>';
-      h += '<span style="color:#16a34a;font-weight:700">+' + (m.change_pct||0).toFixed(2) + '%</span>';
+    h += '<div style="background:#fff;border:1px solid #bbf7d0;border-radius:12px;overflow:hidden">';
+    h += '<div style="background:linear-gradient(135deg,#052e16,#14532d);padding:12px 16px;display:flex;align-items:center;gap:8px">';
+    h += '<span style="font-size:16px">▲</span><span style="font-size:13px;font-weight:900;color:#fff;letter-spacing:0.5px">TOP GAINERS</span>';
+    h += '</div>';
+    d.top_gainers.slice(0,5).forEach(function(m, i) {
+      var pct = (m.change_pct||0).toFixed(2);
+      var barW = Math.min(100, Math.round(Math.abs(m.change_pct||0) * 15));
+      h += '<div style="padding:10px 16px;' + (i > 0 ? 'border-top:1px solid #f0fdf4;' : '') + 'display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">';
+      h += '<div style="position:absolute;left:0;top:0;bottom:0;width:' + barW + '%;background:rgba(34,197,94,0.07)"></div>';
+      h += '<span style="position:relative;font-size:14px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(m.symbol) + '</span>';
+      h += '<span style="position:relative;font-size:14px;font-weight:900;color:#16a34a;font-family:JetBrains Mono,monospace">+' + pct + '%</span>';
       h += '</div>';
     });
     h += '</div>';
     // Losers
-    h += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">';
-    h += '<div style="font-size:10px;font-weight:900;color:#b91c1c;margin-bottom:6px">▼ TOP LOSERS</div>';
-    d.top_losers.slice(0,5).forEach(function(m) {
-      h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0">';
-      h += '<span style="font-family:JetBrains Mono,monospace;font-weight:700">' + E(m.symbol) + '</span>';
-      h += '<span style="color:#dc2626;font-weight:700">' + (m.change_pct||0).toFixed(2) + '%</span>';
+    h += '<div style="background:#fff;border:1px solid #fecaca;border-radius:12px;overflow:hidden">';
+    h += '<div style="background:linear-gradient(135deg,#450a0a,#7f1d1d);padding:12px 16px;display:flex;align-items:center;gap:8px">';
+    h += '<span style="font-size:16px">▼</span><span style="font-size:13px;font-weight:900;color:#fff;letter-spacing:0.5px">TOP LOSERS</span>';
+    h += '</div>';
+    d.top_losers.slice(0,5).forEach(function(m, i) {
+      var pct = (m.change_pct||0).toFixed(2);
+      var barW = Math.min(100, Math.round(Math.abs(m.change_pct||0) * 15));
+      h += '<div style="padding:10px 16px;' + (i > 0 ? 'border-top:1px solid #fff1f2;' : '') + 'display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">';
+      h += '<div style="position:absolute;right:0;top:0;bottom:0;width:' + barW + '%;background:rgba(239,68,68,0.07)"></div>';
+      h += '<span style="position:relative;font-size:14px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(m.symbol) + '</span>';
+      h += '<span style="position:relative;font-size:14px;font-weight:900;color:#dc2626;font-family:JetBrains Mono,monospace">' + pct + '%</span>';
       h += '</div>';
     });
     h += '</div>';
     h += '</div>';
   }
 
-  h += '<div style="font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace;text-align:right">market-why v1 · ' + (d.elapsed_sec||'?') + 's' + (d._cached ? ' · cached' : '') + '</div>';
+  /* ═══ FOOTER ════════════════════════════════════════════════════════════════ */
+  h += '<div style="text-align:right;font-size:10px;font-weight:600;color:#94a3b8;font-family:JetBrains Mono,monospace;padding:0 4px">';
+  h += 'market-why v2 · ' + E(d.symbol) + ' · ' + (d.elapsed_sec||'?') + 's' + (d._cached ? ' · cached' : '');
+  h += '</div>';
   return h;
 };
 
