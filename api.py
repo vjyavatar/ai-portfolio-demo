@@ -27248,7 +27248,7 @@ def _save_journal(trades):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _market_why_cache = {}   # key → {data, ts}
-_MARKET_WHY_TTL = 600    # 10 minutes
+_MARKET_WHY_TTL = 300    # 5 minutes (reduced from 10 to pick up new AI responses faster)
 
 # Theme constituent map — used to compute "which themes are up/down today"
 _THEME_CONSTITUENTS = {
@@ -27500,7 +27500,7 @@ def _mw_ai_narrative(prompt):
             },
             json={
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 300,
+                "max_tokens": 700,
                 "messages": [{"role": "user", "content": prompt}],
             },
             timeout=20,

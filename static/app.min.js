@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.101.0";
-window.CELESYS_BUILD_TIME = 1780623600;
-window.CELESYS_BUILD_DATE = "2026-06-04 23:00:00 UTC";
+window.CELESYS_VERSION = "r63.101.1";
+window.CELESYS_BUILD_TIME = 1780627200;
+window.CELESYS_BUILD_DATE = "2026-06-05 00:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -13160,42 +13160,52 @@ window._renderMarketWhy = function(d) {
       h += '<div style="flex:1">';
       if (i < labels.length) h += '<div style="font-size:10px;font-weight:800;color:' + lc + ';letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px">' + licons[i] + ' ' + labels[i] + '</div>';
       // NO TRUNCATION — show full text
-      h += '<div style="font-size:14px;font-weight:600;color:#1e293b;line-height:1.6">' + E(b) + '</div>';
+      h += '<div style="font-size:14px;font-weight:600;color:#1e293b;line-height:1.7;white-space:normal;word-wrap:break-word;overflow-wrap:break-word">' + E(b) + '</div>';
       h += '</div></div>';
     });
     h += '</div></div>';
   }
 
   /* ═══ 5. NEWS ══════════════════════════════════════════════════════════════ */
-  if (d.news && d.news.length) {
-    var hasFallback = d.news.some(function(n){return n.is_fallback;});
-    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin-bottom:14px">';
-    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
-    h += '<div style="font-size:13px;font-weight:900;color:#0f172a">📰 NEWS & SOURCES</div>';
-    if (hasFallback) h += '<div style="font-size:10px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:20px;padding:3px 10px">🔗 Direct Links</div>';
-    h += '</div>';
-    h += '<div style="display:flex;flex-direction:column;gap:8px">';
-    d.news.forEach(function(n){
-      var nc  = n.sentiment==='negative'?'#dc2626':n.sentiment==='positive'?'#16a34a':'#64748b';
-      var nbg = n.sentiment==='negative'?'#fff8f8':n.sentiment==='positive'?'#f8fff8':'#f9fafb';
-      var nb  = n.sentiment==='negative'?'#ef4444':n.sentiment==='positive'?'#22c55e':'#94a3b8';
-      var tag = n.sentiment==='negative'?'📉':n.sentiment==='positive'?'📈':'📰';
-      if (n.is_fallback) tag = '🔗';
-      var href = n.link || '#';
-      h += '<a href="' + E(href) + '" target="_blank" rel="noopener" style="text-decoration:none;display:block">';
-      h += '<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;background:' + nbg + ';border-radius:10px;border-left:4px solid ' + nb + ';transition:background .15s" onmouseover="this.style.background=\'#e0f2fe\'" onmouseout="this.style.background=\'' + nbg + '\'">';
-      h += '<span style="font-size:20px;flex-shrink:0">' + tag + '</span>';
-      h += '<div style="flex:1;min-width:0">';
-      h += '<div style="font-size:13px;font-weight:700;color:#1e293b;line-height:1.45;margin-bottom:5px">' + E(n.title) + '</div>';
-      h += '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
-      if (n.publisher) h += '<span style="font-size:11px;font-weight:600;color:#64748b">' + E(n.publisher) + '</span>';
-      if (n.ago && !n.is_fallback) h += '<span style="font-size:11px;color:#94a3b8">🕐 ' + E(n.ago) + '</span>';
-      if (!n.is_fallback) h += '<span style="font-size:10px;font-weight:700;color:' + nc + ';background:' + nc + '15;padding:2px 8px;border-radius:20px;text-transform:uppercase">' + E(n.sentiment) + '</span>';
-      h += '<span style="font-size:11px;font-weight:700;color:#3b82f6;margin-left:auto">↗ Open →</span>';
-      h += '</div></div></div></a>';
-    });
-    h += '</div></div>';
+  // Always render news section — real headlines OR direct source links
+  var newsItems = d.news && d.news.length ? d.news : [];
+  var hasFallback = newsItems.some(function(n){return n.is_fallback;});
+  // If no news at all, add fallback links directly
+  if (!newsItems.length) {
+    var dsymFallback = E((d.yf_sym||sym).replace('.NS','').replace('.BO','').replace('^',''));
+    newsItems = [
+      {title:'Search ' + sym + ' news on Yahoo Finance', publisher:'Yahoo Finance', is_fallback:true, ago:'live', link:'https://finance.yahoo.com/quote/' + E(d.yf_sym||sym) + '/news/', sentiment:'neutral'},
+      {title:'View ' + sym + ' charts + analyst ratings on FinViz', publisher:'FinViz', is_fallback:true, ago:'live', link:'https://finviz.com/quote.ashx?t=' + dsymFallback, sentiment:'neutral'},
+      {title:'Search ' + sym + ' latest news on Google', publisher:'Google News', is_fallback:true, ago:'live', link:'https://news.google.com/search?q=' + dsymFallback + '+stock+news', sentiment:'neutral'},
+      {title:'Deep fundamental analysis of ' + sym + ' on StockAnalysis', publisher:'StockAnalysis', is_fallback:true, ago:'live', link:'https://stockanalysis.com/stocks/' + dsymFallback.toLowerCase() + '/', sentiment:'neutral'},
+    ];
+    hasFallback = true;
   }
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin-bottom:14px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+  h += '<div style="font-size:13px;font-weight:900;color:#0f172a">📰 NEWS & SOURCES</div>';
+  if (hasFallback) h += '<div style="font-size:10px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:20px;padding:3px 10px">🔗 Click to open in browser</div>';
+  h += '</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:8px">';
+  newsItems.forEach(function(n){
+    var nc  = n.sentiment==='negative'?'#dc2626':n.sentiment==='positive'?'#16a34a':'#3b82f6';
+    var nbg = n.sentiment==='negative'?'#fff8f8':n.sentiment==='positive'?'#f8fff8':'#f0f9ff';
+    var nb  = n.sentiment==='negative'?'#ef4444':n.sentiment==='positive'?'#22c55e':'#93c5fd';
+    var tag = n.is_fallback?'🔗':(n.sentiment==='negative'?'📉':n.sentiment==='positive'?'📈':'📰');
+    var href= E(n.link || '#');
+    h += '<a href="' + href + '" target="_blank" rel="noopener" style="text-decoration:none;display:block">';
+    h += '<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;background:' + nbg + ';border-radius:10px;border-left:4px solid ' + nb + '" onmouseover="this.style.background=\'#e0f2fe\'" onmouseout="this.style.background=\'' + nbg + '\'">';
+    h += '<span style="font-size:20px;flex-shrink:0">' + tag + '</span>';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-size:13px;font-weight:700;color:#1e293b;line-height:1.45;margin-bottom:5px;word-wrap:break-word">' + E(n.title) + '</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
+    if (n.publisher) h += '<span style="font-size:11px;font-weight:700;color:#64748b">' + E(n.publisher) + '</span>';
+    if (n.ago && !n.is_fallback) h += '<span style="font-size:11px;color:#94a3b8">🕐 ' + E(n.ago) + '</span>';
+    if (!n.is_fallback) h += '<span style="font-size:10px;font-weight:700;color:' + nc + ';background:' + nc + '15;padding:2px 8px;border-radius:20px">' + E(n.sentiment) + '</span>';
+    h += '<span style="font-size:11px;font-weight:800;color:#3b82f6;margin-left:auto">↗ Open →</span>';
+    h += '</div></div></div></a>';
+  });
+  h += '</div></div>';
 
   /* ═══ 6. THEME LEADERBOARD ════════════════════════════════════════════════ */
   if (sorted.length) {
