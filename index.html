@@ -1293,8 +1293,6 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 
 <!-- Event area removed — content in global ticker now -->
 <div id="eventAlertArea" style="max-width:680px;margin:0 auto 10px;overflow:hidden"></div>
-<!-- r100.3: Market Why Brief — auto-populated after market-pulse loads -->
-<div id="marketWhyBrief" style="max-width:900px;margin:0 auto 12px"></div>
 
 <!-- SEARCH CARD — The centerpiece -->
 <div class="icard" style="max-width:680px;margin:0 auto 18px;text-align:left">
@@ -2179,6 +2177,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <button onclick="window._engShow('insider')" id="engBtnInsider" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128202; Insider Activity</button>
   <button onclick="window._engShow('diropts')" id="engBtnDirOpts" style="padding:7px 14px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127919; CE/PE Scanner</button>
   <button onclick="window._engShow('inst360')" id="engBtnInst360" style="padding:7px 14px;background:linear-gradient(135deg,#fef3c7,#fed7aa);color:#7c2d12;border:1px solid #fb923c;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127919; 360&deg; Decision</button>
+  <button onclick="window._engShow('marketwhy')" id="engBtnMarketWhy" style="padding:7px 14px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);color:#15803d;border:1px solid #86efac;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129504; Why Moving?</button>
 </div>
 
 <!-- SMART EXIT ENGINE -->
@@ -2438,6 +2437,41 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
       <button onclick="window._loadInstitutional360()" id="inst360Btn" style="margin-left:auto;padding:6px 16px;background:linear-gradient(135deg,#ea580c,#c2410c);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127919; GET 360&deg; DECISION</button>
     </div>
     <div id="inst360Result" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter symbol &middot; click GET 360&deg; DECISION for the final BUY/HOLD/SELL aggregating 6 dimensions.</div></div>
+  </div>
+</div>
+
+<!-- MARKET WHY PANEL -->
+<div id="engMarketWhyPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#15803d;font-family:Sora,sans-serif;margin-bottom:4px">&#129504; Why Is This Moving Today?</div>
+    <div style="font-size:10px;color:#64748b;margin-bottom:12px">Enter any stock, ETF, or index. Get an AI-generated narrative explaining today's move, sector themes, top movers, and key signals.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;margin-bottom:10px">
+      <input id="mktWhySym" type="text" placeholder="NIFTY, RELIANCE, SPY, AAPL…" style="padding:6px 10px;border:1px solid #86efac;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#14532d;width:190px">
+      <div style="display:flex;border:1px solid #86efac;border-radius:5px;overflow:hidden">
+        <button id="mktWhyRegIN" onclick="window._mktWhySetRegion('IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff">IN</button>
+        <button id="mktWhyRegUS" onclick="window._mktWhySetRegion('US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #86efac;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#15803d">US</button>
+      </div>
+      <button onclick="window._loadMarketWhyEngine()" id="mktWhyBtn" style="padding:6px 16px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#129504; WHY?</button>
+    </div>
+    <!-- Quick-pick index buttons — IN -->
+    <div id="mktWhyQuickIN" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      <span style="font-size:9px;font-weight:700;color:#64748b;align-self:center">INDIA:</span>
+      <button onclick="window._mktWhyQuick('NIFTY','IN')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;cursor:pointer;color:#15803d">NIFTY</button>
+      <button onclick="window._mktWhyQuick('BANKNIFTY','IN')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;cursor:pointer;color:#15803d">BANKNIFTY</button>
+      <button onclick="window._mktWhyQuick('SENSEX','IN')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;cursor:pointer;color:#15803d">SENSEX</button>
+      <button onclick="window._mktWhyQuick('RELIANCE','IN')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;cursor:pointer;color:#15803d">RELIANCE</button>
+      <button onclick="window._mktWhyQuick('HDFCBANK','IN')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;cursor:pointer;color:#15803d">HDFCBANK</button>
+    </div>
+    <!-- Quick-pick index buttons — US (hidden by default) -->
+    <div id="mktWhyQuickUS" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      <span style="font-size:9px;font-weight:700;color:#64748b;align-self:center">US:</span>
+      <button onclick="window._mktWhyQuick('SPY','US')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#eff6ff;border:1px solid #93c5fd;border-radius:5px;cursor:pointer;color:#1d4ed8">SPY</button>
+      <button onclick="window._mktWhyQuick('QQQ','US')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#eff6ff;border:1px solid #93c5fd;border-radius:5px;cursor:pointer;color:#1d4ed8">QQQ</button>
+      <button onclick="window._mktWhyQuick('IWM','US')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#eff6ff;border:1px solid #93c5fd;border-radius:5px;cursor:pointer;color:#1d4ed8">IWM</button>
+      <button onclick="window._mktWhyQuick('NVDA','US')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#eff6ff;border:1px solid #93c5fd;border-radius:5px;cursor:pointer;color:#1d4ed8">NVDA</button>
+      <button onclick="window._mktWhyQuick('AAPL','US')" style="padding:4px 10px;font-size:10px;font-weight:700;background:#eff6ff;border:1px solid #93c5fd;border-radius:5px;cursor:pointer;color:#1d4ed8">AAPL</button>
+    </div>
+    <div id="mktWhyResult" style="min-height:80px;margin-top:4px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter any symbol and click WHY? — or tap a quick-pick above.</div></div>
   </div>
 </div>
 
@@ -2876,7 +2910,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=1780602000"></script>
+<script src="/static/app.min.js?v=1780605600"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>
