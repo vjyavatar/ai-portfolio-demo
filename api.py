@@ -27439,8 +27439,9 @@ def _mw_top_movers(region, limit=5):
 
 
 def _mw_build_prompt(symbol, region, ohlcv, vix_val, vix_regime, themes,
-                     top_movers, bot_movers, asset_type, market_ohlcv):
-    """Build the Claude Haiku prompt for the why-narrative."""
+                     top_movers, bot_movers, asset_type, market_ohlcv,
+                     news_titles=None):
+    """Build the Claude Haiku prompt — news-aware for stock-specific context."""
     chg   = ohlcv.get("change_pct", 0)
     volr  = ohlcv.get("volume_ratio")
     gap   = ohlcv.get("gap_pct", 0)
@@ -27450,37 +27451,40 @@ def _mw_build_prompt(symbol, region, ohlcv, vix_val, vix_regime, themes,
     sma200= ohlcv.get("above_sma200")
     direction = "fell" if chg < 0 else "rose"
     vol_str   = f"{volr}x avg 20d volume" if volr else "volume data unavailable"
-    ma_str    = ""
-    if sma50 is not None:
-        ma_str = f"{'above' if sma50 else 'below'} 50-DMA"
-    if sma200 is not None:
-        ma_str += f", {'above' if sma200 else 'below'} 200-DMA"
+    ma_str = ""
+    if sma50  is not None: ma_str  = f"{'above' if sma50 else 'below'} 50-DMA"
+    if sma200 is not None: ma_str += f", {'above' if sma200 else 'below'} 200-DMA"
     mkt_str = ""
     if market_ohlcv and asset_type not in ("INDEX",):
         mc = market_ohlcv.get("change_pct", 0)
-        mkt_str = f"Overall market ({'NIFTY' if region=='IN' else 'S&P 500'}) is {'up' if mc>0 else 'down'} {abs(mc)}% today. "
+        mkt_str = f"Market ({'NIFTY' if region=='IN' else 'S&P 500'}) {'up' if mc>0 else 'down'} {abs(mc):.2f}% today. "
     theme_str = ""
     if themes:
-        top3 = themes[:3]
-        theme_str = "Theme moves today: " + "; ".join(
-            f"{t['theme']} {'+' if t['avg_change_pct']>=0 else ''}{t['avg_change_pct']}%" for t in top3
-        ) + ". "
+        theme_str = "Sectors: " + "; ".join(
+            f"{t['theme']} {'+' if t['avg_change_pct']>=0 else ''}{t['avg_change_pct']}%"
+            for t in themes[:4]) + ". "
     movers_str = ""
     if top_movers and asset_type == "INDEX":
-        g_parts = ", ".join(str(m["symbol"]) + " +" + str(m["change_pct"]) + "%" for m in top_movers[:3])
-        l_parts = ", ".join(str(m["symbol"]) + " " + str(m["change_pct"]) + "%" for m in bot_movers[:3])
-        movers_str = f"Top gainers: {g_parts}. Top losers: {l_parts}. "
+        g = ", ".join(m["symbol"] + " +" + str(m["change_pct"]) + "%" for m in top_movers[:3])
+        l = ", ".join(m["symbol"] + " " + str(m["change_pct"]) + "%" for m in bot_movers[:3])
+        movers_str = f"Gainers: {g}. Losers: {l}. "
+    news_str = ""
+    if news_titles:
+        news_str = "Recent news: " + " | ".join(news_titles[:3]) + ". "
     prompt = (
-        f"You are a professional market analyst. WHY did {symbol} ({region}) {direction} {abs(chg)}% today? "
-        f"Price: {close}. Gap: {gap:+}%. Volume: {vol_str}. "
-        f"RSI: {rsi or 'N/A'}. Trend: {ma_str or 'N/A'}. "
-        f"VIX: {vix_val or 'N/A'} ({vix_regime}). "
-        f"{mkt_str}{theme_str}{movers_str}"
-        f"Reply with EXACTLY 4 bullet points. Each bullet: one line, max 15 words, starts with '• '. "
-        f"Cover: primary driver, breadth (broad vs concentrated), volume/conviction, key level to watch. "
-        f"Be specific with numbers. No paragraphs. No headers. No disclaimers. Output only the 4 bullets."
+        f"Institutional analyst. {symbol} ({region}) {direction} {abs(chg):.2f}% today. "
+        f"Price: {close}. Gap: {gap:+.2f}%. Vol: {vol_str}. RSI: {rsi or 'N/A'}. "
+        f"Trend: {ma_str or 'N/A'}. VIX: {vix_val or 'N/A'} ({vix_regime}). "
+        f"{mkt_str}{theme_str}{movers_str}{news_str}"
+        f"Write EXACTLY 4 bullet points starting with '• '. "
+        f"1: Specific catalyst (cite news if available, else infer from data). "
+        f"2: Stock-specific or broad market move — cite evidence. "
+        f"3: Volume/conviction — what institutional intent this signals. "
+        f"4: Key price level and exact action (buy/avoid/watch). "
+        f"Max 15 words each. Real numbers required. Only output the 4 bullets."
     )
     return prompt
+
 
 
 def _mw_ai_narrative(prompt):
@@ -27581,6 +27585,194 @@ def _mw_deterministic_bullets(symbol, ohlcv, vix_val, vix_regime, themes,
     return bullets
 
 
+def _mw_fetch_news(yf_sym, max_items=6):
+    """Fetch recent news headlines for a symbol via yfinance.
+    Returns list of {title, publisher, link, ago, thumbnail}.
+    Gracefully returns [] on any failure.
+    """
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta
+        tk = yf.Ticker(yf_sym)
+        raw_news = getattr(tk, "news", None) or []
+        if callable(raw_news):
+            raw_news = raw_news()
+        items = []
+        cutoff = datetime.now() - timedelta(days=4)
+        for n in (raw_news or [])[:max_items * 2]:
+            if not isinstance(n, dict):
+                continue
+            title = n.get("title") or ""
+            if not title:
+                continue
+            link  = n.get("link") or n.get("url") or ""
+            pub   = n.get("publisher") or n.get("source") or ""
+            ts    = n.get("providerPublishTime") or n.get("publishedAt") or 0
+            pub_dt = datetime.fromtimestamp(int(ts)) if ts else None
+            if pub_dt and pub_dt < cutoff:
+                continue
+            # Human-readable time ago
+            if pub_dt:
+                delta = datetime.now() - pub_dt
+                if delta.total_seconds() < 3600:
+                    ago = f"{int(delta.total_seconds()//60)}m ago"
+                elif delta.days == 0:
+                    ago = f"{int(delta.total_seconds()//3600)}h ago"
+                else:
+                    ago = f"{delta.days}d ago"
+            else:
+                ago = "recent"
+            # Sentiment hint from title keywords
+            title_lower = title.lower()
+            sentiment = ("negative" if any(w in title_lower for w in
+                         ["fall","fell","drop","decline","cut","downgrade","miss","concern",
+                          "warn","weak","sell","crash","plunge","slump","risk","fear"])
+                         else "positive" if any(w in title_lower for w in
+                         ["rise","gain","beat","upgrade","strong","buy","rally","surge",
+                          "record","high","growth","outperform","boost","jump"])
+                         else "neutral")
+            items.append({
+                "title":     title,
+                "publisher": pub,
+                "link":      link,
+                "ago":       ago,
+                "sentiment": sentiment,
+            })
+            if len(items) >= max_items:
+                break
+        return items
+    except Exception as _e:
+        print(f"[MARKET-WHY NEWS] {type(_e).__name__}: {_e}")
+        return []
+
+
+def _mw_decision_verdict(ohlcv, themes, vix_val, vix_regime, asset_type, region):
+    """Deterministic institutional verdict: OPPORTUNITY / CAUTION / AVOID / WATCH.
+
+    Based on:
+    - Price move magnitude + direction
+    - Volume (panic vs quiet)
+    - Stock-specific vs broad weakness
+    - Trend position (above/below key MAs)
+    - VIX regime
+
+    Returns dict with: verdict, color, icon, reason, bull_factors, bear_factors,
+    conviction (1-5 stars), investor_take (dict by type).
+    """
+    chg        = ohlcv.get("change_pct", 0)
+    volr       = ohlcv.get("volume_ratio") or 1.0
+    above_50   = ohlcv.get("above_sma50")
+    above_200  = ohlcv.get("above_sma200")
+    rsi        = ohlcv.get("rsi") or 50
+    gap        = ohlcv.get("gap_pct") or 0
+
+    # Bull/bear factor scoring
+    bull = []
+    bear = []
+
+    if chg >= 2:  bull.append(f"Strong +{chg:.1f}% move — momentum confirming")
+    elif chg > 0: bull.append(f"Positive +{chg:.1f}% — trend holding")
+    if chg <= -2: bear.append(f"Sharp -{abs(chg):.1f}% decline — trend pressure")
+    elif chg < 0: bear.append(f"Negative {chg:.1f}% — mild weakness")
+
+    if volr >= 1.8: bear.append(f"Volume {volr}x avg — institutional distribution")
+    elif volr < 0.6 and chg < 0: bull.append(f"Low volume ({volr}x) decline — no conviction selling")
+    elif volr >= 1.5 and chg > 0: bull.append(f"Volume {volr}x avg — institutional accumulation")
+
+    if above_200 is True:  bull.append("Above 200 DMA — long-term uptrend intact")
+    if above_200 is False: bear.append("Below 200 DMA — long-term trend broken")
+    if above_50  is True:  bull.append("Above 50 DMA — medium-term trend intact")
+    if above_50  is False: bear.append("Below 50 DMA — medium-term pressure")
+
+    if rsi <= 30: bull.append(f"RSI {rsi} — oversold, potential bounce zone")
+    elif rsi >= 70: bear.append(f"RSI {rsi} — overbought before this decline")
+    elif 40 <= rsi <= 55: bull.append(f"RSI {rsi} — neutral, room to run")
+
+    if vix_regime == "high":     bear.append(f"VIX {vix_val} — extreme fear, wide spreads")
+    elif vix_regime == "elevated": bear.append(f"VIX {vix_val} — elevated uncertainty")
+    elif vix_regime == "low":    bull.append(f"VIX {vix_val} — calm market, low risk premium")
+
+    if abs(gap) >= 1.0: bear.append(f"Large gap {gap:+.1f}% — overnight negative catalyst")
+    elif gap < -0.5:    bear.append(f"Gap-down open {gap:.1f}% — external pressure")
+
+    # Theme context
+    theme_up_count = sum(1 for t in themes if t.get("avg_change_pct", 0) >= 0.3)
+    theme_dn_count = sum(1 for t in themes if t.get("avg_change_pct", 0) <= -0.3)
+    if theme_up_count >= 4: bull.append(f"{theme_up_count} of {len(themes)} sectors positive — broad strength")
+    if theme_dn_count >= 4: bear.append(f"{theme_dn_count} sectors in decline — broad weakness")
+
+    bull_score = len(bull)
+    bear_score = len(bear)
+    net = bull_score - bear_score
+
+    # Verdict decision tree
+    if chg <= -3 and volr < 0.8 and (above_200 or above_200 is None):
+        verdict, color, icon = "OPPORTUNITY", "#16a34a", "🎯"
+        reason = f"Sharp decline on low volume — likely profit-taking, not fundamentals. Watch for reversal."
+    elif chg <= -5 and volr >= 1.5:
+        verdict, color, icon = "AVOID", "#dc2626", "⛔"
+        reason = f"Heavy-volume selloff suggests institutional exit. Wait for stabilization."
+    elif chg < 0 and (above_200 is False) and vix_regime in ("high", "elevated"):
+        verdict, color, icon = "AVOID", "#dc2626", "⛔"
+        reason = "Broken long-term trend + elevated fear. Capital preservation first."
+    elif net >= 2 and chg > 0:
+        verdict, color, icon = "OPPORTUNITY", "#16a34a", "🎯"
+        reason = "Multiple bullish factors aligned. Strength on broad support."
+    elif net >= 1:
+        verdict, color, icon = "WATCH", "#f59e0b", "👀"
+        reason = "More bulls than bears, but no decisive signal yet. Monitor key levels."
+    elif net <= -2:
+        verdict, color, icon = "CAUTION", "#ea580c", "⚠️"
+        reason = "Multiple bearish signals active. Reduce exposure or tighten stops."
+    else:
+        verdict, color, icon = "WATCH", "#f59e0b", "👀"
+        reason = "Mixed signals — no clear directional edge. Wait for confirmation."
+
+    # Conviction (1-5 stars based on signal count)
+    total_signals = bull_score + bear_score
+    conviction    = min(5, max(1, total_signals // 2 + 1))
+
+    # Investor-type take
+    investor_take = {}
+    if verdict == "OPPORTUNITY":
+        investor_take = {
+            "Day Trader":   "Scalp long on bounce, tight SL below today's low",
+            "Swing Trader": "Build position on dip, target previous resistance",
+            "Long-term":    "Add to existing position if thesis unchanged",
+        }
+    elif verdict == "AVOID":
+        investor_take = {
+            "Day Trader":   "Short bias with stop above today's high",
+            "Swing Trader": "No new longs; if holding, consider reducing",
+            "Long-term":    "Hold if fundamental thesis unchanged; review stop levels",
+        }
+    elif verdict == "CAUTION":
+        investor_take = {
+            "Day Trader":   "Range-trade only; avoid direction bets",
+            "Swing Trader": "Wait for clearer signal before new positions",
+            "Long-term":    "Hold; this may be temporary noise",
+        }
+    else:
+        investor_take = {
+            "Day Trader":   "Wait for momentum confirmation before entry",
+            "Swing Trader": "Set price alerts at key levels; no action yet",
+            "Long-term":    "Continue watching; no change to thesis",
+        }
+
+    return {
+        "verdict":       verdict,
+        "color":         color,
+        "icon":          icon,
+        "reason":        reason,
+        "bull_factors":  bull,
+        "bear_factors":  bear,
+        "bull_score":    bull_score,
+        "bear_score":    bear_score,
+        "conviction":    conviction,
+        "investor_take": investor_take,
+    }
+
+
 @app.get("/api/market-why")
 async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0):
     """Why is [symbol] moving today?
@@ -27647,54 +27839,58 @@ async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0
 
         asset_type = await _lp.run_in_executor(None, _detect_asset_type)
 
-        # Parallel data fetches
-        ohlcv_fut    = _lp.run_in_executor(None, _mw_fetch_ohlcv, yf_sym)
-        vix_fut      = _lp.run_in_executor(None, _mw_fetch_vix, region)
-        themes_fut   = _lp.run_in_executor(None, _mw_compute_themes, region)
-        movers_fut   = _lp.run_in_executor(None, _mw_top_movers, region)
-        mkt_proxy    = _INDEX_PROXIES.get(region, {}).get("symbol", "SPY")
+        # Parallel data fetches — add news alongside existing fetches
+        ohlcv_fut     = _lp.run_in_executor(None, _mw_fetch_ohlcv, yf_sym)
+        vix_fut       = _lp.run_in_executor(None, _mw_fetch_vix, region)
+        themes_fut    = _lp.run_in_executor(None, _mw_compute_themes, region)
+        movers_fut    = _lp.run_in_executor(None, _mw_top_movers, region)
+        mkt_proxy     = _INDEX_PROXIES.get(region, {}).get("symbol", "SPY")
         mkt_ohlcv_fut = _lp.run_in_executor(None, _mw_fetch_ohlcv, mkt_proxy)
+        news_fut      = _lp.run_in_executor(None, _mw_fetch_news, yf_sym)
 
-        ohlcv, (vix_val, vix_regime), themes, (top_movers, bot_movers), market_ohlcv = await _aio.gather(
-            ohlcv_fut, vix_fut, themes_fut, movers_fut, mkt_ohlcv_fut
-        )
+        ohlcv, (vix_val, vix_regime), themes, (top_movers, bot_movers), market_ohlcv, news = \
+            await _aio.gather(ohlcv_fut, vix_fut, themes_fut, movers_fut, mkt_ohlcv_fut, news_fut)
 
         if not ohlcv:
             return {"success": False, "error": f"Could not fetch price data for {symbol} ({yf_sym})",
                     "symbol": symbol, "region": region}
 
-        # Deterministic bullets — always computed, always returned
+        # Deterministic bullets + decision verdict — always computed
         bullets = _mw_deterministic_bullets(
             symbol, ohlcv, vix_val, vix_regime, themes,
             top_movers, bot_movers, asset_type, region)
+        verdict = _mw_decision_verdict(ohlcv, themes, vix_val, vix_regime, asset_type, region)
 
-        # AI narrative — optional, non-blocking if key missing
+        # AI narrative — feed news titles for stock-specific context
         narrative = None
         if ANTHROPIC_API_KEY:
+            news_titles = [n["title"] for n in news if n.get("title")]
             prompt = _mw_build_prompt(
                 symbol, region, ohlcv, vix_val, vix_regime,
-                themes, top_movers, bot_movers, asset_type, market_ohlcv)
+                themes, top_movers, bot_movers, asset_type, market_ohlcv,
+                news_titles=news_titles)
             narrative = await _lp.run_in_executor(None, _mw_ai_narrative, prompt)
         if not narrative:
-            # Fallback: join first 4 bullets into a paragraph
-            narrative = " ".join(bullets[:4]) if bullets else "Insufficient data for narrative."
+            narrative = " ".join(bullets[:4]) if bullets else "Insufficient data."
 
         out = {
-            "success":       True,
-            "symbol":        symbol,
-            "yf_sym":        yf_sym,
-            "region":        region,
-            "asset_type":    asset_type,
-            "today":         ohlcv,
-            "vix":           {"value": vix_val, "regime": vix_regime},
-            "market_today":  market_ohlcv,
-            "themes":        themes,
-            "top_gainers":   top_movers,
-            "top_losers":    bot_movers,
-            "why_bullets":   bullets,
-            "why_narrative": narrative,
-            "elapsed_sec":   round(_time.time() - t0, 2),
-            "_engine":       "market_why_v1_r100.3",
+            "success":        True,
+            "symbol":         symbol,
+            "yf_sym":         yf_sym,
+            "region":         region,
+            "asset_type":     asset_type,
+            "today":          ohlcv,
+            "vix":            {"value": vix_val, "regime": vix_regime},
+            "market_today":   market_ohlcv,
+            "themes":         themes,
+            "top_gainers":    top_movers,
+            "top_losers":     bot_movers,
+            "why_bullets":    bullets,
+            "why_narrative":  narrative,
+            "news":           news,
+            "decision":       verdict,
+            "elapsed_sec":    round(_time.time() - t0, 2),
+            "_engine":        "market_why_v2_r100.9",
         }
         _market_why_cache[cache_key] = {"data": out, "ts": _time.time()}
         return out
