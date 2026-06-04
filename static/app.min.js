@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.100.2";
-window.CELESYS_BUILD_TIME = 1780594800;
-window.CELESYS_BUILD_DATE = "2026-06-04 15:00:00 UTC";
+window.CELESYS_VERSION = "r63.100.4";
+window.CELESYS_BUILD_TIME = 1780602000;
+window.CELESYS_BUILD_DATE = "2026-06-04 17:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -1160,9 +1160,24 @@ console.log('Market pulse loaded:',d.events?.length||0,'events,',d.upcoming?.len
 try{renderMacroIntel(d)}catch(e){console.warn('macroIntel error:',e)}
 renderMarketEvents();
 try{renderFiiDii()}catch(e){console.warn('FiiDii render error:',e)}
+// r100.3: auto-load market-why brief for the primary index
+try { window._autoLoadMarketBrief(); } catch(e) { console.warn('marketBrief error:', e); }
 }catch(e){console.log('Market pulse fetch error:',e)}
 finally{_pulseFetching=false}
 }
+
+// Auto-inject "Why is market moving?" brief into the today page if the container exists
+window._autoLoadMarketBrief = function() {
+  var container = document.getElementById('marketWhyBrief');
+  if (!container) return;
+  var region = (window._engState && window._engState.region) || 'IN';
+  var sym = region === 'US' ? 'SPY' : 'NIFTY';
+  container.innerHTML = '<div style="padding:10px;font-size:11px;color:#64748b">⏳ Loading market brief for ' + sym + '…</div>';
+  fetch('/api/market-why?symbol=' + sym + '&region=' + region, {cache:'no-store'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) { container.innerHTML = window._renderMarketWhy(d); })
+    .catch(function(e) { container.innerHTML = ''; });
+};
 function renderMarketEvents(){
 const div=document.getElementById('eventAlertArea');
 if(!div||!_pulseData)return;
@@ -12898,11 +12913,137 @@ window._loadInstitutional360 = function() {
         return;
       }
       resEl.innerHTML = window._renderInstitutional360(d);
+      // r100.3: inject "Why moving today?" button below the 360 card
+      var whyBtn = document.createElement('div');
+      whyBtn.style.cssText = 'margin-top:8px';
+      whyBtn.innerHTML = '<button onclick="window._loadMarketWhy(\'' + sym.replace(/'/g,"\\'")+'\',\'' + reg + '\')" '
+        + 'style="background:#1e293b;color:#e2e8f0;border:none;border-radius:7px;padding:7px 16px;'
+        + 'font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.3px">🧠 Why is ' + sym + ' moving today?</button>'
+        + '<div id="marketWhyResult_' + sym + '" style="margin-top:8px"></div>';
+      resEl.appendChild(whyBtn);
     })
     .catch(function(e) {
       if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 GET 360° DECISION'; }
       window._engRenderError('inst360Result', sym, 'Network error: ' + e.message);
     });
+};
+
+// ── Market Why — "Why is [symbol] moving today?" ────────────────────────────
+// Works for stocks, ETFs, indices, both regions.
+window._loadMarketWhy = function(sym, region) {
+  var containerId = 'marketWhyResult_' + sym;
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = '<div style="padding:10px;font-size:11px;color:#64748b">⏳ Fetching market intelligence for ' + sym + '…</div>';
+  fetch('/api/market-why?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(region), {cache:'no-store'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) { el.innerHTML = window._renderMarketWhy(d); })
+    .catch(function(e) { el.innerHTML = '<div style="padding:10px;font-size:11px;color:#dc2626">Failed: ' + e.message + '</div>'; });
+};
+
+window._renderMarketWhy = function(d) {
+  if (!d || !d.success) {
+    return '<div style="padding:10px;background:#fef2f2;border-radius:8px;font-size:11px;color:#dc2626">'
+      + '⚠ ' + ((d && d.error) || 'Could not load market data') + '</div>';
+  }
+  var E = window._esc || function(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var today = d.today || {};
+  var chg = today.change_pct;
+  var chgColor = (chg < -0.5) ? '#dc2626' : (chg > 0.5) ? '#16a34a' : '#d97706';
+  var chgSign = chg >= 0 ? '+' : '';
+  var h = '';
+
+  // ── Header card ──
+  h += '<div style="background:linear-gradient(135deg,#0f172a,#1e293b);color:#e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:10px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
+  h += '<div>';
+  h += '<div style="font-size:10px;opacity:0.7;letter-spacing:0.5px">' + E(d.asset_type) + ' · ' + E(d.region) + '</div>';
+  h += '<div style="font-size:20px;font-weight:900;font-family:JetBrains Mono,monospace">' + E(d.symbol) + '</div>';
+  h += '</div>';
+  h += '<div style="text-align:right">';
+  h += '<div style="font-size:28px;font-weight:900;color:' + chgColor + ';font-family:JetBrains Mono,monospace">' + chgSign + (chg||0).toFixed(2) + '%</div>';
+  h += '<div style="font-size:11px;opacity:0.8">' + E(today.close) + ' · Vol ' + (today.volume_ratio ? today.volume_ratio + 'x avg' : 'N/A') + '</div>';
+  h += '</div></div>';
+  // VIX + market context strip
+  h += '<div style="display:flex;gap:18px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.1);flex-wrap:wrap;font-size:10px">';
+  if (d.vix && d.vix.value) {
+    var vColor = d.vix.regime === 'high' ? '#f87171' : d.vix.regime === 'elevated' ? '#fbbf24' : '#86efac';
+    h += '<div>VIX <strong style="color:' + vColor + '">' + d.vix.value + '</strong> <span style="opacity:0.7">(' + E(d.vix.regime) + ')</span></div>';
+  }
+  if (d.market_today && d.symbol !== 'NIFTY' && d.symbol !== 'SPY') {
+    var mc = d.market_today.change_pct || 0;
+    h += '<div>Market <strong style="color:' + (mc >= 0 ? '#86efac' : '#f87171') + '">' + (mc >= 0 ? '+' : '') + mc.toFixed(2) + '%</strong></div>';
+  }
+  if (today.gap_pct && Math.abs(today.gap_pct) >= 0.2) {
+    h += '<div>Gap <strong>' + (today.gap_pct >= 0 ? '+' : '') + today.gap_pct.toFixed(2) + '%</strong></div>';
+  }
+  if (today.rsi) {
+    var rsiColor = today.rsi >= 70 ? '#f87171' : today.rsi <= 30 ? '#86efac' : '#e2e8f0';
+    h += '<div>RSI <strong style="color:' + rsiColor + '">' + today.rsi + '</strong></div>';
+  }
+  h += '</div></div>';
+
+  // ── AI Narrative ──
+  h += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:13px 16px;margin-bottom:10px">';
+  h += '<div style="font-size:10px;font-weight:900;color:#15803d;letter-spacing:0.3px;margin-bottom:6px">🧠 WHY ' + E(d.symbol) + ' IS MOVING</div>';
+  h += '<div style="font-size:11.5px;color:#1e293b;line-height:1.7">' + E(d.why_narrative) + '</div>';
+  h += '</div>';
+
+  // ── Why Bullets ──
+  if (d.why_bullets && d.why_bullets.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:10px">';
+    h += '<div style="font-size:10px;font-weight:900;color:#475569;letter-spacing:0.3px;margin-bottom:8px">📋 SIGNAL BREAKDOWN</div>';
+    h += '<ul style="margin:0;padding-left:16px;font-size:10.5px;line-height:1.8;color:#334155">';
+    d.why_bullets.forEach(function(b) { h += '<li>' + E(b) + '</li>'; });
+    h += '</ul></div>';
+  }
+
+  // ── Themes grid ──
+  if (d.themes && d.themes.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;margin-bottom:10px">';
+    h += '<div style="font-size:10px;font-weight:900;color:#475569;letter-spacing:0.3px;margin-bottom:8px">📊 THEMES TODAY</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px">';
+    d.themes.forEach(function(t) {
+      var tc = t.avg_change_pct >= 0.3 ? '#16a34a' : (t.avg_change_pct <= -0.3 ? '#dc2626' : '#d97706');
+      var tbg = t.avg_change_pct >= 0.3 ? '#f0fdf4' : (t.avg_change_pct <= -0.3 ? '#fef2f2' : '#fffbeb');
+      h += '<div style="background:' + tbg + ';border:1px solid ' + tc + '40;border-radius:7px;padding:8px 10px">';
+      h += '<div style="font-size:10px;font-weight:900;color:#1e293b">' + E(t.theme) + '</div>';
+      h += '<div style="font-size:16px;font-weight:900;color:' + tc + ';font-family:JetBrains Mono,monospace">' + (t.avg_change_pct >= 0 ? '+' : '') + t.avg_change_pct.toFixed(2) + '%</div>';
+      if (t.top_gainer) h += '<div style="font-size:9px;color:#16a34a">▲ ' + E(t.top_gainer.symbol) + ' +' + t.top_gainer.change_pct.toFixed(1) + '%</div>';
+      if (t.top_loser)  h += '<div style="font-size:9px;color:#dc2626">▼ ' + E(t.top_loser.symbol) + ' ' + t.top_loser.change_pct.toFixed(1) + '%</div>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+  }
+
+  // ── Top movers (for indices) ──
+  if (d.top_gainers && d.top_losers && d.top_gainers.length) {
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
+    // Gainers
+    h += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px">';
+    h += '<div style="font-size:10px;font-weight:900;color:#15803d;margin-bottom:6px">▲ TOP GAINERS</div>';
+    d.top_gainers.slice(0,5).forEach(function(m) {
+      h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0">';
+      h += '<span style="font-family:JetBrains Mono,monospace;font-weight:700">' + E(m.symbol) + '</span>';
+      h += '<span style="color:#16a34a;font-weight:700">+' + (m.change_pct||0).toFixed(2) + '%</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+    // Losers
+    h += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">';
+    h += '<div style="font-size:10px;font-weight:900;color:#b91c1c;margin-bottom:6px">▼ TOP LOSERS</div>';
+    d.top_losers.slice(0,5).forEach(function(m) {
+      h += '<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0">';
+      h += '<span style="font-family:JetBrains Mono,monospace;font-weight:700">' + E(m.symbol) + '</span>';
+      h += '<span style="color:#dc2626;font-weight:700">' + (m.change_pct||0).toFixed(2) + '%</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+    h += '</div>';
+  }
+
+  h += '<div style="font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace;text-align:right">market-why v1 · ' + (d.elapsed_sec||'?') + 's' + (d._cached ? ' · cached' : '') + '</div>';
+  return h;
 };
 
 window._renderInstitutional360 = function(d) {

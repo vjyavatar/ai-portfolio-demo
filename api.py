@@ -8492,8 +8492,7 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
       pe_signals, indicators, options_hint, data_quality
     """
     import yfinance as yf
-    # r100.1+: index/ETF-proxy symbols must NOT get .NS suffix — they are used
-    # verbatim by yfinance (^NSEI, SPY, QQQ, etc.).
+    # r100.2: index/ETF-proxy symbols use verbatim yf sym (no .NS suffix).
     _is_index = (symbol in _INDEX_SYMBOLS or symbol.startswith("^"))
     if _is_index:
         yf_sym = symbol
@@ -8515,12 +8514,11 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
         info = {}
         try: info = tk.info or {}
         except Exception: info = {}
-        # Indexes don't have a "sector" field — preserve "Index" label set above.
-        if not _is_index:
-            out["sector"] = (info.get("sector") or "Unknown")
-        else:
-            # Use longName/shortName as display label if available
+        if _is_index:
             out["index_name"] = (info.get("longName") or info.get("shortName") or symbol)
+            out["sector"] = "Index"
+        else:
+            out["sector"] = (info.get("sector") or "Unknown")
         out["price"] = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
         hist = tk.history(period="6mo", interval="1d", auto_adjust=True)
         if hist is None or hist.empty or len(hist) < 30:
@@ -8716,7 +8714,6 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
         out["pe_signals"] = pe_signals
         out["pe_signals_passed"] = pe_passed
 
-        # ───────── Options strike hints (proxy — no real F&O Greeks) ─────────
         # Vijay's spec: Delta 0.50-0.60 for CE, -0.50 to -0.60 for PE
         # As a rule of thumb, ATM ≈ 0.50 delta, +5% OTM ≈ 0.35, -5% ITM ≈ 0.65
         # We surface strike suggestions; real Greeks need F&O feed.
@@ -27240,6 +27237,476 @@ def _save_journal(trades):
     except:
         # Fallback to JSON
         with open(_journal_file, 'w') as f: json.dump(trades, f)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/market-why  — Why is [symbol] moving today?
+# Works for: individual stocks (RELIANCE, AAPL), ETFs (SPY, QQQ),
+#            indices (NIFTY, ^NSEI, SENSEX, ^BSESN, SPY as proxy).
+# Returns: price action, sector/theme context, top movers (for indices),
+#          plain-English AI narrative (Haiku) + deterministic bullet fallback.
+# Cache: 10 min per (symbol, region) pair.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_market_why_cache = {}   # key → {data, ts}
+_MARKET_WHY_TTL = 600    # 10 minutes
+
+# Theme constituent map — used to compute "which themes are up/down today"
+_THEME_CONSTITUENTS = {
+    "IN": {
+        "Banking":   ["HDFCBANK", "ICICIBANK", "AXISBANK", "KOTAKBANK", "SBIN"],
+        "IT":        ["TCS", "INFY", "HCLTECH", "WIPRO"],
+        "Energy":    ["RELIANCE", "NTPC", "POWERGRID"],
+        "Auto":      ["MARUTI", "TATAMOTORS", "M&M"],
+        "Pharma":    ["SUNPHARMA"],
+        "FMCG":      ["HINDUNILVR", "ITC", "NESTLEIND"],
+        "Infra/Cap": ["LT", "ULTRACEMCO"],
+        "Telecom":   ["BHARTIARTL"],
+    },
+    "US": {
+        "Tech":      ["NVDA", "MSFT", "AAPL", "META", "GOOG", "AMZN", "CRM", "ORCL"],
+        "Finance":   ["JPM", "BAC", "V", "MA"],
+        "Healthcare":["LLY", "UNH", "JNJ", "ABBV"],
+        "Energy":    ["XOM"],
+        "Consumer":  ["WMT", "HD", "COST", "PG"],
+        "EV/Auto":   ["TSLA"],
+        "Semis":     ["NVDA", "AMD", "AVGO"],
+        "Streaming": ["NFLX", "META"],
+    },
+}
+
+# yf symbols for major index proxies — used to get "market level" context
+_INDEX_PROXIES = {
+    "IN": {"symbol": "^NSEI",  "label": "NIFTY 50"},
+    "US": {"symbol": "SPY",    "label": "S&P 500"},
+}
+
+# VIX symbols per region
+_VIX_SYMS = {"US": "^VIX", "IN": "^INDIAVIX"}
+
+
+def _mw_fetch_ohlcv(yf_sym, period="5d"):
+    """Fetch last N days OHLCV. Returns dict with today's data + 20d avg vol."""
+    try:
+        import yfinance as yf
+        import numpy as np
+        tk = yf.Ticker(yf_sym)
+        hist = tk.history(period="30d", interval="1d", auto_adjust=True)
+        if hist is None or hist.empty or len(hist) < 2:
+            return None
+        closes = list(hist["Close"].dropna())
+        volumes = list(hist["Volume"].dropna())
+        opens   = list(hist["Open"].dropna())
+        highs   = list(hist["High"].dropna())
+        lows    = list(hist["Low"].dropna())
+        if len(closes) < 2:
+            return None
+        prev_close = closes[-2]
+        today_close = closes[-1]
+        today_open  = opens[-1]  if opens  else today_close
+        today_high  = highs[-1]  if highs  else today_close
+        today_low   = lows[-1]   if lows   else today_close
+        today_vol   = volumes[-1] if volumes else 0
+        avg_vol_20  = float(np.mean(volumes[-21:-1])) if len(volumes) >= 21 else float(np.mean(volumes[:-1])) or 1
+        vol_ratio   = round(today_vol / avg_vol_20, 2) if avg_vol_20 > 0 else None
+        chg_pct     = round((today_close - prev_close) / prev_close * 100, 2) if prev_close else 0
+        gap_pct     = round((today_open - prev_close) / prev_close * 100, 2) if prev_close and today_open else 0
+        sma20 = float(np.mean(closes[-20:])) if len(closes) >= 20 else None
+        sma50 = float(np.mean(closes[-50:])) if len(closes) >= 50 else None
+        sma200= float(np.mean(closes[-200:])) if len(closes) >= 200 else None
+        # RSI 14
+        deltas = np.diff(closes[-15:]) if len(closes) >= 15 else []
+        rsi = None
+        if len(deltas) >= 14:
+            gains  = np.where(deltas > 0, deltas, 0)
+            losses = np.where(deltas < 0, -deltas, 0)
+            ag = float(np.mean(gains[-14:]))
+            al = float(np.mean(losses[-14:]))
+            rsi = round(100 - 100 / (1 + ag / al), 1) if al > 0 else 100.0
+        return {
+            "prev_close":    round(prev_close, 2),
+            "open":          round(today_open, 2),
+            "high":          round(today_high, 2),
+            "low":           round(today_low, 2),
+            "close":         round(today_close, 2),
+            "change_pct":    chg_pct,
+            "gap_pct":       gap_pct,
+            "volume_ratio":  vol_ratio,
+            "above_sma20":   (today_close > sma20) if sma20 else None,
+            "above_sma50":   (today_close > sma50) if sma50 else None,
+            "above_sma200":  (today_close > sma200) if sma200 else None,
+            "sma20":         round(sma20, 2) if sma20 else None,
+            "sma50":         round(sma50, 2) if sma50 else None,
+            "rsi":           rsi,
+        }
+    except Exception as _e:
+        return None
+
+
+def _mw_fetch_vix(region):
+    """Return VIX value + regime string. Never raises."""
+    try:
+        import yfinance as yf
+        sym = _VIX_SYMS.get(region, "^VIX")
+        tk = yf.Ticker(sym)
+        hist = tk.history(period="2d", interval="1d", auto_adjust=True)
+        if hist is None or hist.empty:
+            return None, "unknown"
+        v = float(list(hist["Close"].dropna())[-1])
+        if v >= 30:   regime = "high"
+        elif v >= 20: regime = "elevated"
+        elif v >= 15: regime = "normal"
+        else:         regime = "low"
+        return round(v, 1), regime
+    except Exception:
+        return None, "unknown"
+
+
+def _mw_compute_themes(region):
+    """Compute today's % move for each theme. Returns list of theme dicts."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    constituents = _THEME_CONSTITUENTS.get(region, {})
+    if not constituents:
+        return []
+    # Collect all unique symbols
+    all_syms = list({s for syms in constituents.values() for s in syms})
+    yf_map   = {s: (s if region == "US" else f"{s}.NS") for s in all_syms}
+    # Fetch in parallel
+    results = {}
+    def _fetch_one(sym):
+        d = _mw_fetch_ohlcv(yf_map[sym])
+        return sym, d
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        futs = {ex.submit(_fetch_one, s): s for s in all_syms}
+        for f in as_completed(futs):
+            sym, data = f.result()
+            if data:
+                results[sym] = data
+    # Aggregate per theme
+    themes_out = []
+    for theme, syms in constituents.items():
+        changes = [results[s]["change_pct"] for s in syms if s in results]
+        if not changes:
+            continue
+        avg_chg = round(sum(changes) / len(changes), 2)
+        direction = "up" if avg_chg > 0.3 else ("down" if avg_chg < -0.3 else "flat")
+        # Simple reason heuristic
+        if direction == "up":
+            reason = f"Avg +{avg_chg}% — sector buying across {len(changes)} names"
+        elif direction == "down":
+            reason = f"Avg {avg_chg}% — sector-wide selling ({len(changes)} names)"
+        else:
+            reason = f"Mixed/flat — avg {avg_chg}% ({len(changes)} names)"
+        # Best/worst performer in theme
+        movers = sorted([(s, results[s]["change_pct"]) for s in syms if s in results],
+                        key=lambda x: x[1])
+        worst = movers[0]  if movers else None
+        best  = movers[-1] if movers else None
+        themes_out.append({
+            "theme":      theme,
+            "avg_change_pct": avg_chg,
+            "direction":  direction,
+            "reason":     reason,
+            "top_gainer": {"symbol": best[0],  "change_pct": best[1]}  if best  else None,
+            "top_loser":  {"symbol": worst[0], "change_pct": worst[1]} if worst else None,
+            "n_stocks":   len(changes),
+        })
+    themes_out.sort(key=lambda x: x["avg_change_pct"], reverse=True)
+    return themes_out
+
+
+def _mw_top_movers(region, limit=5):
+    """Return top + bottom movers from universe stocks today."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    universe = _INST_PICKS_UNIVERSE.get(region, [])
+    stocks   = [s for s in universe if not s.startswith("^") and s not in ("SPY","QQQ","IWM")]
+    yf_map   = {s: (s if region == "US" else f"{s}.NS") for s in stocks}
+    results  = {}
+    def _fetch(sym):
+        d = _mw_fetch_ohlcv(yf_map[sym])
+        return sym, d
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futs = {ex.submit(_fetch, s): s for s in stocks}
+        for f in as_completed(futs):
+            sym, data = f.result()
+            if data:
+                results[sym] = data
+    ranked = sorted(results.items(), key=lambda x: x[1]["change_pct"], reverse=True)
+    top    = [{"symbol": s, "change_pct": d["change_pct"], "volume_ratio": d.get("volume_ratio")}
+              for s, d in ranked[:limit]]
+    bottom = [{"symbol": s, "change_pct": d["change_pct"], "volume_ratio": d.get("volume_ratio")}
+              for s, d in ranked[-limit:]]
+    return top, bottom
+
+
+def _mw_build_prompt(symbol, region, ohlcv, vix_val, vix_regime, themes,
+                     top_movers, bot_movers, asset_type, market_ohlcv):
+    """Build the Claude Haiku prompt for the why-narrative."""
+    chg   = ohlcv.get("change_pct", 0)
+    volr  = ohlcv.get("volume_ratio")
+    gap   = ohlcv.get("gap_pct", 0)
+    close = ohlcv.get("close")
+    rsi   = ohlcv.get("rsi")
+    sma50 = ohlcv.get("above_sma50")
+    sma200= ohlcv.get("above_sma200")
+    direction = "fell" if chg < 0 else "rose"
+    vol_str   = f"{volr}x avg 20d volume" if volr else "volume data unavailable"
+    ma_str    = ""
+    if sma50 is not None:
+        ma_str = f"{'above' if sma50 else 'below'} 50-DMA"
+    if sma200 is not None:
+        ma_str += f", {'above' if sma200 else 'below'} 200-DMA"
+    mkt_str = ""
+    if market_ohlcv and asset_type not in ("INDEX",):
+        mc = market_ohlcv.get("change_pct", 0)
+        mkt_str = f"Overall market ({'NIFTY' if region=='IN' else 'S&P 500'}) is {'up' if mc>0 else 'down'} {abs(mc)}% today. "
+    theme_str = ""
+    if themes:
+        top3 = themes[:3]
+        theme_str = "Theme moves today: " + "; ".join(
+            f"{t['theme']} {'+' if t['avg_change_pct']>=0 else ''}{t['avg_change_pct']}%" for t in top3
+        ) + ". "
+    movers_str = ""
+    if top_movers and asset_type == "INDEX":
+        g_parts = ", ".join(str(m["symbol"]) + " +" + str(m["change_pct"]) + "%" for m in top_movers[:3])
+        l_parts = ", ".join(str(m["symbol"]) + " " + str(m["change_pct"]) + "%" for m in bot_movers[:3])
+        movers_str = f"Top gainers: {g_parts}. Top losers: {l_parts}. "
+    prompt = (
+        f"You are a professional market analyst. Explain in 4-6 clear, direct sentences WHY "
+        f"{symbol} ({region}) {direction} {abs(chg)}% today. "
+        f"Price: {close}. Gap at open: {gap:+}%. Volume: {vol_str}. "
+        f"RSI: {rsi or 'N/A'}. Trend: {ma_str or 'N/A'}. "
+        f"VIX: {vix_val or 'N/A'} ({vix_regime}). "
+        f"{mkt_str}{theme_str}{movers_str}"
+        f"Identify: (1) the primary driver (macro/sector/stock-specific), "
+        f"(2) whether this is broad selling or concentrated, "
+        f"(3) one technical level to watch. "
+        f"Be specific, factual, and institutional in tone. No disclaimers. No markdown."
+    )
+    return prompt
+
+
+def _mw_ai_narrative(prompt):
+    """Call Claude Haiku for market-why narrative. Returns str or None."""
+    if not ANTHROPIC_API_KEY:
+        return None
+    try:
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 300,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=20,
+        )
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        content = data.get("content", [])
+        if content and content[0].get("type") == "text":
+            return content[0].get("text", "").strip()
+    except Exception as _e:
+        print(f"[MARKET-WHY] AI narrative failed: {type(_e).__name__}: {_e}")
+    return None
+
+
+def _mw_deterministic_bullets(symbol, ohlcv, vix_val, vix_regime, themes,
+                               top_movers, bot_movers, asset_type, region):
+    """Rule-based bullet list when AI is unavailable."""
+    bullets = []
+    chg   = ohlcv.get("change_pct", 0)
+    volr  = ohlcv.get("volume_ratio")
+    gap   = ohlcv.get("gap_pct", 0)
+    rsi   = ohlcv.get("rsi")
+    sma50 = ohlcv.get("above_sma50")
+    sma200= ohlcv.get("above_sma200")
+    direction = "fell" if chg < 0 else "rose"
+
+    # 1. Price action
+    bullets.append(f"Price {direction} {abs(chg):.2f}% today (prev close → {ohlcv.get('close')})")
+
+    # 2. Gap
+    if abs(gap) >= 0.3:
+        bullets.append(f"{'Gap-down' if gap < 0 else 'Gap-up'} open ({gap:+.2f}%) — "
+                       f"{'external cues (global markets / overnight news)' if abs(gap) > 0.5 else 'mild overnight pressure'}")
+
+    # 3. Volume
+    if volr:
+        if volr >= 1.5:
+            vol_label = "institutional participation" if chg < 0 else "institutional buying"
+            bullets.append(f"Volume {volr}x 20d avg → {vol_label}")
+        elif volr < 0.7:
+            bullets.append(f"Low volume ({volr}x) — retail-driven move, lower conviction")
+        else:
+            bullets.append(f"Volume near average ({volr}x) — no unusual participation")
+
+    # 4. Trend position
+    if sma50 is not None or sma200 is not None:
+        parts = []
+        if sma50 is not None:
+            parts.append(f"{'above' if sma50 else 'below'} 50-DMA ({ohlcv.get('sma50')})")
+        if sma200 is not None:
+            parts.append(f"{'above' if sma200 else 'below'} 200-DMA")
+        bullets.append(f"Trend: {', '.join(parts)}")
+
+    # 5. RSI
+    if rsi:
+        if rsi >= 70: bullets.append(f"RSI {rsi} — overbought territory, pullback risk")
+        elif rsi <= 30: bullets.append(f"RSI {rsi} — oversold, potential bounce zone")
+        else: bullets.append(f"RSI {rsi} — neutral momentum zone")
+
+    # 6. VIX
+    if vix_val:
+        bullets.append(f"VIX {vix_val} ({vix_regime}) — "
+                       f"{'elevated fear, wide spreads' if vix_regime in ('high','elevated') else 'normal conditions'}")
+
+    # 7. Index movers (for index type)
+    if asset_type == "INDEX" and top_movers:
+        g_str = ", ".join(f"{m['symbol']} +{m['change_pct']:.1f}%" for m in top_movers[:3])
+        l_str = ", ".join(f"{m['symbol']} {m['change_pct']:.1f}%" for m in bot_movers[:3])
+        bullets.append(f"Top gainers: {g_str}")
+        bullets.append(f"Top losers:  {l_str}")
+
+    # 8. Leading theme
+    if themes:
+        leader = themes[0]
+        laggard = themes[-1]
+        bullets.append(f"Strongest theme: {leader['theme']} ({leader['avg_change_pct']:+.2f}%) — {leader['reason']}")
+        if laggard["theme"] != leader["theme"]:
+            bullets.append(f"Weakest theme:  {laggard['theme']} ({laggard['avg_change_pct']:+.2f}%) — {laggard['reason']}")
+
+    return bullets
+
+
+@app.get("/api/market-why")
+async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0):
+    """Why is [symbol] moving today?
+
+    Works for:
+      - Individual stocks: RELIANCE, AAPL, TCS, etc.
+      - ETFs: SPY, QQQ, IWM, NIFTYBEES
+      - Indices: NIFTY, ^NSEI, SENSEX, ^BSESN, BANKNIFTY (uses ^NSEBANK)
+
+    Returns:
+      today        — OHLCV + change_pct + volume_ratio + gap + MA position
+      vix          — VIX value + regime
+      themes       — all theme % moves for the region (sorted best→worst)
+      top_movers   — top 5 gainers and losers from universe
+      why_bullets  — deterministic rule-based explanation (always present)
+      why_narrative— Claude Haiku 4-5 sentence plain-English explanation
+                     (requires ANTHROPIC_API_KEY; falls back to bullets summary)
+    """
+    import asyncio as _aio
+    import time as _time
+    region = (region or "IN").upper()
+    symbol = (symbol or "NIFTY").upper().strip()
+
+    # Symbol aliases — friendly names → yfinance symbols
+    _ALIASES = {
+        "NIFTY": "^NSEI", "NIFTY50": "^NSEI",
+        "BANKNIFTY": "^NSEBANK", "BANKN": "^NSEBANK",
+        "SENSEX": "^BSESN",
+        "FINNIFTY": "NIFTY_FIN_SERVICE.NS",
+        "MIDCPNIFTY": "NIFTY_MID_SELECT.NS",
+        "SPX": "^SPX", "SP500": "SPY",
+        "NDX": "^NDX", "NASDAQ": "QQQ",
+        "DJI": "^DJI", "DOW": "DIA",
+        "INDIAVIX": "^INDIAVIX", "VIXINDIA": "^INDIAVIX",
+    }
+    yf_sym = _ALIASES.get(symbol, symbol)
+    if region == "IN" and not yf_sym.startswith("^") and "." not in yf_sym and yf_sym not in _INDEX_SYMBOLS:
+        yf_sym = f"{yf_sym}.NS"
+
+    # Cache check
+    cache_key = f"{symbol}_{region}"
+    if not refresh and cache_key in _market_why_cache:
+        entry = _market_why_cache[cache_key]
+        if (_time.time() - entry["ts"]) < _MARKET_WHY_TTL:
+            return {**entry["data"], "_cached": True,
+                    "_cache_age_sec": int(_time.time() - entry["ts"])}
+
+    t0 = _time.time()
+    _lp = _aio.get_event_loop()
+    try:
+        # Detect asset type
+        def _detect_asset_type():
+            try:
+                import yfinance as yf
+                tk = yf.Ticker(yf_sym)
+                qt = (tk.info or {}).get("quoteType", "EQUITY").upper()
+                if qt in ("INDEX",) or yf_sym.startswith("^"):
+                    return "INDEX"
+                if qt in ("ETF",):
+                    return "ETF"
+                return "EQUITY"
+            except Exception:
+                return "EQUITY" if not yf_sym.startswith("^") else "INDEX"
+
+        asset_type = await _lp.run_in_executor(None, _detect_asset_type)
+
+        # Parallel data fetches
+        ohlcv_fut    = _lp.run_in_executor(None, _mw_fetch_ohlcv, yf_sym)
+        vix_fut      = _lp.run_in_executor(None, _mw_fetch_vix, region)
+        themes_fut   = _lp.run_in_executor(None, _mw_compute_themes, region)
+        movers_fut   = _lp.run_in_executor(None, _mw_top_movers, region)
+        mkt_proxy    = _INDEX_PROXIES.get(region, {}).get("symbol", "SPY")
+        mkt_ohlcv_fut = _lp.run_in_executor(None, _mw_fetch_ohlcv, mkt_proxy)
+
+        ohlcv, (vix_val, vix_regime), themes, (top_movers, bot_movers), market_ohlcv = await _aio.gather(
+            ohlcv_fut, vix_fut, themes_fut, movers_fut, mkt_ohlcv_fut
+        )
+
+        if not ohlcv:
+            return {"success": False, "error": f"Could not fetch price data for {symbol} ({yf_sym})",
+                    "symbol": symbol, "region": region}
+
+        # Deterministic bullets — always computed, always returned
+        bullets = _mw_deterministic_bullets(
+            symbol, ohlcv, vix_val, vix_regime, themes,
+            top_movers, bot_movers, asset_type, region)
+
+        # AI narrative — optional, non-blocking if key missing
+        narrative = None
+        if ANTHROPIC_API_KEY:
+            prompt = _mw_build_prompt(
+                symbol, region, ohlcv, vix_val, vix_regime,
+                themes, top_movers, bot_movers, asset_type, market_ohlcv)
+            narrative = await _lp.run_in_executor(None, _mw_ai_narrative, prompt)
+        if not narrative:
+            # Fallback: join first 4 bullets into a paragraph
+            narrative = " ".join(bullets[:4]) if bullets else "Insufficient data for narrative."
+
+        out = {
+            "success":       True,
+            "symbol":        symbol,
+            "yf_sym":        yf_sym,
+            "region":        region,
+            "asset_type":    asset_type,
+            "today":         ohlcv,
+            "vix":           {"value": vix_val, "regime": vix_regime},
+            "market_today":  market_ohlcv,
+            "themes":        themes,
+            "top_gainers":   top_movers,
+            "top_losers":    bot_movers,
+            "why_bullets":   bullets,
+            "why_narrative": narrative,
+            "elapsed_sec":   round(_time.time() - t0, 2),
+            "_engine":       "market_why_v1_r100.3",
+        }
+        _market_why_cache[cache_key] = {"data": out, "ts": _time.time()}
+        return out
+
+    except Exception as _exc:
+        import traceback as _tb
+        return {"success": False, "error": str(_exc)[:200],
+                "symbol": symbol, "region": region,
+                "traceback": _tb.format_exc()[-400:]}
+
 
 @app.post("/api/journal")
 async def journal_add(request: Request):
