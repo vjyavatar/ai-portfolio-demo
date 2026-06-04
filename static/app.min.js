@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.100.9";
-window.CELESYS_BUILD_TIME = 1780620000;
-window.CELESYS_BUILD_DATE = "2026-06-04 22:00:00 UTC";
+window.CELESYS_VERSION = "r63.101.0";
+window.CELESYS_BUILD_TIME = 1780623600;
+window.CELESYS_BUILD_DATE = "2026-06-04 23:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12992,26 +12992,26 @@ window._renderMarketWhy = function(d) {
   var sign = chg >= 0 ? '+' : '';
   var vix  = (d.vix||{}).value, vixReg = (d.vix||{}).regime || 'normal';
   var dec  = d.decision || {};
+  var sym  = d.symbol || '?';
   var h = '';
 
   /* ═══ 1. HERO ═════════════════════════════════════════════════════════════ */
   h += '<div style="background:' + heroBg + ';border-radius:18px;padding:22px 26px 18px;margin-bottom:14px;position:relative;overflow:hidden">';
-  h += '<div style="position:absolute;inset:0;background-image:radial-gradient(circle at 80% 50%,' + mainColor + '18 0%,transparent 60%),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(255,255,255,.03) 39px,rgba(255,255,255,.03) 40px)"></div>';
+  h += '<div style="position:absolute;inset:0;background-image:radial-gradient(circle at 80% 50%,' + mainColor + '18 0%,transparent 60%)"></div>';
   h += '<div style="position:relative">';
   h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">';
-  h += '<div><div style="font-size:11px;font-weight:700;letter-spacing:2.5px;color:rgba(255,255,255,.45);margin-bottom:5px">' + E(d.asset_type||'EQUITY') + ' · ' + E(d.region||'IN') + '</div>';
-  h += '<div style="font-size:34px;font-weight:900;color:#fff;font-family:Sora,sans-serif;line-height:1;letter-spacing:-1px">' + E(d.symbol||'?') + '</div>';
+  h += '<div><div style="font-size:11px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.45);margin-bottom:5px">' + E(d.asset_type||'EQUITY') + ' · ' + E(d.region||'IN') + '</div>';
+  h += '<div style="font-size:34px;font-weight:900;color:#fff;font-family:Sora,sans-serif;line-height:1;letter-spacing:-1px">' + E(sym) + '</div>';
   if (t.close) h += '<div style="font-size:14px;font-weight:600;color:rgba(255,255,255,.55);margin-top:5px;font-family:JetBrains Mono,monospace">' + t.close + '</div>';
   h += '</div>';
   h += '<div style="text-align:right"><div style="font-size:54px;font-weight:900;color:' + mainColor + ';font-family:JetBrains Mono,monospace;line-height:1;filter:drop-shadow(0 0 16px ' + mainColor + '80)">' + sign + chg.toFixed(2) + '%</div>';
-  h += '<div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.4);letter-spacing:1.5px;margin-top:5px">' + (isDown ? '▼ DECLINING' : isUp ? '▲ RISING' : '◆ FLAT') + '</div></div></div>';
-  // Pills
+  h += '<div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.4);letter-spacing:1.5px;margin-top:5px">' + (isDown?'▼ DECLINING':isUp?'▲ RISING':'◆ FLAT') + '</div></div></div>';
   h += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
   var pills = [];
   if (vix)             pills.push({l:'VIX',  v:vix,  c:vixReg==='high'?'#ef4444':vixReg==='elevated'?'#f59e0b':'#22c55e'});
   if (t.gap_pct!=null) pills.push({l:'GAP',  v:(t.gap_pct>=0?'+':'')+t.gap_pct.toFixed(2)+'%', c:Math.abs(t.gap_pct)>.5?'#f59e0b':'rgba(255,255,255,.6)'});
   if (t.rsi)           pills.push({l:'RSI',  v:t.rsi, c:t.rsi>=70?'#ef4444':t.rsi<=30?'#22c55e':'rgba(255,255,255,.7)'});
-  if (t.volume_ratio)  pills.push({l:'VOL',  v:t.volume_ratio+'x avg', c:t.volume_ratio>=1.5?'#22c55e':t.volume_ratio<0.7?'#f59e0b':'rgba(255,255,255,.6)'});
+  if (t.volume_ratio)  pills.push({l:'VOL',  v:t.volume_ratio+'x', c:t.volume_ratio>=1.5?'#22c55e':t.volume_ratio<0.7?'#f59e0b':'rgba(255,255,255,.6)'});
   if (t.above_sma50!=null)  pills.push({l:'50D',  v:t.above_sma50?'ABOVE':'BELOW',  c:t.above_sma50?'#22c55e':'#ef4444'});
   if (t.above_sma200!=null) pills.push({l:'200D', v:t.above_sma200?'ABOVE':'BELOW', c:t.above_sma200?'#22c55e':'#ef4444'});
   pills.forEach(function(p){
@@ -13021,67 +13021,70 @@ window._renderMarketWhy = function(d) {
   });
   h += '</div></div></div>';
 
-  /* ═══ 2. DECISION VERDICT ═════════════════════════════════════════════════ */
+  /* ═══ QUICK ACTIONS BAR ═══════════════════════════════════════════════════ */
+  var yfsym = E(d.yf_sym || sym);
+  var dsym  = E(sym.replace(/\^/,'').replace(/\.NS|\.BO/,''));
+  h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">';
+  h += '<a href="https://finance.yahoo.com/quote/' + yfsym + '" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">📊 Yahoo Finance</div></a>';
+  h += '<a href="https://finviz.com/quote.ashx?t=' + dsym + '" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">🔍 FinViz</div></a>';
+  h += '<a href="https://news.google.com/search?q=' + dsym + '+stock+news" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">📰 Google News</div></div></a>';
+  h += '<a href="https://stockanalysis.com/stocks/' + dsym.toLowerCase() + '/" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">📈 Deep Analysis</div></a>';
+  h += '<div onclick="window._mktWhyQuick(\'' + E(sym) + '\',\'' + E(d.region||'IN') + '\')" style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;font-weight:700;color:#1d4ed8;cursor:pointer">🔄 Refresh</div>';
+  h += '</div>';
+
+  /* ═══ 2. VERDICT ══════════════════════════════════════════════════════════ */
   if (dec.verdict) {
-    var dBg   = dec.verdict==='OPPORTUNITY' ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)'
-              : dec.verdict==='AVOID'       ? 'linear-gradient(135deg,#fef2f2,#fee2e2)'
-              : dec.verdict==='CAUTION'     ? 'linear-gradient(135deg,#fff7ed,#fed7aa)'
-              :                               'linear-gradient(135deg,#f8fafc,#f1f5f9)';
+    var dBg = dec.verdict==='OPPORTUNITY'?'linear-gradient(135deg,#f0fdf4,#dcfce7)'
+            : dec.verdict==='AVOID'      ?'linear-gradient(135deg,#fef2f2,#fee2e2)'
+            : dec.verdict==='CAUTION'    ?'linear-gradient(135deg,#fff7ed,#fed7aa)'
+            :                             'linear-gradient(135deg,#f8fafc,#f1f5f9)';
     var dBorder = dec.color || '#94a3b8';
-    h += '<div style="background:' + dBg + ';border:2px solid ' + dBorder + '40;border-left:5px solid ' + dBorder + ';border-radius:14px;padding:16px 20px;margin-bottom:14px">';
-    h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">';
-    // Left: verdict + reason
+    h += '<div style="background:' + dBg + ';border:2px solid ' + dBorder + '40;border-left:5px solid ' + dBorder + ';border-radius:14px;padding:18px 20px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:14px">';
+    // Left
     h += '<div style="flex:1;min-width:200px">';
-    h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#64748b;margin-bottom:8px">⚡ INSTITUTIONAL VERDICT</div>';
-    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">';
-    h += '<span style="font-size:22px">' + (dec.icon||'◆') + '</span>';
-    h += '<span style="font-size:24px;font-weight:900;color:' + dBorder + ';font-family:Sora,sans-serif;letter-spacing:0.5px">' + E(dec.verdict) + '</span>';
-    // Conviction stars
-    h += '<span style="font-size:14px;letter-spacing:1px">';
-    for(var s=0;s<5;s++) h += s < (dec.conviction||0) ? '★' : '☆';
-    h += '</span></div>';
-    h += '<div style="font-size:13px;font-weight:600;color:#374151;line-height:1.5">' + E(dec.reason||'') + '</div>';
+    h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#64748b;margin-bottom:8px">⚡ WHAT SHOULD YOU DO?</div>';
+    h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">';
+    h += '<span style="font-size:28px">' + (dec.icon||'◆') + '</span>';
+    h += '<div><div style="font-size:22px;font-weight:900;color:' + dBorder + ';font-family:Sora,sans-serif">' + E(dec.verdict) + '</div>';
+    h += '<div style="display:flex;gap:2px;margin-top:3px">';
+    for(var s=0;s<5;s++) h += '<span style="font-size:14px;color:' + (s<(dec.conviction||0)?dBorder:'#e2e8f0') + '">' + (s<(dec.conviction||0)?'★':'☆') + '</span>';
+    h += '<span style="font-size:11px;color:#94a3b8;margin-left:6px;font-weight:600">Confidence</span></div></div></div>';
+    h += '<div style="font-size:14px;font-weight:600;color:#374151;line-height:1.6">' + E(dec.reason||'') + '</div></div>';
+    // Right: Bull/Bear scoreboard
+    h += '<div style="min-width:150px">';
+    var bs = dec.bull_score||0, bs2 = dec.bear_score||0, tot = Math.max(bs+bs2,1);
+    h += '<div style="display:flex;gap:8px;margin-bottom:8px">';
+    h += '<div style="flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px;text-align:center"><div style="font-size:26px;font-weight:900;color:#16a34a">' + bs + '</div><div style="font-size:10px;font-weight:800;color:#16a34a">BULL</div></div>';
+    h += '<div style="flex:1;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px;text-align:center"><div style="font-size:26px;font-weight:900;color:#dc2626">' + bs2 + '</div><div style="font-size:10px;font-weight:800;color:#dc2626">BEAR</div></div>';
     h += '</div>';
-    // Right: Bull/Bear scorecard
-    h += '<div style="min-width:160px">';
-    h += '<div style="display:flex;gap:8px;margin-bottom:10px">';
-    h += '<div style="flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px;text-align:center">';
-    h += '<div style="font-size:22px;font-weight:900;color:#16a34a">' + (dec.bull_score||0) + '</div>';
-    h += '<div style="font-size:10px;font-weight:700;color:#16a34a;letter-spacing:0.5px">BULL</div></div>';
-    h += '<div style="flex:1;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px;text-align:center">';
-    h += '<div style="font-size:22px;font-weight:900;color:#dc2626">' + (dec.bear_score||0) + '</div>';
-    h += '<div style="font-size:10px;font-weight:700;color:#dc2626;letter-spacing:0.5px">BEAR</div></div>';
-    h += '</div>';
-    // Score bar
-    var bs = dec.bull_score||0, bs2 = dec.bear_score||0, tot = bs+bs2||1;
-    h += '<div style="height:6px;background:#fecaca;border-radius:4px;overflow:hidden">';
-    h += '<div style="height:100%;width:' + Math.round(bs/tot*100) + '%;background:#22c55e;border-radius:4px"></div></div>';
-    h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;margin-top:3px"><span style="color:#16a34a">Bullish ' + Math.round(bs/tot*100) + '%</span><span style="color:#dc2626">Bearish ' + Math.round(bs2/tot*100) + '%</span></div>';
+    h += '<div style="height:8px;background:#fecaca;border-radius:4px;overflow:hidden"><div style="height:100%;width:' + Math.round(bs/tot*100) + '%;background:#22c55e;border-radius:4px"></div></div>';
+    h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;margin-top:3px"><span style="color:#16a34a">' + Math.round(bs/tot*100) + '% Bullish</span><span style="color:#dc2626">' + Math.round(bs2/tot*100) + '% Bearish</span></div>';
     h += '</div></div>';
-    // Investor type takes
+    // Investor type tabs
     if (dec.investor_take) {
-      h += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid ' + dBorder + '30;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">';
+      h += '<div style="margin-top:14px;padding-top:14px;border-top:1px solid ' + dBorder + '30;display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:8px">';
+      var itIcons = {'Day':'⚡','Swing':'🔄','Long':'📈'};
       Object.keys(dec.investor_take).forEach(function(itype){
-        var typeIcon = itype.indexOf('Day')>-1 ? '⚡' : itype.indexOf('Swing')>-1 ? '🔄' : '📈';
-        h += '<div style="background:rgba(255,255,255,0.7);border-radius:8px;padding:8px 10px">';
-        h += '<div style="font-size:10px;font-weight:800;color:#64748b;margin-bottom:4px">' + typeIcon + ' ' + E(itype).toUpperCase() + '</div>';
-        h += '<div style="font-size:12px;font-weight:600;color:#1e293b;line-height:1.4">' + E(dec.investor_take[itype]) + '</div>';
-        h += '</div>';
+        var icon = Object.keys(itIcons).find(function(k){return itype.indexOf(k)>-1;})||'';
+        h += '<div style="background:rgba(255,255,255,0.75);border:1px solid ' + dBorder + '30;border-radius:10px;padding:10px 12px">';
+        h += '<div style="font-size:10px;font-weight:800;color:#64748b;margin-bottom:5px">' + (itIcons[icon]||'●') + ' ' + E(itype).toUpperCase() + '</div>';
+        h += '<div style="font-size:13px;font-weight:600;color:#1e293b;line-height:1.45">' + E(dec.investor_take[itype]) + '</div></div>';
       });
       h += '</div>';
     }
-    // Bull/Bear factors (collapsible)
+    // Expandable signal factors
     if ((dec.bull_factors||[]).length || (dec.bear_factors||[]).length) {
-      h += '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11px;font-weight:700;color:' + dBorder + ';list-style:none">▸ Show all ' + ((dec.bull_factors||[]).length + (dec.bear_factors||[]).length) + ' signal factors</summary>';
-      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">';
+      h += '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:' + dBorder + '">▸ Show all signal factors (' + ((dec.bull_factors||[]).length+(dec.bear_factors||[]).length) + ')</summary>';
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">';
       if ((dec.bull_factors||[]).length) {
         h += '<div>';
-        (dec.bull_factors||[]).forEach(function(f){ h += '<div style="font-size:11px;color:#16a34a;padding:3px 0;border-bottom:1px solid #f0fdf4">✓ ' + E(f) + '</div>'; });
+        (dec.bull_factors||[]).forEach(function(f){h += '<div style="font-size:12px;color:#16a34a;padding:4px 0;border-bottom:1px solid #f0fdf4;line-height:1.4">✓ ' + E(f) + '</div>';});
         h += '</div>';
       }
       if ((dec.bear_factors||[]).length) {
         h += '<div>';
-        (dec.bear_factors||[]).forEach(function(f){ h += '<div style="font-size:11px;color:#dc2626;padding:3px 0;border-bottom:1px solid #fef2f2">✗ ' + E(f) + '</div>'; });
+        (dec.bear_factors||[]).forEach(function(f){h += '<div style="font-size:12px;color:#dc2626;padding:4px 0;border-bottom:1px solid #fef2f2;line-height:1.4">✗ ' + E(f) + '</div>';});
         h += '</div>';
       }
       h += '</div></details>';
@@ -13089,102 +13092,106 @@ window._renderMarketWhy = function(d) {
     h += '</div>';
   }
 
-  /* ═══ 3. AT-A-GLANCE ROW ══════════════════════════════════════════════════ */
+  /* ═══ 3. BREADTH ROW ══════════════════════════════════════════════════════ */
   var themes = (d.themes||[]).slice();
-  var themeUp   = themes.filter(function(x){return x.avg_change_pct>=0.1;}).length;
-  var themeDn   = themes.filter(function(x){return x.avg_change_pct<=-0.1;}).length;
-  var themeFlat = themes.length - themeUp - themeDn;
-  var breadthPct = themes.length ? Math.round(themeUp/themes.length*100) : 50;
-  var sentLabel = breadthPct>=65 ? 'BULLISH' : breadthPct<=35 ? 'BEARISH' : 'MIXED';
-  var sentColor = breadthPct>=65 ? '#22c55e' : breadthPct<=35 ? '#ef4444' : '#f59e0b';
-  var sorted    = themes.slice().sort(function(a,b){return b.avg_change_pct-a.avg_change_pct;});
+  var themeUp = themes.filter(function(x){return x.avg_change_pct>=0.1;}).length;
+  var themeDn = themes.filter(function(x){return x.avg_change_pct<=-0.1;}).length;
+  var bPct    = themes.length ? Math.round(themeUp/themes.length*100) : 50;
+  var sLabel  = bPct>=65?'BULLISH':bPct<=35?'BEARISH':'MIXED';
+  var sColor  = bPct>=65?'#22c55e':bPct<=35?'#ef4444':'#f59e0b';
+  var sorted  = themes.slice().sort(function(a,b){return b.avg_change_pct-a.avg_change_pct;});
   var best = sorted[0], worst = sorted[sorted.length-1];
   h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">';
-  // Sentiment gauge
-  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;text-align:center">';
-  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:10px">Breadth</div>';
-  var arcFilled = Math.round(breadthPct);
-  h += '<svg width="80" height="44" viewBox="0 0 80 44" style="display:block;margin:0 auto 8px">';
+  // Gauge
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;text-align:center">';
+  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;margin-bottom:8px">MARKET BREADTH</div>';
+  h += '<svg width="80" height="44" viewBox="0 0 80 44" style="display:block;margin:0 auto 6px">';
   h += '<path d="M8,40 A32,32 0 0,1 72,40" stroke="#f1f5f9" stroke-width="8" fill="none" stroke-linecap="round"/>';
-  h += '<path d="M8,40 A32,32 0 0,1 72,40" stroke="' + sentColor + '" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="' + arcFilled + ' ' + (100-arcFilled+10) + '" opacity="0.9"/>';
-  h += '<text x="40" y="38" text-anchor="middle" font-size="12" font-weight="900" fill="' + sentColor + '" font-family="JetBrains Mono,monospace">' + breadthPct + '%</text></svg>';
-  h += '<div style="font-size:16px;font-weight:900;color:' + sentColor + '">' + sentLabel + '</div>';
-  h += '<div style="font-size:11px;color:#94a3b8;margin-top:4px">' + themeUp + ' ▲ · ' + themeFlat + ' — · ' + themeDn + ' ▼</div></div>';
+  h += '<path d="M8,40 A32,32 0 0,1 72,40" stroke="' + sColor + '" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="' + bPct + ' 110" opacity="0.9"/>';
+  h += '<text x="40" y="38" text-anchor="middle" font-size="12" font-weight="900" fill="' + sColor + '" font-family="JetBrains Mono,monospace">' + bPct + '%</text></svg>';
+  h += '<div style="font-size:15px;font-weight:900;color:' + sColor + '">' + sLabel + '</div>';
+  h += '<div style="font-size:11px;color:#94a3b8;margin-top:4px">' + themeUp + ' ▲ · ' + (themes.length-themeUp-themeDn) + ' — · ' + themeDn + ' ▼</div></div>';
   // Leading
-  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;text-align:center">';
-  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:8px">Leading</div>';
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;text-align:center">';
+  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;margin-bottom:6px">🏆 LEADING TODAY</div>';
   if (best) {
-    var bc = best.avg_change_pct>=0 ? '#22c55e' : '#ef4444';
-    h += '<div style="font-size:24px;font-weight:900;color:' + bc + ';font-family:JetBrains Mono,monospace;margin-bottom:4px">' + (best.avg_change_pct>=0?'+':'') + best.avg_change_pct.toFixed(2) + '%</div>';
-    h += '<div style="font-size:16px;font-weight:900;color:#1e293b">' + E(best.theme) + '</div>';
-    if (best.top_gainer) h += '<div style="font-size:12px;font-weight:700;color:#22c55e;margin-top:6px">▲ ' + E(best.top_gainer.symbol) + ' +' + best.top_gainer.change_pct.toFixed(1) + '%</div>';
+    h += '<div style="font-size:24px;font-weight:900;color:' + (best.avg_change_pct>=0?'#22c55e':'#ef4444') + ';font-family:JetBrains Mono,monospace;margin-bottom:3px">' + (best.avg_change_pct>=0?'+':'') + best.avg_change_pct.toFixed(2) + '%</div>';
+    h += '<div style="font-size:15px;font-weight:900;color:#1e293b">' + E(best.theme) + '</div>';
+    if (best.top_gainer) h += '<div style="font-size:12px;font-weight:700;color:#22c55e;margin-top:5px">▲ ' + E(best.top_gainer.symbol) + ' +' + best.top_gainer.change_pct.toFixed(1) + '%</div>';
   }
   h += '</div>';
   // Lagging
-  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 18px;text-align:center">';
-  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase;margin-bottom:8px">Lagging</div>';
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;text-align:center">';
+  h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;margin-bottom:6px">💔 LAGGING TODAY</div>';
   if (worst) {
-    var wc = worst.avg_change_pct>=0 ? '#22c55e' : '#ef4444';
-    h += '<div style="font-size:24px;font-weight:900;color:' + wc + ';font-family:JetBrains Mono,monospace;margin-bottom:4px">' + (worst.avg_change_pct>=0?'+':'') + worst.avg_change_pct.toFixed(2) + '%</div>';
-    h += '<div style="font-size:16px;font-weight:900;color:#1e293b">' + E(worst.theme) + '</div>';
-    if (worst.top_loser) h += '<div style="font-size:12px;font-weight:700;color:#ef4444;margin-top:6px">▼ ' + E(worst.top_loser.symbol) + ' ' + worst.top_loser.change_pct.toFixed(1) + '%</div>';
+    h += '<div style="font-size:24px;font-weight:900;color:' + (worst.avg_change_pct>=0?'#22c55e':'#ef4444') + ';font-family:JetBrains Mono,monospace;margin-bottom:3px">' + (worst.avg_change_pct>=0?'+':'') + worst.avg_change_pct.toFixed(2) + '%</div>';
+    h += '<div style="font-size:15px;font-weight:900;color:#1e293b">' + E(worst.theme) + '</div>';
+    if (worst.top_loser) h += '<div style="font-size:12px;font-weight:700;color:#ef4444;margin-top:5px">▼ ' + E(worst.top_loser.symbol) + ' ' + worst.top_loser.change_pct.toFixed(1) + '%</div>';
   }
   h += '</div></div>';
 
-  /* ═══ 4. KEY INSIGHTS — AI bullet points ══════════════════════════════════ */
+  /* ═══ 4. WHY IS IT MOVING — plain English points ══════════════════════════ */
   var aiBullets = [];
   if (d.why_narrative) {
     var raw = d.why_narrative;
-    var parts = raw.split('\n').map(function(s){return s.replace(/^[•\-\*\d\.]\s*/,'').trim();}).filter(function(s){return s.length>6;});
-    if (parts.length <= 1 && raw.length > 30) {
-      parts = raw.replace(/([.!?])\s+(?=[A-Z])/g,'$1|||').split('|||').map(function(s){return s.trim();}).filter(function(s){return s.length>8;});
+    var parts = raw.split('\n').map(function(s){return s.replace(/^[•\-\*\d\.\)]\s*/,'').trim();}).filter(function(s){return s.length>6;});
+    if (parts.length<=1 && raw.length>20) {
+      parts = raw.replace(/([.!?])\s+(?=[A-Z0-9])/g,'$1|||').split('|||').map(function(s){return s.trim();}).filter(function(s){return s.length>8;});
     }
-    aiBullets = parts.slice(0,5);
+    aiBullets = parts.slice(0,6);
   }
-  var allInsights = aiBullets.length ? aiBullets : (d.why_bullets||[]);
-  if (allInsights.length) {
+  var allIns = aiBullets.length ? aiBullets : (d.why_bullets||[]);
+  var labels  = ['Real Reason','Market vs Stock','Big Investors','What To Do','Watch This Level','Context'];
+  var licons  = ['🎯','🌐','🏦','💡','📍','📌'];
+  if (allIns.length) {
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin-bottom:14px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
-    h += '<div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#374151">📍 WHY IS IT MOVING</div>';
-    if (aiBullets.length) h += '<div style="font-size:10px;font-weight:700;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:3px 10px">🧠 AI Analysis</div>';
+    h += '<div style="font-size:13px;font-weight:900;color:#0f172a;letter-spacing:0.3px">WHY IS ' + E(sym) + ' MOVING TODAY?</div>';
+    if (aiBullets.length) h += '<div style="font-size:10px;font-weight:700;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:3px 10px">🧠 AI · Plain English</div>';
     h += '</div>';
-    h += '<div style="display:flex;flex-direction:column;gap:8px">';
-    var insightLabels = ['Catalyst','Breadth','Conviction','Key Level','Context'];
-    allInsights.forEach(function(b,idx){
-      var short = b.length > 100 ? b.substring(0,97) + '…' : b;
-      var isP = /\+|above|strong|gain|bull|rally|support|oversold/i.test(b);
-      var isN = /fell|below|weak|sell|bear|drop|decline|break|overbought/i.test(b);
-      var lc  = isN ? '#ef4444' : isP ? '#22c55e' : '#64748b';
-      var bg  = isN ? '#fff8f8' : isP ? '#f8fff8' : '#f8fafc';
-      h += '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;background:' + bg + ';border-radius:10px;border-left:4px solid ' + lc + '">';
-      h += '<div style="min-width:24px;height:24px;background:' + lc + ';border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:11px;font-weight:900;color:#fff">' + (idx+1) + '</span></div>';
-      if (idx < insightLabels.length) h += '<div style="min-width:72px;font-size:10px;font-weight:800;color:' + lc + ';letter-spacing:0.3px;padding-top:3px;text-transform:uppercase">' + insightLabels[idx] + '</div>';
-      h += '<span style="font-size:13px;font-weight:600;color:#1e293b;line-height:1.5">' + E(short) + '</span>';
-      h += '</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:10px">';
+    allIns.forEach(function(b,i){
+      var isP = /\+|above|strong|gain|not worried|buying|support|cheap|oversold|bullish|positive/i.test(b);
+      var isN = /fell|below|weak|selling|worried|danger|overbought|expensive|bearish|negative|avoid|drop/i.test(b);
+      var lc  = isN?'#ef4444':isP?'#22c55e':'#64748b';
+      var bg  = isN?'#fff8f8':isP?'#f8fff8':'#f9fafb';
+      h += '<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 16px;background:' + bg + ';border-radius:12px;border-left:4px solid ' + lc + '">';
+      h += '<div style="min-width:36px;text-align:center"><div style="width:28px;height:28px;background:' + lc + ';border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:12px;font-weight:900;color:#fff">' + (i+1) + '</span></div></div>';
+      h += '<div style="flex:1">';
+      if (i < labels.length) h += '<div style="font-size:10px;font-weight:800;color:' + lc + ';letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px">' + licons[i] + ' ' + labels[i] + '</div>';
+      // NO TRUNCATION — show full text
+      h += '<div style="font-size:14px;font-weight:600;color:#1e293b;line-height:1.6">' + E(b) + '</div>';
+      h += '</div></div>';
     });
     h += '</div></div>';
   }
 
-  /* ═══ 5. NEWS SECTION ══════════════════════════════════════════════════════ */
+  /* ═══ 5. NEWS ══════════════════════════════════════════════════════════════ */
   if (d.news && d.news.length) {
+    var hasFallback = d.news.some(function(n){return n.is_fallback;});
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin-bottom:14px">';
-    h += '<div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#374151;margin-bottom:14px">📰 LATEST NEWS</div>';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+    h += '<div style="font-size:13px;font-weight:900;color:#0f172a">📰 NEWS & SOURCES</div>';
+    if (hasFallback) h += '<div style="font-size:10px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:20px;padding:3px 10px">🔗 Direct Links</div>';
+    h += '</div>';
     h += '<div style="display:flex;flex-direction:column;gap:8px">';
     d.news.forEach(function(n){
-      var nColor = n.sentiment==='negative' ? '#dc2626' : n.sentiment==='positive' ? '#16a34a' : '#64748b';
-      var nBg    = n.sentiment==='negative' ? '#fff8f8' : n.sentiment==='positive' ? '#f8fff8' : '#f8fafc';
-      var nBar   = n.sentiment==='negative' ? '#ef4444' : n.sentiment==='positive' ? '#22c55e' : '#94a3b8';
-      var tag    = n.sentiment==='negative' ? '📉' : n.sentiment==='positive' ? '📈' : '📰';
-      h += '<a href="' + E(n.link||'#') + '" target="_blank" rel="noopener" style="text-decoration:none">';
-      h += '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;background:' + nBg + ';border-radius:10px;border-left:4px solid ' + nBar + ';cursor:pointer;transition:all .15s" onmouseover="this.style.background=\'#f0f9ff\'" onmouseout="this.style.background=\'' + nBg + '\'">';
-      h += '<span style="font-size:18px;flex-shrink:0;margin-top:1px">' + tag + '</span>';
+      var nc  = n.sentiment==='negative'?'#dc2626':n.sentiment==='positive'?'#16a34a':'#64748b';
+      var nbg = n.sentiment==='negative'?'#fff8f8':n.sentiment==='positive'?'#f8fff8':'#f9fafb';
+      var nb  = n.sentiment==='negative'?'#ef4444':n.sentiment==='positive'?'#22c55e':'#94a3b8';
+      var tag = n.sentiment==='negative'?'📉':n.sentiment==='positive'?'📈':'📰';
+      if (n.is_fallback) tag = '🔗';
+      var href = n.link || '#';
+      h += '<a href="' + E(href) + '" target="_blank" rel="noopener" style="text-decoration:none;display:block">';
+      h += '<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;background:' + nbg + ';border-radius:10px;border-left:4px solid ' + nb + ';transition:background .15s" onmouseover="this.style.background=\'#e0f2fe\'" onmouseout="this.style.background=\'' + nbg + '\'">';
+      h += '<span style="font-size:20px;flex-shrink:0">' + tag + '</span>';
       h += '<div style="flex:1;min-width:0">';
-      h += '<div style="font-size:13px;font-weight:700;color:#1e293b;line-height:1.4;margin-bottom:5px">' + E(n.title) + '</div>';
-      h += '<div style="display:flex;gap:12px;align-items:center">';
+      h += '<div style="font-size:13px;font-weight:700;color:#1e293b;line-height:1.45;margin-bottom:5px">' + E(n.title) + '</div>';
+      h += '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
       if (n.publisher) h += '<span style="font-size:11px;font-weight:600;color:#64748b">' + E(n.publisher) + '</span>';
-      if (n.ago)       h += '<span style="font-size:10px;color:#94a3b8">🕐 ' + E(n.ago) + '</span>';
-      h += '<span style="font-size:10px;font-weight:700;color:' + nColor + ';text-transform:uppercase;background:' + nColor + '15;padding:2px 8px;border-radius:20px">' + E(n.sentiment) + '</span>';
-      h += '<span style="font-size:10px;color:#94a3b8;margin-left:auto">↗ Read →</span>';
+      if (n.ago && !n.is_fallback) h += '<span style="font-size:11px;color:#94a3b8">🕐 ' + E(n.ago) + '</span>';
+      if (!n.is_fallback) h += '<span style="font-size:10px;font-weight:700;color:' + nc + ';background:' + nc + '15;padding:2px 8px;border-radius:20px;text-transform:uppercase">' + E(n.sentiment) + '</span>';
+      h += '<span style="font-size:11px;font-weight:700;color:#3b82f6;margin-left:auto">↗ Open →</span>';
       h += '</div></div></div></a>';
     });
     h += '</div></div>';
@@ -13192,24 +13199,21 @@ window._renderMarketWhy = function(d) {
 
   /* ═══ 6. THEME LEADERBOARD ════════════════════════════════════════════════ */
   if (sorted.length) {
-    var maxAbsT = Math.max.apply(null, sorted.map(function(x){return Math.abs(x.avg_change_pct);})) || 1;
+    var maxAbsT = Math.max.apply(null,sorted.map(function(x){return Math.abs(x.avg_change_pct);})) || 1;
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;margin-bottom:14px">';
-    h += '<div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#374151;margin-bottom:14px">🗺️ SECTOR PERFORMANCE</div>';
-    h += '<div style="display:flex;flex-direction:column;gap:6px">';
+    h += '<div style="font-size:13px;font-weight:900;color:#0f172a;margin-bottom:14px">🗺️ SECTOR PERFORMANCE</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:7px">';
     sorted.forEach(function(x){
-      var tc = x.avg_change_pct>=0.2 ? '#16a34a' : (x.avg_change_pct<=-0.2 ? '#dc2626' : '#d97706');
-      var barW = Math.round(Math.abs(x.avg_change_pct)/maxAbsT*55);
-      var side = x.avg_change_pct>=0 ? 'left' : 'right';
-      var chgStr = (x.avg_change_pct>=0?'+':'') + x.avg_change_pct.toFixed(2) + '%';
-      var mover = '';
-      if (x.avg_change_pct>=0 && x.top_gainer) mover = '▲ ' + x.top_gainer.symbol + ' +' + x.top_gainer.change_pct.toFixed(1) + '%';
-      else if (x.avg_change_pct<0 && x.top_loser) mover = '▼ ' + x.top_loser.symbol + ' ' + x.top_loser.change_pct.toFixed(1) + '%';
-      h += '<div style="display:grid;grid-template-columns:90px 1fr 68px 120px;align-items:center;gap:10px;padding:5px 0">';
+      var tc  = x.avg_change_pct>=0.2?'#16a34a':x.avg_change_pct<=-0.2?'#dc2626':'#d97706';
+      var bW  = Math.round(Math.abs(x.avg_change_pct)/maxAbsT*55);
+      var side= x.avg_change_pct>=0?'left':'right';
+      var mv  = x.avg_change_pct>=0 && x.top_gainer ? '▲ '+x.top_gainer.symbol+' +'+x.top_gainer.change_pct.toFixed(1)+'%'
+              : x.avg_change_pct<0  && x.top_loser  ? '▼ '+x.top_loser.symbol+' '+x.top_loser.change_pct.toFixed(1)+'%' : '';
+      h += '<div style="display:grid;grid-template-columns:90px 1fr 70px 120px;align-items:center;gap:10px;padding:4px 0">';
       h += '<span style="font-size:13px;font-weight:800;color:#374151">' + E(x.theme) + '</span>';
-      h += '<div style="height:10px;background:#f1f5f9;border-radius:6px;overflow:hidden;position:relative">';
-      h += '<div style="position:absolute;top:0;bottom:0;' + side + ':0;width:' + barW + '%;background:' + tc + ';border-radius:6px"></div></div>';
-      h += '<span style="font-size:14px;font-weight:900;color:' + tc + ';font-family:JetBrains Mono,monospace;text-align:right">' + chgStr + '</span>';
-      h += '<span style="font-size:11px;font-weight:700;color:' + tc + ';white-space:nowrap">' + mover + '</span>';
+      h += '<div style="height:10px;background:#f1f5f9;border-radius:6px;overflow:hidden;position:relative"><div style="position:absolute;top:0;bottom:0;' + side + ':0;width:' + bW + '%;background:' + tc + ';border-radius:6px"></div></div>';
+      h += '<span style="font-size:14px;font-weight:900;color:' + tc + ';font-family:JetBrains Mono,monospace;text-align:right">' + (x.avg_change_pct>=0?'+':'') + x.avg_change_pct.toFixed(2) + '%</span>';
+      h += '<span style="font-size:11px;font-weight:700;color:' + tc + ';white-space:nowrap">' + mv + '</span>';
       h += '</div>';
     });
     h += '</div></div>';
@@ -13219,28 +13223,27 @@ window._renderMarketWhy = function(d) {
   if ((d.top_gainers||[]).length && (d.top_losers||[]).length) {
     h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
     ['gainers','losers'].forEach(function(side){
-      var items = side==='gainers' ? d.top_gainers : d.top_losers;
-      var hBg = side==='gainers' ? '#052e16' : '#450a0a';
-      var tc2 = side==='gainers' ? '#16a34a' : '#dc2626';
-      var lbl = side==='gainers' ? '▲ TOP GAINERS' : '▼ TOP LOSERS';
+      var items = side==='gainers'?d.top_gainers:d.top_losers;
+      var hBg = side==='gainers'?'#052e16':'#450a0a';
+      var tc2 = side==='gainers'?'#16a34a':'#dc2626';
+      var lbl = side==='gainers'?'▲ TOP GAINERS':'▼ TOP LOSERS';
       var mx  = Math.max.apply(null,(items||[]).map(function(m){return Math.abs(m.change_pct||0);})) || 1;
       h += '<div style="background:#fff;border:1px solid ' + tc2 + '33;border-radius:14px;overflow:hidden">';
       h += '<div style="background:' + hBg + ';padding:11px 16px"><span style="font-size:12px;font-weight:900;color:#fff;letter-spacing:1px">' + lbl + '</span></div>';
       (items||[]).slice(0,5).forEach(function(m,i){
-        var p  = m.change_pct||0;
-        var bW = Math.round(Math.abs(p)/mx*45);
-        var ps = side==='gainers' ? 'left' : 'right';
+        var p=m.change_pct||0, bW=Math.round(Math.abs(p)/mx*45), ps=side==='gainers'?'left':'right';
         h += '<div style="padding:9px 16px;' + (i>0?'border-top:1px solid #f8fafc;':'') + 'display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">';
         h += '<div style="position:absolute;top:0;bottom:0;' + ps + ':0;width:' + bW + '%;background:' + tc2 + '12"></div>';
         h += '<span style="position:relative;font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(m.symbol) + '</span>';
-        h += '<span style="position:relative;font-size:14px;font-weight:900;color:' + tc2 + ';font-family:JetBrains Mono,monospace">' + (side==='gainers'?'+':'') + p.toFixed(2) + '%</span></div>';
+        h += '<span style="position:relative;font-size:14px;font-weight:900;color:' + tc2 + ';font-family:JetBrains Mono,monospace">' + (side==='gainers'?'+':'') + p.toFixed(2) + '%</span>';
+        h += '</div>';
       });
       h += '</div>';
     });
     h += '</div>';
   }
 
-  h += '<div style="text-align:right;font-size:10px;font-weight:600;color:#cbd5e1;font-family:JetBrains Mono,monospace">market-why v3 · ' + E(d.symbol) + ' · ' + (d.elapsed_sec||'?') + 's' + (d._cached?' · cached':'') + '</div>';
+  h += '<div style="text-align:right;font-size:10px;font-weight:600;color:#cbd5e1;font-family:JetBrains Mono,monospace">market-why v4 · ' + E(sym) + ' · ' + (d.elapsed_sec||'?') + 's' + (d._cached?' · cached':'') + '</div>';
   return h;
 };
 

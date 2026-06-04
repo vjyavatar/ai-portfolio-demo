@@ -27441,7 +27441,7 @@ def _mw_top_movers(region, limit=5):
 def _mw_build_prompt(symbol, region, ohlcv, vix_val, vix_regime, themes,
                      top_movers, bot_movers, asset_type, market_ohlcv,
                      news_titles=None):
-    """Build the Claude Haiku prompt — news-aware for stock-specific context."""
+    """Plain-English prompt — layman language, news-aware, specific numbers."""
     chg   = ohlcv.get("change_pct", 0)
     volr  = ohlcv.get("volume_ratio")
     gap   = ohlcv.get("gap_pct", 0)
@@ -27450,40 +27450,39 @@ def _mw_build_prompt(symbol, region, ohlcv, vix_val, vix_regime, themes,
     sma50 = ohlcv.get("above_sma50")
     sma200= ohlcv.get("above_sma200")
     direction = "fell" if chg < 0 else "rose"
-    vol_str   = f"{volr}x avg 20d volume" if volr else "volume data unavailable"
+    vol_str = f"{volr}x average (20-day)" if volr else "unavailable"
     ma_str = ""
-    if sma50  is not None: ma_str  = f"{'above' if sma50 else 'below'} 50-DMA"
-    if sma200 is not None: ma_str += f", {'above' if sma200 else 'below'} 200-DMA"
+    if sma50  is not None: ma_str  = f"{'above' if sma50 else 'below'} 50-day average"
+    if sma200 is not None: ma_str += f", {'above' if sma200 else 'below'} 200-day average"
     mkt_str = ""
     if market_ohlcv and asset_type not in ("INDEX",):
         mc = market_ohlcv.get("change_pct", 0)
-        mkt_str = f"Market ({'NIFTY' if region=='IN' else 'S&P 500'}) {'up' if mc>0 else 'down'} {abs(mc):.2f}% today. "
-    theme_str = ""
-    if themes:
-        theme_str = "Sectors: " + "; ".join(
-            f"{t['theme']} {'+' if t['avg_change_pct']>=0 else ''}{t['avg_change_pct']}%"
-            for t in themes[:4]) + ". "
-    movers_str = ""
-    if top_movers and asset_type == "INDEX":
-        g = ", ".join(m["symbol"] + " +" + str(m["change_pct"]) + "%" for m in top_movers[:3])
-        l = ", ".join(m["symbol"] + " " + str(m["change_pct"]) + "%" for m in bot_movers[:3])
-        movers_str = f"Gainers: {g}. Losers: {l}. "
+        mkt_str = (f"The overall market ({'NIFTY' if region=='IN' else 'S&P 500'}) is "
+                   f"{'UP' if mc>0 else 'DOWN'} {abs(mc):.2f}% today. ")
+    worst_sector = min(themes, key=lambda t: t["avg_change_pct"]) if themes else None
+    best_sector  = max(themes, key=lambda t: t["avg_change_pct"]) if themes else None
+    sector_str = ""
+    if worst_sector: sector_str += f"Worst sector today: {worst_sector['theme']} ({worst_sector['avg_change_pct']:+.1f}%). "
+    if best_sector:  sector_str += f"Best sector: {best_sector['theme']} ({best_sector['avg_change_pct']:+.1f}%). "
     news_str = ""
     if news_titles:
-        news_str = "Recent news: " + " | ".join(news_titles[:3]) + ". "
+        news_str = "Latest headlines: " + " | ".join(news_titles[:3]) + ". "
     prompt = (
-        f"Institutional analyst. {symbol} ({region}) {direction} {abs(chg):.2f}% today. "
-        f"Price: {close}. Gap: {gap:+.2f}%. Vol: {vol_str}. RSI: {rsi or 'N/A'}. "
-        f"Trend: {ma_str or 'N/A'}. VIX: {vix_val or 'N/A'} ({vix_regime}). "
-        f"{mkt_str}{theme_str}{movers_str}{news_str}"
-        f"Write EXACTLY 4 bullet points starting with '• '. "
-        f"1: Specific catalyst (cite news if available, else infer from data). "
-        f"2: Stock-specific or broad market move — cite evidence. "
-        f"3: Volume/conviction — what institutional intent this signals. "
-        f"4: Key price level and exact action (buy/avoid/watch). "
-        f"Max 15 words each. Real numbers required. Only output the 4 bullets."
+        f"You explain stocks to ordinary investors in very simple language. "
+        f"{symbol} {direction} {abs(chg):.2f}% today to {close}. "
+        f"Volume: {vol_str}. RSI: {rsi or 'N/A'} (above 70 = expensive/overbought, below 30 = cheap/oversold). "
+        f"Trend: {ma_str or 'N/A'}. VIX: {vix_val or 'N/A'} (market fear gauge). "
+        f"{mkt_str}{sector_str}{news_str}"
+        f"Write EXACTLY 5 bullet points starting with '• '. NO technical jargon. Plain English only. "
+        f"Point 1: In ONE sentence, the main real-world reason this stock moved (use news if available). "
+        f"Point 2: Is this a problem with JUST this stock or the whole market? Simple explanation. "
+        f"Point 3: Are big investors buying or selling? What the volume tells us in plain words. "
+        f"Point 4: Should a normal investor be worried, excited, or just watching? Why? "
+        f"Point 5: The ONE price level to watch — if it drops BELOW X, that is a danger sign. "
+        f"Each bullet max 20 words. Real numbers required. No markdown. Only output the 5 bullets."
     )
     return prompt
+
 
 
 
@@ -27585,61 +27584,75 @@ def _mw_deterministic_bullets(symbol, ohlcv, vix_val, vix_regime, themes,
     return bullets
 
 
-def _mw_fetch_news(yf_sym, max_items=6):
+def _mw_fetch_news(yf_sym, max_items=5):
     """Fetch recent news headlines for a symbol via yfinance.
-    Returns list of {title, publisher, link, ago, thumbnail}.
-    Gracefully returns [] on any failure.
+    Falls back to direct news source links when yfinance returns nothing.
+    Returns list of {title, publisher, link, ago, sentiment, is_fallback}.
     """
     try:
         import yfinance as yf
         from datetime import datetime, timedelta
+        # Strip .NS / .BO suffix for display symbol
+        display_sym = yf_sym.replace(".NS","").replace(".BO","").replace("^","")
         tk = yf.Ticker(yf_sym)
-        raw_news = getattr(tk, "news", None) or []
-        if callable(raw_news):
-            raw_news = raw_news()
+        raw_news = []
+        try:
+            raw = getattr(tk, "news", None)
+            if callable(raw): raw = raw()
+            raw_news = raw or []
+        except Exception:
+            raw_news = []
+
         items = []
         cutoff = datetime.now() - timedelta(days=4)
         for n in (raw_news or [])[:max_items * 2]:
-            if not isinstance(n, dict):
-                continue
-            title = n.get("title") or ""
-            if not title:
-                continue
+            if not isinstance(n, dict): continue
+            title = (n.get("title") or "").strip()
+            if not title: continue
             link  = n.get("link") or n.get("url") or ""
             pub   = n.get("publisher") or n.get("source") or ""
             ts    = n.get("providerPublishTime") or n.get("publishedAt") or 0
             pub_dt = datetime.fromtimestamp(int(ts)) if ts else None
-            if pub_dt and pub_dt < cutoff:
-                continue
-            # Human-readable time ago
+            if pub_dt and pub_dt < cutoff: continue
             if pub_dt:
                 delta = datetime.now() - pub_dt
-                if delta.total_seconds() < 3600:
-                    ago = f"{int(delta.total_seconds()//60)}m ago"
-                elif delta.days == 0:
-                    ago = f"{int(delta.total_seconds()//3600)}h ago"
-                else:
-                    ago = f"{delta.days}d ago"
+                if delta.total_seconds() < 3600:  ago = f"{int(delta.total_seconds()//60)}m ago"
+                elif delta.days == 0:              ago = f"{int(delta.total_seconds()//3600)}h ago"
+                else:                              ago = f"{delta.days}d ago"
             else:
                 ago = "recent"
-            # Sentiment hint from title keywords
-            title_lower = title.lower()
-            sentiment = ("negative" if any(w in title_lower for w in
-                         ["fall","fell","drop","decline","cut","downgrade","miss","concern",
-                          "warn","weak","sell","crash","plunge","slump","risk","fear"])
-                         else "positive" if any(w in title_lower for w in
-                         ["rise","gain","beat","upgrade","strong","buy","rally","surge",
-                          "record","high","growth","outperform","boost","jump"])
-                         else "neutral")
-            items.append({
-                "title":     title,
-                "publisher": pub,
-                "link":      link,
-                "ago":       ago,
-                "sentiment": sentiment,
-            })
-            if len(items) >= max_items:
-                break
+            tl = title.lower()
+            sentiment = ("negative" if any(w in tl for w in
+                ["fall","fell","drop","decline","cut","downgrade","miss","concern",
+                 "warn","weak","sell","crash","plunge","slump","risk","fear","loss"])
+                else "positive" if any(w in tl for w in
+                ["rise","gain","beat","upgrade","strong","buy","rally","surge",
+                 "record","high","growth","outperform","boost","jump","profit"])
+                else "neutral")
+            items.append({"title": title, "publisher": pub, "link": link,
+                          "ago": ago, "sentiment": sentiment, "is_fallback": False})
+            if len(items) >= max_items: break
+
+        # Fallback: if yfinance returned nothing, give direct clickable news source links
+        if not items:
+            items = [
+                {"title": f"Search {display_sym} news on Yahoo Finance",
+                 "publisher": "Yahoo Finance", "is_fallback": True, "ago": "live",
+                 "link": f"https://finance.yahoo.com/quote/{yf_sym}/news/",
+                 "sentiment": "neutral"},
+                {"title": f"View {display_sym} on FinViz — news + analyst ratings",
+                 "publisher": "FinViz", "is_fallback": True, "ago": "live",
+                 "link": f"https://finviz.com/quote.ashx?t={display_sym}",
+                 "sentiment": "neutral"},
+                {"title": f"Search {display_sym} on Google News",
+                 "publisher": "Google News", "is_fallback": True, "ago": "live",
+                 "link": f"https://news.google.com/search?q={display_sym}+stock",
+                 "sentiment": "neutral"},
+                {"title": f"Read {display_sym} analysis on Reuters",
+                 "publisher": "Reuters", "is_fallback": True, "ago": "live",
+                 "link": f"https://www.reuters.com/search/news?blob={display_sym}",
+                 "sentiment": "neutral"},
+            ]
         return items
     except Exception as _e:
         print(f"[MARKET-WHY NEWS] {type(_e).__name__}: {_e}")
@@ -27705,28 +27718,34 @@ def _mw_decision_verdict(ohlcv, themes, vix_val, vix_regime, asset_type, region)
     bear_score = len(bear)
     net = bull_score - bear_score
 
-    # Verdict decision tree
-    if chg <= -3 and volr < 0.8 and (above_200 or above_200 is None):
-        verdict, color, icon = "OPPORTUNITY", "#16a34a", "🎯"
-        reason = f"Sharp decline on low volume — likely profit-taking, not fundamentals. Watch for reversal."
-    elif chg <= -5 and volr >= 1.5:
+    # Verdict decision tree — RSI overbought is a key override
+    was_overbought = (rsi is not None and rsi >= 65)
+    low_vol_decline = (chg <= -3 and volr < 0.8 and (above_200 or above_200 is None))
+
+    if chg <= -5 and volr >= 1.5:
         verdict, color, icon = "AVOID", "#dc2626", "⛔"
-        reason = f"Heavy-volume selloff suggests institutional exit. Wait for stabilization."
+        reason = f"Big drop ({chg:.1f}%) on heavy volume — big investors are selling. Don't buy yet. Wait for the selling to stop."
+    elif chg <= -3 and was_overbought and chg > -6:
+        verdict, color, icon = "CAUTION", "#ea580c", "⚠️"
+        reason = f"Stock was overpriced before this drop (RSI {rsi}). This may be the start of a bigger pullback, not just a dip. Wait."
+    elif low_vol_decline and not was_overbought:
+        verdict, color, icon = "OPPORTUNITY", "#16a34a", "🎯"
+        reason = f"Stock fell sharply but on LOW volume — meaning big investors are NOT panic-selling. Likely a temporary dip. Watch for bounce."
     elif chg < 0 and (above_200 is False) and vix_regime in ("high", "elevated"):
         verdict, color, icon = "AVOID", "#dc2626", "⛔"
-        reason = "Broken long-term trend + elevated fear. Capital preservation first."
+        reason = "Below its long-term average price AND market fear is high. Two red flags. Protect your capital first."
     elif net >= 2 and chg > 0:
         verdict, color, icon = "OPPORTUNITY", "#16a34a", "🎯"
-        reason = "Multiple bullish factors aligned. Strength on broad support."
+        reason = "Most signals are positive. Strength is broad-based — not just one lucky stock. Trend is your friend here."
     elif net >= 1:
         verdict, color, icon = "WATCH", "#f59e0b", "👀"
-        reason = "More bulls than bears, but no decisive signal yet. Monitor key levels."
+        reason = "More good signs than bad, but no clear trigger yet. Set a price alert and check back tomorrow."
     elif net <= -2:
         verdict, color, icon = "CAUTION", "#ea580c", "⚠️"
-        reason = "Multiple bearish signals active. Reduce exposure or tighten stops."
+        reason = "Multiple warning signs. If you hold this, tighten your stop-loss. Not a good time to add more."
     else:
         verdict, color, icon = "WATCH", "#f59e0b", "👀"
-        reason = "Mixed signals — no clear directional edge. Wait for confirmation."
+        reason = "Mixed signals — the market hasn't made up its mind yet. No clear entry or exit. Monitor key price levels."
 
     # Conviction (1-5 stars based on signal count)
     total_signals = bull_score + bear_score
