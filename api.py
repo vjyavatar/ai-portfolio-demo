@@ -9069,7 +9069,7 @@ def _suggest_expiry(candidate, vix_zone, direction):
     }
 
 
-
+def _score_directional_ticker(symbol, region, benchmark_ret_20d):
     """Compute CE/PE directional score for one ticker. Sync — runs in executor.
 
     Returns dict with:
