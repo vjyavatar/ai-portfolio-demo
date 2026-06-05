@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.101.1";
-window.CELESYS_BUILD_TIME = 1780627200;
-window.CELESYS_BUILD_DATE = "2026-06-05 00:00:00 UTC";
+window.CELESYS_VERSION = "r63.101.2";
+window.CELESYS_BUILD_TIME = 1780630800;
+window.CELESYS_BUILD_DATE = "2026-06-05 01:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12744,84 +12744,158 @@ window._loadDirectionalOptions = function() {
 };
 
 window._renderDirectionalOptions = function(d) {
+  var E = window._esc || function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
   var h = '';
-  // ───── Header ─────
+  var vc = d.vix_context || {};
+  var zone = vc.zone || {};
+  var cs   = vc.combined_signal || {};
+
+  // ═══ VIX ZONE BANNER ════════════════════════════════════════════════════
+  var vixVal = vc.vix_value;
+  var zColor = zone.color || '#94a3b8';
+  if (vixVal != null) {
+    var zBg = zone.zone_code === 'BELOW_12'   ? 'linear-gradient(135deg,#e0f2fe,#bae6fd)'
+            : zone.zone_code === '12_TO_15'   ? 'linear-gradient(135deg,#f0fdf4,#bbf7d0)'
+            : zone.zone_code === '15_TO_18'   ? 'linear-gradient(135deg,#f7fee7,#d9f99d)'
+            : zone.zone_code === '18_TO_22'   ? 'linear-gradient(135deg,#fffbeb,#fde68a)'
+            : zone.zone_code === '22_TO_30'   ? 'linear-gradient(135deg,#fff7ed,#fed7aa)'
+            : 'linear-gradient(135deg,#fef2f2,#fecaca)';
+    h += '<div style="background:' + zBg + ';border:2px solid ' + zColor + ';border-radius:14px;padding:16px 20px;margin-bottom:14px">';
+    // Top row: VIX value + zone name + action
+    h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px">';
+    h += '<div>';
+    h += '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#64748b;margin-bottom:4px">' + E(vc.vix_symbol || 'VIX') + ' · OPTION BUYER ENVIRONMENT</div>';
+    h += '<div style="display:flex;align-items:center;gap:14px">';
+    h += '<div style="font-size:44px;font-weight:900;color:' + zColor + ';font-family:JetBrains Mono,monospace;line-height:1">' + vixVal + '</div>';
+    h += '<div>';
+    h += '<div style="font-size:18px;font-weight:900;color:' + zColor + ';font-family:Sora,sans-serif">' + E(zone.emoji||'') + ' ' + E(zone.zone_name||'') + '</div>';
+    h += '<div style="font-size:12px;font-weight:700;color:' + E(zone.vix_trend_color||'#64748b') + ';margin-top:3px">' + E(zone.vix_trend_label||'') + ' (' + (vc.vix_trend_pct!=null?(vc.vix_trend_pct>0?'+':'')+vc.vix_trend_pct.toFixed(1)+'% vs 5d avg':'?') + ')</div>';
+    h += '</div></div></div>';
+    // Right: action + position sizing
+    h += '<div style="text-align:right">';
+    h += '<div style="font-size:14px;font-weight:900;color:' + zColor + ';margin-bottom:6px">' + E(zone.action_label||'') + '</div>';
+    h += '<div style="background:' + zColor + ';color:#fff;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:900;display:inline-block">';
+    var psIcon = zone.position_sizing==='FULL'?'💰 FULL SIZE':zone.position_sizing==='HALF'?'⚖️ HALF SIZE':zone.position_sizing==='QUARTER'?'🔸 QUARTER SIZE':'❌ AVOID BUYING';
+    h += psIcon + '</div></div></div>';
+    // Description
+    h += '<div style="font-size:13px;font-weight:600;color:#374151;line-height:1.6;margin-bottom:10px">' + E(zone.description||'') + '</div>';
+    // VIX trend note
+    if (zone.trend_note) {
+      h += '<div style="padding:8px 14px;background:rgba(255,255,255,0.6);border-radius:8px;font-size:12px;font-weight:700;color:' + E(zone.trend_note_color||'#374151') + '">' + E(zone.trend_note) + '</div>';
+    }
+    // VIX zones quick guide
+    h += '<details style="margin-top:10px"><summary style="cursor:pointer;font-size:11px;font-weight:700;color:' + zColor + '">📖 VIX Zone Guide</summary>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:6px;margin-top:8px">';
+    var zones = [
+      {r:'<12', lbl:'Cheap Premiums', c:'#0ea5e9', act:'✅ Buy — great R:R'},
+      {r:'12–15', lbl:'IDEAL ZONE', c:'#22c55e', act:'✅ Best for directional'},
+      {r:'15–18', lbl:'Momentum', c:'#84cc16', act:'✅ Selective buying'},
+      {r:'18–22', lbl:'Elevated', c:'#f59e0b', act:'⚠️ High conviction only'},
+      {r:'22–30', lbl:'Fear', c:'#ea580c', act:'⚠️ Small size, fast exit'},
+      {r:'>30', lbl:'PANIC', c:'#dc2626', act:'❌ Avoid / Sell instead'},
+    ];
+    zones.forEach(function(z){
+      var active = (vixVal != null &&
+        ((z.r==='<12' && vixVal<12) || (z.r==='12–15' && vixVal>=12 && vixVal<15) ||
+         (z.r==='15–18' && vixVal>=15 && vixVal<18) || (z.r==='18–22' && vixVal>=18 && vixVal<22) ||
+         (z.r==='22–30' && vixVal>=22 && vixVal<30) || (z.r==='>30' && vixVal>=30)));
+      h += '<div style="padding:7px 10px;background:' + (active?z.c+'22':'rgba(255,255,255,0.5)') + ';border:1px solid ' + (active?z.c:'#e2e8f0') + ';border-radius:8px">';
+      h += '<div style="font-size:10px;font-weight:800;color:' + z.c + '">' + z.r + (active?' ← YOU ARE HERE':'') + '</div>';
+      h += '<div style="font-size:10px;font-weight:700;color:#374151">' + z.act + '</div></div>';
+    });
+    h += '</div></details>';
+    h += '</div>';
+  }
+
+  // ═══ COMBINED PRICE+VIX SIGNAL ══════════════════════════════════════════
+  if (cs.signal) {
+    var csColor = cs.color || '#64748b';
+    h += '<div style="background:#fff;border:1px solid ' + csColor + '40;border-left:4px solid ' + csColor + ';border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px">';
+    h += '<div style="font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8;flex-shrink:0">PRICE+VIX</div>';
+    h += '<div><span style="font-size:15px;font-weight:900;color:' + csColor + '">' + E(cs.signal) + '</span>';
+    h += '<span style="font-size:12px;font-weight:600;color:#374151;margin-left:10px">' + E(cs.desc||'') + '</span></div></div>';
+  }
+
+  // ═══ Scanner header ══════════════════════════════════════════════════════
   h += '<div style="background:linear-gradient(135deg,#7c3aed15,#fff);border:2px solid #7c3aed;border-radius:12px;padding:14px 18px;margin-bottom:12px">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">';
-  h += '<div><div style="font-size:10px;font-weight:800;color:#7c3aed;letter-spacing:0.8px">🎯 ' + (d.region || '?') + " · CE BUY / PE BUY SCANNER</div>";
-  h += '<div style="font-size:16px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-top:2px">' + (d.ce_passing_count || 0) + ' CE candidates · ' + (d.pe_passing_count || 0) + ' PE candidates</div></div>';
+  h += '<div><div style="font-size:10px;font-weight:800;color:#7c3aed;letter-spacing:0.8px">🎯 ' + E(d.region||'?') + " · CE BUY / PE BUY SCANNER</div>";
+  h += '<div style="font-size:16px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif;margin-top:2px">' + (d.ce_passing_count||0) + ' CE candidates · ' + (d.pe_passing_count||0) + ' PE candidates</div></div>';
   h += '<div style="text-align:right;font-size:10px;color:#64748b">';
-  h += 'Scanned <strong>' + (d.scored_count || 0) + '/' + (d.universe_size || 0) + '</strong> tickers<br/>';
-  h += 'Min score: <strong>' + (d.min_score_filter || 0) + '/100</strong>';
-  if (d.benchmark_ret_20d_pct !== null && d.benchmark_ret_20d_pct !== undefined) {
+  h += 'Scanned <strong>' + (d.scored_count||0) + '/' + (d.universe_size||0) + '</strong> tickers<br/>';
+  h += 'Min score: <strong>' + (d.min_score_filter||0) + '/100</strong>';
+  if (d.benchmark_ret_20d_pct != null) {
     var bc = d.benchmark_ret_20d_pct >= 0 ? '#10b981' : '#dc2626';
-    h += '<br/>Benchmark ' + (d.benchmark || '?') + ' 20d: <strong style="color:' + bc + '">' + (d.benchmark_ret_20d_pct > 0 ? '+' : '') + d.benchmark_ret_20d_pct + '%</strong>';
+    h += '<br/>Benchmark ' + E(d.benchmark||'?') + ' 20d: <strong style="color:' + bc + '">' + (d.benchmark_ret_20d_pct>0?'+':'') + d.benchmark_ret_20d_pct + '%</strong>';
   }
   h += '</div></div></div>';
 
   // ───── Helper to render a candidate row ─────
   function renderCandidate(c, side) {
-    var color = side === 'CE' ? '#10b981' : '#dc2626';
-    var bg = side === 'CE' ? '#ecfdf5' : '#fef2f2';
+    var color  = side === 'CE' ? '#10b981' : '#dc2626';
+    var bg     = side === 'CE' ? '#ecfdf5' : '#fef2f2';
     var border = side === 'CE' ? '#6ee7b7' : '#fca5a5';
-    var ind = c.indicators || {};
+    var ind  = c.indicators || {};
     var hint = c.options_hint || {};
+    var grade = c.grade || 'B';
+    var gradeColor = grade==='A' ? '#16a34a' : grade==='B' ? '#d97706' : '#ea580c';
+    var gradeBg    = grade==='A' ? '#f0fdf4'  : grade==='B' ? '#fffbeb'  : '#fff7ed';
     var html = '';
-    html += '<div style="background:#fff;border:1px solid ' + border + ';border-left:4px solid ' + color + ';border-radius:8px;padding:12px 14px;margin-bottom:8px">';
-    // Top row: symbol + score + price
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">';
-    html += '<div>';
-    html += '<span style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + c.symbol + '</span>';
-    // Index badge + name
+    html += '<div style="background:#fff;border:1px solid ' + border + ';border-left:4px solid ' + color + ';border-radius:10px;padding:12px 14px;margin-bottom:10px">';
+    // Top row: symbol + grade badge + score
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
+    html += '<div style="display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:16px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(c.symbol) + '</span>';
     if (c.is_index) {
-      html += ' <span style="font-size:9px;font-weight:700;color:#7c3aed;background:#f3e8ff;border:1px solid #c4b5fd;border-radius:4px;padding:1px 6px;vertical-align:middle">INDEX</span>';
-      if (c.index_name && c.index_name !== c.symbol) {
-        html += ' <span style="font-size:10px;color:#64748b;margin-left:4px">' + c.index_name + '</span>';
-      }
-    } else {
-      html += ' <span style="font-size:10px;color:#64748b;margin-left:6px">' + (c.sector || '?') + '</span>';
+      html += '<span style="font-size:9px;font-weight:700;color:#7c3aed;background:#f3e8ff;border:1px solid #c4b5fd;border-radius:4px;padding:1px 6px">INDEX</span>';
     }
+    // Grade A/B/C badge
+    html += '<span style="font-size:11px;font-weight:900;color:' + gradeColor + ';background:' + gradeBg + ';border:1px solid ' + gradeColor + '40;border-radius:6px;padding:3px 10px">GRADE ' + grade + '</span>';
+    html += '<span style="font-size:10px;color:#64748b">' + E(c.sector||'?') + '</span>';
     html += '</div>';
     html += '<div style="display:flex;align-items:center;gap:10px">';
-    html += '<span style="font-size:10px;color:#64748b">$' + (c.price || '?') + '</span>';
-    html += '<span style="font-size:9px;color:#64748b">' + c.signals_passed + '/7 checks</span>';
-    html += '<span style="font-size:18px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;background:' + bg + ';padding:2px 10px;border-radius:6px">' + c.score + '</span>';
+    html += '<span style="font-size:11px;font-weight:600;color:#64748b">$' + E(String(c.price||'?')) + '</span>';
+    html += '<span style="font-size:10px;color:#64748b">' + (c.signals_passed||0) + '/7 ✓</span>';
+    html += '<span style="font-size:20px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;background:' + bg + ';padding:3px 12px;border-radius:7px">' + (c.score||0) + '</span>';
     html += '</div></div>';
-    // Indicator strip
-    html += '<div style="font-size:9px;color:#64748b;margin-bottom:6px;font-family:JetBrains Mono,monospace;display:flex;flex-wrap:wrap;gap:10px">';
-    if (ind.ema20 !== null && ind.ema20 !== undefined) html += '<span>EMA20: ' + ind.ema20 + '</span>';
-    if (ind.vwap20 !== null && ind.vwap20 !== undefined) html += '<span>VWAP: ' + ind.vwap20 + '</span>';
-    if (ind.rsi14 !== null && ind.rsi14 !== undefined) html += '<span>RSI: ' + ind.rsi14 + '</span>';
-    if (ind.adx14 !== null && ind.adx14 !== undefined) html += '<span>ADX: ' + ind.adx14 + '</span>';
-    if (ind.vol_ratio !== null && ind.vol_ratio !== undefined) html += '<span>Vol: ' + ind.vol_ratio + 'x</span>';
-    if (ind.rs_vs_bench_pct !== null && ind.rs_vs_bench_pct !== undefined) {
-      var rsc = ind.rs_vs_bench_pct >= 0 ? '#10b981' : '#dc2626';
-      html += '<span>RS: <strong style="color:' + rsc + '">' + (ind.rs_vs_bench_pct > 0 ? '+' : '') + ind.rs_vs_bench_pct + '%</strong></span>';
-    }
-    html += '</div>';
-    // Signals breakdown
-    html += '<details style="margin-bottom:6px"><summary style="cursor:pointer;font-size:10px;color:#5b21b6;font-weight:700">▸ 7-check breakdown</summary>';
-    html += '<ul style="margin:6px 0 0 0;padding-left:16px;font-size:10px;line-height:1.6">';
-    (c.signals || []).forEach(function(s) {
-      var icon = s.passed ? '✓' : '✗';
-      var sc = s.passed ? '#065f46' : '#94a3b8';
-      html += '<li style="color:' + sc + '"><strong>' + icon + ' ' + s.check + '</strong> <span style="color:#64748b">(' + s.weight + 'pt)</span> &mdash; ' + (s.detail || '') + '</li>';
-    });
-    html += '</ul></details>';
-    // Options hint
-    if (hint && hint.atm_strike_approx) {
-      var strikes = side === 'CE' ? (hint.ce_strikes_to_consider || []) : (hint.pe_strikes_to_consider || []);
-      var deltaTarget = side === 'CE' ? hint.delta_target_ce : hint.delta_target_pe;
-      html += '<div style="background:' + bg + ';border-radius:6px;padding:6px 10px;font-size:10px;color:#374151;line-height:1.5">';
-      html += '<strong style="color:' + color + '">📋 Strike hints:</strong> ';
-      html += 'ATM ≈ <strong>' + strikes[0] + '</strong>, slight OTM ≈ <strong>' + (strikes[1] || '?') + '</strong> &middot; ';
-      html += '<span style="color:#64748b">Target Δ ' + deltaTarget + ' &middot; DTE ' + hint.dte_target + ' &middot; IV rank ' + hint.iv_rank_target + '</span>';
+    // Action + Position Size bar
+    if (c.action) {
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:' + gradeBg + ';border:1px solid ' + gradeColor + '30;border-radius:8px;margin-bottom:8px;flex-wrap:wrap">';
+      html += '<span style="font-size:13px;font-weight:800;color:' + gradeColor + ';flex:1">' + E(c.action) + '</span>';
+      if (c.position_size) {
+        html += '<span style="font-size:11px;font-weight:900;color:#fff;background:' + gradeColor + ';border-radius:6px;padding:4px 10px;flex-shrink:0">' + E(c.position_size) + '</span>';
+      }
       html += '</div>';
+    }
+    // Technical signals grid
+    if (c.signals && c.signals.length) {
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:5px;margin-bottom:8px">';
+      c.signals.forEach(function(s){
+        var sc = s.passed ? '#16a34a' : '#94a3b8';
+        var sb = s.passed ? '#f0fdf4'  : '#f8fafc';
+        html += '<div style="background:' + sb + ';border:1px solid ' + sc + '30;border-radius:6px;padding:5px 8px;display:flex;align-items:center;gap:6px">';
+        html += '<span style="font-size:12px">' + (s.passed ? '✅' : '⬜') + '</span>';
+        html += '<div><div style="font-size:10px;font-weight:700;color:' + sc + '">' + E(s.check||'') + '</div>';
+        html += '<div style="font-size:9px;color:#94a3b8">' + E(s.detail||'') + '</div></div></div>';
+      });
+      html += '</div>';
+    }
+    // Options hint — expiry-aware
+    if (hint && hint.atm_strike_approx != null) {
+      var strikes = side === 'CE' ? (hint.ce_strikes_to_consider||[]) : (hint.pe_strikes_to_consider||[]);
+      var dTarget = side === 'CE' ? hint.delta_target_ce : hint.delta_target_pe;
+      html += '<div style="background:' + bg + ';border-radius:7px;padding:8px 12px;font-size:11px;color:#374151;line-height:1.6">';
+      html += '<strong style="color:' + color + '">📋 Strike hints:</strong> ';
+      html += 'ATM ≈ <strong>' + (strikes[0]||'?') + '</strong>, OTM ≈ <strong>' + (strikes[1]||'?') + '</strong> · ';
+      html += '<span style="color:#64748b">Target Δ ' + E(dTarget||'') + ' · DTE ' + E(hint.dte_target||'') + '</span>';
+      html += '</div>';
+    }
+    if (c.is_index && c.index_name && c.index_name !== c.symbol) {
+      html += '<div style="margin-top:5px;font-size:9px;color:#94a3b8">' + E(c.index_name) + '</div>';
     }
     html += '</div>';
     return html;
   }
-
   // ───── Two-column grid: CE left, PE right ─────
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
   // CE column

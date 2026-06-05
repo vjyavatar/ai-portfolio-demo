@@ -8484,6 +8484,251 @@ def _vwap_approx(closes, highs, lows, volumes, n=20):
     return sum(typical[i] * vols[i] for i in range(n)) / total_vol
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# VIX ENGINE FOR CE/PE SCANNER
+# Based on Vijay's algorithm: VIX zone + VIX trend + Grade A/B/C + action
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _scanner_fetch_vix(region):
+    """Fetch current VIX value + 5-day avg for trend detection.
+    Returns (current_vix, vix_5d_avg, vix_trend_pct) or (None, None, None).
+    vix_trend_pct: positive = VIX rising, negative = VIX falling.
+    """
+    vix_sym = "^INDIAVIX" if region == "IN" else "^VIX"
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(vix_sym)
+        hist = tk.history(period="10d", interval="1d", auto_adjust=True)
+        if hist is None or hist.empty or len(hist) < 2:
+            return None, None, None
+        closes = list(hist["Close"].dropna())
+        current = round(float(closes[-1]), 2)
+        avg5    = round(float(sum(closes[-5:]) / min(5, len(closes))), 2) if len(closes) >= 2 else current
+        trend   = round((current - avg5) / avg5 * 100, 2) if avg5 > 0 else 0.0
+        return current, avg5, trend
+    except Exception as _e:
+        print(f"[VIX-ENGINE] fetch error ({vix_sym}): {type(_e).__name__}: {_e}")
+        return None, None, None
+
+
+def _classify_vix_zone(vix_val, vix_trend_pct, region="US"):
+    """Classify VIX into action zone.
+    Returns dict: zone_name, zone_code, color, emoji, action_label,
+    max_grade, position_sizing, description, vix_trend_label, vix_trend_color.
+    """
+    if vix_val is None:
+        return {
+            "zone_name": "UNKNOWN", "zone_code": "UNKNOWN", "color": "#94a3b8",
+            "emoji": "❓", "action_label": "Verify VIX before trading",
+            "max_grade": "B", "position_sizing": "HALF",
+            "description": "VIX data unavailable — use caution",
+            "vix_trend_label": "?", "vix_trend_color": "#94a3b8",
+        }
+
+    # VIX trend
+    if vix_trend_pct is None: vix_trend_pct = 0
+    if vix_trend_pct > 5:     trend_label, trend_color = "RISING ↑", "#ef4444"
+    elif vix_trend_pct > 1:   trend_label, trend_color = "SLIGHTLY RISING ↑", "#f59e0b"
+    elif vix_trend_pct < -5:  trend_label, trend_color = "FALLING ↓", "#22c55e"
+    elif vix_trend_pct < -1:  trend_label, trend_color = "SLIGHTLY FALLING ↓", "#86efac"
+    else:                     trend_label, trend_color = "STABLE →", "#64748b"
+
+    # Zone classification
+    if vix_val < 12:
+        zone = {
+            "zone_name": "COMPRESSED", "zone_code": "BELOW_12", "color": "#0ea5e9",
+            "emoji": "✅",
+            "action_label": "BUY OPTIONS — CHEAP PREMIUMS",
+            "max_grade": "A",
+            "position_sizing": "FULL",
+            "description": (
+                "Premiums are cheap. Great time to buy ATM options before a breakout. "
+                "Risk-reward is favorable. Look for setup + breakout catalyst."
+            ),
+        }
+    elif vix_val < 15:
+        zone = {
+            "zone_name": "IDEAL", "zone_code": "12_TO_15", "color": "#22c55e",
+            "emoji": "✅",
+            "action_label": "BEST ZONE — DIRECTIONAL BUYING",
+            "max_grade": "A",
+            "position_sizing": "FULL",
+            "description": (
+                "The sweet spot. Not too expensive, not too cheap. "
+                "Trends sustain. Professional traders prefer this zone for directional CE/PE buying."
+            ),
+        }
+    elif vix_val < 18:
+        zone = {
+            "zone_name": "MOMENTUM", "zone_code": "15_TO_18", "color": "#84cc16",
+            "emoji": "✅",
+            "action_label": "MOMENTUM TRADES — BE SELECTIVE",
+            "max_grade": "A",
+            "position_sizing": "FULL",
+            "description": (
+                "Momentum trades work well here. Premiums expanding faster — "
+                "be selective, avoid holding losers. Exit faster than normal."
+            ),
+        }
+    elif vix_val < 22:
+        zone = {
+            "zone_name": "ELEVATED", "zone_code": "18_TO_22", "color": "#f59e0b",
+            "emoji": "⚠️",
+            "action_label": "HIGH CONVICTION ONLY — REDUCE SIZE",
+            "max_grade": "B",
+            "position_sizing": "HALF",
+            "description": (
+                "Premiums already expensive. Wrong direction = rapid losses. "
+                "Only trade Grade A/B setups with strong trend + volume. No random entries."
+            ),
+        }
+    elif vix_val < 30:
+        zone = {
+            "zone_name": "FEAR", "zone_code": "22_TO_30", "color": "#ea580c",
+            "emoji": "⚠️",
+            "action_label": "VERY CAUTIOUS — SMALL SIZE ONLY",
+            "max_grade": "B",
+            "position_sizing": "QUARTER",
+            "description": (
+                "Fear present, violent swings. Options extremely expensive. "
+                "IV crush risk: even a correct move may produce smaller gains if VIX drops. "
+                "If VIX is FALLING here, premium gains will disappoint."
+            ),
+        }
+    else:
+        zone = {
+            "zone_name": "PANIC", "zone_code": "ABOVE_30", "color": "#dc2626",
+            "emoji": "❌",
+            "action_label": "AVOID FRESH BUYING — CONSIDER SELLING",
+            "max_grade": "C",
+            "position_sizing": "AVOID",
+            "description": (
+                "Panic / crisis environment. Premiums inflated beyond reason. "
+                "IV crush will destroy premium even on correct direction. "
+                "Professionals SELL options here rather than buy."
+            ),
+        }
+
+    zone["vix_trend_label"] = trend_label
+    zone["vix_trend_color"] = trend_color
+    zone["vix_trend_pct"]   = vix_trend_pct
+
+    # Override: rising VIX is BULLISH for option buyers (premium expansion)
+    # Falling VIX is DANGEROUS (IV crush) even if direction is right
+    if vix_trend_pct and vix_trend_pct > 3 and vix_val < 25:
+        zone["trend_note"] = "⚡ Rising VIX = premium expansion — good for buyers RIGHT NOW"
+        zone["trend_note_color"] = "#22c55e"
+    elif vix_trend_pct and vix_trend_pct < -3:
+        zone["trend_note"] = "⚠ Falling VIX = IV crush risk — options may not gain even if price moves"
+        zone["trend_note_color"] = "#ef4444"
+    else:
+        zone["trend_note"] = None
+        zone["trend_note_color"] = None
+
+    return zone
+
+
+def _grade_setup(ticker_result, vix_zone):
+    """Assign Grade A / B / C to a CE or PE candidate based on VIX + technical signals.
+
+    Grade A: VIX 12-18 + ADX>20 + Volume expansion + VWAP alignment + Breakout
+    Grade B: VIX 18-22 + Strong trend (at least 5/7 signals)
+    Grade C: VIX>22 (trade smaller, exit faster)
+
+    Returns dict: ce_grade, pe_grade, ce_action, pe_action,
+    ce_position_size, pe_position_size.
+    """
+    vix_code    = vix_zone.get("zone_code", "UNKNOWN")
+    max_grade   = vix_zone.get("max_grade", "B")
+    pos_sizing  = vix_zone.get("position_sizing", "HALF")
+    ind         = ticker_result.get("indicators", {})
+    ce_sigs     = ticker_result.get("ce_signals_passed", 0)
+    pe_sigs     = ticker_result.get("pe_signals_passed", 0)
+    ce_score    = ticker_result.get("ce_score", 0)
+    pe_score    = ticker_result.get("pe_score", 0)
+    adx         = ind.get("adx14")
+    vol_ratio   = ind.get("vol_ratio")
+    has_vol     = (vol_ratio is not None and vol_ratio > 1.5)
+    has_adx     = (adx is not None and adx > 20)
+
+    def _assign_grade(score, sigs):
+        if max_grade == "C" or vix_code == "ABOVE_30":
+            return "C"
+        if vix_code in ("BELOW_12", "12_TO_15", "15_TO_18"):
+            # Ideal zone — Grade based on setup quality
+            if score >= 80 and sigs >= 5 and has_vol and has_adx:
+                return "A"
+            elif score >= 65 and sigs >= 4:
+                return "A" if has_adx else "B"
+            else:
+                return "B"
+        elif vix_code in ("18_TO_22", "22_TO_30"):
+            # Elevated zone — max Grade B
+            if score >= 80 and sigs >= 5 and has_vol and has_adx:
+                return "B"
+            return "B" if score >= 65 else "C"
+        return "B"
+
+    def _grade_to_action(grade, direction, score):
+        if vix_code == "ABOVE_30":
+            return f"❌ AVOID {direction} — VIX PANIC ZONE"
+        if grade == "A":
+            return f"✅ AGGRESSIVE {direction} — Grade A Setup"
+        if grade == "B":
+            if vix_code in ("18_TO_22",):
+                return f"⚠️ {direction} — HIGH CONVICTION ONLY"
+            return f"✅ {direction} — Grade B (Reduce size slightly)"
+        return f"⚠️ SMALL SIZE {direction} — Grade C (Volatile environment)"
+
+    def _grade_to_position(grade):
+        if pos_sizing == "AVOID":        return "❌ AVOID"
+        if pos_sizing == "QUARTER":      return "25% SIZE"
+        if pos_sizing == "HALF":
+            return "50% SIZE" if grade == "B" else "25% SIZE"
+        # FULL zone
+        if grade == "A":   return "FULL SIZE"
+        if grade == "B":   return "75% SIZE"
+        return "50% SIZE"
+
+    ce_grade = _assign_grade(ce_score, ce_sigs)
+    pe_grade = _assign_grade(pe_score, pe_sigs)
+
+    return {
+        "ce_grade":         ce_grade,
+        "pe_grade":         pe_grade,
+        "ce_action":        _grade_to_action(ce_grade, "CE BUY", ce_score),
+        "pe_action":        _grade_to_action(pe_grade, "PE BUY", pe_score),
+        "ce_position_size": _grade_to_position(ce_grade),
+        "pe_position_size": _grade_to_position(pe_grade),
+    }
+
+
+def _price_vix_combined_signal(price_change_pct, vix_trend_pct):
+    """Combined Price + VIX direction interpretation.
+    price_change_pct: today's benchmark change (positive = market up)
+    vix_trend_pct: VIX trend vs 5d avg (positive = VIX rising)
+    """
+    price_up = price_change_pct is not None and price_change_pct > 0.2
+    price_dn = price_change_pct is not None and price_change_pct < -0.2
+    vix_up   = vix_trend_pct is not None and vix_trend_pct > 1
+    vix_dn   = vix_trend_pct is not None and vix_trend_pct < -1
+
+    if price_up and vix_dn:
+        return {"signal": "HEALTHY BULL", "color": "#22c55e",
+                "desc": "Price UP + VIX falling = strong bull trend. CE buyers in control."}
+    if price_up and vix_up:
+        return {"signal": "EXPLOSIVE BULL", "color": "#16a34a",
+                "desc": "Price UP + VIX rising = strong momentum. Premium expansion helps CE buyers."}
+    if price_dn and vix_up:
+        return {"signal": "PANIC SELLOFF", "color": "#ef4444",
+                "desc": "Price DOWN + VIX rising = fear-driven selloff. PE buyers profitable BUT IV crush on exit."}
+    if price_dn and vix_dn:
+        return {"signal": "WEAK DECLINE", "color": "#f59e0b",
+                "desc": "Price DOWN + VIX falling = low-conviction drop. PE profits may disappoint due to IV contraction."}
+    return {"signal": "NEUTRAL", "color": "#64748b",
+            "desc": "No clear combined signal. Price and VIX moving in alignment."}
+
+
 def _score_directional_ticker(symbol, region, benchmark_ret_20d):
     """Compute CE/PE directional score for one ticker. Sync — runs in executor.
 
@@ -8781,7 +9026,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     t0 = _time.time()
     universe = _INST_PICKS_UNIVERSE.get(region, _INST_PICKS_UNIVERSE["US"])
 
-    # ───────── Fetch benchmark 20d return for RS calc ─────────
+    # ───────── Fetch VIX + benchmark in parallel ─────────
     try:
         import yfinance as yf
         try: _yahoo_rate_wait()
@@ -8792,18 +9037,26 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
             try:
                 bh = yf.Ticker(bench_sym).history(period="2mo", interval="1d", auto_adjust=True)
                 if bh is None or bh.empty or len(bh) < 21:
-                    return None
+                    return None, None
                 bcl = list(bh["Close"].dropna())
                 if len(bcl) < 21:
-                    return None
-                return (bcl[-1] - bcl[-21]) / bcl[-21] * 100 if bcl[-21] > 0 else None
+                    return None, None
+                ret = (bcl[-1] - bcl[-21]) / bcl[-21] * 100 if bcl[-21] > 0 else None
+                today_chg = (bcl[-1] - bcl[-2]) / bcl[-2] * 100 if len(bcl) >= 2 and bcl[-2] > 0 else None
+                return ret, today_chg
             except Exception:
-                return None
+                return None, None
 
         _lp = _aio.get_event_loop()
-        benchmark_ret_20d = await _lp.run_in_executor(None, _bench_ret)
+        (benchmark_ret_20d, benchmark_today_chg) = await _lp.run_in_executor(None, _bench_ret)
+        vix_val, vix_5d_avg, vix_trend_pct = await _lp.run_in_executor(
+            None, _scanner_fetch_vix, region)
     except ImportError:
         return {"success": False, "error": "yfinance not available"}
+
+    # Classify VIX zone + combined signal
+    vix_zone          = _classify_vix_zone(vix_val, vix_trend_pct, region)
+    combined_signal   = _price_vix_combined_signal(benchmark_today_chg, vix_trend_pct)
 
     # ───────── Score each ticker (sequential for rate-limit safety) ─────────
     results = []
@@ -8825,19 +9078,26 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     pe_passing.sort(key=lambda x: (-x["pe_score"], -x["pe_signals_passed"]))
 
     def _strip_for_response(r, direction):
-        """Trim irrelevant signals for either CE or PE side."""
+        """Trim irrelevant signals and add VIX grade + action."""
         relevant_signals = r["ce_signals"] if direction == "CE" else r["pe_signals"]
+        grading = _grade_setup(r, vix_zone)
         row = {
-            "symbol": r["symbol"], "yf_sym": r["yf_sym"], "sector": r["sector"],
-            "price": r["price"],
-            "score": r["ce_score"] if direction == "CE" else r["pe_score"],
+            "symbol":         r["symbol"],
+            "yf_sym":         r["yf_sym"],
+            "sector":         r["sector"],
+            "price":          r["price"],
+            "score":          r["ce_score"] if direction == "CE" else r["pe_score"],
             "signals_passed": r["ce_signals_passed"] if direction == "CE" else r["pe_signals_passed"],
-            "signals": relevant_signals,
-            "indicators": r["indicators"],
-            "options_hint": r["options_hint"],
+            "signals":        relevant_signals,
+            "indicators":     r["indicators"],
+            "options_hint":   r["options_hint"],
+            # VIX-graded action
+            "grade":          grading["ce_grade"] if direction == "CE" else grading["pe_grade"],
+            "action":         grading["ce_action"] if direction == "CE" else grading["pe_action"],
+            "position_size":  grading["ce_position_size"] if direction == "CE" else grading["pe_position_size"],
         }
         if r.get("is_index"):
-            row["is_index"] = True
+            row["is_index"]   = True
             row["index_name"] = r.get("index_name", r["symbol"])
         return row
 
@@ -8845,19 +9105,29 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     pe_top = [_strip_for_response(r, "PE") for r in pe_passing[:top_n]]
 
     out = {
-        "success": True, "region": region,
-        "benchmark": bench_sym,
+        "success":           True,
+        "region":            region,
+        "benchmark":         bench_sym,
         "benchmark_ret_20d_pct": round(benchmark_ret_20d, 2) if benchmark_ret_20d is not None else None,
-        "universe_size": len(universe),
-        "scored_count": len(results),
-        "excluded_count": len(excluded),
-        "min_score_filter": min_score,
-        "top_n": top_n,
+        "universe_size":     len(universe),
+        "scored_count":      len(results),
+        "excluded_count":    len(excluded),
+        "min_score_filter":  min_score,
+        "top_n":             top_n,
         "ce_buy_candidates": ce_top,
         "pe_buy_candidates": pe_top,
-        "ce_passing_count": len(ce_passing),
-        "pe_passing_count": len(pe_passing),
-        "excluded": excluded[:5],  # show first few for debugging
+        "ce_passing_count":  len(ce_passing),
+        "pe_passing_count":  len(pe_passing),
+        "excluded":          excluded[:5],
+        # VIX context — the whole point of this algorithm
+        "vix_context": {
+            "vix_value":       vix_val,
+            "vix_5d_avg":      vix_5d_avg,
+            "vix_trend_pct":   vix_trend_pct,
+            "vix_symbol":      "^INDIAVIX" if region == "IN" else "^VIX",
+            "zone":            vix_zone,
+            "combined_signal": combined_signal,
+        },
         "spec_ordering": [
             "1. Trend (EMA20, VWAP) — 35 pts",
             "2. Momentum (RSI) — 15 pts",
@@ -8866,13 +9136,13 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
             "5. Relative Strength vs Benchmark — 10 pts",
             "6. Breakout above 20d high / Breakdown below 20d low — 10 pts",
         ],
-        "_engine": "directional_options_scanner_v1",
-        "_data_quality": "yfinance OHLCV only — no real F&O Greeks (IV, delta, OI ∆) yet",
+        "_engine":       "directional_options_scanner_v2_vix_graded",
+        "_data_quality": "yfinance OHLCV + VIX — no real F&O Greeks (IV, delta, OI ∆) yet",
         "_future_inputs": [
-            "Real options chain via Upstox (IN F&O) — Greek per strike, IV rank vs 1y, OI ∆ — r99.44",
-            "US options chain via tradier / polygon — same metrics — r99.44+",
-            "5m / 15m intraday confirmation (ORB, gap analysis) — r99.45",
-            "Sector strength filter — only show CE if sector also bullish — r99.45",
+            "Real options chain via Upstox (IN F&O) — Greek per strike, IV rank vs 1y, OI ∆",
+            "US options chain via tradier / polygon",
+            "5m / 15m intraday confirmation (ORB, gap analysis)",
+            "Sector strength filter — only show CE if sector also bullish",
         ],
         "elapsed_sec": round(_time.time() - t0, 2),
     }
