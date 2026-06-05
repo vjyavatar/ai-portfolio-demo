@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.101.7";
-window.CELESYS_BUILD_TIME = 1780648800;
-window.CELESYS_BUILD_DATE = "2026-06-05 06:00:00 UTC";
+window.CELESYS_VERSION = "r63.101.8";
+window.CELESYS_BUILD_TIME = 1780652400;
+window.CELESYS_BUILD_DATE = "2026-06-05 07:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12761,6 +12761,37 @@ window._loadInstitutional360 = function() {
 };
 
 // ═══════════════════ ENGINE: MARKET WHY (Why Moving?) ════════════════════
+// ── Market Why region + quick-pick wiring ─────────────────────────────────
+window._engState = window._engState || {};
+window._engState.marketWhy = window._engState.marketWhy || { region: 'IN' };
+
+window._mktWhySetRegion = function(r) {
+  window._engState.marketWhy = window._engState.marketWhy || {};
+  window._engState.marketWhy.region = r;
+  var inBtn = document.getElementById('mktWhyRegIN');
+  var usBtn = document.getElementById('mktWhyRegUS');
+  var inQ   = document.getElementById('mktWhyQuickIN');
+  var usQ   = document.getElementById('mktWhyQuickUS');
+  if (r === 'IN') {
+    if (inBtn) { inBtn.style.background = 'linear-gradient(135deg,#16a34a,#15803d)'; inBtn.style.color = '#fff'; }
+    if (usBtn) { usBtn.style.background = '#fff'; usBtn.style.color = '#15803d'; }
+    if (inQ)   inQ.style.display = 'flex';
+    if (usQ)   usQ.style.display = 'none';
+  } else {
+    if (usBtn) { usBtn.style.background = 'linear-gradient(135deg,#1d4ed8,#1e40af)'; usBtn.style.color = '#fff'; }
+    if (inBtn) { inBtn.style.background = '#fff'; inBtn.style.color = '#15803d'; }
+    if (usQ)   usQ.style.display = 'flex';
+    if (inQ)   inQ.style.display = 'none';
+  }
+};
+
+window._mktWhyQuick = function(sym, region) {
+  var inp = document.getElementById('mktWhySym');
+  if (inp) inp.value = sym;
+  window._mktWhySetRegion(region);
+  window._loadMarketWhyEngine();
+};
+
 window._loadMarketWhyEngine = function() {
   return window._loadMarketWhyEngineImpl ? window._loadMarketWhyEngineImpl() : window._loadMarketWhyEngine_inner();
 };

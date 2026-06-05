@@ -28478,9 +28478,25 @@ async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0
         "NDX": "^NDX", "NASDAQ": "QQQ",
         "DJI": "^DJI", "DOW": "DIA",
         "INDIAVIX": "^INDIAVIX", "VIXINDIA": "^INDIAVIX",
+        # Crypto — always USD pairs, never .NS
+        "BTC": "BTC-USD", "BITCOIN": "BTC-USD",
+        "ETH": "ETH-USD", "ETHEREUM": "ETH-USD",
+        "BNB": "BNB-USD", "SOL": "SOL-USD",
+        "XRP": "XRP-USD", "DOGE": "DOGE-USD",
+        "ADA": "ADA-USD", "MATIC": "MATIC-USD",
+        # US ETFs / always-US symbols
+        "SPY": "SPY", "QQQ": "QQQ", "IWM": "IWM",
+        "GLD": "GLD", "SLV": "SLV", "USO": "USO",
+        "VIX": "^VIX",
     }
+    # Symbols that must never get .NS appended (crypto, US ETFs, indices)
+    _NO_NS_SUFFIX = {
+        s for s in _ALIASES.values()
+        if s.startswith("^") or s.endswith("-USD") or s in ("SPY","QQQ","IWM","GLD","SLV","USO","DIA")
+    } | set(_ALIASES.values())
     yf_sym = _ALIASES.get(symbol, symbol)
-    if region == "IN" and not yf_sym.startswith("^") and "." not in yf_sym and yf_sym not in _INDEX_SYMBOLS:
+    if region == "IN" and not yf_sym.startswith("^") and "." not in yf_sym \
+            and yf_sym not in _INDEX_SYMBOLS and yf_sym not in _NO_NS_SUFFIX:
         yf_sym = f"{yf_sym}.NS"
 
     # Cache check
