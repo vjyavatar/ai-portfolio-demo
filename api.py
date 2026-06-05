@@ -8729,6 +8729,200 @@ def _price_vix_combined_signal(price_change_pct, vix_trend_pct):
             "desc": "No clear combined signal. Price and VIX moving in alignment."}
 
 
+def _build_trade_ticket(candidate, direction, vix_zone, region):
+    """Build a complete actionable trade ticket for a CE or PE candidate.
+
+    Uses VIX as an IV proxy to estimate ATM option premium.
+    Formula: premium ≈ spot × (VIX/100) × sqrt(DTE/252)
+    This is a Black-Scholes ATM approximation — close enough for guidance.
+
+    Returns dict with: entry_strike, premium_est, stop_loss_pct,
+    stop_loss_trigger, target_pct, target_trigger, breakeven,
+    max_risk_per_lot, rrr, hold_time, lot_size, currency,
+    trade_summary (one-line actionable string).
+    """
+    import math
+    spot  = candidate.get("price") or candidate.get("indicators", {}).get("close")
+    if not spot or spot <= 0:
+        return {}
+
+    hint    = candidate.get("options_hint") or {}
+    vix_val = (vix_zone.get("vix_value") or 16)  # fallback to neutral VIX
+    grade   = candidate.get("grade", "B")
+    zone_cd = vix_zone.get("zone_code", "12_TO_15")
+
+    # Get lot size and strike gap from hint (populated by _SCANNER_CATALOGUE)
+    lot       = hint.get("lot_size", 100 if region == "US" else 1)
+    gap       = hint.get("strike_gap", 1 if region == "US" else 50)
+    currency  = hint.get("currency", "USD" if region == "US" else "INR")
+    sym_disp  = "₹" if currency == "INR" else "$"
+    dte       = hint.get("dte") or (7 if region == "IN" else 14)
+
+    # ATM strike rounded to gap
+    atm = round(spot / gap) * gap if gap > 0 else round(spot)
+    entry_strike = atm if direction == "CE" else atm  # ATM for both
+
+    # Premium estimate — ATM approximation using VIX as IV proxy
+    # ATM ≈ spot × IV × sqrt(DTE/252)  [IV = VIX/100 for annual, daily drift]
+    iv_annual = (vix_val / 100) if vix_val else 0.15
+    premium_est = round(spot * iv_annual * math.sqrt(max(dte, 1) / 252), 2)
+    premium_est = max(premium_est, round(spot * 0.003, 2))  # floor: 0.3% of spot
+
+    # Risk/reward based on grade
+    if grade == "A":
+        sl_pct      = 30    # exit if option loses 30% of premium
+        target_mult = 2.5   # target = 2.5× entry premium
+        rrr         = "1:2.5"
+    elif grade == "B":
+        sl_pct      = 35
+        target_mult = 1.8
+        rrr         = "1:1.8"
+    else:
+        sl_pct      = 40
+        target_mult = 1.4
+        rrr         = "1:1.4"
+
+    # VIX zone adjustments
+    if zone_cd in ("22_TO_30", "ABOVE_30"):
+        sl_pct     = max(sl_pct - 5, 20)   # tighter SL in high VIX
+        target_mult = min(target_mult, 1.5)  # faster profit-taking
+        rrr        = "1:1.5 (VIX elevated — exit faster)"
+
+    sl_premium    = round(premium_est * (1 - sl_pct/100), 2)
+    target_premium= round(premium_est * target_mult, 2)
+    max_risk_lot  = round(premium_est * lot, 2)
+    target_pnl_lot= round((target_premium - premium_est) * lot, 2)
+
+    # Breakeven = how much underlying must move for option to be profitable at expiry
+    # For ATM: breakeven move ≈ premium / spot × 100%
+    breakeven_move_pct = round(premium_est / spot * 100, 2)
+    if direction == "CE":
+        breakeven_price = round(entry_strike + premium_est, 2)
+        target_price    = round(entry_strike + premium_est * target_mult, 2)
+    else:
+        breakeven_price = round(entry_strike - premium_est, 2)
+        target_price    = round(entry_strike - premium_est * target_mult, 2)
+
+    # Hold time recommendation based on VIX zone + DTE
+    if zone_cd in ("BELOW_12", "12_TO_15"):
+        hold_time = f"Up to {min(dte, 5)} trading days — premiums cheap, give room"
+    elif zone_cd == "15_TO_18":
+        hold_time = f"2-3 days max — exit before theta accelerates"
+    elif zone_cd in ("18_TO_22",):
+        hold_time = f"1-2 days — expensive, take profits faster"
+    else:
+        hold_time = "Intraday or next session only — VIX too high for holding"
+
+    # IV crush warning
+    iv_crush_risk = (vix_zone.get("vix_trend_pct") or 0) < -3
+
+    # One-line trade summary
+    sym  = candidate.get("symbol", "?")
+    expiry = hint.get("next_expiry", "next expiry")
+    trade_summary = (
+        f"BUY {sym} {entry_strike} {direction} "
+        f"@ ~{sym_disp}{premium_est} | "
+        f"SL: {sym_disp}{sl_premium} (-{sl_pct}%) | "
+        f"Target: {sym_disp}{target_premium} (+{round((target_mult-1)*100)}%) | "
+        f"Expiry: {expiry} | Lot {lot} → Max risk {sym_disp}{max_risk_lot:,.0f}"
+    )
+
+    # ── Entry guidance — price-level specific, plain English ───────────────
+    ind    = candidate.get("indicators", {})
+    ema20  = ind.get("ema20")
+    vwap20 = ind.get("vwap20")
+    adx    = ind.get("adx14")
+    vol    = ind.get("vol_ratio") or 1.0
+    h20d   = ind.get("high_20d")
+    l20d   = ind.get("low_20d")
+
+    if direction == "CE":
+        if ema20 and spot:
+            dist = (spot - ema20) / ema20 * 100
+            if dist <= 0.5 and vol >= 1.5 and adx and adx > 20:
+                entry_guidance = (f"ENTER NOW — price at EMA20 ({sym_disp}{ema20:.0f}) "
+                                  f"with strong volume ({vol:.1f}x) and ADX {adx:.0f}. Ideal entry.")
+            elif dist <= 0.5:
+                entry_guidance = (f"ENTER NOW or on slight dip to EMA20 at {sym_disp}{ema20:.0f}. "
+                                  f"Price at support — tight risk, clean setup.")
+            elif dist <= 2.0:
+                entry_guidance = (f"Good entry. Price {dist:.1f}% above EMA20. "
+                                  f"Better entry: wait for minor dip to {sym_disp}{ema20:.0f}.")
+            elif dist <= 4.0:
+                entry_guidance = (f"Extended {dist:.1f}% above EMA20. "
+                                  f"Wait for pullback to {sym_disp}{ema20:.0f}–{sym_disp}{ema20*1.01:.0f} before entering.")
+            else:
+                entry_guidance = (f"Overextended — {dist:.1f}% above EMA20 ({sym_disp}{ema20:.0f}). "
+                                  f"High pullback risk. Only chase if breakout on very heavy volume.")
+        elif h20d and spot >= h20d * 0.995:
+            entry_guidance = f"Breakout above 20d high ({sym_disp}{h20d:.0f}). Enter now — momentum trade."
+        else:
+            entry_guidance = "Enter when price reclaims VWAP with volume > 1.5x average."
+        sl_underlying = (f"Exit CE immediately if {sym} CLOSES BELOW EMA20 = {sym_disp}{ema20:.0f}"
+                         if ema20 else f"Exit CE if {sym} closes below today's low")
+    else:
+        if ema20 and spot:
+            dist = (ema20 - spot) / ema20 * 100
+            if dist <= 0.5 and vol >= 1.5 and adx and adx > 20:
+                entry_guidance = (f"ENTER NOW — price rejecting EMA20 ({sym_disp}{ema20:.0f}) "
+                                  f"with volume ({vol:.1f}x) and ADX {adx:.0f}. Strong short entry.")
+            elif dist <= 0.5:
+                entry_guidance = (f"ENTER NOW or wait for failed retest of EMA20 ({sym_disp}{ema20:.0f}). "
+                                  f"Resistance confirmed — clean PE entry.")
+            elif dist <= 2.0:
+                entry_guidance = (f"Acceptable entry. Price {dist:.1f}% below EMA20. "
+                                  f"Better: wait for bounce/retest to {sym_disp}{ema20:.0f} to buy PE.")
+            elif dist <= 4.0:
+                entry_guidance = (f"Extended drop of {dist:.1f}% from EMA20. "
+                                  f"Bounce risk is high. Wait for dead-cat retest of {sym_disp}{ema20:.0f}.")
+            else:
+                entry_guidance = (f"Oversold — {dist:.1f}% below EMA20 ({sym_disp}{ema20:.0f}). "
+                                  f"Very high bounce risk. Only enter PE on failed rally at EMA20.")
+        elif l20d and spot <= l20d * 1.005:
+            entry_guidance = f"Breakdown below 20d low ({sym_disp}{l20d:.0f}). Enter now — momentum PE trade."
+        else:
+            entry_guidance = "Enter PE when price fails below VWAP with volume > 1.5x average."
+        sl_underlying = (f"Exit PE immediately if {sym} CLOSES ABOVE EMA20 = {sym_disp}{ema20:.0f}"
+                         if ema20 else f"Exit PE if {sym} closes above today's high")
+
+    # 3 clear exit rules
+    exit_rules = [
+        f"🟢 PROFIT EXIT: When option premium reaches {sym_disp}{target_premium} "
+        f"(+{round((target_mult-1)*100)}%) OR underlying hits {sym_disp}{target_price:.2f}",
+        f"🔴 STOP LOSS: Exit immediately when premium drops to {sym_disp}{sl_premium} "
+        f"(-{sl_pct}%). No averaging down on options — ever.",
+        f"📈 UNDERLYING SL: {sl_underlying}",
+        f"⏱ TIME STOP: Exit by {expiry} — do not hold options to expiry "
+        f"(last 2 days destroy value with theta)",
+    ]
+    if iv_crush_risk:
+        exit_rules.append(
+            "⚠️ IV CRUSH ACTIVE: VIX falling = take 50% profit early, trail the rest")
+
+    return {
+        "entry_strike":       entry_strike,
+        "premium_est":        premium_est,
+        "stop_loss_pct":      sl_pct,
+        "stop_loss_premium":  sl_premium,
+        "target_pct":         round((target_mult - 1) * 100),
+        "target_premium":     target_premium,
+        "breakeven_price":    breakeven_price,
+        "breakeven_move_pct": breakeven_move_pct,
+        "max_risk_per_lot":   max_risk_lot,
+        "target_pnl_per_lot": target_pnl_lot,
+        "rrr":                rrr,
+        "hold_time":          hold_time,
+        "lot_size":           lot,
+        "currency":           currency,
+        "iv_crush_risk":      iv_crush_risk,
+        "trade_summary":      trade_summary,
+        "dte":                dte,
+        "expiry":             expiry,
+        "entry_guidance":     entry_guidance,
+        "exit_rules":         exit_rules,
+    }
+
+
 def _score_directional_ticker(symbol, region, benchmark_ret_20d):
     """Compute CE/PE directional score for one ticker. Sync — runs in executor.
 
@@ -8778,6 +8972,9 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
             out["data_quality"] = "insufficient_history"
             out["_excluded_reason"] = "< 30 closes after dropna"
             return out
+        # r101.4: price fallback — use latest close if info (yfinance) is blocked
+        if not out["price"] and closes:
+            out["price"] = round(float(closes[-1]), 2)
 
         # Indicators
         ema20 = _ema(closes, 20)
@@ -9078,7 +9275,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     pe_passing.sort(key=lambda x: (-x["pe_score"], -x["pe_signals_passed"]))
 
     def _strip_for_response(r, direction):
-        """Trim irrelevant signals and add VIX grade + action."""
+        """Trim irrelevant signals, add VIX grade + action + full trade ticket."""
         relevant_signals = r["ce_signals"] if direction == "CE" else r["pe_signals"]
         grading = _grade_setup(r, vix_zone)
         row = {
@@ -9091,7 +9288,6 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
             "signals":        relevant_signals,
             "indicators":     r["indicators"],
             "options_hint":   r["options_hint"],
-            # VIX-graded action
             "grade":          grading["ce_grade"] if direction == "CE" else grading["pe_grade"],
             "action":         grading["ce_action"] if direction == "CE" else grading["pe_action"],
             "position_size":  grading["ce_position_size"] if direction == "CE" else grading["pe_position_size"],
@@ -9099,10 +9295,37 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         if r.get("is_index"):
             row["is_index"]   = True
             row["index_name"] = r.get("index_name", r["symbol"])
+        # Build trade ticket — the actionable part
+        ticket = _build_trade_ticket(row, direction, {**vix_zone, "vix_value": vix_val}, region)
+        row["trade_ticket"] = ticket
         return row
 
     ce_top = [_strip_for_response(r, "CE") for r in ce_passing[:top_n]]
     pe_top = [_strip_for_response(r, "PE") for r in pe_passing[:top_n]]
+
+    # Top picks — best CE + best PE with full context for the summary card
+    top_pick_ce = ce_top[0] if ce_top else None
+    top_pick_pe = pe_top[0] if pe_top else None
+
+    # Conflict warning — both CE and PE passing means chop or breakout ambiguity
+    both_active = bool(top_pick_ce and top_pick_pe)
+    conflict_warning = None
+    if both_active:
+        ce_s = top_pick_ce["score"]
+        pe_s = top_pick_pe["score"]
+        if abs(ce_s - pe_s) < 15:
+            conflict_warning = (
+                f"⚠️ Both CE and PE candidates passed with similar scores "
+                f"(CE: {ce_s}, PE: {pe_s}). Market is in CHOP / no clear direction. "
+                f"DO NOT buy both — that guarantees theta decay. "
+                f"Wait for direction confirmation or sit out."
+            )
+        else:
+            stronger = "CE (bullish)" if ce_s > pe_s else "PE (bearish)"
+            conflict_warning = (
+                f"Both CE and PE candidates identified. {stronger} is stronger. "
+                f"Trade only the dominant direction — never buy both sides."
+            )
 
     out = {
         "success":           True,
@@ -9119,6 +9342,9 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         "ce_passing_count":  len(ce_passing),
         "pe_passing_count":  len(pe_passing),
         "excluded":          excluded[:5],
+        "top_pick_ce":       top_pick_ce,
+        "top_pick_pe":       top_pick_pe,
+        "conflict_warning":  conflict_warning,
         # VIX context — the whole point of this algorithm
         "vix_context": {
             "vix_value":       vix_val,

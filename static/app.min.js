@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.101.2";
-window.CELESYS_BUILD_TIME = 1780630800;
-window.CELESYS_BUILD_DATE = "2026-06-05 01:00:00 UTC";
+window.CELESYS_VERSION = "r63.101.4";
+window.CELESYS_BUILD_TIME = 1780638000;
+window.CELESYS_BUILD_DATE = "2026-06-05 03:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12880,48 +12880,160 @@ window._renderDirectionalOptions = function(d) {
       });
       html += '</div>';
     }
-    // Options hint — expiry-aware
-    if (hint && hint.atm_strike_approx != null) {
-      var strikes = side === 'CE' ? (hint.ce_strikes_to_consider||[]) : (hint.pe_strikes_to_consider||[]);
-      var dTarget = side === 'CE' ? hint.delta_target_ce : hint.delta_target_pe;
-      html += '<div style="background:' + bg + ';border-radius:7px;padding:8px 12px;font-size:11px;color:#374151;line-height:1.6">';
-      html += '<strong style="color:' + color + '">📋 Strike hints:</strong> ';
-      html += 'ATM ≈ <strong>' + (strikes[0]||'?') + '</strong>, OTM ≈ <strong>' + (strikes[1]||'?') + '</strong> · ';
-      html += '<span style="color:#64748b">Target Δ ' + E(dTarget||'') + ' · DTE ' + E(hint.dte_target||'') + '</span>';
+    // Options hint + trade ticket
+    var tt = c.trade_ticket || {};
+    if (tt.entry_strike) {
+      var cur = (tt.currency==='INR') ? '₹' : '$';
+      // WHEN TO ENTER — most prominent
+      if (tt.entry_guidance) {
+        var entryNow = tt.entry_guidance.indexOf('ENTER NOW') >= 0;
+        var eBg = entryNow ? '#f0fdf4' : '#fffbeb';
+        var eBr = entryNow ? '#22c55e' : '#f59e0b';
+        html += '<div style="background:' + eBg + ';border:1px solid ' + eBr + ';border-left:4px solid ' + eBr + ';border-radius:8px;padding:11px 14px;margin-bottom:8px">';
+        html += '<div style="font-size:10px;font-weight:800;color:' + eBr + ';letter-spacing:0.5px;margin-bottom:4px">📍 WHEN TO ENTER</div>';
+        html += '<div style="font-size:13px;font-weight:700;color:#1e293b;line-height:1.5">' + E(tt.entry_guidance) + '</div></div>';
+      }
+      // Trade ticket grid
+      html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px">';
+      html += '<div style="font-size:10px;font-weight:800;color:#475569;letter-spacing:0.5px;margin-bottom:8px">📋 TRADE TICKET — ' + E(c.symbol) + ' ' + tt.entry_strike + ' ' + side + '</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">';
+      var tfl = [
+        {l:'STRIKE', v: tt.entry_strike, c: '#1e293b'},
+        {l:'~PREMIUM', v: cur+(tt.premium_est||'?'), c: '#1e293b'},
+        {l:'STOP LOSS', v: cur+(tt.stop_loss_premium||'?')+' (-'+tt.stop_loss_pct+'%)', c: '#dc2626'},
+        {l:'TARGET', v: cur+(tt.target_premium||'?')+' (+'+tt.target_pct+'%)', c: '#16a34a'},
+        {l:'BREAKEVEN', v: cur+(tt.breakeven_price||'?'), c: '#1e293b'},
+        {l:'MAX RISK/LOT', v: cur+((tt.max_risk_per_lot||0)).toLocaleString(), c: '#dc2626'},
+        {l:'R:R', v: tt.rrr||'?', c: '#7c3aed'},
+        {l:'EXPIRY', v: tt.expiry||'?', c: '#1e293b'},
+      ];
+      tfl.forEach(function(f){
+        html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:5px 7px">';
+        html += '<div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase">' + f.l + '</div>';
+        html += '<div style="font-size:12px;font-weight:900;color:' + f.c + ';font-family:JetBrains Mono,monospace;word-break:break-all">' + E(String(f.v)) + '</div></div>';
+      });
       html += '</div>';
+      html += '<div style="font-size:12px;font-weight:700;color:#475569">⏱ ' + E(tt.hold_time||'') + '</div></div>';
+      // WHEN TO EXIT — 3 clear rules
+      if (tt.exit_rules && tt.exit_rules.length) {
+        html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:6px">';
+        html += '<div style="font-size:10px;font-weight:800;color:#475569;letter-spacing:0.5px;margin-bottom:8px">🚪 WHEN TO EXIT</div>';
+        tt.exit_rules.forEach(function(r){
+          var isP = r.indexOf('🟢') >= 0, isSL = r.indexOf('🔴') >= 0;
+          var isT = r.indexOf('⏱') >= 0,  isW  = r.indexOf('⚠') >= 0;
+          var rb = isP?'#f0fdf4':isSL?'#fef2f2':isT?'#f0f9ff':isW?'#fffbeb':'#f8fafc';
+          var rc = isP?'#166534':isSL?'#991b1b':isT?'#1e40af':isW?'#92400e':'#374151';
+          html += '<div style="padding:8px 10px;background:' + rb + ';border-radius:6px;margin-bottom:5px;font-size:12px;font-weight:600;color:' + rc + ';line-height:1.5">' + E(r) + '</div>';
+        });
+        html += '</div>';
+      }
+      if (tt.iv_crush_risk) {
+        html += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:700;color:#dc2626">⚠️ IV CRUSH RISK — VIX falling. Take 50% profit early. Options lose value even with correct direction.</div>';
+      }
     }
     if (c.is_index && c.index_name && c.index_name !== c.symbol) {
-      html += '<div style="margin-top:5px;font-size:9px;color:#94a3b8">' + E(c.index_name) + '</div>';
+      html += '<div style="margin-top:4px;font-size:9px;color:#94a3b8">' + E(c.index_name) + '</div>';
     }
     html += '</div>';
     return html;
   }
-  // ───── Two-column grid: CE left, PE right ─────
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
-  // CE column
-  h += '<div>';
-  h += '<div style="background:#ecfdf5;border:2px solid #6ee7b7;border-radius:10px;padding:10px 14px;margin-bottom:10px">';
-  h += '<div style="font-size:13px;font-weight:900;color:#065f46;letter-spacing:0.5px;font-family:Sora,sans-serif">🟢 CE BUY (Call Buy)</div>';
-  h += '<div style="font-size:10px;color:#047857;margin-top:2px">Bullish trend + momentum + volume + breakout. Buy ATM/slight-OTM calls.</div>';
+  // ═══ TOP PICKS SUMMARY CARD ══════════════════════════════════════════════
+  if (d.conflict_warning) {
+    h += '<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #f59e0b;border-radius:12px;padding:14px 18px;margin-bottom:12px">';
+    h += '<div style="font-size:13px;font-weight:800;color:#92400e;margin-bottom:4px">⚠️ DIRECTION CONFLICT DETECTED</div>';
+    h += '<div style="font-size:13px;font-weight:600;color:#78350f;line-height:1.6">' + E(d.conflict_warning) + '</div>';
+    h += '</div>';
+  }
+  if (d.top_pick_ce || d.top_pick_pe) {
+    h += '<div style="background:linear-gradient(135deg,#0f172a,#1e293b);border-radius:14px;padding:18px 20px;margin-bottom:14px">';
+    h += '<div style="font-size:11px;font-weight:800;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:14px">⚡ BEST TRADES RIGHT NOW</div>';
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    function renderTopPick(pick, side) {
+      if (!pick) return '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:16px;text-align:center;font-size:12px;color:rgba(255,255,255,.3)">No ' + side + ' setup meeting criteria</div>';
+      var tc = side==='CE' ? '#22c55e' : '#ef4444';
+      var tt = pick.trade_ticket || {};
+      var gr = pick.grade || 'B';
+      var grC = gr==='A' ? '#22c55e' : gr==='B' ? '#f59e0b' : '#ef4444';
+      var cur = (tt.currency==='INR') ? '₹' : '$';
+      var out = '';
+      out += '<div style="background:rgba(255,255,255,.06);border:1px solid ' + tc + '40;border-radius:10px;padding:14px">';
+      // Header
+      out += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+      out += '<div><div style="font-size:20px;font-weight:900;color:#fff;font-family:JetBrains Mono,monospace">' + E(pick.symbol) + '</div>';
+      out += '<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);margin-top:2px">' + E(pick.sector||'') + '</div></div>';
+      out += '<div><span style="font-size:11px;font-weight:900;color:' + tc + ';background:' + tc + '20;border:1px solid ' + tc + '40;border-radius:6px;padding:4px 10px">' + side + ' BUY</span>';
+      out += ' <span style="font-size:11px;font-weight:900;color:' + grC + ';background:' + grC + '20;border-radius:6px;padding:4px 8px">GRADE ' + gr + '</span></div></div>';
+      // Trade ticket
+      if (tt.entry_strike) {
+        out += '<div style="background:rgba(0,0,0,.3);border-radius:8px;padding:10px 12px;margin-bottom:8px">';
+        out += '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:0.5px;margin-bottom:8px">TRADE TICKET</div>';
+        out += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+        var tFields = [
+          {l:'Strike', v: tt.entry_strike},
+          {l:'~Premium', v: cur + tt.premium_est},
+          {l:'Stop Loss', v: cur + tt.stop_loss_premium + ' (-' + tt.stop_loss_pct + '%)'},
+          {l:'Target', v: cur + tt.target_premium + ' (+' + tt.target_pct + '%)'},
+          {l:'Breakeven', v: cur + tt.breakeven_price + ' (' + tt.breakeven_move_pct + '% move)'},
+          {l:'Max Risk/Lot', v: cur + (tt.max_risk_per_lot||0).toLocaleString()},
+          {l:'R:R Ratio', v: tt.rrr},
+          {l:'Expiry', v: tt.expiry || '?'},
+        ];
+        tFields.forEach(function(f){
+          out += '<div style="padding:4px 0"><div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase">' + f.l + '</div>';
+          out += '<div style="font-size:13px;font-weight:800;color:#fff;font-family:JetBrains Mono,monospace">' + E(String(f.v)) + '</div></div>';
+        });
+        out += '</div></div>';
+        // Hold time
+        out += '<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.7);margin-bottom:6px">⏱ ' + E(tt.hold_time||'') + '</div>';
+        // IV crush warning
+        if (tt.iv_crush_risk) {
+          out += '<div style="background:#7f1d1d;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;color:#fca5a5">⚠️ IV CRUSH RISK: VIX falling — even correct direction may underperform. Take profits faster.</div>';
+        }
+      }
+      out += '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.5);margin-top:8px">Position: ' + E(pick.position_size||'?') + '</div>';
+      out += '</div>';
+      return out;
+    }
+    h += renderTopPick(d.top_pick_ce, 'CE');
+    h += renderTopPick(d.top_pick_pe, 'PE');
+    h += '</div>';
+    h += '<div style="margin-top:12px;padding:10px 14px;background:rgba(255,255,255,.05);border-radius:8px;font-size:11px;font-weight:600;color:rgba(255,255,255,.5);line-height:1.6">';
+    h += '⚠ Premium estimates use VIX as IV proxy (ATM approximation). Verify actual option price before entry. Stop loss = exit when option premium drops to stop_loss level, regardless of underlying direction.';
+    h += '</div></div>';
+  }
+
+  // ═══ CE / PE SECTIONS — full width stacked (not side-by-side, avoids collapse) ════
+  // CE SECTION
+  h += '<div style="margin-bottom:20px">';
+  h += '<div style="background:linear-gradient(135deg,#052e16,#14532d);border-radius:12px 12px 0 0;padding:12px 18px;display:flex;align-items:center;justify-content:space-between">';
+  h += '<div><div style="font-size:15px;font-weight:900;color:#fff;font-family:Sora,sans-serif">🟢 CE BUY — CALL OPTIONS</div>';
+  h += '<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">Bullish trend + momentum + volume + breakout. Buy ATM/slight-OTM calls.</div></div>';
+  h += '<div style="font-size:22px;font-weight:900;color:#4ade80">' + (d.ce_passing_count||0) + ' <span style="font-size:12px">candidates</span></div>';
   h += '</div>';
   if (d.ce_buy_candidates && d.ce_buy_candidates.length) {
+    h += '<div style="border:2px solid #166534;border-top:none;border-radius:0 0 12px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;padding:14px">';
     d.ce_buy_candidates.forEach(function(c) { h += renderCandidate(c, 'CE'); });
+    h += '</div>';
   } else {
-    h += '<div style="padding:24px;background:#fff;border:1px dashed #6ee7b7;border-radius:8px;text-align:center;font-size:11px;color:#94a3b8">No CE candidates passing min score ' + (d.min_score_filter || 0) + '. Try lowering the threshold — markets may be in chop/distribution.</div>';
+    h += '<div style="border:2px solid #166534;border-top:none;border-radius:0 0 12px 12px;padding:24px;text-align:center;font-size:13px;color:#94a3b8">No CE candidates meeting min score ' + (d.min_score_filter||0) + '. Try lowering the threshold.</div>';
   }
   h += '</div>';
-  // PE column
-  h += '<div>';
-  h += '<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:10px 14px;margin-bottom:10px">';
-  h += '<div style="font-size:13px;font-weight:900;color:#991b1b;letter-spacing:0.5px;font-family:Sora,sans-serif">🔴 PE BUY (Put Buy)</div>';
-  h += '<div style="font-size:10px;color:#7f1d1d;margin-top:2px">Bearish trend + weakness + volume + breakdown. Buy ATM/slight-OTM puts.</div>';
+
+  // PE SECTION
+  h += '<div style="margin-bottom:20px">';
+  h += '<div style="background:linear-gradient(135deg,#450a0a,#7f1d1d);border-radius:12px 12px 0 0;padding:12px 18px;display:flex;align-items:center;justify-content:space-between">';
+  h += '<div><div style="font-size:15px;font-weight:900;color:#fff;font-family:Sora,sans-serif">🔴 PE BUY — PUT OPTIONS</div>';
+  h += '<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">Bearish trend + weakness + volume + breakdown. Buy ATM/slight-OTM puts.</div></div>';
+  h += '<div style="font-size:22px;font-weight:900;color:#f87171">' + (d.pe_passing_count||0) + ' <span style="font-size:12px">candidates</span></div>';
   h += '</div>';
   if (d.pe_buy_candidates && d.pe_buy_candidates.length) {
+    h += '<div style="border:2px solid #7f1d1d;border-top:none;border-radius:0 0 12px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px;padding:14px">';
     d.pe_buy_candidates.forEach(function(c) { h += renderCandidate(c, 'PE'); });
+    h += '</div>';
   } else {
-    h += '<div style="padding:24px;background:#fff;border:1px dashed #fca5a5;border-radius:8px;text-align:center;font-size:11px;color:#94a3b8">No PE candidates passing min score ' + (d.min_score_filter || 0) + '. Markets may be in broad uptrend — consider waiting.</div>';
+    h += '<div style="border:2px solid #7f1d1d;border-top:none;border-radius:0 0 12px 12px;padding:24px;text-align:center;font-size:13px;color:#94a3b8">No PE candidates meeting min score ' + (d.min_score_filter||0) + '. Markets may be in broad uptrend.</div>';
   }
-  h += '</div></div>';
+  h += '</div>';
 
   // ───── Footer: scoring methodology + future inputs ─────
   if (d.spec_ordering && d.spec_ordering.length) {
