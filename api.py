@@ -8840,50 +8840,104 @@ def _build_trade_ticket(candidate, direction, vix_zone, region):
         if ema20 and spot:
             dist = (spot - ema20) / ema20 * 100
             if dist <= 0.5 and vol >= 1.5 and adx and adx > 20:
-                entry_guidance = (f"ENTER NOW — price at EMA20 ({sym_disp}{ema20:.0f}) "
-                                  f"with strong volume ({vol:.1f}x) and ADX {adx:.0f}. Ideal entry.")
+                entry_guidance = (
+                    f"✅ BUY NOW — {sym} is sitting right at its 20-day average price "
+                    f"({sym_disp}{ema20:.0f}) with unusually high buying volume ({vol:.1f}x normal). "
+                    f"This is a strong signal. The stock is at support AND has momentum. Enter the call option now."
+                )
             elif dist <= 0.5:
-                entry_guidance = (f"ENTER NOW or on slight dip to EMA20 at {sym_disp}{ema20:.0f}. "
-                                  f"Price at support — tight risk, clean setup.")
+                entry_guidance = (
+                    f"✅ GOOD TIME TO ENTER — {sym} is right at its 20-day average "
+                    f"({sym_disp}{ema20:.0f}), which acts like a floor. "
+                    f"Buy the call option now, or wait for price to briefly dip to {sym_disp}{ema20:.0f} "
+                    f"for an even better entry."
+                )
             elif dist <= 2.0:
-                entry_guidance = (f"Good entry. Price {dist:.1f}% above EMA20. "
-                                  f"Better entry: wait for minor dip to {sym_disp}{ema20:.0f}.")
+                entry_guidance = (
+                    f"⚠️ WAIT A LITTLE — {sym} has already moved {dist:.1f}% above its average "
+                    f"({sym_disp}{ema20:.0f}). You're buying a little late. "
+                    f"Better to wait for price to pull back to {sym_disp}{ema20:.0f} before buying the call — "
+                    f"that gives you a cheaper entry and a clear stop loss level."
+                )
             elif dist <= 4.0:
-                entry_guidance = (f"Extended {dist:.1f}% above EMA20. "
-                                  f"Wait for pullback to {sym_disp}{ema20:.0f}–{sym_disp}{ema20*1.01:.0f} before entering.")
+                entry_guidance = (
+                    f"⚠️ DON'T BUY YET — {sym} has run up {dist:.1f}% above its average price. "
+                    f"Think of it like buying a shirt after the price already went up — you're overpaying. "
+                    f"Wait for price to come back down to {sym_disp}{ema20:.0f}–{sym_disp}{ema20*1.01:.0f} "
+                    f"(its average). Buy the call ONLY when it bounces back up from there."
+                )
             else:
-                entry_guidance = (f"Overextended — {dist:.1f}% above EMA20 ({sym_disp}{ema20:.0f}). "
-                                  f"High pullback risk. Only chase if breakout on very heavy volume.")
+                entry_guidance = (
+                    f"🚫 DO NOT ENTER NOW — {sym} is {dist:.1f}% above its average price. "
+                    f"It's very stretched. Stocks almost always pull back after running this far. "
+                    f"Be patient — wait for price to drop back toward {sym_disp}{ema20:.0f} first. "
+                    f"Missing this trade is better than buying at the top."
+                )
         elif h20d and spot >= h20d * 0.995:
-            entry_guidance = f"Breakout above 20d high ({sym_disp}{h20d:.0f}). Enter now — momentum trade."
+            entry_guidance = (
+                f"✅ BREAKOUT — {sym} just broke above a key resistance level "
+                f"({sym_disp}{h20d:.0f}). This is a momentum trade. Enter now if volume is rising. "
+                f"The stock is showing strength."
+            )
         else:
-            entry_guidance = "Enter when price reclaims VWAP with volume > 1.5x average."
-        sl_underlying = (f"Exit CE immediately if {sym} CLOSES BELOW EMA20 = {sym_disp}{ema20:.0f}"
-                         if ema20 else f"Exit CE if {sym} closes below today's low")
+            entry_guidance = (
+                f"Wait for {sym} to clearly move above its average daily price (VWAP) "
+                f"with higher-than-normal buying volume. Don't guess — wait for clear confirmation."
+            )
+        sl_underlying = (f"EXIT immediately if {sym} closes BELOW {sym_disp}{ema20:.0f} "
+                         f"(its 20-day average). That means the bullish trend has broken."
+                         if ema20 else f"Exit the call if {sym} drops below today's opening price.")
     else:
         if ema20 and spot:
             dist = (ema20 - spot) / ema20 * 100
             if dist <= 0.5 and vol >= 1.5 and adx and adx > 20:
-                entry_guidance = (f"ENTER NOW — price rejecting EMA20 ({sym_disp}{ema20:.0f}) "
-                                  f"with volume ({vol:.1f}x) and ADX {adx:.0f}. Strong short entry.")
+                entry_guidance = (
+                    f"✅ SELL (BUY PUT) NOW — {sym} is right at its 20-day average "
+                    f"({sym_disp}{ema20:.0f}) and getting rejected, with high selling volume ({vol:.1f}x). "
+                    f"The stock is weak at resistance. Buy the put option now."
+                )
             elif dist <= 0.5:
-                entry_guidance = (f"ENTER NOW or wait for failed retest of EMA20 ({sym_disp}{ema20:.0f}). "
-                                  f"Resistance confirmed — clean PE entry.")
+                entry_guidance = (
+                    f"✅ GOOD PE ENTRY — {sym} is failing to hold above its average price "
+                    f"({sym_disp}{ema20:.0f}). This confirms weakness. "
+                    f"Buy the put now, OR wait for one small bounce up to {sym_disp}{ema20:.0f} — "
+                    f"if it fails to break above, that's the perfect put entry."
+                )
             elif dist <= 2.0:
-                entry_guidance = (f"Acceptable entry. Price {dist:.1f}% below EMA20. "
-                                  f"Better: wait for bounce/retest to {sym_disp}{ema20:.0f} to buy PE.")
+                entry_guidance = (
+                    f"⚠️ SLIGHTLY LATE FOR PE — {sym} is already {dist:.1f}% below its average "
+                    f"({sym_disp}{ema20:.0f}). The stock may bounce up first. "
+                    f"Better entry: if price bounces up toward {sym_disp}{ema20:.0f} and then starts "
+                    f"falling again — THAT is the ideal time to buy the put."
+                )
             elif dist <= 4.0:
-                entry_guidance = (f"Extended drop of {dist:.1f}% from EMA20. "
-                                  f"Bounce risk is high. Wait for dead-cat retest of {sym_disp}{ema20:.0f}.")
+                entry_guidance = (
+                    f"⚠️ WAIT FOR BOUNCE — {sym} dropped {dist:.1f}% below its average. "
+                    f"When stocks fall this much quickly, they often bounce UP temporarily. "
+                    f"Don't chase the drop. Wait: if it bounces up to {sym_disp}{ema20:.0f} and "
+                    f"then starts failing again, buy the put at that point."
+                )
             else:
-                entry_guidance = (f"Oversold — {dist:.1f}% below EMA20 ({sym_disp}{ema20:.0f}). "
-                                  f"Very high bounce risk. Only enter PE on failed rally at EMA20.")
+                entry_guidance = (
+                    f"🚫 DO NOT ENTER PE NOW — {sym} has dropped {dist:.1f}% and is oversold. "
+                    f"It's like a rubber band stretched too far — it WILL bounce up soon. "
+                    f"Wait for the bounce UP toward {sym_disp}{ema20:.0f}. Only buy the put "
+                    f"if price reaches {sym_disp}{ema20:.0f} and FAILS to go higher."
+                )
         elif l20d and spot <= l20d * 1.005:
-            entry_guidance = f"Breakdown below 20d low ({sym_disp}{l20d:.0f}). Enter now — momentum PE trade."
+            entry_guidance = (
+                f"✅ BREAKDOWN — {sym} broke below a key support level ({sym_disp}{l20d:.0f}). "
+                f"This is a momentum PUT trade. Enter now if volume is high. "
+                f"Weakness is confirmed."
+            )
         else:
-            entry_guidance = "Enter PE when price fails below VWAP with volume > 1.5x average."
-        sl_underlying = (f"Exit PE immediately if {sym} CLOSES ABOVE EMA20 = {sym_disp}{ema20:.0f}"
-                         if ema20 else f"Exit PE if {sym} closes above today's high")
+            entry_guidance = (
+                f"Wait for {sym} to clearly break below its average daily price "
+                f"with higher-than-normal selling volume. Don't guess — wait for confirmation."
+            )
+        sl_underlying = (f"EXIT the put immediately if {sym} closes ABOVE {sym_disp}{ema20:.0f} "
+                         f"(its 20-day average). That means sellers have lost control."
+                         if ema20 else f"Exit the put if {sym} bounces above today's opening price.")
 
     # 3 clear exit rules
     exit_rules = [
@@ -8923,7 +8977,99 @@ def _build_trade_ticket(candidate, direction, vix_zone, region):
     }
 
 
-def _score_directional_ticker(symbol, region, benchmark_ret_20d):
+def _suggest_expiry(candidate, vix_zone, direction):
+    """Suggest which expiry to use in plain English.
+    Considers grade, VIX zone, days-to-current-expiry, and trade type.
+    Returns {recommendation, reason, badge_color}.
+    """
+    grade     = candidate.get("grade", "B")
+    vix_val   = vix_zone.get("vix_value") or 16
+    vix_code  = vix_zone.get("zone_code", "12_TO_15")
+    hint      = candidate.get("options_hint") or {}
+    dte       = hint.get("dte") or 7
+    expiry    = hint.get("next_expiry", "next expiry")
+    expiry_type = hint.get("expiry_type", "weekly")
+    ind       = candidate.get("indicators") or {}
+    vol_ratio = ind.get("vol_ratio") or 1.0
+    adx       = ind.get("adx14") or 0
+
+    is_breakout  = (vol_ratio >= 1.5 and adx >= 25)
+    is_monthly   = (expiry_type == "monthly")
+
+    # Gamma danger zone
+    if dte <= 1:
+        return {
+            "recommendation": "DO NOT ENTER TODAY",
+            "reason": ("Expiry is TOMORROW — time value (theta) will destroy your option overnight. "
+                       "If you want this trade, wait for next week's expiry to open."),
+            "badge_color": "#dc2626",
+        }
+    if dte <= 2:
+        return {
+            "recommendation": "NEXT EXPIRY ONLY",
+            "reason": ("Only 2 days left — options lose 40-60% of value in final 2 days (theta decay). "
+                       "Skip this expiry. Use next week's instead."),
+            "badge_color": "#dc2626",
+        }
+
+    # Monthly instruments (BANKNIFTY, FINNIFTY etc.)
+    if is_monthly and dte >= 15:
+        if grade == "A" and vix_val < 18:
+            return {
+                "recommendation": "CURRENT MONTHLY EXPIRY",
+                "reason": (f"Grade A setup with {dte} days left. Enough time for the trade to work. "
+                           f"VIX is comfortable ({vix_val}). Current monthly expiry is fine."),
+                "badge_color": "#16a34a",
+            }
+        return {
+            "recommendation": "CURRENT MONTHLY EXPIRY",
+            "reason": (f"Monthly instrument with {dte} days to expiry. "
+                       f"Grade {grade} setup — hold until 2 days before expiry maximum."),
+            "badge_color": "#f59e0b",
+        }
+
+    # Weekly instruments
+    if grade == "A" and is_breakout and dte >= 4 and vix_val < 15:
+        return {
+            "recommendation": f"THIS WEEK ({expiry})",
+            "reason": (f"BEST CASE: Grade A breakout with cheap VIX ({vix_val}). "
+                       f"{dte} days left — enough time for a quick move. "
+                       f"This week's option is cheap. Go for it."),
+            "badge_color": "#16a34a",
+        }
+    if grade == "A" and dte >= 4 and vix_val < 18:
+        return {
+            "recommendation": f"THIS WEEK ({expiry})",
+            "reason": (f"Strong Grade A setup with {dte} days left this week. "
+                       f"VIX is normal ({vix_val}) — premiums not too expensive. "
+                       f"Enter this week for better R:R."),
+            "badge_color": "#16a34a",
+        }
+    if dte >= 4 and grade == "A":
+        return {
+            "recommendation": f"THIS WEEK or NEXT WEEK",
+            "reason": (f"Grade A setup. VIX is elevated ({vix_val}) so this week's option costs more. "
+                       f"If 4+ days remain — this week is fine. "
+                       f"If 2-3 days remain — go next week, less time pressure."),
+            "badge_color": "#f59e0b",
+        }
+    if dte <= 3 or grade == "B":
+        return {
+            "recommendation": f"NEXT WEEK EXPIRY",
+            "reason": (f"Only {dte} days left this week OR Grade B setup needs more time. "
+                       f"Next week gives you 7-10 days for the trade to develop without theta pressure. "
+                       f"Worth the slightly higher premium for peace of mind."),
+            "badge_color": "#f59e0b",
+        }
+    return {
+        "recommendation": "NEXT WEEK EXPIRY",
+        "reason": (f"Safe default. Next week gives {direction} trade enough time to work. "
+                   f"Don't use same-week expiry unless you have 4+ days left."),
+        "badge_color": "#64748b",
+    }
+
+
+
     """Compute CE/PE directional score for one ticker. Sync — runs in executor.
 
     Returns dict with:
@@ -9295,13 +9441,23 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         if r.get("is_index"):
             row["is_index"]   = True
             row["index_name"] = r.get("index_name", r["symbol"])
-        # Build trade ticket — the actionable part
+        # Build trade ticket + expiry suggestion
         ticket = _build_trade_ticket(row, direction, {**vix_zone, "vix_value": vix_val}, region)
+        expiry_rec = _suggest_expiry(row, {**vix_zone, "vix_value": vix_val}, direction)
+        if ticket:
+            ticket["expiry_suggestion"] = expiry_rec
         row["trade_ticket"] = ticket
         return row
 
+    # Sort by conviction: Grade A first, then B, then C, then by score desc within each grade
+    def _grade_key(r):
+        g = r.get("grade", "B")
+        return (0 if g == "A" else 1 if g == "B" else 2, -r.get("score", 0))
+
     ce_top = [_strip_for_response(r, "CE") for r in ce_passing[:top_n]]
     pe_top = [_strip_for_response(r, "PE") for r in pe_passing[:top_n]]
+    ce_top.sort(key=_grade_key)
+    pe_top.sort(key=_grade_key)
 
     # Top picks — best CE + best PE with full context for the summary card
     top_pick_ce = ce_top[0] if ce_top else None
