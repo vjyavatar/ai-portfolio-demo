@@ -27921,7 +27921,7 @@ _THEME_CONSTITUENTS = {
         "Energy":    ["XOM"],
         "Consumer":  ["WMT", "HD", "COST", "PG"],
         "EV/Auto":   ["TSLA"],
-        "Semis":     ["NVDA", "AMD", "AVGO"],
+        "Semis":     ["NVDA", "AMD", "AVGO", "MU", "INTC", "MRVL", "QCOM", "TSM"],
         "Streaming": ["NFLX", "META"],
     },
 }
@@ -28090,52 +28090,227 @@ def _mw_top_movers(region, limit=5):
     return top, bottom
 
 
+def _mw_key_levels(ohlcv):
+    """Compute REAL support/resistance from price + moving averages.
+    Never invents round numbers — every level here is an observed value, so the
+    narrative can cite a hard level instead of hallucinating one (e.g. "800").
+    Returns: nearest_support / support_label / nearest_resistance /
+             resistance_label / sma20 / sma50.
+    """
+    close = ohlcv.get("close")
+    if not close:
+        return {}
+    refs = []  # (value, label)
+    if ohlcv.get("low")        is not None: refs.append((ohlcv["low"],        "today's low"))
+    if ohlcv.get("high")       is not None: refs.append((ohlcv["high"],       "today's high"))
+    if ohlcv.get("prev_close") is not None: refs.append((ohlcv["prev_close"], "prior close"))
+    if ohlcv.get("sma20")      is not None: refs.append((ohlcv["sma20"],      "20-day avg"))
+    if ohlcv.get("sma50")      is not None: refs.append((ohlcv["sma50"],      "50-day avg"))
+    below = [(v, l) for v, l in refs if v < close]
+    above = [(v, l) for v, l in refs if v > close]
+    sup = max(below, key=lambda x: x[0]) if below else None   # nearest support = highest level below price
+    res = min(above, key=lambda x: x[0]) if above else None   # nearest resistance = lowest level above price
+    return {
+        "nearest_support":    round(sup[0], 2) if sup else None,
+        "support_label":      sup[1] if sup else None,
+        "nearest_resistance": round(res[0], 2) if res else None,
+        "resistance_label":   res[1] if res else None,
+        "sma50":              ohlcv.get("sma50"),
+        "sma20":              ohlcv.get("sma20"),
+    }
+
+
+def _mw_relative_perf(symbol, ohlcv, market_ohlcv, themes, region):
+    """Quantify the stock's move vs its sector basket and vs the index.
+    This is what turns "it's not just Micron" into a provable claim. Returns
+    vs_index / index_chg / sector_name / sector_chg / vs_sector (any may be None).
+    """
+    chg = ohlcv.get("change_pct")
+    out = {"vs_index": None, "index_chg": None,
+           "sector_name": None, "sector_chg": None, "vs_sector": None}
+    if chg is None:
+        return out
+    if market_ohlcv and market_ohlcv.get("change_pct") is not None:
+        mc = market_ohlcv["change_pct"]
+        out["index_chg"] = mc
+        out["vs_index"]  = round(chg - mc, 2)
+    constituents = _THEME_CONSTITUENTS.get(region, {})
+    sector = next((theme for theme, syms in constituents.items() if symbol in syms), None)
+    if sector and themes:
+        for t in themes:
+            if t.get("theme") == sector and t.get("avg_change_pct") is not None:
+                out["sector_name"] = sector
+                out["sector_chg"]  = t["avg_change_pct"]
+                out["vs_sector"]   = round(chg - t["avg_change_pct"], 2)
+                break
+    return out
+
+
+def _mw_fetch_rate_context(region):
+    """US 10-year Treasury yield (^TNX) level + daily change in basis points.
+    Lets the note explain rate-driven sessions — e.g. a hot jobs print lifts
+    yields, which de-rates rate-sensitive growth/tech and high-beta semis even
+    when the data was "good". Returns None outside US or on any error.
+    """
+    if region != "US":
+        return None
+    try:
+        import yfinance as yf
+        tk = yf.Ticker("^TNX")
+        hist = tk.history(period="5d", interval="1d", auto_adjust=False)
+        if hist is None or hist.empty or len(hist) < 2:
+            return None
+        closes = [float(x) for x in hist["Close"].dropna()]
+        if len(closes) < 2:
+            return None
+        # ^TNX is quoted either as yield (4.3) or yield x10 (43); normalize to %.
+        norm = lambda v: v / 10.0 if v > 20 else v
+        y_today, y_prev = norm(closes[-1]), norm(closes[-2])
+        bps = round((y_today - y_prev) * 100)
+        return {
+            "yield_pct":  round(y_today, 2),
+            "bps_change": bps,
+            "direction":  "up" if bps > 0 else ("down" if bps < 0 else "flat"),
+        }
+    except Exception:
+        return None
+
+
 def _mw_build_prompt(symbol, region, ohlcv, vix_val, vix_regime, themes,
                      top_movers, bot_movers, asset_type, market_ohlcv,
-                     news_titles=None):
-    """Plain-English prompt — layman language, news-aware, specific numbers."""
-    chg   = ohlcv.get("change_pct", 0)
-    volr  = ohlcv.get("volume_ratio")
-    gap   = ohlcv.get("gap_pct", 0)
-    close = ohlcv.get("close")
-    rsi   = ohlcv.get("rsi")
-    sma50 = ohlcv.get("above_sma50")
-    sma200= ohlcv.get("above_sma200")
-    direction = "fell" if chg < 0 else "rose"
-    vol_str = f"{volr}x average (20-day)" if volr else "unavailable"
-    ma_str = ""
-    if sma50  is not None: ma_str  = f"{'above' if sma50 else 'below'} 50-day average"
-    if sma200 is not None: ma_str += f", {'above' if sma200 else 'below'} 200-day average"
-    mkt_str = ""
-    if market_ohlcv and asset_type not in ("INDEX",):
-        mc = market_ohlcv.get("change_pct", 0)
-        mkt_str = (f"The overall market ({'NIFTY' if region=='IN' else 'S&P 500'}) is "
-                   f"{'UP' if mc>0 else 'DOWN'} {abs(mc):.2f}% today. ")
-    worst_sector = min(themes, key=lambda t: t["avg_change_pct"]) if themes else None
-    best_sector  = max(themes, key=lambda t: t["avg_change_pct"]) if themes else None
-    sector_str = ""
-    if worst_sector: sector_str += f"Worst sector today: {worst_sector['theme']} ({worst_sector['avg_change_pct']:+.1f}%). "
-    if best_sector:  sector_str += f"Best sector: {best_sector['theme']} ({best_sector['avg_change_pct']:+.1f}%). "
-    news_str = ""
+                     news_titles=None, levels=None, rel=None, rate=None):
+    """Institutional desk-note prompt: mechanism-driven, numbers-anchored,
+    professional but readable. Produces EXACTLY 5 bullets mapped 1:1 to the
+    frozen frontend slots (Real Reason / Market vs Stock / Big Investors /
+    What To Do / Watch This Level). Every price level is SUPPLIED — the model
+    is told to use the provided number and never invent one.
+    """
+    levels = levels or {}
+    rel    = rel or {}
+    cur    = "$" if region == "US" else "\u20b9"
+    chg    = ohlcv.get("change_pct", 0) or 0
+    volr   = ohlcv.get("volume_ratio")
+    gap    = ohlcv.get("gap_pct", 0) or 0
+    close  = ohlcv.get("close")
+    rsi    = ohlcv.get("rsi")
+    a50    = ohlcv.get("above_sma50")
+    a200   = ohlcv.get("above_sma200")
+    is_index = (asset_type == "INDEX")
+    direction = "fell" if chg < 0 else ("rose" if chg > 0 else "was flat")
+
+    # ---- Factual data block the model must reason from (no invented numbers) ----
+    L = []
+    L.append(f"INSTRUMENT: {symbol} ({asset_type}, {region} market). Last {cur}{close}, "
+             f"{direction} {abs(chg):.2f}% today; opening gap {gap:+.2f}%.")
+
+    if rel.get("vs_index") is not None:
+        idx_name = "NIFTY 50" if region == "IN" else "S&P 500"
+        L.append(f"RELATIVE-TO-INDEX: {idx_name} {rel['index_chg']:+.2f}% today; "
+                 f"{symbol} minus index = {rel['vs_index']:+.2f} pts.")
+    if rel.get("sector_name") and rel.get("vs_sector") is not None:
+        vs = rel["vs_sector"]
+        verdict = ("UNDERPERFORMING its sector — a stock-specific drag is sitting on top of the macro move"
+                   if vs <= -0.5 else
+                   "OUTPERFORMING its sector — relative strength vs peers"
+                   if vs >= 0.5 else
+                   "moving IN LINE with its sector — this is a macro/sector move, not company-specific news")
+        L.append(f"RELATIVE-TO-SECTOR: {rel['sector_name']} basket {rel['sector_chg']:+.2f}% today; "
+                 f"{symbol} minus sector = {vs:+.2f} pts ({verdict}).")
+
+    if volr is not None:
+        if volr >= 2.0:    vlab = "very heavy — forced/large-institution flow, strong conviction"
+        elif volr >= 1.5:  vlab = "heavy — clear institutional participation"
+        elif volr >= 1.15: vlab = "modestly above average — orderly de-risking, NOT capitulation"
+        elif volr >= 0.85: vlab = "roughly average — no unusual large-player activity"
+        else:              vlab = "light — low-conviction, likely retail-driven"
+        L.append(f"VOLUME: {volr}x the 20-day average ({vlab}).")
+
+    tparts = []
+    if a50  is not None: tparts.append(f"{'above' if a50 else 'below'} 50-day avg")
+    if a200 is not None: tparts.append(f"{'above' if a200 else 'below'} 200-day avg")
+    if tparts: L.append("TREND: " + ", ".join(tparts) + ".")
+
+    if rsi is not None:
+        if chg <= -3 and rsi >= 55:
+            rctx = (f"RSI {rsi} — still elevated AFTER a sharp drop, meaning the name was richly "
+                    f"extended/overbought beforehand; this is a momentum unwind, not a wash-out into oversold support")
+        elif rsi >= 70:  rctx = f"RSI {rsi} — overbought, stretched to the upside, pullback risk"
+        elif rsi <= 30:  rctx = f"RSI {rsi} — oversold, a mean-reversion bounce becomes statistically likely"
+        elif rsi <= 40:  rctx = f"RSI {rsi} — approaching oversold, getting washed out"
+        else:            rctx = f"RSI {rsi} — neutral momentum, no extreme"
+        L.append("MOMENTUM: " + rctx + ".")
+
+    if rate and rate.get("bps_change") is not None:
+        L.append(f"RATES: US 10-year Treasury yield {rate['direction']} ~{abs(rate['bps_change'])}bps today "
+                 f"(10Y \u2248 {rate['yield_pct']}%). Rising yields de-rate rate-sensitive growth/tech and high-beta "
+                 f"names hardest (a strong economy can still sink stocks this way); falling yields relieve them.")
+    if vix_val is not None:
+        L.append(f"VOLATILITY: VIX {vix_val} ({vix_regime}) — "
+                 f"{'fear elevated, dealers hedging, risk-off backdrop' if vix_regime in ('high','elevated') else 'contained, risk appetite intact'}.")
+
+    if themes:
+        worst = min(themes, key=lambda t: t['avg_change_pct'])
+        best  = max(themes, key=lambda t: t['avg_change_pct'])
+        up_n  = sum(1 for t in themes if t['avg_change_pct'] >= 0.3)
+        dn_n  = sum(1 for t in themes if t['avg_change_pct'] <= -0.3)
+        L.append(f"BREADTH: {up_n} sector{'s' if up_n != 1 else ''} up / {dn_n} down. "
+                 f"Weakest {worst['theme']} {worst['avg_change_pct']:+.1f}%, "
+                 f"strongest {best['theme']} {best['avg_change_pct']:+.1f}%.")
+
+    if is_index and (top_movers or bot_movers):
+        if bot_movers:
+            L.append("INDEX DRAG: " + ", ".join(f"{m['symbol']} {m['change_pct']:+.1f}%" for m in bot_movers[:3]) + ".")
+        if top_movers:
+            L.append("INDEX SUPPORT: " + ", ".join(f"{m['symbol']} {m['change_pct']:+.1f}%" for m in top_movers[:3]) + ".")
+
     if news_titles:
-        news_str = "Latest headlines: " + " | ".join(news_titles[:3]) + ". "
+        L.append("HEADLINES: " + " | ".join(news_titles[:3]) + ".")
+
+    moved_down  = chg < 0
+    watch_val   = levels.get("nearest_support") if moved_down else levels.get("nearest_resistance")
+    watch_label = levels.get("support_label")   if moved_down else levels.get("resistance_label")
+    if watch_val is not None:
+        L.append(f"KEY LEVEL (use THIS exact number, do NOT invent one): nearest "
+                 f"{'support' if moved_down else 'resistance'} is {cur}{watch_val} ({watch_label}). "
+                 f"For reference 50-day avg \u2248 {cur}{levels.get('sma50')}, 20-day avg \u2248 {cur}{levels.get('sma20')}.")
+    else:
+        L.append("KEY LEVEL: no clean level derivable from the supplied data — say the level is unclear, never invent one.")
+
+    data_block = "\n".join(L)
+
+    # ---- Slot-specific instructions (stock vs index aware) ----
+    if is_index:
+        slot2 = ("MARKET VS STOCK: characterize BREADTH — broad (most sectors red) or narrow "
+                 "(a few heavyweights dragging)? Use the breadth/drag numbers.")
+        slot3 = ("BIG MONEY: read the tape from volume + which heavyweights drove the point move — "
+                 "is this positioning/de-risking or outright liquidation?")
+    else:
+        slot2 = ("MARKET VS STOCK: is this macro/sector-wide or stock-specific? PROVE it with the "
+                 "relative-performance numbers (vs sector AND vs index). If it lagged its own sector, "
+                 "say there is a stock-specific component on top of the macro move.")
+        slot3 = ("BIG MONEY: interpret the volume/RVOL precisely — distribution vs accumulation vs orderly "
+                 "de-risking. 1.1\u20131.2x average is only MILDLY elevated; never call that panic or capitulation.")
+
     prompt = (
-        f"You explain stocks to ordinary investors in very simple language. "
-        f"{symbol} {direction} {abs(chg):.2f}% today to {close}. "
-        f"Volume: {vol_str}. RSI: {rsi or 'N/A'} (above 70 = expensive/overbought, below 30 = cheap/oversold). "
-        f"Trend: {ma_str or 'N/A'}. VIX: {vix_val or 'N/A'} (market fear gauge). "
-        f"{mkt_str}{sector_str}{news_str}"
-        f"Write EXACTLY 5 bullet points starting with '• '. NO technical jargon. Plain English only. "
-        f"Point 1: In ONE sentence, the main real-world reason this stock moved (use news if available). "
-        f"Point 2: Is this a problem with JUST this stock or the whole market? Simple explanation. "
-        f"Point 3: Are big investors buying or selling? What the volume tells us in plain words. "
-        f"Point 4: Should a normal investor be worried, excited, or just watching? Why? "
-        f"Point 5: The ONE price level to watch — if it drops BELOW X, that is a danger sign. "
-        f"Each bullet max 20 words. Real numbers required. No markdown. Only output the 5 bullets."
+        "You are a senior markets-desk strategist writing a same-day client note for a sophisticated "
+        "retail/PMS audience. Be precise, quantitative and mechanism-driven: explain the CHAIN of cause "
+        "(macro -> rates -> sector -> this name), never vague 'concerns about spending'. Use ONLY the "
+        "numbers in the data block; never invent figures or price levels. Write like Bloomberg, not a "
+        "textbook — professional but readable, defining any term in 2-3 words inline if needed.\n\n"
+        f"DATA BLOCK:\n{data_block}\n\n"
+        "Write EXACTLY 5 bullets, each starting with '\u2022 ', each ONE tight sentence (max ~40 words), "
+        "in THIS fixed order:\n"
+        "\u2022 REAL REASON: the actual driver and its transmission mechanism — connect the macro/rate/sector "
+        "backdrop to why THIS instrument moved as it did; lead with the headline if one fits.\n"
+        f"\u2022 {slot2}\n"
+        f"\u2022 {slot3}\n"
+        "\u2022 WHAT TO DO: a regime-aware read for a disciplined investor — tie it to trend (50/200-DMA), the "
+        "RSI/momentum context and VIX, and state the ONE thing that would flip the read.\n"
+        "\u2022 WATCH THIS LEVEL: cite the supplied KEY LEVEL number EXACTLY and explain what a decisive close "
+        "beyond it would signal; never invent a level.\n\n"
+        "Output ONLY the 5 bullets, no preamble, no markdown headers, no '#'. Each bullet on its own line."
     )
     return prompt
-
-
 
 
 def _mw_ai_narrative(prompt):
@@ -28234,6 +28409,119 @@ def _mw_deterministic_bullets(symbol, ohlcv, vix_val, vix_regime, themes,
             bullets.append(f"Weakest theme:  {laggard['theme']} ({laggard['avg_change_pct']:+.2f}%) — {laggard['reason']}")
 
     return bullets
+
+
+def _mw_pro_fallback(symbol, ohlcv, vix_val, vix_regime, themes, rel, levels,
+                     rate, asset_type, region):
+    """Deterministic, analyst-grade 5-slot fallback (no LLM).
+    Maps 1:1 to the Real Reason / Market vs Stock / Big Investors / What To Do /
+    Watch This Level slots so the panel looks identical whether or not the AI
+    call succeeds. Uses only supplied/observed numbers — never invents a level.
+    """
+    cur    = "$" if region == "US" else "\u20b9"
+    chg    = ohlcv.get("change_pct", 0) or 0
+    volr   = ohlcv.get("volume_ratio")
+    rsi    = ohlcv.get("rsi")
+    a50    = ohlcv.get("above_sma50")
+    a200   = ohlcv.get("above_sma200")
+    close  = ohlcv.get("close")
+    down   = chg < 0
+    dirw   = "fell" if down else ("rose" if chg > 0 else "was flat")
+    rel    = rel or {}
+    levels = levels or {}
+    out = []
+
+    # 1. REAL REASON
+    macro = ""
+    if rate and rate.get("bps_change"):
+        if rate["direction"] == "up":
+            macro = f", as the 10-year yield rose ~{abs(rate['bps_change'])}bps and pressured rate-sensitive names"
+        elif rate["direction"] == "down":
+            macro = f", with the 10-year yield easing ~{abs(rate['bps_change'])}bps"
+    sec = ""
+    if rel.get("sector_name") and rel.get("sector_chg") is not None:
+        sc, vs = rel["sector_chg"], rel.get("vs_sector")
+        if vs is not None and vs <= -0.5:
+            sec = (f"; its {rel['sector_name']} basket moved {sc:+.1f}% but {symbol} moved harder, "
+                   f"so a stock-specific component is layered on the sector move")
+        elif vs is not None and vs >= 0.5:
+            sec = f"; its {rel['sector_name']} basket moved {sc:+.1f}% and {symbol} held up better than peers"
+        else:
+            sec = f"; its {rel['sector_name']} basket moved {sc:+.1f}%, so this is largely a sector-wide move"
+    out.append(f"{symbol} {dirw} {abs(chg):.2f}% to {cur}{close}{macro}{sec}.")
+
+    # 2. MARKET VS STOCK  (breadth for indices, relative perf for single names)
+    if asset_type == "INDEX":
+        if themes:
+            up_n = sum(1 for t in themes if t.get("avg_change_pct", 0) >= 0.3)
+            dn_n = sum(1 for t in themes if t.get("avg_change_pct", 0) <= -0.3)
+            worst = min(themes, key=lambda t: t.get("avg_change_pct", 0))
+            best  = max(themes, key=lambda t: t.get("avg_change_pct", 0))
+            tone  = ("broad-based weakness" if dn_n > up_n else
+                     "broad-based strength" if up_n > dn_n else "a mixed, two-sided tape")
+            out.append(f"Breadth shows {tone}: {dn_n} sector{'s' if dn_n != 1 else ''} down vs {up_n} up, "
+                       f"led lower by {worst['theme']} ({worst['avg_change_pct']:+.1f}%) and supported by "
+                       f"{best['theme']} ({best['avg_change_pct']:+.1f}%).")
+        else:
+            out.append("Sector breadth is unavailable, so the internal make-up of the move can't be read this session.")
+    elif rel.get("vs_sector") is not None:
+        vsi = rel.get("vs_index")
+        idx_tail = f" and the index by {abs(vsi):.1f} pts" if vsi is not None else ""
+        if rel["vs_sector"] <= -0.5:
+            out.append(f"It underperformed its sector by {abs(rel['vs_sector']):.1f} pts{idx_tail} — "
+                       f"a stock-specific drag is sitting on top of the broad move.")
+        elif rel["vs_sector"] >= 0.5:
+            out.append(f"It outperformed its sector by {rel['vs_sector']:.1f} pts — relative strength versus peers despite the tape.")
+        else:
+            out.append(f"It moved broadly in line with its sector ({rel['vs_sector']:+.1f} pts) — "
+                       f"a macro/sector move rather than company-specific news.")
+    elif rel.get("vs_index") is not None:
+        out.append(f"Versus the index it ran {rel['vs_index']:+.1f} pts today — "
+                   f"{'lagging the broad market' if rel['vs_index'] < 0 else 'leading the broad market'}.")
+    else:
+        out.append("Sector/index comparison is unavailable for this name right now.")
+
+    # 3. BIG INVESTORS
+    if volr is not None:
+        if volr >= 1.8:
+            out.append(f"Volume was {volr}x the 20-day average — heavy institutional flow, "
+                       f"{'distribution with real conviction' if down else 'genuine accumulation'}.")
+        elif volr >= 1.15:
+            out.append(f"Volume ran {volr}x average — only modestly elevated, pointing to orderly "
+                       f"{'de-risking' if down else 'buying'} rather than panic or capitulation.")
+        elif volr < 0.85:
+            out.append(f"Volume was light at {volr}x average — large players are mostly on the sidelines, so conviction behind the move is low.")
+        else:
+            out.append(f"Volume sat near average ({volr}x) — no unusual large-player footprint this session.")
+    else:
+        out.append("Volume data is unavailable, so institutional participation can't be gauged this session.")
+
+    # 4. WHAT TO DO
+    if a50 and a200:            trend = "It holds above both the 50- and 200-day averages, so the primary trend is intact"
+    elif a50 is False and a200 is False: trend = "It sits below both the 50- and 200-day averages, so the primary trend is broken"
+    else:                      trend = "It is mixed against its key moving averages"
+    mom = ""
+    if rsi is not None:
+        if down and rsi >= 55:  mom = f"; RSI {rsi} shows it was overbought into the drop, so the unwind may not be finished"
+        elif rsi <= 30:         mom = f"; RSI {rsi} is oversold, where a reflex bounce becomes statistically likely"
+        elif rsi >= 70:         mom = f"; RSI {rsi} is overbought, making fresh longs poor risk/reward"
+    vixn = f", with VIX at {vix_val} ({vix_regime})" if vix_val is not None else ""
+    action = ("let the selling exhaust and wait for stabilization before adding" if down
+              else "respect the trend but size positions for the current volatility regime")
+    out.append(f"{trend}{mom}{vixn} — {action}.")
+
+    # 5. WATCH THIS LEVEL
+    wv = levels.get("nearest_support") if down else levels.get("nearest_resistance")
+    wl = levels.get("support_label")   if down else levels.get("resistance_label")
+    if wv is not None:
+        sma50 = levels.get("sma50")
+        sma_tail = f" (50-day avg \u2248 {cur}{sma50})" if sma50 is not None else ""
+        out.append(f"Key {'support' if down else 'resistance'} is {cur}{wv} ({wl}); a decisive close "
+                   f"{'below' if down else 'above'} it would {'open further downside' if down else 'confirm the breakout'}{sma_tail}.")
+    else:
+        out.append("No clean support/resistance is derivable from current data — the level is unclear, so watch today's range extremes instead.")
+
+    return out
 
 
 def _mw_fetch_news(yf_sym, max_items=5):
@@ -28534,31 +28822,37 @@ async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0
         mkt_proxy     = _INDEX_PROXIES.get(region, {}).get("symbol", "SPY")
         mkt_ohlcv_fut = _lp.run_in_executor(None, _mw_fetch_ohlcv, mkt_proxy)
         news_fut      = _lp.run_in_executor(None, _mw_fetch_news, yf_sym)
+        rate_fut      = _lp.run_in_executor(None, _mw_fetch_rate_context, region)
 
-        ohlcv, (vix_val, vix_regime), themes, (top_movers, bot_movers), market_ohlcv, news = \
-            await _aio.gather(ohlcv_fut, vix_fut, themes_fut, movers_fut, mkt_ohlcv_fut, news_fut)
+        ohlcv, (vix_val, vix_regime), themes, (top_movers, bot_movers), market_ohlcv, news, rate = \
+            await _aio.gather(ohlcv_fut, vix_fut, themes_fut, movers_fut, mkt_ohlcv_fut, news_fut, rate_fut)
 
         if not ohlcv:
             return {"success": False, "error": f"Could not fetch price data for {symbol} ({yf_sym})",
                     "symbol": symbol, "region": region}
 
-        # Deterministic bullets + decision verdict — always computed
-        bullets = _mw_deterministic_bullets(
-            symbol, ohlcv, vix_val, vix_regime, themes,
-            top_movers, bot_movers, asset_type, region)
+        # Decision verdict — always computed
         verdict = _mw_decision_verdict(ohlcv, themes, vix_val, vix_regime, asset_type, region)
 
-        # AI narrative — feed news titles for stock-specific context
+        # Analyst context — real (never invented) levels + relative performance
+        levels    = _mw_key_levels(ohlcv)
+        rel        = _mw_relative_perf(symbol, ohlcv, market_ohlcv, themes, region)
+        pro_bullets = _mw_pro_fallback(
+            symbol, ohlcv, vix_val, vix_regime, themes, rel, levels,
+            rate, asset_type, region)
+
+        # AI narrative — feed news + levels + relative perf + rate context
         narrative = None
         if ANTHROPIC_API_KEY:
             news_titles = [n["title"] for n in news if n.get("title")]
             prompt = _mw_build_prompt(
                 symbol, region, ohlcv, vix_val, vix_regime,
                 themes, top_movers, bot_movers, asset_type, market_ohlcv,
-                news_titles=news_titles)
+                news_titles=news_titles, levels=levels, rel=rel, rate=rate)
             narrative = await _lp.run_in_executor(None, _mw_ai_narrative, prompt)
         if not narrative:
-            narrative = " ".join(bullets[:4]) if bullets else "Insufficient data."
+            # Analyst-grade 5-slot fallback (one bullet per line → maps to the 5 labels)
+            narrative = "\n".join(pro_bullets) if pro_bullets else "Insufficient data."
 
         out = {
             "success":        True,
@@ -28572,12 +28866,15 @@ async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0
             "themes":         themes,
             "top_gainers":    top_movers,
             "top_losers":     bot_movers,
-            "why_bullets":    bullets,
+            "why_bullets":    pro_bullets,
             "why_narrative":  narrative,
             "news":           news,
             "decision":       verdict,
+            "levels":         levels,
+            "relative":       rel,
+            "rate_context":   rate,
             "elapsed_sec":    round(_time.time() - t0, 2),
-            "_engine":        "market_why_v2_r100.9",
+            "_engine":        "market_why_v3_r101.8_analyst",
         }
         _market_why_cache[cache_key] = {"data": out, "ts": _time.time()}
         return out
