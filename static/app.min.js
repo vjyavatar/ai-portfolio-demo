@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.101.6";
-window.CELESYS_BUILD_TIME = 1780645200;
-window.CELESYS_BUILD_DATE = "2026-06-05 05:00:00 UTC";
+window.CELESYS_VERSION = "r63.101.7";
+window.CELESYS_BUILD_TIME = 1780648800;
+window.CELESYS_BUILD_DATE = "2026-06-05 06:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12718,6 +12718,80 @@ window._renderInsiderActivity = function(d) {
 };
 
 // ═══════════════════ ENGINE 12: DIRECTIONAL OPTIONS SCANNER (r99.43) ═══════════════════
+// ═══════════════════ ENGINE 13: INSTITUTIONAL 360° DECISION ════════════════════
+window._loadInstitutional360 = function() {
+  var inp = document.getElementById('inst360Sym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  if (!sym) {
+    document.getElementById('inst360Result').innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Please enter a symbol first.</div>';
+    return;
+  }
+  var reg = (window._engState && window._engState.inst360 && window._engState.inst360.region) || 'US';
+  var btn = document.getElementById('inst360Btn');
+  var resEl = document.getElementById('inst360Result');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ ANALYZING…'; }
+  if (resEl) resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#ea580c">'
+    + '<div style="display:inline-block;width:16px;height:16px;border:2px solid #ea580c;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>'
+    + 'Running 6-dimension analysis for ' + sym + '…</div>';
+  fetch('/api/institutional-360?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg), {cache:'no-store'})
+    .then(function(r) { return r.json().catch(function(){return null;}); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 GET 360° DECISION'; }
+      if (!d || !d.success) {
+        var msg = (d && (d.error || d.detail)) || 'unknown error';
+        if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Error: ' + msg + '</div>';
+        return;
+      }
+      if (resEl) {
+        resEl.innerHTML = window._renderInstitutional360(d);
+        // r100.5: inject Why Moving? button below the 360 card
+        var whyDiv = document.createElement('div');
+        whyDiv.style.cssText = 'margin-top:8px';
+        whyDiv.innerHTML = '<button onclick="window._mktWhyQuick(\'' + sym.replace(/'/g,"\\'") + '\',\'' + reg + '\')" '
+          + 'style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:7px;padding:7px 16px;'
+          + 'font-size:11px;font-weight:700;cursor:pointer">🧠 Why is ' + sym + ' moving today?</button>'
+          + '<div id="marketWhyResult_' + sym + '" style="margin-top:8px"></div>';
+        resEl.appendChild(whyDiv);
+      }
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 GET 360° DECISION'; }
+      if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Network error: ' + e.message + '</div>';
+    });
+};
+
+// ═══════════════════ ENGINE: MARKET WHY (Why Moving?) ════════════════════
+window._loadMarketWhyEngine = function() {
+  return window._loadMarketWhyEngineImpl ? window._loadMarketWhyEngineImpl() : window._loadMarketWhyEngine_inner();
+};
+
+// Alias used by the panel buttons
+window._loadMarketWhyEngine_inner = window._loadMarketWhyEngine_inner || function() {
+  var inp = document.getElementById('mktWhySym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  var region = (window._engState && window._engState.marketWhy && window._engState.marketWhy.region) || 'IN';
+  var resEl = document.getElementById('mktWhyResult');
+  var btn   = document.getElementById('mktWhyBtn');
+  if (!sym) {
+    if (resEl) resEl.innerHTML = '<div style="padding:10px;font-size:12px;color:#dc2626">Please enter a symbol.</div>';
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = '⏳ Loading…'; }
+  if (resEl) resEl.innerHTML = '<div style="padding:14px;text-align:center;font-size:11px;color:#15803d">'
+    + '<div style="display:inline-block;width:14px;height:14px;border:2px solid #15803d;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>'
+    + 'Fetching intelligence for ' + sym + ' (' + region + ')…</div>';
+  fetch('/api/market-why?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(region), {cache:'no-store'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '🧠 WHY?'; }
+      if (resEl) resEl.innerHTML = window._renderMarketWhy(d);
+    })
+    .catch(function(e) {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '🧠 WHY?'; }
+      if (resEl) resEl.innerHTML = '<div style="padding:10px;font-size:12px;color:#dc2626">Error: ' + e.message + '</div>';
+    });
+};
+
 window._loadDirectionalOptions = function() {
   var reg = window._engState.diropts.region;
   var topN = parseInt(document.getElementById('diroptsTopN').value || '10');
