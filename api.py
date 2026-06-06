@@ -29292,6 +29292,282 @@ def _mw_decision_verdict(ohlcv, themes, vix_val, vix_regime, asset_type, region)
     }
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# MARKET 360 — overall market analysis engine (Decide → Engines → 🌐 Market 360)
+# Aggregates indices + VIX + yields + oil + gold + dollar + sector breadth into
+# a regime read, pillar cards, and an AI synthesis. Reuses market-why helpers.
+# Honest: any instrument the data path cannot reach shows N/A, never a guess.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_M360_TTL = 300
+_market_360_cache = {}
+
+_M360_INSTRUMENTS = {
+    "US": {
+        "indices": [("sp500", "S&P 500", "SPY"), ("nasdaq", "Nasdaq 100", "QQQ"),
+                    ("dow", "Dow Jones", "DIA"), ("russell", "Russell 2000", "IWM")],
+        "rates":   [("y10", "US 10-Year", "^TNX"), ("y30", "US 30-Year", "^TYX"),
+                    ("y05", "US 5-Year", "^FVX")],
+        "energy":  [("wti", "WTI Crude", "CL=F"), ("brent", "Brent Crude", "BZ=F")],
+        "cross":   [("gold", "Gold", "GC=F"), ("dxy", "US Dollar (DXY)", "DX-Y.NYB"),
+                    ("btc", "Bitcoin", "BTC-USD")],
+    },
+    "IN": {
+        "indices": [("nifty", "NIFTY 50", "^NSEI"), ("banknifty", "Bank Nifty", "^NSEBANK"),
+                    ("sensex", "Sensex", "^BSESN"), ("midcap", "Midcap Select", "NIFTY_MID_SELECT.NS")],
+        "rates":   [("y10us", "US 10-Year", "^TNX")],
+        "energy":  [("wti", "WTI Crude", "CL=F"), ("brent", "Brent Crude", "BZ=F")],
+        "cross":   [("gold", "Gold", "GC=F"), ("usdinr", "USD/INR", "INR=X"),
+                    ("btc", "Bitcoin", "BTC-USD")],
+    },
+}
+
+
+def _m360_dir(x):
+    if x is None:
+        return "flat"
+    if x > 0.05:
+        return "up"
+    if x < -0.05:
+        return "down"
+    return "flat"
+
+
+def _m360_quote(yf_sym, kind="price"):
+    """Single instrument quote via the shared OHLCV fetch. Rates are normalized
+    to a percent yield (handles the ^TNX x10 quirk) and report a bps change."""
+    try:
+        o = _mw_fetch_ohlcv(yf_sym)
+        if not o or o.get("close") is None:
+            return None
+        close = o["close"]; prev = o.get("prev_close"); chg = o.get("change_pct")
+        if kind == "rate":
+            norm = lambda v: (v / 10.0 if (v and v > 20) else v)
+            c = norm(close); p = norm(prev) if prev else None
+            bps = round((c - p) * 100) if (c is not None and p is not None) else None
+            return {"value": round(c, 2), "unit": "%", "bps": bps,
+                    "change_pct": chg, "dir": _m360_dir(bps if bps is not None else chg)}
+        return {"value": close, "change_pct": chg, "dir": _m360_dir(chg)}
+    except Exception:
+        return None
+
+
+def _m360_regime(idx_changes, vix_regime, breadth_net, y10_bps):
+    """Composite risk regime score in [-100, +100]."""
+    score = 0.0
+    if idx_changes:
+        avg = sum(idx_changes) / len(idx_changes)
+        score += max(min(avg * 15, 45), -45)
+    score += {"low": 15, "normal": 5, "elevated": -20, "high": -40}.get(vix_regime, 0)
+    if breadth_net is not None:
+        score += max(min(breadth_net, 25), -25)
+    if y10_bps is not None:
+        score += (-min(abs(y10_bps), 15)) if y10_bps > 0 else min(abs(y10_bps), 10)
+    score = int(max(min(round(score), 100), -100))
+    if score >= 25:
+        label, tone = "RISK-ON", "Buyers in control — breadth and volatility supportive."
+    elif score <= -25:
+        label, tone = "RISK-OFF", "Defensive tape — selling pressure and/or volatility elevated."
+    else:
+        label, tone = "MIXED / CHOPPY", "Two-sided tape — no clear directional edge right now."
+    return {"label": label, "score": score, "tone": tone}
+
+
+def _m360_pillar_reads(tiles_by_key, vix_val, vix_regime, breadth, region):
+    """Deterministic one-line reads per pillar — always present, even w/o AI."""
+    cur = "$" if region == "US" else "\u20b9"
+    g = lambda k: tiles_by_key.get(k)
+    reads = {}
+
+    idx_keys = [k for k in ("sp500", "nasdaq", "dow", "russell", "nifty", "banknifty", "sensex", "midcap") if g(k)]
+    ups = sum(1 for k in idx_keys if (g(k)["change_pct"] or 0) > 0)
+    if idx_keys:
+        avg = sum((g(k)["change_pct"] or 0) for k in idx_keys) / len(idx_keys)
+        reads["equities"] = (f"Headline indices average {avg:+.2f}% ({ups}/{len(idx_keys)} green). "
+                             + ("Broad strength." if ups >= len(idx_keys) - 1 and avg > 0 else
+                                "Broad weakness." if ups <= 1 and avg < 0 else "Rotation under the surface."))
+    else:
+        reads["equities"] = "Index data unavailable on the current feed."
+
+    y10 = g("y10") or g("y10us")
+    if y10 and y10.get("bps") is not None:
+        b = y10["bps"]
+        reads["rates"] = (f"US 10Y \u2248 {y10['value']}% ({b:+d}bps). "
+                          + ("Rising yields pressure rate-sensitive growth/tech." if b > 0
+                             else "Easing yields relieve duration-sensitive names." if b < 0
+                             else "Yields steady."))
+    else:
+        reads["rates"] = "Treasury-yield feed unreachable (often blocked on data-center IPs)."
+
+    if vix_val is not None:
+        reads["volatility"] = (f"VIX {vix_val} ({vix_regime}). "
+                               + ("Fear elevated, hedges bid." if vix_regime in ("elevated", "high")
+                                  else "Calm regime, risk appetite intact."))
+    else:
+        reads["volatility"] = "Volatility index unavailable."
+
+    wti = g("wti")
+    if wti:
+        reads["energy"] = (f"WTI {cur}{wti['value']} ({wti['change_pct']:+.1f}%). "
+                           + ("Higher oil feeds inflation \u2192 keeps the Fed restrictive." if (wti['change_pct'] or 0) > 0
+                              else "Softer oil eases the inflation impulse."))
+    else:
+        reads["energy"] = "Crude feed unavailable."
+
+    if breadth:
+        up_n = sum(1 for t in breadth if (t.get("avg_change_pct") or 0) >= 0.3)
+        dn_n = sum(1 for t in breadth if (t.get("avg_change_pct") or 0) <= -0.3)
+        worst = min(breadth, key=lambda t: t.get("avg_change_pct", 0))
+        best = max(breadth, key=lambda t: t.get("avg_change_pct", 0))
+        reads["breadth"] = (f"{up_n} sectors up / {dn_n} down. Leaders: {best['theme']} "
+                            f"({best['avg_change_pct']:+.1f}%); laggards: {worst['theme']} ({worst['avg_change_pct']:+.1f}%).")
+    else:
+        reads["breadth"] = "Sector breadth unavailable."
+
+    gold = g("gold"); dxy = g("dxy") or g("usdinr"); btc = g("btc")
+    parts = []
+    if gold: parts.append(f"Gold {gold['change_pct']:+.1f}%")
+    if dxy:  parts.append(("USD" if region == "US" else "USDINR") + f" {dxy['change_pct']:+.1f}%")
+    if btc:  parts.append(f"BTC {btc['change_pct']:+.1f}%")
+    reads["crossasset"] = (" \u00b7 ".join(parts) + ".") if parts else "Cross-asset feed unavailable."
+    return reads
+
+
+def _m360_build_prompt(region, regime, tiles_by_key, vix_val, vix_regime, breadth):
+    cur = "$" if region == "US" else "\u20b9"
+    L = [f"REGION: {region}. Composite regime: {regime['label']} (score {regime['score']}/100)."]
+    for k, lab in [("sp500", "S&P 500"), ("nasdaq", "Nasdaq 100"), ("dow", "Dow"), ("russell", "Russell 2000"),
+                   ("nifty", "NIFTY 50"), ("banknifty", "Bank Nifty"), ("sensex", "Sensex")]:
+        t = tiles_by_key.get(k)
+        if t: L.append(f"{lab}: {t['change_pct']:+.2f}%.")
+    y10 = tiles_by_key.get("y10") or tiles_by_key.get("y10us")
+    if y10 and y10.get("bps") is not None:
+        L.append(f"US 10Y yield {y10['value']}% ({y10['bps']:+d}bps).")
+    if vix_val is not None:
+        L.append(f"VIX {vix_val} ({vix_regime}).")
+    for k, lab in [("wti", "WTI crude"), ("brent", "Brent"), ("gold", "Gold"), ("dxy", "US Dollar"), ("usdinr", "USDINR"), ("btc", "Bitcoin")]:
+        t = tiles_by_key.get(k)
+        if t: L.append(f"{lab}: {cur if k in ('wti','brent','gold') else ''}{t['value']} ({t['change_pct']:+.1f}%).")
+    if breadth:
+        worst = min(breadth, key=lambda t: t.get('avg_change_pct', 0))
+        best = max(breadth, key=lambda t: t.get('avg_change_pct', 0))
+        L.append(f"Sector breadth: best {best['theme']} {best['avg_change_pct']:+.1f}%, worst {worst['theme']} {worst['avg_change_pct']:+.1f}%.")
+    data_block = "\n".join(L)
+    return (
+        "You are a senior markets-desk strategist writing a brief 'how is the market behaving right now' note "
+        "for a sophisticated audience. Use ONLY the numbers in the data block; never invent figures or events you "
+        "were not given (you do NOT have today's news headlines, jobs, or CPI \u2014 reason purely from these prices). "
+        "Explain the cause-chain across assets (rates \u2192 equities, oil \u2192 inflation impulse, VIX \u2192 risk appetite). "
+        "Write 4\u20136 tight sentences, plain and quantitative, no preamble, no markdown headers.\n\n"
+        f"DATA BLOCK:\n{data_block}"
+    )
+
+
+@app.get("/api/market-360")
+async def market_360(region: str = "US", refresh: int = 0):
+    """Overall market analysis: regime + cross-asset tiles + pillar reads + AI synthesis."""
+    import asyncio as _aio
+    import time as _time
+    region = (region or "US").upper()
+    if region not in _M360_INSTRUMENTS:
+        region = "US"
+
+    cache_key = region
+    if not refresh and cache_key in _market_360_cache:
+        e = _market_360_cache[cache_key]
+        if (_time.time() - e["ts"]) < _M360_TTL:
+            return {**e["data"], "_cached": True, "_cache_age_sec": int(_time.time() - e["ts"])}
+
+    t0 = _time.time()
+    _lp = _aio.get_event_loop()
+    spec = _M360_INSTRUMENTS[region]
+
+    # Build the full instrument list (key, label, sym, group, kind)
+    jobs = []
+    for grp in ("indices", "rates", "energy", "cross"):
+        for key, label, sym in spec[grp]:
+            kind = "rate" if grp == "rates" else "price"
+            jobs.append((key, label, sym, grp, kind))
+
+    async def _q(job):
+        key, label, sym, grp, kind = job
+        res = await _lp.run_in_executor(None, _m360_quote, sym, kind)
+        return key, label, grp, res
+
+    try:
+        quote_futs = [_q(j) for j in jobs]
+        vix_fut    = _lp.run_in_executor(None, _mw_fetch_vix, region)
+        themes_fut = _lp.run_in_executor(None, _mw_compute_themes, region)
+        results = await _aio.gather(*quote_futs, vix_fut, themes_fut)
+        quotes = results[:-2]
+        vix_val, vix_regime = results[-2]
+        breadth = results[-1] or []
+
+        tiles = []
+        tiles_by_key = {}
+        for key, label, grp, res in quotes:
+            tile = {"key": key, "label": label, "group": grp,
+                    "value": (res.get("value") if res else None),
+                    "change_pct": (res.get("change_pct") if res else None),
+                    "bps": (res.get("bps") if res else None),
+                    "unit": (res.get("unit") if res else None),
+                    "dir": (res.get("dir") if res else None),
+                    "available": bool(res)}
+            tiles.append(tile)
+            if res:
+                tiles_by_key[key] = res
+
+        # VIX as its own tile
+        tiles.append({"key": "vix", "label": "VIX" if region == "US" else "India VIX",
+                      "group": "volatility", "value": vix_val,
+                      "change_pct": None, "dir": ("down" if vix_regime in ("low", "normal") else "up"),
+                      "available": vix_val is not None, "regime": vix_regime})
+
+        idx_changes = [tiles_by_key[k]["change_pct"] for k in tiles_by_key
+                       if k in ("sp500", "nasdaq", "dow", "russell", "nifty", "banknifty", "sensex", "midcap")
+                       and tiles_by_key[k].get("change_pct") is not None]
+        breadth_net = None
+        if breadth:
+            up_n = sum(1 for t in breadth if (t.get("avg_change_pct") or 0) >= 0.3)
+            dn_n = sum(1 for t in breadth if (t.get("avg_change_pct") or 0) <= -0.3)
+            breadth_net = (up_n - dn_n) / max(len(breadth), 1) * 25
+        y10 = tiles_by_key.get("y10") or tiles_by_key.get("y10us")
+        y10_bps = y10.get("bps") if y10 else None
+
+        regime = _m360_regime(idx_changes, vix_regime, breadth_net, y10_bps)
+        reads = _m360_pillar_reads(tiles_by_key, vix_val, vix_regime, breadth, region)
+
+        pillars = [
+            {"key": "equities",   "title": "Equities",        "emoji": "\U0001F4C8", "read": reads.get("equities")},
+            {"key": "rates",      "title": "Rates & Fed",     "emoji": "\U0001F3E6", "read": reads.get("rates")},
+            {"key": "volatility", "title": "Volatility",      "emoji": "\u26A1",     "read": reads.get("volatility")},
+            {"key": "energy",     "title": "Energy / Oil",    "emoji": "\U0001F6E2\uFE0F", "read": reads.get("energy")},
+            {"key": "breadth",    "title": "Sector Breadth",  "emoji": "\U0001F310", "read": reads.get("breadth")},
+            {"key": "crossasset", "title": "Cross-Asset",     "emoji": "\U0001F501", "read": reads.get("crossasset")},
+        ]
+
+        narrative = None
+        if ANTHROPIC_API_KEY:
+            prompt = _m360_build_prompt(region, regime, tiles_by_key, vix_val, vix_regime, breadth)
+            narrative = await _lp.run_in_executor(None, _mw_ai_narrative, prompt)
+
+        n_avail = sum(1 for t in tiles if t.get("available"))
+        data_note = (f"{n_avail}/{len(tiles)} live feeds reachable. Missing items show N/A "
+                     f"(Treasury/commodity feeds are often blocked on data-center IPs; macro events like "
+                     f"jobs/CPI are not in this feed). This is market analysis, not investment advice.")
+
+        out = {
+            "success": True, "region": region, "asof": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+            "regime": regime, "tiles": tiles, "pillars": pillars,
+            "breadth": breadth, "narrative": narrative, "data_note": data_note,
+            "elapsed_sec": round(_time.time() - t0, 2), "_engine": "market_360_v1",
+        }
+        _market_360_cache[cache_key] = {"ts": _time.time(), "data": out}
+        return out
+    except Exception as _e:
+        return {"success": False, "error": f"{type(_e).__name__}: {_e}", "region": region}
+
+
 @app.get("/api/market-why")
 async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0):
     """Why is [symbol] moving today?

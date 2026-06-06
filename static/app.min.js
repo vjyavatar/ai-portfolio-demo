@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.102.2";
-window.CELESYS_BUILD_TIME = 1780711200;
-window.CELESYS_BUILD_DATE = "2026-06-06 02:00:00 UTC";
+window.CELESYS_VERSION = "r63.103.0";
+window.CELESYS_BUILD_TIME = 1780716600;
+window.CELESYS_BUILD_DATE = "2026-06-06 03:30:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11728,7 +11728,7 @@ window._engState = {exit: {region: 'US'}, risk: {region: 'US'},
                     eps: {region: 'US'}, macro: {region: 'US'},
                     mgmt: {region: 'US'}, picks: {region: 'US'},
                     insider: {region: 'US'}, diropts: {region: 'US'},
-                    inst360: {region: 'US'}};
+                    inst360: {region: 'US'}, m360: {region: 'US'}};
 
 window._engShow = function(panel) {
   // Hide all panels, show selected, update button styling
@@ -11740,6 +11740,7 @@ window._engShow = function(panel) {
     'mgmt': 'engMgmtPanel', 'picks': 'engPicksPanel',
     'insider': 'engInsiderPanel', 'diropts': 'engDirOptsPanel',
     'inst360': 'engInst360Panel', 'marketwhy': 'engMarketWhyPanel',
+    'market360': 'engMarket360Panel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11754,6 +11755,7 @@ window._engShow = function(panel) {
     'mgmt': 'engBtnMgmt', 'picks': 'engBtnPicks',
     'insider': 'engBtnInsider', 'diropts': 'engBtnDirOpts',
     'inst360': 'engBtnInst360', 'marketwhy': 'engBtnMarketWhy',
+    'market360': 'engBtnMarket360',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12822,6 +12824,101 @@ window._loadMarketWhyEngine_inner = window._loadMarketWhyEngine_inner || functio
       if (resEl) resEl.innerHTML = '<div style="padding:10px;font-size:12px;color:#dc2626">Error: ' + e.message + '</div>';
     });
 };
+
+// ═══════════════════ MARKET 360 ENGINE ═══════════════════
+window._loadMarket360 = function() {
+  var reg = (window._engState.m360 && window._engState.m360.region) || 'US';
+  var btn = document.getElementById('m360Btn');
+  var resEl = document.getElementById('m360Result');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '\u23F3 ANALYZING\u2026'; }
+  if (resEl) resEl.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px">\u23F3 Pulling indices, VIX, yields, oil, gold &amp; sector breadth\u2026</div>';
+  fetch('/api/market-360?region=' + encodeURIComponent(reg), {cache:'no-store'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDF10 ANALYZE MARKET'; }
+      if (!d || !d.success) { if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + E((d && d.error) || 'Failed to load market data') + '</div>'; return; }
+      if (resEl) resEl.innerHTML = window._renderMarket360(d);
+    })
+    .catch(function(e){
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDF10 ANALYZE MARKET'; }
+      if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Network error: ' + E(String(e)) + '</div>';
+    });
+};
+
+window._renderMarket360 = function(d) {
+  var rg = d.regime || {};
+  var rColor = rg.label === 'RISK-ON' ? '#16a34a' : rg.label === 'RISK-OFF' ? '#dc2626' : '#d97706';
+  var rBg = rg.label === 'RISK-ON' ? '#f0fdf4' : rg.label === 'RISK-OFF' ? '#fef2f2' : '#fffbeb';
+  var pct = Math.round(((rg.score || 0) + 100) / 2);
+  var h = '';
+
+  /* Hero regime banner with gauge */
+  h += '<div style="background:' + rBg + ';border:1px solid ' + rColor + '40;border-radius:14px;padding:16px 18px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">';
+  h += '<div><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px">MARKET REGIME \u00B7 ' + E(d.region) + '</div>';
+  h += '<div style="font-size:26px;font-weight:900;color:' + rColor + ';font-family:Sora,sans-serif;line-height:1.1">' + E(rg.label || '\u2014') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#94a3b8;font-weight:700">SCORE</div><div style="font-size:22px;font-weight:900;color:' + rColor + ';font-family:JetBrains Mono,monospace">' + ((rg.score > 0 ? '+' : '') + (rg.score || 0)) + '</div></div>';
+  h += '</div>';
+  h += '<div style="position:relative;height:8px;border-radius:6px;background:linear-gradient(90deg,#dc2626,#d97706,#16a34a);margin:4px 0 6px">';
+  h += '<div style="position:absolute;top:-3px;left:calc(' + pct + '% - 2px);width:4px;height:14px;background:#0f172a;border-radius:2px;box-shadow:0 0 0 2px #fff"></div></div>';
+  h += '<div style="display:flex;justify-content:space-between;font-size:8px;color:#94a3b8;font-weight:700"><span>RISK-OFF</span><span>NEUTRAL</span><span>RISK-ON</span></div>';
+  h += '<div style="font-size:11px;color:#475569;margin-top:8px;line-height:1.4">' + E(rg.tone || '') + '</div>';
+  h += '<div style="font-size:9px;color:#94a3b8;margin-top:4px">As of ' + E(d.asof || '') + (d._cached ? ' \u00B7 cached' : '') + '</div>';
+  h += '</div>';
+
+  /* AI synthesis */
+  if (d.narrative) {
+    h += '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:10px;font-weight:800;color:#60a5fa;letter-spacing:0.5px;margin-bottom:8px">\uD83E\uDDE0 DESK SYNTHESIS \u00B7 AI</div>';
+    h += '<div style="font-size:12.5px;color:#e2e8f0;line-height:1.65">' + E(d.narrative) + '</div></div>';
+  }
+
+  /* Tiles */
+  function tile(t) {
+    var avail = t.available;
+    var dirC = t.dir === 'up' ? '#16a34a' : t.dir === 'down' ? '#dc2626' : '#64748b';
+    var arrow = t.dir === 'up' ? '\u25B2' : t.dir === 'down' ? '\u25BC' : '\u2014';
+    var valTxt, chgTxt = '';
+    if (!avail) { valTxt = '<span style="color:#cbd5e1">N/A</span>'; }
+    else if (t.key === 'vix') { valTxt = Number(t.value).toFixed(1); chgTxt = t.regime ? t.regime : ''; }
+    else if (t.unit === '%') { valTxt = Number(t.value).toFixed(2) + '%'; chgTxt = (t.bps != null ? ((t.bps > 0 ? '+' : '') + t.bps + 'bps') : ''); }
+    else { valTxt = Number(t.value).toLocaleString(undefined, {maximumFractionDigits: 2}); chgTxt = (t.change_pct != null ? ((t.change_pct > 0 ? '+' : '') + Number(t.change_pct).toFixed(2) + '%') : ''); }
+    var o = '<div style="flex:1;min-width:118px;background:#fff;border:1px solid #e2e8f0;border-left:3px solid ' + (avail ? dirC : '#e2e8f0') + ';border-radius:8px;padding:8px 10px">';
+    o += '<div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + E(t.label) + '</div>';
+    o += '<div style="font-size:15px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace;margin-top:2px">' + valTxt + '</div>';
+    if (avail && chgTxt) o += '<div style="font-size:10px;font-weight:800;color:' + dirC + '">' + arrow + ' ' + E(chgTxt) + '</div>';
+    o += '</div>';
+    return o;
+  }
+  function tileRow(title, keys) {
+    var ts = (d.tiles || []).filter(function(t){ return keys.indexOf(t.group) >= 0; });
+    if (!ts.length) return '';
+    return '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:0.5px;margin:10px 2px 6px">' + title + '</div>' +
+           '<div style="display:flex;flex-wrap:wrap;gap:8px">' + ts.map(tile).join('') + '</div>';
+  }
+  h += tileRow('INDICES', ['indices']);
+  h += tileRow('VOLATILITY \u00B7 RATES', ['volatility', 'rates']);
+  h += tileRow('ENERGY \u00B7 CROSS-ASSET', ['energy', 'cross']);
+
+  /* Pillars */
+  h += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:0.5px;margin:14px 2px 6px">360\u00B0 PILLARS</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px">';
+  (d.pillars || []).forEach(function(p){
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:11px 13px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora,sans-serif;margin-bottom:4px">' + E(p.emoji || '') + ' ' + E(p.title) + '</div>';
+    h += '<div style="font-size:11px;color:#475569;line-height:1.5">' + E(p.read || '\u2014') + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  /* Data note + refresh */
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:12px">';
+  h += '<div style="font-size:8px;color:#94a3b8;line-height:1.4;flex:1;min-width:200px">' + E(d.data_note || '') + '</div>';
+  h += '<button onclick="window._loadMarket360()" style="padding:5px 12px;background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\u21BB Refresh</button>';
+  h += '</div>';
+  return h;
+};
+
 
 window._loadDirectionalOptions = function() {
   var reg = window._engState.diropts.region;
