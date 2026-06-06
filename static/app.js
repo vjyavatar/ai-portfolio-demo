@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.103.0";
-window.CELESYS_BUILD_TIME = 1780716600;
-window.CELESYS_BUILD_DATE = "2026-06-06 03:30:00 UTC";
+window.CELESYS_VERSION = "r63.103.1";
+window.CELESYS_BUILD_TIME = 1780718400;
+window.CELESYS_BUILD_DATE = "2026-06-06 04:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12831,17 +12831,22 @@ window._loadMarket360 = function() {
   var btn = document.getElementById('m360Btn');
   var resEl = document.getElementById('m360Result');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '\u23F3 ANALYZING\u2026'; }
-  if (resEl) resEl.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px">\u23F3 Pulling indices, VIX, yields, oil, gold &amp; sector breadth\u2026</div>';
-  fetch('/api/market-360?region=' + encodeURIComponent(reg), {cache:'no-store'})
+  if (resEl) resEl.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px">\u23F3 Pulling indices, VIX, yields, oil, gold &amp; sector breadth\u2026 <span style="color:#cbd5e1">(up to ~30s)</span></div>';
+  var _ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var _to = setTimeout(function(){ if (_ac) _ac.abort(); }, 45000);
+  fetch('/api/market-360?region=' + encodeURIComponent(reg), {cache:'no-store', signal: _ac ? _ac.signal : undefined})
     .then(function(r){ return r.json(); })
     .then(function(d){
+      clearTimeout(_to);
       if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDF10 ANALYZE MARKET'; }
       if (!d || !d.success) { if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + E((d && d.error) || 'Failed to load market data') + '</div>'; return; }
       if (resEl) resEl.innerHTML = window._renderMarket360(d);
     })
     .catch(function(e){
+      clearTimeout(_to);
       if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDF10 ANALYZE MARKET'; }
-      if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Network error: ' + E(String(e)) + '</div>';
+      var msg = (e && e.name === 'AbortError') ? 'Feeds are slow right now (data-center IPs are often rate-limited by Yahoo). Try again, or switch region.' : ('Network error: ' + E(String(e)));
+      if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + msg + '</div>';
     });
 };
 

@@ -28502,7 +28502,7 @@ def _mw_fetch_ohlcv(yf_sym, period="5d"):
         import yfinance as yf
         import numpy as np
         tk = yf.Ticker(yf_sym)
-        hist = tk.history(period="30d", interval="1d", auto_adjust=True)
+        hist = tk.history(period="30d", interval="1d", auto_adjust=True, timeout=8)
         if hist is None or hist.empty or len(hist) < 2:
             return None
         closes = list(hist["Close"].dropna())
@@ -28560,7 +28560,7 @@ def _mw_fetch_vix(region):
         import yfinance as yf
         sym = _VIX_SYMS.get(region, "^VIX")
         tk = yf.Ticker(sym)
-        hist = tk.history(period="2d", interval="1d", auto_adjust=True)
+        hist = tk.history(period="2d", interval="1d", auto_adjust=True, timeout=8)
         if hist is None or hist.empty:
             return None, "unknown"
         v = float(list(hist["Close"].dropna())[-1])
@@ -29491,14 +29491,27 @@ async def market_360(region: str = "US", refresh: int = 0):
 
     async def _q(job):
         key, label, sym, grp, kind = job
-        res = await _lp.run_in_executor(None, _m360_quote, sym, kind)
+        try:
+            res = await _aio.wait_for(_lp.run_in_executor(None, _m360_quote, sym, kind), timeout=9)
+        except Exception:
+            res = None
         return key, label, grp, res
+
+    async def _vix_task():
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, _mw_fetch_vix, region), timeout=9)
+        except Exception:
+            return None, "unknown"
+
+    async def _themes_task():
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, _mw_compute_themes, region), timeout=14)
+        except Exception:
+            return []
 
     try:
         quote_futs = [_q(j) for j in jobs]
-        vix_fut    = _lp.run_in_executor(None, _mw_fetch_vix, region)
-        themes_fut = _lp.run_in_executor(None, _mw_compute_themes, region)
-        results = await _aio.gather(*quote_futs, vix_fut, themes_fut)
+        results = await _aio.gather(*quote_futs, _vix_task(), _themes_task())
         quotes = results[:-2]
         vix_val, vix_regime = results[-2]
         breadth = results[-1] or []
@@ -29549,7 +29562,10 @@ async def market_360(region: str = "US", refresh: int = 0):
         narrative = None
         if ANTHROPIC_API_KEY:
             prompt = _m360_build_prompt(region, regime, tiles_by_key, vix_val, vix_regime, breadth)
-            narrative = await _lp.run_in_executor(None, _mw_ai_narrative, prompt)
+            try:
+                narrative = await _aio.wait_for(_lp.run_in_executor(None, _mw_ai_narrative, prompt), timeout=18)
+            except Exception:
+                narrative = None
 
         n_avail = sum(1 for t in tiles if t.get("available"))
         data_note = (f"{n_avail}/{len(tiles)} live feeds reachable. Missing items show N/A "
