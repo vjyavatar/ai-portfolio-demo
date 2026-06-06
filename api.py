@@ -9137,6 +9137,9 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
         # 20d highs/lows for breakout
         high_20 = max(highs[-20:]) if len(highs) >= 20 else None
         low_20 = min(lows[-20:]) if len(lows) >= 20 else None
+        # consolidation range = prior 15 sessions EXCLUDING today (breakout-from-consolidation)
+        pre_high_15 = max(highs[-16:-1]) if len(highs) >= 16 else None
+        pre_low_15  = min(lows[-16:-1]) if len(lows) >= 16 else None
         # 20d return for RS
         ret_20 = (closes[-1] - closes[-21]) / closes[-21] * 100 if len(closes) >= 21 and closes[-21] > 0 else 0
         rs_vs_bench = ret_20 - benchmark_ret_20d if benchmark_ret_20d is not None else None
@@ -9154,6 +9157,8 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
             "rs_vs_bench_pct": round(rs_vs_bench, 2) if rs_vs_bench is not None else None,
             "high_20d": round(high_20, 2) if high_20 else None,
             "low_20d": round(low_20, 2) if low_20 else None,
+            "pre_high_15": round(pre_high_15, 2) if pre_high_15 else None,
+            "pre_low_15": round(pre_low_15, 2) if pre_low_15 else None,
         }
 
         # ───────── CE BUY scoring — strict checklist ─────────
@@ -9558,11 +9563,16 @@ def _upgrade_greeks_with_chain(ce_rows, pe_rows, vix_val, budget_sec=9):
 # ═══════════════════════════════════════════════════════════════════════════
 
 _MOMENTUM_CFG = {
-    "delta_lo": 0.55, "delta_hi": 0.65,
-    "iv_rank_max": 50.0,
+    # Option filter
+    "delta_lo": 0.45, "delta_hi": 0.60,
+    "iv_rank_max": 40.0,
+    "dte_lo": 20, "dte_hi": 45, "dte_target": 30,
+    # Stock filter
     "vol_mult": 2.0,
     "adx_min": 25.0,
-    "breakout_tol": 0.005,   # within 0.5% of the 20d extreme counts as breakout
+    "consol_max": 0.12,      # prior-15d range <= 12% of price = consolidation
+    "breakout_tol": 0.002,
+    "atm_band": 0.65,        # |delta| <= this = near-ATM (where gamma peaks)
 }
 
 
@@ -9617,99 +9627,228 @@ def _momentum_delta_strike(spot, gap, dte, direction, vix_val,
     return best[1] if best else None
 
 
-def _momentum_buyer_screen(direction, ind, spot, gap, dte, vix_val):
-    """Evaluate the 8 momentum-buyer criteria for one US candidate.
-    Returns dict: qualifies, passed, evaluable, total, strike, delta,
-    delta_source, checks[]. Never raises (returns None on bad input)."""
+def _momentum_screen(direction, ind, spot, gap, vix_val):
+    """Two-stage "next-MRVL" momentum screen (US).
+      STOCK FILTER : Rel-Vol>2, OI increasing, ADX>25, vs VWAP, EMA9 vs EMA20,
+                     breakout/breakdown FROM CONSOLIDATION.
+      OPTION FILTER: Delta 0.45-0.60, highest-liquid Gamma (ATM), IV-Rank<40,
+                     DTE 20-45, tight bid-ask.
+    Returns {stock_filter, option_filter, focus}. focus = both stages pass
+    (these are the cards the UI highlights). Never raises.
+    OI-increasing and bid-ask need a live feed → marked n/a (non-gating);
+    IV-Rank is an HV-rank proxy; Greeks are model (IV proxy = VIX)."""
     try:
         if not ind:
             return None
         C = _MOMENTUM_CFG
         bullish = (direction == "CE")
-        close   = ind.get("close")
-        ema9    = ind.get("ema9")
-        ema20   = ind.get("ema20")
-        vwap20  = ind.get("vwap20")
-        adx     = ind.get("adx14")
-        volr    = ind.get("vol_ratio")
-        hi20    = ind.get("high_20d")
-        lo20    = ind.get("low_20d")
-        hvr     = ind.get("hv_rank")
-
-        # 1. Delta in band — pick the right strike
-        ds = _momentum_delta_strike(spot, gap, dte, direction, vix_val)
-        delta = ds["delta"] if ds else None
-        d_strike = ds["strike"] if ds else None
-        ad = abs(delta) if delta is not None else None
-        c1 = None if ad is None else (C["delta_lo"] <= ad <= C["delta_hi"])
-
-        # 2. IV Rank < 50  (HV-rank proxy)
-        c2 = None if hvr is None else (hvr < C["iv_rank_max"])
-
-        # 3. OI increasing — no feed → honest n/a
-        c3 = None
-
-        # 4. Volume > 2x avg
-        c4 = None if volr is None else (volr >= C["vol_mult"])
-
-        # 5. Above / below VWAP
-        c5 = None if (close is None or vwap20 is None) else (close > vwap20 if bullish else close < vwap20)
-
-        # 6. EMA9 vs EMA20
-        c6 = None if (ema9 is None or ema20 is None) else (ema9 > ema20 if bullish else ema9 < ema20)
-
-        # 7. ADX > 25
-        c7 = None if adx is None else (adx > C["adx_min"])
-
-        # 8. Breakout (CE: >= 20d high) / breakdown (PE: <= 20d low) + 2x vol
-        inst_vol = (volr is not None and volr >= C["vol_mult"])
-        if bullish:
-            brk = (close is not None and hi20 is not None and close >= hi20 * (1 - C["breakout_tol"]))
-        else:
-            brk = (close is not None and lo20 is not None and close <= lo20 * (1 + C["breakout_tol"]))
-        c8 = None if (close is None or (hi20 is None and lo20 is None) or volr is None) else (brk and inst_vol)
+        close = ind.get("close"); ema9 = ind.get("ema9"); ema20 = ind.get("ema20")
+        vwap  = ind.get("vwap20"); adx = ind.get("adx14"); volr = ind.get("vol_ratio")
+        hvr   = ind.get("hv_rank")
+        pre_hi = ind.get("pre_high_15"); pre_lo = ind.get("pre_low_15")
+        cur = "$"
 
         def mk(name, ok, value, target, note=""):
             return {"name": name, "pass": ok, "value": value, "target": target, "note": note}
 
-        cur = "$"
-        checks = [
-            mk("Delta 0.55-0.65", c1,
-               (f"{delta:+.2f} @ {cur}{d_strike}" if delta is not None else "n/a"),
-               "0.55-0.65", "" if c1 is not False else ("too deep ITM" if (ad or 0) > C["delta_hi"] else "too far OTM / lottery")),
-            mk("IV Rank < 50", c2, (f"{hvr}" if hvr is not None else "n/a"), "< 50",
-               "HV-rank proxy (no IV-history feed)"),
-            mk("OI increasing", c3, "n/a", "rising", "needs an OI-history feed (Tradier/Polygon)"),
-            mk("Volume > 2x avg", c4, (f"{volr}x" if volr is not None else "n/a"), "\u2265 2.0x", ""),
-            mk(("Above VWAP" if bullish else "Below VWAP"), c5,
-               (f"{cur}{close} vs {cur}{vwap20}" if (close is not None and vwap20 is not None) else "n/a"),
+        # ───────── STOCK FILTER ─────────
+        s1 = None if volr is None else (volr >= C["vol_mult"])
+        s2 = None  # OI increasing — needs a live OI feed
+        s3 = None if adx is None else (adx > C["adx_min"])
+        s4 = None if (close is None or vwap is None) else (close > vwap if bullish else close < vwap)
+        s5 = None if (ema9 is None or ema20 is None) else (ema9 > ema20 if bullish else ema9 < ema20)
+        consol = None
+        if close is None or pre_hi is None or pre_lo is None or close <= 0:
+            s6 = None; rng = None
+        else:
+            rng = (pre_hi - pre_lo) / close
+            consol = rng <= C["consol_max"]
+            brk = (close > pre_hi * (1 - C["breakout_tol"])) if bullish else (close < pre_lo * (1 + C["breakout_tol"]))
+            s6 = bool(consol and brk)
+        stock_checks = [
+            mk("Rel Volume > 2", s1, (f"{volr}x" if volr is not None else "n/a"), "\u2265 2.0x"),
+            mk("OI increasing", s2, "n/a", "rising", "needs live OI feed"),
+            mk("ADX > 25", s3, (f"{adx}" if adx is not None else "n/a"), "> 25"),
+            mk(("Above VWAP" if bullish else "Below VWAP"), s4,
+               (f"{cur}{close} vs {cur}{vwap}" if (close is not None and vwap is not None) else "n/a"),
                ("price > VWAP" if bullish else "price < VWAP"), "20d approx VWAP"),
-            mk(("EMA9 > EMA20" if bullish else "EMA9 < EMA20"), c6,
+            mk(("EMA9 > EMA20" if bullish else "EMA9 < EMA20"), s5,
                (f"{ema9} / {ema20}" if (ema9 is not None and ema20 is not None) else "n/a"),
-               ("9 > 20" if bullish else "9 < 20"), ""),
-            mk("ADX > 25", c7, (f"{adx}" if adx is not None else "n/a"), "> 25", ""),
-            mk(("Breakout + inst. vol" if bullish else "Breakdown + inst. vol"), c8,
-               (f"{cur}{close} vs {cur}{(hi20 if bullish else lo20)}, {volr}x" if (close is not None and volr is not None) else "n/a"),
-               ("\u2265 20d high & 2x" if bullish else "\u2264 20d low & 2x"), ""),
+               ("9 > 20" if bullish else "9 < 20")),
+            mk(("Breakout from consolidation" if bullish else "Breakdown from consolidation"), s6,
+               (f"range {round(rng*100,1)}% \u2192 {'break' if s6 else ('tight' if consol else 'wide')}" if rng is not None else "n/a"),
+               "tight range + break"),
         ]
+        s_eval = [c for c in (s1, s3, s4, s5, s6) if c is not None]   # OI excluded (n/a)
+        s_pass = bool(s_eval) and all(s_eval)
+        stock_filter = {"pass": s_pass, "passed": sum(1 for c in s_eval if c),
+                        "evaluable": len(s_eval), "checks": stock_checks}
 
-        evaluable = [c for c in (c1, c2, c4, c5, c6, c7, c8) if c is not None]  # c3 excluded (n/a)
-        passed    = sum(1 for c in evaluable if c)
-        # Qualifies only if NONE of the evaluable criteria fail
-        qualifies = bool(evaluable) and all(evaluable)
+        # ───────── OPTION FILTER ─────────
+        ds = _momentum_delta_strike(spot, gap, C["dte_target"], direction,
+                                    vix_val, C["delta_lo"], C["delta_hi"])
+        delta = ds["delta"] if ds else None
+        gamma = ds["gamma"] if ds else None
+        d_strike = ds["strike"] if ds else None
+        ad = abs(delta) if delta is not None else None
+        o1 = None if ad is None else (C["delta_lo"] <= ad <= C["delta_hi"])
+        o2 = None if ad is None else (ad <= C["atm_band"])           # near-ATM → gamma peak
+        o3 = None if hvr is None else (hvr < C["iv_rank_max"])
+        o4 = True                                                    # DTE chosen in 20-45 by construction
+        o5 = None                                                    # tight bid-ask — needs live chain quote
+        opt_checks = [
+            mk("Delta 0.45-0.60", o1, (f"{delta:+.2f} @ {cur}{d_strike}" if delta is not None else "n/a"), "0.45-0.60"),
+            mk("Highest liquid Gamma (ATM)", o2, (f"\u0393 {gamma:.5f}" if gamma is not None else "n/a"),
+               "near-ATM peak", "liquidity needs live OI"),
+            mk("IV Rank < 40", o3, (f"{hvr}" if hvr is not None else "n/a"), "< 40", "HV-rank proxy"),
+            mk("DTE 20-45", o4, f"~{C['dte_target']}d", "20-45"),
+            mk("Tight bid-ask spread", o5, "n/a", "tight", "needs live chain quote"),
+        ]
+        o_eval = [c for c in (o1, o2, o3, o4) if c is not None]      # bid-ask excluded (n/a)
+        o_pass = bool(o_eval) and all(o_eval)
+        option_filter = {"pass": o_pass, "passed": sum(1 for c in o_eval if c),
+                         "evaluable": len(o_eval), "strike": d_strike, "delta": delta,
+                         "gamma": gamma, "dte": C["dte_target"], "delta_source": "model",
+                         "checks": opt_checks}
 
-        return {
-            "qualifies":    qualifies,
-            "passed":       passed,
-            "evaluable":    len(evaluable),
-            "total":        8,
-            "strike":       d_strike,
-            "delta":        delta,
-            "delta_source": "model",
-            "checks":       checks,
-        }
+        return {"stock_filter": stock_filter, "option_filter": option_filter,
+                "focus": bool(s_pass and o_pass)}
     except Exception:
         return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# OI FLOW — short-covering (CE) / long-unwinding (PE) bubble classification.
+# Short covering  = directional-up name with FALLING total OI (shorts buying back).
+# Long unwinding  = directional-down name with FALLING total OI (longs exiting).
+# Needs OI-CHANGE, which the US/Yahoo path does not reliably provide. We capture
+# total chain OI (best-effort, parallel, time-budgeted) and snapshot day-over-day;
+# when unreachable the signal stays None ("awaiting OI feed") — never faked.
+# (For NSE/IN, real OI-change is already available via the NSE feed; this US path
+#  mirrors that classification once an OI source is reachable.)
+# ═══════════════════════════════════════════════════════════════════════════
+
+import os as _os_oi
+import json as _json_oi
+
+_OI_SNAP_DIR = "/tmp/celesys_oi_snap"
+
+
+def _oi_total_for_symbol(yf_sym):
+    """Sum calls+puts open interest from the nearest expiry. None on failure."""
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(yf_sym)
+        exps = list(getattr(tk, "options", []) or [])
+        if not exps:
+            return None
+        ch = tk.option_chain(exps[0])
+        tot = 0
+        for df in (ch.calls, ch.puts):
+            if df is not None and not df.empty and "openInterest" in df:
+                tot += int(df["openInterest"].fillna(0).sum())
+        return tot if tot > 0 else None
+    except Exception:
+        return None
+
+
+def _oi_snap_path(region):
+    return _os_oi.path.join(_OI_SNAP_DIR, f"oi_{region}.json")
+
+
+def _oi_load(region):
+    try:
+        with open(_oi_snap_path(region)) as f:
+            return _json_oi.load(f)
+    except Exception:
+        return {"prev": {"date": None, "oi": {}}, "curr": {"date": None, "oi": {}}}
+
+
+def _oi_save(region, data):
+    try:
+        _os_oi.makedirs(_OI_SNAP_DIR, exist_ok=True)
+        with open(_oi_snap_path(region), "w") as f:
+            _json_oi.dump(data, f)
+    except Exception:
+        pass
+
+
+def _classify_oi_flow(side, oi_chg_pct):
+    """side encodes price-direction bias (CE = up setup, PE = down setup)."""
+    if oi_chg_pct is None:
+        return None
+    up = (side == "CE")
+    falling = oi_chg_pct < -1.0
+    rising  = oi_chg_pct > 1.0
+    if up and falling:        return "short_covering"
+    if up and rising:         return "long_buildup"
+    if (not up) and falling:  return "long_unwinding"
+    if (not up) and rising:   return "short_buildup"
+    return "flat"
+
+
+def _enrich_oi_flow(ce_rows, pe_rows, region, budget_sec=6):
+    """Best-effort total-OI capture + daily snapshot + short-covering/long-unwinding
+    classification. Sets row['oi_flow']; returns a bubbles summary dict. Never raises."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from datetime import datetime
+    rows = [(r, "CE") for r in (ce_rows or [])] + [(r, "PE") for r in (pe_rows or [])]
+    syms = []
+    for r, _s in rows:
+        ys = r.get("yf_sym")
+        if ys and ys not in syms:
+            syms.append(ys)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    snap = _oi_load(region)
+    if snap.get("curr", {}).get("date") != today:
+        snap["prev"] = snap.get("curr", {"date": None, "oi": {}})
+        snap["curr"] = {"date": today, "oi": {}}
+    prev_oi = (snap.get("prev") or {}).get("oi", {})
+    curr_oi = snap["curr"]["oi"]
+
+    fetched = {}
+    try:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            futs = {ex.submit(_oi_total_for_symbol, s): s for s in syms}
+            try:
+                for fut in as_completed(futs, timeout=budget_sec):
+                    s = futs[fut]
+                    try:
+                        v = fut.result(timeout=0)
+                        if v:
+                            fetched[s] = v
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    for s, v in fetched.items():
+        curr_oi[s] = v
+    _oi_save(region, snap)
+
+    bubbles = {"short_covering": [], "long_unwinding": []}
+    for r, side in rows:
+        ys = r.get("yf_sym")
+        oi_now = fetched.get(ys) or curr_oi.get(ys)
+        oi_prev = prev_oi.get(ys)
+        if oi_now and oi_prev and oi_prev > 0:
+            chg = round((oi_now - oi_prev) / oi_prev * 100, 1)
+            sig = _classify_oi_flow(side, chg)
+            r["oi_flow"] = {"oi_now": oi_now, "oi_prev": oi_prev, "chg_pct": chg,
+                            "signal": sig, "source": "chain"}
+            if sig == "short_covering" and side == "CE":
+                bubbles["short_covering"].append({"symbol": r.get("symbol"), "chg_pct": chg})
+            elif sig == "long_unwinding" and side == "PE":
+                bubbles["long_unwinding"].append({"symbol": r.get("symbol"), "chg_pct": chg})
+        elif oi_now:
+            r["oi_flow"] = {"oi_now": oi_now, "oi_prev": None, "chg_pct": None,
+                            "signal": None, "source": "baseline"}
+        else:
+            r["oi_flow"] = {"oi_now": None, "oi_prev": None, "chg_pct": None,
+                            "signal": None, "source": "unavailable"}
+    return bubbles
 
 
 @app.get("/api/directional-options-scanner")
@@ -9835,14 +9974,14 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
             if _mg:
                 ticket["greeks"] = _mg
         row["trade_ticket"] = ticket
-        # US-only: Professional Momentum Buyer screen (8 criteria, direction-aware)
+        # US-only: two-stage momentum screen (stock filter + option filter)
         if region == "US":
             _hint = r.get("options_hint") or {}
-            _mb = _momentum_buyer_screen(
+            _mb = _momentum_screen(
                 direction, r.get("indicators") or {}, row.get("price"),
-                _hint.get("strike_gap"), _hint.get("dte") or 14, vix_val)
+                _hint.get("strike_gap"), vix_val)
             if _mb:
-                row["momentum_buyer"] = _mb
+                row["momentum"] = _mb
         return row
 
     # Sort by conviction: Grade A first, then B, then C, then by score desc within each grade
@@ -9857,11 +9996,16 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
 
     # US-only: best-effort overlay of REAL per-strike IV + OI + Greeks from the
     # Yahoo option chain (parallel, time-budgeted). Falls back to model Greeks.
+    bubbles = {"short_covering": [], "long_unwinding": []}
     if region == "US":
         try:
             _upgrade_greeks_with_chain(ce_top, pe_top, vix_val, budget_sec=9)
         except Exception as _ge:
             print(f"[DIR-OPTIONS GREEKS] {type(_ge).__name__}: {_ge}")
+        try:
+            bubbles = _enrich_oi_flow(ce_top, pe_top, region, budget_sec=6) or bubbles
+        except Exception as _oe:
+            print(f"[DIR-OPTIONS OI-FLOW] {type(_oe).__name__}: {_oe}")
 
     # Top picks — best CE + best PE with full context for the summary card
     top_pick_ce = ce_top[0] if ce_top else None
@@ -9913,6 +10057,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         "top_pick_pe":       top_pick_pe,
         "conflict_warning":  conflict_warning,
         "dominant_direction": dominant_direction,
+        "bubbles":           bubbles,
         # VIX context — the whole point of this algorithm
         "vix_context": {
             "vix_value":       vix_val,
@@ -9930,7 +10075,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
             "5. Relative Strength vs Benchmark — 10 pts",
             "6. Breakout above 20d high / Breakdown below 20d low — 10 pts",
         ],
-        "_engine":       "directional_options_scanner_v4_momentum",
+        "_engine":       "directional_options_scanner_v5_2stage_oiflow",
         "_data_quality": ("US: actual Greeks (Δ/Θ/Vega/Γ) per ticket strike — Black-Scholes; "
                           "real IV+OI overlaid from option chain when reachable, else model "
                           "(IV≈VIX, OI null). IN: OHLCV+VIX trend only."),
