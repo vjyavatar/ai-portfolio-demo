@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.101.8";
-window.CELESYS_BUILD_TIME = 1780652400;
-window.CELESYS_BUILD_DATE = "2026-06-05 07:00:00 UTC";
+window.CELESYS_VERSION = "r63.102.1";
+window.CELESYS_BUILD_TIME = 1780704000;
+window.CELESYS_BUILD_DATE = "2026-06-06 01:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12974,6 +12974,21 @@ window._renderDirectionalOptions = function(d) {
     html += '<span style="font-size:20px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;background:' + bg + ';padding:3px 11px;border-radius:7px">' + (c.score||0) + '</span>';
     html += '</div></div>';
 
+    /* Dominant-direction + momentum badges (US scanner) */
+    var ddir = d.dominant_direction;
+    var _badges = '';
+    if (ddir === side) {
+      _badges += '<span style="font-size:10px;font-weight:800;color:#fff;background:' + color + ';border-radius:20px;padding:3px 11px;letter-spacing:0.3px">\u2713 ALIGNED \u00B7 DOMINANT ' + (side==='CE'?'(bullish)':'(bearish)') + '</span>';
+    } else if (ddir) {
+      _badges += '<span style="font-size:10px;font-weight:800;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:20px;padding:3px 11px">\u26A0 COUNTER-TREND \u00B7 not the dominant side</span>';
+    }
+    if (c.momentum_buyer && c.momentum_buyer.qualifies) {
+      _badges += '<span style="font-size:10px;font-weight:800;color:#fff;background:#7c3aed;border-radius:20px;padding:3px 11px">\uD83D\uDE80 MOMENTUM BUYER \u2713 ' + c.momentum_buyer.passed + '/' + c.momentum_buyer.evaluable + '</span>';
+    } else if (c.momentum_buyer) {
+      _badges += '<span style="font-size:10px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:20px;padding:3px 11px">Momentum ' + c.momentum_buyer.passed + '/' + c.momentum_buyer.evaluable + '</span>';
+    }
+    if (_badges) html += '<div style="margin:0 14px 10px;display:flex;flex-wrap:wrap;gap:6px">' + _badges + '</div>';
+
     /* Action bar — always visible */
     if (c.action) {
       html += '<div style="padding:9px 14px;background:' + grBg + ';border-top:1px solid ' + grC + '20;display:flex;align-items:center;justify-content:space-between;gap:8px">';
@@ -13024,6 +13039,38 @@ window._renderDirectionalOptions = function(d) {
       });
       html += '</div>';
       html += '<div style="font-size:12px;font-weight:700;color:#64748b">⏱ ' + E(tt.hold_time||'') + '</div></div>';
+      /* GREEKS — US region only (backend attaches tt.greeks for US) */
+      if (tt.greeks) {
+        var gk = tt.greeks, gf = gk.flags || {};
+        var realGk = gk.iv_source === 'chain';
+        var gkSrc = realGk
+          ? '<span style="font-size:8px;font-weight:800;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:2px 7px">\u25CF REAL \u00B7 chain IV/OI</span>'
+          : '<span style="font-size:8px;font-weight:800;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:2px 7px">\u25CC EST \u00B7 IV\u2248VIX, OI n/a</span>';
+        var gkM = [
+          {l:'DELTA \u0394',    v:(gk.delta>=0?'+':'')+Number(gk.delta).toFixed(3), f:gf.delta},
+          {l:'THETA \u0398 /d', v:Number(gk.theta).toFixed(3), f:null},
+          {l:'VEGA',          v:Number(gk.vega).toFixed(3),  f:null},
+          {l:'GAMMA \u0393',   v:Number(gk.gamma).toFixed(5), f:gf.gamma},
+          {l:'IV',            v:(gk.iv!=null?gk.iv+'%':'\u2014'), f:gf.iv},
+          {l:'OI',            v:(gk.oi!=null?Number(gk.oi).toLocaleString():'\u2014'), f:gf.oi}
+        ];
+        html += '<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #6366f1;border-radius:8px;padding:10px 12px;margin-bottom:8px">';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;flex-wrap:wrap">';
+        html += '<div style="font-size:10px;font-weight:800;color:#4338ca;letter-spacing:0.4px">\uD83E\uDDEE GREEKS \u2014 ' + E(String(gk.strike)) + ' ' + side + ' \u00B7 ' + E(String(gk.dte||'?')) + 'DTE</div>';
+        html += gkSrc + '</div>';
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">';
+        gkM.forEach(function(x){
+          html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px">';
+          html += '<div style="font-size:8px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px">' + x.l + '</div>';
+          html += '<div style="font-size:13px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(String(x.v)) + '</div>';
+          if (x.f) html += '<div style="font-size:8px;font-weight:800;color:' + E(x.f.color) + ';margin-top:1px">' + E(x.f.label) + '</div>';
+          else html += '<div style="font-size:8px;color:#cbd5e1;margin-top:1px">&nbsp;</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+        html += '<div style="font-size:8px;color:#94a3b8;margin-top:7px;line-height:1.45">Your bands: \u0394 0.4\u20130.5 target \u00B7 avoid \u0394&lt;0.3 \u00B7 \u0393&gt;0.0012 hot (ref 0.00007) \u00B7 IV&lt;15 low \u00B7 OI\u22651 lakh liquid' + (realGk?'':' \u2014 \u0394/\u0393/\u0398/Vega are model estimates (IV\u2248VIX); live chain unreachable for real IV/OI') + '</div>';
+        html += '</div>';
+      }
       /* Exit rules */
       if (tt.exit_rules && tt.exit_rules.length) {
         html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px">';
@@ -13036,6 +13083,29 @@ window._renderDirectionalOptions = function(d) {
         });
         html += '</div>';
       }
+    }
+
+    /* Professional Momentum Buyer checklist (US only) */
+    if (c.momentum_buyer) {
+      var mb = c.momentum_buyer;
+      var mbCol = mb.qualifies ? '#7c3aed' : '#94a3b8';
+      html += '<div style="background:#faf5ff;border:1px solid #e9d5ff;border-left:3px solid ' + mbCol + ';border-radius:8px;padding:10px 12px;margin-bottom:8px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;flex-wrap:wrap">';
+      html += '<div style="font-size:10px;font-weight:800;color:#6b21a8;letter-spacing:0.3px">\uD83D\uDE80 PROFESSIONAL MOMENTUM BUYER</div>';
+      html += '<span style="font-size:9px;font-weight:800;color:' + (mb.qualifies?'#fff':'#6b21a8') + ';background:' + (mb.qualifies?'#7c3aed':'#f3e8ff') + ';border-radius:10px;padding:2px 8px">' + (mb.qualifies?'QUALIFIES':'partial') + ' \u00B7 ' + mb.passed + '/' + mb.evaluable + '</span>';
+      html += '</div>';
+      (mb.checks||[]).forEach(function(ck){
+        var st = ck.pass===true?'\u2713':(ck.pass===false?'\u2717':'\u2014');
+        var cc = ck.pass===true?'#16a34a':(ck.pass===false?'#dc2626':'#94a3b8');
+        html += '<div style="display:flex;align-items:baseline;gap:8px;padding:3px 0;font-size:11px;border-top:1px solid #f3e8ff">';
+        html += '<span style="color:' + cc + ';font-weight:900;width:12px;flex-shrink:0">' + st + '</span>';
+        html += '<span style="font-weight:700;color:#374151;min-width:128px">' + E(ck.name) + '</span>';
+        html += '<span style="font-family:JetBrains Mono,monospace;color:#1e293b">' + E(String(ck.value)) + '</span>';
+        if (ck.note) html += '<span style="color:#a78bda;font-size:9px;margin-left:auto;text-align:right">' + E(ck.note) + '</span>';
+        html += '</div>';
+      });
+      html += '<div style="font-size:8px;color:#a78bda;margin-top:7px;line-height:1.45">IV-Rank = HV-rank proxy (no IV-history feed) \u00B7 OI-increasing needs a live OI feed \u00B7 Delta = model (IV\u2248VIX), strike-targeted to 0.55\u20130.65</div>';
+      html += '</div>';
     }
 
     /* Signals grid */
@@ -13054,6 +13124,51 @@ window._renderDirectionalOptions = function(d) {
     html += '</div>';
     return html;
   }
+
+  /* ═══ PROFESSIONAL MOMENTUM BUYER — dedicated section (US only) ═══════ */
+  (function(){
+    var pool = [].concat(
+      (d.ce_buy_candidates||[]).map(function(c){return {c:c,side:'CE'};}),
+      (d.pe_buy_candidates||[]).map(function(c){return {c:c,side:'PE'};})
+    ).filter(function(x){return x.c && x.c.momentum_buyer;});
+    if (!pool.length) return;  // non-US (no momentum_buyer attached) → skip section
+    var qual = pool.filter(function(x){return x.c.momentum_buyer.qualifies;})
+                   .sort(function(a,b){return (b.c.momentum_buyer.passed||0)-(a.c.momentum_buyer.passed||0);});
+    h += '<div style="background:#fff;border:2px solid #e9d5ff;border-top:4px solid #7c3aed;border-radius:14px;padding:16px 18px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">';
+    h += '<div style="font-size:14px;font-weight:900;color:#6b21a8">\uD83D\uDE80 PROFESSIONAL MOMENTUM BUYER <span style="font-size:10px;font-weight:700;color:#a78bda">US stocks</span></div>';
+    h += '<span style="font-size:11px;font-weight:800;color:#7c3aed;background:#f3e8ff;border-radius:20px;padding:3px 11px">' + qual.length + ' qualifying</span>';
+    h += '</div>';
+    h += '<div style="font-size:10px;color:#94a3b8;margin-bottom:12px;line-height:1.5">Δ 0.55\u20130.65 \u00B7 IV-Rank&lt;50 \u00B7 OI\u2191 \u00B7 Vol&gt;2\u00D7 \u00B7 vs VWAP \u00B7 EMA9 vs EMA20 \u00B7 ADX&gt;25 \u00B7 breakout+inst.vol \u2014 avoids low-delta lottery tickets, favours contracts that move with direction while keeping theta manageable.</div>';
+    if (!qual.length) {
+      h += '<div style="padding:14px;text-align:center;font-size:12px;color:#94a3b8;background:#faf5ff;border-radius:8px">No candidate currently clears all evaluable momentum criteria. Best partials are flagged on the cards below.</div>';
+    } else {
+      qual.forEach(function(x){
+        var c = x.c, side = x.side, mb = c.momentum_buyer;
+        var sc = side==='CE'?'#16a34a':'#dc2626';
+        var cur = (c.trade_ticket && c.trade_ticket.currency==='INR')?'\u20B9':'$';
+        h += '<div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:10px;padding:10px 12px;margin-bottom:8px">';
+        h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px">';
+        h += '<span style="font-size:15px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(c.symbol) + '</span>';
+        h += '<span style="font-size:10px;font-weight:900;color:#fff;background:' + sc + ';border-radius:6px;padding:2px 9px">' + side + ' BUY</span>';
+        h += '<span style="font-size:10px;font-weight:800;color:#6b21a8;background:#f3e8ff;border-radius:6px;padding:2px 9px">GRADE ' + E(c.grade||'B') + '</span>';
+        if (mb.delta!=null && mb.strike!=null) h += '<span style="font-size:11px;font-weight:700;color:#374151;font-family:JetBrains Mono,monospace">\u0394 ' + (mb.delta>=0?'+':'') + Number(mb.delta).toFixed(2) + ' @ ' + cur + mb.strike + '</span>';
+        h += '<span style="font-size:10px;font-weight:800;color:#7c3aed;margin-left:auto">' + mb.passed + '/' + mb.evaluable + ' checks</span>';
+        h += '</div>';
+        h += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+        (mb.checks||[]).forEach(function(ck){
+          var on = ck.pass===true, off = ck.pass===false;
+          var bc = on?'#16a34a':off?'#dc2626':'#cbd5e1';
+          var bg = on?'#f0fdf4':off?'#fef2f2':'#f8fafc';
+          var ic = on?'\u2713':off?'\u2717':'\u2014';
+          h += '<span style="font-size:9px;font-weight:700;color:' + bc + ';background:' + bg + ';border:1px solid ' + bc + '40;border-radius:6px;padding:2px 7px">' + ic + ' ' + E(ck.name) + '</span>';
+        });
+        h += '</div></div>';
+      });
+    }
+    h += '<div style="font-size:8px;color:#a78bda;margin-top:4px">IV-Rank = HV-rank proxy \u00B7 OI-increasing needs a live OI feed \u00B7 Delta model (IV\u2248VIX), strike-targeted</div>';
+    h += '</div>';
+  })();
 
   /* ═══ SIDE-BY-SIDE CE | PE COLUMNS (scrollable, never collapses) ═════ */
   h += '<div style="display:flex;gap:0;border:2px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:14px">';

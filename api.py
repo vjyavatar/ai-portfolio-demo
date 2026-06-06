@@ -9124,6 +9124,8 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
 
         # Indicators
         ema20 = _ema(closes, 20)
+        ema9  = _ema(closes, 9)
+        hv_rank = _hv_rank(closes, 20)
         vwap20 = _vwap_approx(closes, highs, lows, volumes, 20)
         rsi14 = _rsi(closes, 14)
         adx14 = _adx(highs, lows, closes, 14)
@@ -9142,6 +9144,8 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
         out["indicators"] = {
             "close": round(close_now, 2),
             "ema20": round(ema20, 2) if ema20 else None,
+            "ema9": round(ema9, 2) if ema9 else None,
+            "hv_rank": hv_rank,
             "vwap20": round(vwap20, 2) if vwap20 else None,
             "rsi14": round(rsi14, 1) if rsi14 else None,
             "adx14": round(adx14, 1) if adx14 else None,
@@ -9332,6 +9336,382 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
         return out
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# US OPTIONS GREEKS — Delta / Theta / Vega / Gamma / IV (actual values)
+# US region only. Two paths:
+#   • model  — instant, no network: Black-Scholes Greeks using VIX as the IV
+#              proxy. Always available. IV shown is the proxy (iv_source="model").
+#   • chain  — best-effort overlay: real per-strike IV + OI from the Yahoo option
+#              chain, Greeks recomputed from the contract's actual IV
+#              (iv_source="chain"). Falls back to model on any failure.
+# Thresholds are Vijay's spec (kept as-is); tweak here to recalibrate.
+# NOTE: per-share gamma on US single stocks runs ~0.01-0.03 (≈100-400x the
+# 0.00007 index-scale reference), so the gamma "avoid > 0.0012" flag will fire
+# on most single names — expected, given "keep my numbers as-is".
+# ═══════════════════════════════════════════════════════════════════════════
+
+_GREEK_THRESHOLDS = {
+    "delta_target_lo":   0.40,     # target zone low
+    "delta_target_hi":   0.50,     # target zone high
+    "delta_avoid_below": 0.30,     # avoid abs(delta) < 0.30
+    "gamma_ref":         0.00007,  # reference gamma
+    "gamma_avoid_above": 0.0012,   # avoid gamma > 0.0012
+    "iv_low":            15.0,     # IV below this = low (esp. in low-VIX)
+    "oi_ref":            100000,   # 1 lakh open-interest liquidity bar
+    "risk_free":         0.0525,   # US risk-free proxy
+}
+
+
+def _bs_greeks_full(S, K, T, r, sigma, opt):
+    """Black-Scholes Greeks incl. Vega. opt in {'CE','PE'}. None on bad inputs."""
+    from math import log, sqrt, exp, pi, erf
+    if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
+        return None
+    d1 = (log(S / K) + (r + sigma * sigma / 2) * T) / (sigma * sqrt(T))
+    d2 = d1 - sigma * sqrt(T)
+    Nd1 = 0.5 * (1 + erf(d1 / sqrt(2)))
+    Nd2 = 0.5 * (1 + erf(d2 / sqrt(2)))
+    npd1 = exp(-d1 * d1 / 2) / sqrt(2 * pi)
+    if opt == "CE":
+        delta = Nd1
+        theta = (-S * npd1 * sigma / (2 * sqrt(T)) - r * K * exp(-r * T) * Nd2) / 365.0
+    else:
+        delta = Nd1 - 1
+        theta = (-S * npd1 * sigma / (2 * sqrt(T)) + r * K * exp(-r * T) * (1 - Nd2)) / 365.0
+    gamma = npd1 / (S * sigma * sqrt(T))
+    vega  = S * npd1 * sqrt(T) / 100.0   # per 1 IV-point (1%) move
+    return {"delta": round(delta, 4), "gamma": round(gamma, 6),
+            "theta": round(theta, 4), "vega": round(vega, 4)}
+
+
+def _greek_flags(delta, gamma, iv, oi, vix_val):
+    """Per-Greek status chips from Vijay's thresholds. Each → {state,label,color}."""
+    T = _GREEK_THRESHOLDS
+    ad = abs(delta) if delta is not None else 0
+    if ad < T["delta_avoid_below"]:
+        dflag = {"state": "avoid",  "label": "\u2717 <0.3",   "color": "#dc2626"}
+    elif T["delta_target_lo"] <= ad <= T["delta_target_hi"]:
+        dflag = {"state": "target", "label": "\u2713 0.4\u20130.5", "color": "#16a34a"}
+    elif ad > T["delta_target_hi"]:
+        dflag = {"state": "itm",    "label": "ITM",         "color": "#0891b2"}
+    else:
+        dflag = {"state": "low",    "label": "~0.3\u20130.4",   "color": "#d97706"}
+
+    if gamma is not None and gamma > T["gamma_avoid_above"]:
+        gflag = {"state": "high", "label": "\u2717 >0.0012", "color": "#dc2626"}
+    else:
+        gflag = {"state": "ok",   "label": "ok",          "color": "#16a34a"}
+
+    if iv is None:
+        iflag = {"state": "na",  "label": "\u2014",       "color": "#94a3b8"}
+    elif iv < T["iv_low"]:
+        lowvix = (vix_val is not None and vix_val < T["iv_low"])
+        iflag = {"state": "low", "label": "low IV" + (" (low VIX)" if lowvix else ""), "color": "#d97706"}
+    else:
+        iflag = {"state": "ok",  "label": "ok",          "color": "#16a34a"}
+
+    if oi is None:
+        oflag = {"state": "na",     "label": "\u2014",        "color": "#94a3b8"}
+    elif oi >= T["oi_ref"]:
+        oflag = {"state": "liquid", "label": "\u2713 \u22651L",   "color": "#16a34a"}
+    else:
+        oflag = {"state": "thin",   "label": "thin <1L",  "color": "#d97706"}
+
+    return {"delta": dflag, "gamma": gflag, "iv": iflag, "oi": oflag}
+
+
+def _model_strike_greeks(spot, strike, dte, direction, vix_val):
+    """Instant model Greeks (no network). IV proxy = VIX. OI unknown → None
+    (never invented). Returns greeks dict or None."""
+    try:
+        if not spot or not strike or spot <= 0 or strike <= 0:
+            return None
+        T = _GREEK_THRESHOLDS
+        r = T["risk_free"]
+        dte = max(int(dte or 14), 1)
+        tau = dte / 365.0
+        sigma = (vix_val / 100.0) if vix_val else 0.20
+        opt = "CE" if direction == "CE" else "PE"
+        g = _bs_greeks_full(spot, strike, tau, r, sigma, opt)
+        if not g:
+            return None
+        iv = round(sigma * 100, 2)        # = VIX proxy, flagged as model
+        flags = _greek_flags(g["delta"], g["gamma"], iv, None, vix_val)
+        return {**g, "iv": iv, "oi": None, "strike": round(float(strike), 2),
+                "dte": dte, "iv_source": "model", "flags": flags}
+    except Exception:
+        return None
+
+
+def _chain_strike_greeks(yf_sym, spot, strike, dte, direction, vix_val):
+    """Best-effort REAL Greeks: pull the contract's market IV + OI from the Yahoo
+    option chain (expiry nearest the target DTE, strike nearest entry), then
+    recompute Greeks from that IV. Returns None on any failure (caller keeps the
+    model Greeks). Network call — may 401/429 on data-center IPs."""
+    try:
+        if direction not in ("CE", "PE") or not spot or not strike:
+            return None
+        import yfinance as yf
+        from datetime import datetime
+        T = _GREEK_THRESHOLDS
+        r = T["risk_free"]
+        opt = direction
+        tk = yf.Ticker(yf_sym)
+        exps = list(getattr(tk, "options", []) or [])
+        if not exps:
+            return None
+        today = datetime.utcnow().date()
+        target_dte = max(int(dte or 14), 1)
+
+        def _exp_fit(e):
+            try:
+                d = (datetime.strptime(e, "%Y-%m-%d").date() - today).days
+                return (d <= 0, abs(d - target_dte))   # de-prioritize expired, then nearest DTE
+            except Exception:
+                return (True, 9999)
+
+        expiry = sorted(exps, key=_exp_fit)[0]
+        chain = tk.option_chain(expiry)
+        df = chain.calls if opt == "CE" else chain.puts
+        if df is None or df.empty:
+            return None
+        df = df.copy()
+        df["_dist"] = (df["strike"] - float(strike)).abs()
+        row = df.sort_values("_dist").iloc[0]
+        used_strike = float(row["strike"])
+        iv_raw = float(row.get("impliedVolatility") or 0)
+        iv = round(iv_raw * 100, 2) if iv_raw and iv_raw > 0 else None
+        oi_raw = row.get("openInterest")
+        try:
+            oi = int(oi_raw) if oi_raw is not None and oi_raw == oi_raw else None
+        except Exception:
+            oi = None
+        # exact DTE from the resolved expiry
+        try:
+            edays = (datetime.strptime(expiry, "%Y-%m-%d").date() - today).days
+            real_dte = edays if edays > 0 else target_dte
+        except Exception:
+            real_dte = target_dte
+        tau = max(real_dte, 1) / 365.0
+        sigma = (iv / 100.0) if iv else ((vix_val / 100.0) if vix_val else 0.20)
+        g = _bs_greeks_full(spot, used_strike, tau, r, sigma, opt)
+        if not g:
+            return None
+        if iv is None:
+            iv = round(sigma * 100, 2)
+        flags = _greek_flags(g["delta"], g["gamma"], iv, oi, vix_val)
+        return {**g, "iv": iv, "oi": oi, "strike": round(used_strike, 2),
+                "dte": int(real_dte), "expiry": expiry, "iv_source": "chain", "flags": flags}
+    except Exception:
+        return None
+
+
+def _upgrade_greeks_with_chain(ce_rows, pe_rows, vix_val, budget_sec=9):
+    """Overlay real chain IV/OI/Greeks onto rows that already carry model Greeks,
+    in parallel and within a time budget. Rows that don't return in time keep
+    their model Greeks. Never raises."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    tasks = [(row, "CE") for row in (ce_rows or [])] + [(row, "PE") for row in (pe_rows or [])]
+    jobs = {}
+
+    def _work(row, direction):
+        tt = row.get("trade_ticket") or {}
+        g  = tt.get("greeks") or {}
+        return _chain_strike_greeks(row.get("yf_sym"), row.get("price"),
+                                    tt.get("entry_strike"), g.get("dte") or 14,
+                                    direction, vix_val)
+    try:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for row, direction in tasks:
+                tt = row.get("trade_ticket") or {}
+                if not tt.get("entry_strike"):
+                    continue
+                jobs[ex.submit(_work, row, direction)] = row
+            try:
+                for fut in as_completed(jobs, timeout=budget_sec):
+                    row = jobs[fut]
+                    try:
+                        cg = fut.result(timeout=0)
+                        if cg and row.get("trade_ticket"):
+                            row["trade_ticket"]["greeks"] = cg
+                    except Exception:
+                        pass
+            except Exception:
+                pass  # budget exceeded — remaining rows keep model Greeks
+    except Exception as _e:
+        print(f"[DIR-OPTIONS GREEKS] upgrade failed: {type(_e).__name__}: {_e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PROFESSIONAL MOMENTUM BUYER screen — US stocks only.
+# 8 criteria (CE = bullish set; PE = bearish mirror):
+#   1. Delta 0.55-0.65        (slightly ITM — responsive, not a lottery ticket)
+#   2. IV Rank < 50           (HV-rank proxy — no IV-history feed; labelled)
+#   3. OI increasing          (n/a — needs an OI-history feed; never faked)
+#   4. Volume > 2x average
+#   5. Underlying above VWAP   (PE: below)   — 20d approx VWAP
+#   6. EMA 9 > EMA 20          (PE: EMA9 < EMA20)
+#   7. ADX > 25                (trend strength — directionless)
+#   8. Breakout + institutional volume (PE: breakdown of 20d low + 2x vol)
+# All Greeks here are model-based (IV proxy = VIX); delta is fairly
+# sigma-insensitive near the money, so the strike pick is reliable.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_MOMENTUM_CFG = {
+    "delta_lo": 0.55, "delta_hi": 0.65,
+    "iv_rank_max": 50.0,
+    "vol_mult": 2.0,
+    "adx_min": 25.0,
+    "breakout_tol": 0.005,   # within 0.5% of the 20d extreme counts as breakout
+}
+
+
+def _hv_rank(closes, win=20):
+    """Historical (realized) volatility rank over the available window — an
+    honest proxy for IV Rank when no IV-history feed is present. 0-100 or None."""
+    import math
+    if not closes or len(closes) < win + 6:
+        return None
+    rets = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes)) if closes[i - 1] > 0]
+    if len(rets) < win + 1:
+        return None
+    rv = []
+    for i in range(win, len(rets) + 1):
+        w = rets[i - win:i]
+        m = sum(w) / win
+        var = sum((x - m) ** 2 for x in w) / (win - 1)
+        rv.append(math.sqrt(max(var, 0) * 252) * 100)
+    if not rv:
+        return None
+    cur, lo, hi = rv[-1], min(rv), max(rv)
+    if hi <= lo:
+        return 50.0
+    return round((cur - lo) / (hi - lo) * 100, 1)
+
+
+def _momentum_delta_strike(spot, gap, dte, direction, vix_val,
+                           lo=None, hi=None):
+    """Scan strikes around ATM for one whose |delta| lands in the target band
+    (default 0.55-0.65). Returns {strike, delta, ...greeks} or best-effort
+    nearest-to-0.60. Model Greeks (instant)."""
+    lo = lo if lo is not None else _MOMENTUM_CFG["delta_lo"]
+    hi = hi if hi is not None else _MOMENTUM_CFG["delta_hi"]
+    if not spot or spot <= 0:
+        return None
+    gap = gap or max(round(spot * 0.01, 2), 0.5)
+    atm = round(spot / gap) * gap if gap > 0 else round(spot)
+    best = None
+    for k in range(0, 8):
+        strike = (atm - k * gap) if direction == "CE" else (atm + k * gap)
+        if strike <= 0:
+            continue
+        g = _model_strike_greeks(spot, strike, dte, direction, vix_val)
+        if not g:
+            continue
+        ad = abs(g["delta"])
+        if lo <= ad <= hi:
+            return {**g, "strike": round(float(strike), 2)}
+        score = abs(ad - (lo + hi) / 2)
+        if best is None or score < best[0]:
+            best = (score, {**g, "strike": round(float(strike), 2)})
+    return best[1] if best else None
+
+
+def _momentum_buyer_screen(direction, ind, spot, gap, dte, vix_val):
+    """Evaluate the 8 momentum-buyer criteria for one US candidate.
+    Returns dict: qualifies, passed, evaluable, total, strike, delta,
+    delta_source, checks[]. Never raises (returns None on bad input)."""
+    try:
+        if not ind:
+            return None
+        C = _MOMENTUM_CFG
+        bullish = (direction == "CE")
+        close   = ind.get("close")
+        ema9    = ind.get("ema9")
+        ema20   = ind.get("ema20")
+        vwap20  = ind.get("vwap20")
+        adx     = ind.get("adx14")
+        volr    = ind.get("vol_ratio")
+        hi20    = ind.get("high_20d")
+        lo20    = ind.get("low_20d")
+        hvr     = ind.get("hv_rank")
+
+        # 1. Delta in band — pick the right strike
+        ds = _momentum_delta_strike(spot, gap, dte, direction, vix_val)
+        delta = ds["delta"] if ds else None
+        d_strike = ds["strike"] if ds else None
+        ad = abs(delta) if delta is not None else None
+        c1 = None if ad is None else (C["delta_lo"] <= ad <= C["delta_hi"])
+
+        # 2. IV Rank < 50  (HV-rank proxy)
+        c2 = None if hvr is None else (hvr < C["iv_rank_max"])
+
+        # 3. OI increasing — no feed → honest n/a
+        c3 = None
+
+        # 4. Volume > 2x avg
+        c4 = None if volr is None else (volr >= C["vol_mult"])
+
+        # 5. Above / below VWAP
+        c5 = None if (close is None or vwap20 is None) else (close > vwap20 if bullish else close < vwap20)
+
+        # 6. EMA9 vs EMA20
+        c6 = None if (ema9 is None or ema20 is None) else (ema9 > ema20 if bullish else ema9 < ema20)
+
+        # 7. ADX > 25
+        c7 = None if adx is None else (adx > C["adx_min"])
+
+        # 8. Breakout (CE: >= 20d high) / breakdown (PE: <= 20d low) + 2x vol
+        inst_vol = (volr is not None and volr >= C["vol_mult"])
+        if bullish:
+            brk = (close is not None and hi20 is not None and close >= hi20 * (1 - C["breakout_tol"]))
+        else:
+            brk = (close is not None and lo20 is not None and close <= lo20 * (1 + C["breakout_tol"]))
+        c8 = None if (close is None or (hi20 is None and lo20 is None) or volr is None) else (brk and inst_vol)
+
+        def mk(name, ok, value, target, note=""):
+            return {"name": name, "pass": ok, "value": value, "target": target, "note": note}
+
+        cur = "$"
+        checks = [
+            mk("Delta 0.55-0.65", c1,
+               (f"{delta:+.2f} @ {cur}{d_strike}" if delta is not None else "n/a"),
+               "0.55-0.65", "" if c1 is not False else ("too deep ITM" if (ad or 0) > C["delta_hi"] else "too far OTM / lottery")),
+            mk("IV Rank < 50", c2, (f"{hvr}" if hvr is not None else "n/a"), "< 50",
+               "HV-rank proxy (no IV-history feed)"),
+            mk("OI increasing", c3, "n/a", "rising", "needs an OI-history feed (Tradier/Polygon)"),
+            mk("Volume > 2x avg", c4, (f"{volr}x" if volr is not None else "n/a"), "\u2265 2.0x", ""),
+            mk(("Above VWAP" if bullish else "Below VWAP"), c5,
+               (f"{cur}{close} vs {cur}{vwap20}" if (close is not None and vwap20 is not None) else "n/a"),
+               ("price > VWAP" if bullish else "price < VWAP"), "20d approx VWAP"),
+            mk(("EMA9 > EMA20" if bullish else "EMA9 < EMA20"), c6,
+               (f"{ema9} / {ema20}" if (ema9 is not None and ema20 is not None) else "n/a"),
+               ("9 > 20" if bullish else "9 < 20"), ""),
+            mk("ADX > 25", c7, (f"{adx}" if adx is not None else "n/a"), "> 25", ""),
+            mk(("Breakout + inst. vol" if bullish else "Breakdown + inst. vol"), c8,
+               (f"{cur}{close} vs {cur}{(hi20 if bullish else lo20)}, {volr}x" if (close is not None and volr is not None) else "n/a"),
+               ("\u2265 20d high & 2x" if bullish else "\u2264 20d low & 2x"), ""),
+        ]
+
+        evaluable = [c for c in (c1, c2, c4, c5, c6, c7, c8) if c is not None]  # c3 excluded (n/a)
+        passed    = sum(1 for c in evaluable if c)
+        # Qualifies only if NONE of the evaluable criteria fail
+        qualifies = bool(evaluable) and all(evaluable)
+
+        return {
+            "qualifies":    qualifies,
+            "passed":       passed,
+            "evaluable":    len(evaluable),
+            "total":        8,
+            "strike":       d_strike,
+            "delta":        delta,
+            "delta_source": "model",
+            "checks":       checks,
+        }
+    except Exception:
+        return None
+
+
 @app.get("/api/directional-options-scanner")
 async def directional_options_scanner(region: str = "US",
                                        top_n: int = 10,
@@ -9446,7 +9826,23 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         expiry_rec = _suggest_expiry(row, {**vix_zone, "vix_value": vix_val}, direction)
         if ticket:
             ticket["expiry_suggestion"] = expiry_rec
+        # US-only: actual Greeks (Delta/Theta/Vega/Gamma/IV) for the ticket strike.
+        # Model path here is instant; real chain IV/OI overlaid in parallel below.
+        if ticket and region == "US" and ticket.get("entry_strike"):
+            _dte = (r.get("options_hint") or {}).get("dte") or 14
+            _mg = _model_strike_greeks(row.get("price"), ticket.get("entry_strike"),
+                                       _dte, direction, vix_val)
+            if _mg:
+                ticket["greeks"] = _mg
         row["trade_ticket"] = ticket
+        # US-only: Professional Momentum Buyer screen (8 criteria, direction-aware)
+        if region == "US":
+            _hint = r.get("options_hint") or {}
+            _mb = _momentum_buyer_screen(
+                direction, r.get("indicators") or {}, row.get("price"),
+                _hint.get("strike_gap"), _hint.get("dte") or 14, vix_val)
+            if _mb:
+                row["momentum_buyer"] = _mb
         return row
 
     # Sort by conviction: Grade A first, then B, then C, then by score desc within each grade
@@ -9459,6 +9855,14 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     ce_top.sort(key=_grade_key)
     pe_top.sort(key=_grade_key)
 
+    # US-only: best-effort overlay of REAL per-strike IV + OI + Greeks from the
+    # Yahoo option chain (parallel, time-budgeted). Falls back to model Greeks.
+    if region == "US":
+        try:
+            _upgrade_greeks_with_chain(ce_top, pe_top, vix_val, budget_sec=9)
+        except Exception as _ge:
+            print(f"[DIR-OPTIONS GREEKS] {type(_ge).__name__}: {_ge}")
+
     # Top picks — best CE + best PE with full context for the summary card
     top_pick_ce = ce_top[0] if ce_top else None
     top_pick_pe = pe_top[0] if pe_top else None
@@ -9466,10 +9870,12 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     # Conflict warning — both CE and PE passing means chop or breakout ambiguity
     both_active = bool(top_pick_ce and top_pick_pe)
     conflict_warning = None
+    dominant_direction = None   # "CE" | "PE" | None (None = chop / no clear edge)
     if both_active:
         ce_s = top_pick_ce["score"]
         pe_s = top_pick_pe["score"]
         if abs(ce_s - pe_s) < 15:
+            dominant_direction = None
             conflict_warning = (
                 f"⚠️ Both CE and PE candidates passed with similar scores "
                 f"(CE: {ce_s}, PE: {pe_s}). Market is in CHOP / no clear direction. "
@@ -9477,11 +9883,16 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
                 f"Wait for direction confirmation or sit out."
             )
         else:
+            dominant_direction = "CE" if ce_s > pe_s else "PE"
             stronger = "CE (bullish)" if ce_s > pe_s else "PE (bearish)"
             conflict_warning = (
                 f"Both CE and PE candidates identified. {stronger} is stronger. "
                 f"Trade only the dominant direction — never buy both sides."
             )
+    elif top_pick_ce:
+        dominant_direction = "CE"
+    elif top_pick_pe:
+        dominant_direction = "PE"
 
     out = {
         "success":           True,
@@ -9501,6 +9912,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         "top_pick_ce":       top_pick_ce,
         "top_pick_pe":       top_pick_pe,
         "conflict_warning":  conflict_warning,
+        "dominant_direction": dominant_direction,
         # VIX context — the whole point of this algorithm
         "vix_context": {
             "vix_value":       vix_val,
@@ -9518,8 +9930,11 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
             "5. Relative Strength vs Benchmark — 10 pts",
             "6. Breakout above 20d high / Breakdown below 20d low — 10 pts",
         ],
-        "_engine":       "directional_options_scanner_v2_vix_graded",
-        "_data_quality": "yfinance OHLCV + VIX — no real F&O Greeks (IV, delta, OI ∆) yet",
+        "_engine":       "directional_options_scanner_v4_momentum",
+        "_data_quality": ("US: actual Greeks (Δ/Θ/Vega/Γ) per ticket strike — Black-Scholes; "
+                          "real IV+OI overlaid from option chain when reachable, else model "
+                          "(IV≈VIX, OI null). IN: OHLCV+VIX trend only."),
+        "greek_thresholds": (_GREEK_THRESHOLDS if region == "US" else None),
         "_future_inputs": [
             "Real options chain via Upstox (IN F&O) — Greek per strike, IV rank vs 1y, OI ∆",
             "US options chain via tradier / polygon",
