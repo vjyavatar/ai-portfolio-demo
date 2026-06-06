@@ -28626,17 +28626,25 @@ def _mw_compute_themes(region):
     return themes_out
 
 
-def _mw_top_movers(region, limit=5):
-    """Return top + bottom movers from universe stocks today."""
+def _mw_top_movers(region, limit=15):
+    """Return top + bottom movers from a BROAD universe: the institutional picks
+    list UNION all sector-theme constituents (deduped). This is why a name like
+    MU now appears — it lives in the Semis theme even though it is not in the
+    curated picks list. Bounded by the per-call yfinance timeout (8s)."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    universe = _INST_PICKS_UNIVERSE.get(region, [])
+    picks = _INST_PICKS_UNIVERSE.get(region, [])
+    theme_syms = [s for syms in _THEME_CONSTITUENTS.get(region, {}).values() for s in syms]
+    seen = set(); universe = []
+    for s in list(picks) + theme_syms:
+        if s not in seen:
+            seen.add(s); universe.append(s)
     stocks   = [s for s in universe if not s.startswith("^") and s not in ("SPY","QQQ","IWM")]
     yf_map   = {s: (s if region == "US" else f"{s}.NS") for s in stocks}
     results  = {}
     def _fetch(sym):
         d = _mw_fetch_ohlcv(yf_map[sym])
         return sym, d
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    with ThreadPoolExecutor(max_workers=16) as ex:
         futs = {ex.submit(_fetch, s): s for s in stocks}
         for f in as_completed(futs):
             sym, data = f.result()
@@ -29290,6 +29298,321 @@ def _mw_decision_verdict(ohlcv, themes, vix_val, vix_regime, asset_type, region)
         "conviction":    conviction,
         "investor_take": investor_take,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MOMENTUM CoC — Circle of Competence engine (Decide → Engines → 🧬 Momentum CoC)
+# Phase 1 (live): Momentum Multibagger Readiness Score (10 weighted factors) +
+#   per-dimension breakdown + journal snapshot. Journal itself lives client-side
+#   (localStorage) so it persists with zero infra on ephemeral Render filesystems.
+# Phase 2 (scaffolded, frontend): Control Group, Multibagger DNA, EMP — gated on
+#   logged-sample count + point-in-time history (marked "awaiting data").
+#
+# HONESTY: weights are a v1 HYPOTHESIS (O'Neil/Minervini/Weinstein), to be
+#   replaced by DNA-derived weights once enough history accrues. Any dimension
+#   whose data is unreachable is marked N/A and EXCLUDED from the denominator
+#   (score renormalizes over available weights) — never zero-filled, never faked.
+#   Fundamental acceleration is N/A in v1 by design: doing it right needs
+#   point-in-time (unrestated, unlagged) fundamentals, which free feeds leak.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_MCOC_TTL = 300
+_momentum_coc_cache = {}
+
+# v1 hypothesis weights (sum = 100). RS/Trend/Group are correlated → collectively
+# over-weight raw momentum; DNA engine (Phase 2) will re-derive these.
+_MCOC_WEIGHTS = [
+    ("rs",          "Relative Strength Leadership", 15),
+    ("base",        "Base Quality",                 15),
+    ("vcp",         "Volatility Contraction (VCP)", 10),
+    ("voldry",      "Volume Dry-Up",                10),
+    ("accumulation","Accumulation",                 10),
+    ("trend",       "Trend Structure",              10),
+    ("group",       "Group Strength",               10),
+    ("fundamental", "Fundamental Acceleration",     10),
+    ("pivot",       "Pivot Quality",                 5),
+    ("regime",      "Market Regime",                 5),
+]
+_MCOC_BENCH = {"US": "SPY", "IN": "^NSEI"}
+
+
+def _mcoc_mean(xs):
+    return (sum(xs) / len(xs)) if xs else 0.0
+
+
+def _mcoc_clamp(x, lo=0.0, hi=1.0):
+    return max(lo, min(hi, x))
+
+
+def _mcoc_map(x, lo, hi):
+    """Linear map x in [lo,hi] -> [0,1], clamped."""
+    if hi == lo:
+        return 0.5
+    return _mcoc_clamp((x - lo) / (hi - lo))
+
+
+def _mcoc_ret(closes, n):
+    if not closes or len(closes) <= n:
+        return None
+    base = closes[-1 - n]
+    return ((closes[-1] / base) - 1) * 100 if base else None
+
+
+def _mcoc_fetch(yf_sym):
+    """9-month daily history. Returns dict of arrays or None. Timeout-bounded."""
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(yf_sym)
+        hist = tk.history(period="9mo", interval="1d", auto_adjust=True, timeout=8)
+        if hist is None or hist.empty or len(hist) < 40:
+            return None
+        return {
+            "closes":  [float(x) for x in hist["Close"].dropna()],
+            "volumes": [float(x) for x in hist["Volume"].dropna()],
+            "highs":   [float(x) for x in hist["High"].dropna()],
+            "lows":    [float(x) for x in hist["Low"].dropna()],
+        }
+    except Exception:
+        return None
+
+
+def _mcoc_subscores(stock, bench, vix_regime, theme_rank, regime_struct):
+    """Return {key: (subscore_0_1 or None, note)} for each dimension."""
+    out = {}
+    c = stock["closes"]; v = stock["volumes"]; hi = stock["highs"]
+    n = len(c)
+
+    # 1) RS leadership — stock 63d return vs benchmark 63d return (+ RS-line new high)
+    st = _mcoc_ret(c, 63); bn = _mcoc_ret(bench["closes"], 63) if bench else None
+    if st is not None and bn is not None:
+        excess = st - bn
+        rs = _mcoc_map(excess, -20, 25)
+        # RS-line new high bonus
+        rsline = [c[i] / bench["closes"][i] for i in range(-min(len(c), len(bench["closes"])), 0)]
+        if rsline and rsline[-1] >= max(rsline[-63:] or rsline):
+            rs = _mcoc_clamp(rs + 0.12)
+        out["rs"] = (rs, f"3-mo excess vs benchmark {excess:+.1f}%")
+    else:
+        out["rs"] = (None, "insufficient history")
+
+    # 2) Base quality — tightness of last 30 sessions
+    if n >= 30:
+        win = c[-30:]; rng = (max(win) - min(win)) / (_mcoc_mean(win) or 1)
+        out["base"] = (_mcoc_map(0.28 - rng, 0.04, 0.22), f"30-day range {rng*100:.0f}% of price")
+    else:
+        out["base"] = (None, "insufficient history")
+
+    # 3) VCP — successive 20-session volatility contraction
+    if n >= 60:
+        def segvol(seg):
+            m = _mcoc_mean(seg)
+            return (_mcoc_mean([(x - m) ** 2 for x in seg]) ** 0.5) / (m or 1)
+        a, b, d = segvol(c[-20:]), segvol(c[-40:-20]), segvol(c[-60:-40])
+        if a < b < d:   vcp = 0.95
+        elif a < b:     vcp = 0.7
+        elif a < d:     vcp = 0.5
+        else:           vcp = 0.25
+        out["vcp"] = (vcp, f"vol legs {d*100:.1f}→{b*100:.1f}→{a*100:.1f}%")
+    else:
+        out["vcp"] = (None, "insufficient history")
+
+    # 4) Volume dry-up — last 5d avg vs last 30d avg (lower = supply drying)
+    if len(v) >= 30:
+        ratio = (_mcoc_mean(v[-5:]) / (_mcoc_mean(v[-30:]) or 1))
+        out["voldry"] = (_mcoc_map(1.2 - ratio, 0.2, 0.6), f"5d/30d vol {ratio:.2f}x")
+    else:
+        out["voldry"] = (None, "insufficient history")
+
+    # 5) Accumulation — up-volume vs down-volume over 20 sessions
+    if n >= 21 and len(v) >= 21:
+        upv = sum(v[i] for i in range(-20, 0) if c[i] > c[i - 1])
+        dnv = sum(v[i] for i in range(-20, 0) if c[i] < c[i - 1])
+        ar = (upv / dnv) if dnv > 0 else 2.0
+        out["accumulation"] = (_mcoc_map(ar, 0.8, 1.8), f"up/down vol {ar:.2f}x")
+    else:
+        out["accumulation"] = (None, "insufficient history")
+
+    # 6) Trend structure — Stage-2 checklist
+    if n >= 60:
+        sma50 = _mcoc_mean(c[-50:])
+        sma150 = _mcoc_mean(c[-150:]) if n >= 150 else _mcoc_mean(c)
+        sma200 = _mcoc_mean(c[-200:]) if n >= 200 else None
+        sma50_prior = _mcoc_mean(c[-60:-10])
+        checks = [c[-1] > sma50, sma50 > sma150, c[-1] > (sma200 or sma150),
+                  c[-1] > c[-30], sma50 > sma50_prior]
+        out["trend"] = (sum(1 for x in checks if x) / len(checks),
+                        f"{sum(1 for x in checks if x)}/5 stage-2 checks")
+    else:
+        out["trend"] = (None, "insufficient history")
+
+    # 7) Group strength — sector theme rank (daily proxy; v1)
+    if theme_rank is not None:
+        rank, total = theme_rank
+        out["group"] = (_mcoc_map(total - rank, 0, max(total - 1, 1)), f"sector rank {rank+1}/{total}")
+    else:
+        out["group"] = (None, "no theme mapping for symbol")
+
+    # 8) Fundamental acceleration — N/A in v1 (needs point-in-time fundamentals)
+    out["fundamental"] = (None, "needs point-in-time fundamentals (Phase 2)")
+
+    # 9) Pivot quality — proximity to a recent swing-high pivot from below
+    if n >= 48:
+        piv = max(hi[-45:-3])
+        dist = (c[-1] - piv) / piv * 100
+        if -8 <= dist <= 3:      pivot = 1.0
+        elif dist < -8:          pivot = _mcoc_map(dist, -25, -8)
+        else:                    pivot = _mcoc_map(12 - dist, 0, 9)
+        out["pivot"] = (pivot, f"{dist:+.1f}% vs pivot {piv:.2f}")
+    else:
+        out["pivot"] = (None, "insufficient history")
+
+    # 10) Market regime — structural risk-on/off (benchmark MA + VIX)
+    if regime_struct is not None:
+        out["regime"] = (regime_struct[0], regime_struct[1])
+    else:
+        out["regime"] = (None, "regime unavailable")
+
+    return out
+
+
+@app.get("/api/momentum-coc/score")
+async def momentum_coc_score(symbol: str = "", region: str = "US"):
+    """Momentum Multibagger Readiness Score (0–100) + 10-factor breakdown."""
+    import asyncio as _aio
+    import time as _time
+    region = (region or "US").upper()
+    if region not in ("US", "IN"):
+        region = "US"
+    symbol = (symbol or "").upper().strip()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    yf_sym = symbol
+    if region == "IN" and not yf_sym.startswith("^") and "." not in yf_sym:
+        yf_sym = f"{yf_sym}.NS"
+    bench_sym = _MCOC_BENCH[region]
+
+    cache_key = f"{symbol}_{region}"
+    if cache_key in _momentum_coc_cache:
+        e = _momentum_coc_cache[cache_key]
+        if (_time.time() - e["ts"]) < _MCOC_TTL:
+            return {**e["data"], "_cached": True}
+
+    _lp = _aio.get_event_loop()
+
+    async def _bounded(fn, *a, timeout=9, default=None):
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, fn, *a), timeout=timeout)
+        except Exception:
+            return default
+
+    try:
+        stock, bench, vix_pair, themes = await _aio.gather(
+            _bounded(_mcoc_fetch, yf_sym),
+            _bounded(_mcoc_fetch, bench_sym),
+            _bounded(_mw_fetch_vix, region, timeout=9, default=(None, "unknown")),
+            _bounded(_mw_compute_themes, region, timeout=14, default=[]),
+        )
+        if not stock:
+            return {"success": False, "error": f"No price history for {symbol} (feed may be blocked on this host).", "region": region}
+        vix_val, vix_regime = vix_pair if vix_pair else (None, "unknown")
+
+        # theme rank for group strength
+        theme_rank = None
+        if themes:
+            base_sym = symbol.replace(".NS", "")
+            tname = None
+            for th, syms in _THEME_CONSTITUENTS.get(region, {}).items():
+                if base_sym in syms:
+                    tname = th; break
+            if tname:
+                ranked = sorted(themes, key=lambda z: z.get("avg_change_pct", 0), reverse=True)
+                names = [z["theme"] for z in ranked]
+                if tname in names:
+                    theme_rank = (names.index(tname), len(names))
+
+        # structural regime from benchmark MA + VIX
+        regime_struct = None
+        if bench:
+            bc = bench["closes"]
+            above50 = bc[-1] > _mcoc_mean(bc[-50:]) if len(bc) >= 50 else None
+            above200 = bc[-1] > _mcoc_mean(bc[-200:]) if len(bc) >= 200 else above50
+            val = 0.5 + (0.25 if above50 else -0.25) + (0.15 if above200 else -0.15)
+            if vix_regime in ("elevated", "high"): val -= 0.2
+            elif vix_regime == "low":              val += 0.1
+            lbl = "risk-on" if val >= 0.6 else "risk-off" if val <= 0.4 else "mixed"
+            regime_struct = (_mcoc_clamp(val), f"{lbl} (bench {'>' if above50 else '<'}50DMA, VIX {vix_regime})")
+
+        subs = _mcoc_subscores(stock, bench, vix_regime, theme_rank, regime_struct)
+
+        dims = []
+        num = 0.0; den = 0.0
+        for key, label, wt in _MCOC_WEIGHTS:
+            sub, note = subs.get(key, (None, ""))
+            avail = sub is not None
+            if avail:
+                num += sub * wt; den += wt
+            dims.append({"key": key, "label": label, "weight": wt,
+                         "subscore": round(sub * 100) if avail else None,
+                         "contribution": round(sub * wt, 1) if avail else None,
+                         "note": note, "available": avail})
+
+        score = round(num / den * 100) if den > 0 else None
+        excluded = [d["label"] for d in dims if not d["available"]]
+        if score is None:
+            classification = "INSUFFICIENT DATA"
+        elif score >= 90:  classification = "ELITE CANDIDATE"
+        elif score >= 80:  classification = "INSTITUTIONAL CANDIDATE"
+        elif score >= 70:  classification = "WATCHLIST"
+        else:              classification = "IGNORE"
+
+        out = {
+            "success": True, "symbol": symbol, "region": region,
+            "score": score, "classification": classification,
+            "dimensions": dims, "excluded": excluded,
+            "weights_basis": "v1 hypothesis (O'Neil/Minervini/Weinstein) — pending DNA re-derivation",
+            "entry_ref_price": round(stock["closes"][-1], 2),
+            "bench_symbol": bench_sym,
+            "bench_ref_price": round(bench["closes"][-1], 2) if bench else None,
+            "vix": vix_val, "vix_regime": vix_regime,
+            "asof": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+            "data_note": ("Score renormalized over available factors; excluded factors shown. "
+                          "Weights are a v1 hypothesis, not learned. This is research tooling, not advice."),
+            "_engine": "momentum_coc_v1",
+        }
+        _momentum_coc_cache[cache_key] = {"ts": _time.time(), "data": out}
+        return out
+    except Exception as _e:
+        return {"success": False, "error": f"{type(_e).__name__}: {_e}", "region": region}
+
+
+@app.get("/api/momentum-coc/quote")
+async def momentum_coc_quote(symbol: str = "", region: str = "US"):
+    """Light quote for journal outcome-tracking: current stock + benchmark close."""
+    import asyncio as _aio
+    region = (region or "US").upper()
+    symbol = (symbol or "").upper().strip()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    yf_sym = symbol
+    if region == "IN" and not yf_sym.startswith("^") and "." not in yf_sym:
+        yf_sym = f"{yf_sym}.NS"
+    bench_sym = _MCOC_BENCH.get(region, "SPY")
+    _lp = _aio.get_event_loop()
+
+    async def _b(sym):
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, _mw_fetch_ohlcv, sym), timeout=9)
+        except Exception:
+            return None
+    try:
+        s, b = await _aio.gather(_b(yf_sym), _b(bench_sym))
+        return {"success": bool(s), "symbol": symbol, "region": region,
+                "price": (s.get("close") if s else None),
+                "bench_symbol": bench_sym,
+                "bench_price": (b.get("close") if b else None)}
+    except Exception as _e:
+        return {"success": False, "error": f"{type(_e).__name__}: {_e}"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
