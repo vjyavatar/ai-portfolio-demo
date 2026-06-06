@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.103.1";
-window.CELESYS_BUILD_TIME = 1780718400;
-window.CELESYS_BUILD_DATE = "2026-06-06 04:00:00 UTC";
+window.CELESYS_VERSION = "r63.104.1";
+window.CELESYS_BUILD_TIME = 1780725600;
+window.CELESYS_BUILD_DATE = "2026-06-06 06:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11728,7 +11728,7 @@ window._engState = {exit: {region: 'US'}, risk: {region: 'US'},
                     eps: {region: 'US'}, macro: {region: 'US'},
                     mgmt: {region: 'US'}, picks: {region: 'US'},
                     insider: {region: 'US'}, diropts: {region: 'US'},
-                    inst360: {region: 'US'}, m360: {region: 'US'}};
+                    inst360: {region: 'US'}, m360: {region: 'US'}, mcoc: {region: 'US'}};
 
 window._engShow = function(panel) {
   // Hide all panels, show selected, update button styling
@@ -11740,7 +11740,7 @@ window._engShow = function(panel) {
     'mgmt': 'engMgmtPanel', 'picks': 'engPicksPanel',
     'insider': 'engInsiderPanel', 'diropts': 'engDirOptsPanel',
     'inst360': 'engInst360Panel', 'marketwhy': 'engMarketWhyPanel',
-    'market360': 'engMarket360Panel',
+    'market360': 'engMarket360Panel', 'momcoc': 'engMomCoCPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11755,7 +11755,7 @@ window._engShow = function(panel) {
     'mgmt': 'engBtnMgmt', 'picks': 'engBtnPicks',
     'insider': 'engBtnInsider', 'diropts': 'engBtnDirOpts',
     'inst360': 'engBtnInst360', 'marketwhy': 'engBtnMarketWhy',
-    'market360': 'engBtnMarket360',
+    'market360': 'engBtnMarket360', 'momcoc': 'engBtnMomCoC',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12591,7 +12591,7 @@ window._renderInstPicks = function(d) {
     h += '<table style="width:100%;border-collapse:collapse;margin-bottom:10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">';
     h += '<thead><tr style="background:#faf5ff"><th style="padding:8px 10px;text-align:left;font-size:10px;color:#5b21b6;font-weight:800">RANK</th><th style="padding:8px 10px;text-align:left;font-size:10px;color:#5b21b6;font-weight:800">SYMBOL</th><th style="padding:8px 10px;text-align:left;font-size:10px;color:#5b21b6;font-weight:800">VERDICT</th><th style="padding:8px 10px;text-align:right;font-size:10px;color:#5b21b6;font-weight:800">SCORE</th></tr></thead><tbody>';
     d.rankings.forEach(function(r, i) {
-      var score = r.score || 0;
+      var score = (r.conviction_score != null ? r.conviction_score : (r.score != null ? r.score : 0));
       var rColor = score >= 90 ? '#10b981' : score >= 70 ? '#84cc16' : score >= 50 ? '#d97706' : '#dc2626';
       h += '<tr style="border-top:1px solid #f1f5f9">';
       h += '<td style="padding:8px 10px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">#' + (i + 1) + '</td>';
@@ -12825,26 +12825,250 @@ window._loadMarketWhyEngine_inner = window._loadMarketWhyEngine_inner || functio
     });
 };
 
+// ═══════════════════ MOMENTUM CoC ENGINE ═══════════════════
+// Phase 1: Readiness Score + CoC Journal (localStorage). Phase 2 scaffolded.
+window._mcocTab = 'score';
+window._mcocLast = null;
+window._MCOC_LS = 'celesys_mcoc_journal_v1';
+window._MCOC_MIN_SIGNALS = 30;        // gate for Control/DNA/EMP
+window._MCOC_HORIZONS = [['w1','+1w',7],['w2','+2w',14],['m1','+1m',30],['m3','+3m',90],['m6','+6m',180]];
+
+window._mcocJournal = function(){ try { return JSON.parse(localStorage.getItem(window._MCOC_LS)||'[]'); } catch(e){ return []; } };
+window._mcocSaveJournal = function(j){ try { localStorage.setItem(window._MCOC_LS, JSON.stringify(j)); } catch(e){} };
+
+window._mcocShowTab = function(tab){
+  window._mcocTab = tab;
+  var inp = document.getElementById('mcocScoreInput');
+  if (inp) inp.style.display = (tab==='score') ? 'flex' : 'none';
+  [['score','mcocTabScore'],['journal','mcocTabJournal'],['lab','mcocTabLab']].forEach(function(p){
+    var b=document.getElementById(p[1]); if(!b) return;
+    if(p[0]===tab){ b.style.background='linear-gradient(135deg,#ea580c,#c2410c)'; b.style.color='#fff'; b.style.border='none'; }
+    else { b.style.background='#fff'; b.style.color='#c2410c'; b.style.border='1px solid #fed7aa'; }
+  });
+  var r=document.getElementById('mcocResult');
+  if(!r) return;
+  if(tab==='journal') r.innerHTML = window._renderMcocJournal();
+  else if(tab==='lab') r.innerHTML = window._renderMcocLab();
+  else r.innerHTML = window._mcocLast ? window._renderMcocScore(window._mcocLast) : '<div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter a symbol, click SCORE READINESS.</div>';
+};
+
+window._mcocScore = function(){
+  if(window._mcocLoading) return;
+  var sym=((document.getElementById('mcocSym')||{}).value||'').trim().toUpperCase();
+  var reg=(window._engState.mcoc&&window._engState.mcoc.region)||'US';
+  if(!sym){ document.getElementById('mcocResult').innerHTML='<div style="padding:12px;color:#dc2626;font-size:11px">Enter a symbol first.</div>'; return; }
+  window._mcocLoading=true;
+  var btn=document.getElementById('mcocBtn'), r=document.getElementById('mcocResult');
+  if(btn){btn.disabled=true;btn.style.opacity='0.6';btn.style.pointerEvents='none';btn.innerHTML='\u23F3 SCORING\u2026';}
+  var _done=function(){window._mcocLoading=false; if(btn){btn.disabled=false;btn.style.opacity='1';btn.style.pointerEvents='auto';btn.innerHTML='\uD83E\uDDEC SCORE READINESS';}};
+  if(r) r.innerHTML='<div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px"><span style="display:inline-block;width:14px;height:14px;border:2px solid #fed7aa;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px"></span>Computing 10-factor readiness for '+E(sym)+'\u2026</div>';
+  var ac=(typeof AbortController!=='undefined')?new AbortController():null;
+  var to=setTimeout(function(){if(ac)ac.abort();},45000);
+  fetch('/api/momentum-coc/score?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg),{cache:'no-store',signal:ac?ac.signal:undefined})
+    .then(function(x){return x.json();})
+    .then(function(d){
+      clearTimeout(to); _done();
+      if(!d||!d.success){ if(r) r.innerHTML='<div style="padding:12px;color:#dc2626;font-size:11px">'+E((d&&d.error)||'Failed')+'</div>'; return; }
+      window._mcocLast=d; if(r) r.innerHTML=window._renderMcocScore(d);
+    })
+    .catch(function(e){
+      clearTimeout(to); _done();
+      var msg=(e&&e.name==='AbortError')?'Feed slow/blocked on this host \u2014 try again.':('Network error: '+E(String(e)));
+      if(r) r.innerHTML='<div style="padding:12px;color:#dc2626;font-size:11px">'+msg+'</div>';
+    });
+};
+
+window._renderMcocScore = function(d){
+  var sc=d.score;
+  var cls=d.classification||'';
+  var col = sc==null?'#94a3b8':sc>=90?'#16a34a':sc>=80?'#0ea5e9':sc>=70?'#d97706':'#dc2626';
+  var bg  = sc==null?'#f8fafc':sc>=90?'#f0fdf4':sc>=80?'#eff6ff':sc>=70?'#fffbeb':'#fef2f2';
+  var h='';
+  h+='<div style="background:'+bg+';border:1px solid '+col+'40;border-radius:14px;padding:16px 18px;margin-bottom:12px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+  h+='<div><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px">'+E(d.symbol)+' \u00B7 '+E(d.region)+' \u00B7 READINESS</div>';
+  h+='<div style="font-size:13px;font-weight:900;color:'+col+';font-family:Sora,sans-serif;margin-top:2px">'+E(cls)+'</div></div>';
+  h+='<div style="text-align:right"><div style="font-size:34px;font-weight:900;color:'+col+';font-family:JetBrains Mono,monospace;line-height:1">'+(sc==null?'\u2014':sc)+'</div><div style="font-size:8px;color:#94a3b8;font-weight:700">/ 100</div></div>';
+  h+='</div>';
+  h+='<div style="position:relative;height:7px;border-radius:5px;background:#e2e8f0;margin-top:10px"><div style="position:absolute;left:0;top:0;height:7px;border-radius:5px;width:'+(sc||0)+'%;background:'+col+'"></div>';
+  ['70','80','90'].forEach(function(t){ h+='<div style="position:absolute;top:-2px;left:'+t+'%;width:1px;height:11px;background:#94a3b8"></div>'; });
+  h+='</div>';
+  h+='<div style="font-size:8px;color:#94a3b8;margin-top:3px;display:flex;justify-content:space-between"><span>Ignore</span><span>70 Watch</span><span>80 Inst.</span><span>90 Elite</span></div>';
+  h+='</div>';
+
+  // dimension bars
+  h+='<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:10px">';
+  h+='<div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:8px">10-FACTOR BREAKDOWN <span style="color:#94a3b8;font-weight:600">(weight shown; N/A excluded from score)</span></div>';
+  (d.dimensions||[]).forEach(function(dim){
+    var avail=dim.available; var ss=dim.subscore;
+    var dc = !avail?'#cbd5e1':ss>=70?'#16a34a':ss>=45?'#d97706':'#dc2626';
+    h+='<div style="margin-bottom:7px">';
+    h+='<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px"><span style="font-weight:700;color:#334155">'+E(dim.label)+' <span style="color:#94a3b8;font-weight:600">w'+dim.weight+'</span></span><span style="font-weight:800;color:'+dc+'">'+(avail?ss:'N/A')+'</span></div>';
+    h+='<div style="height:6px;border-radius:4px;background:#f1f5f9;overflow:hidden"><div style="height:6px;width:'+(avail?ss:0)+'%;background:'+dc+'"></div></div>';
+    h+='<div style="font-size:8.5px;color:#94a3b8;margin-top:1px">'+E(dim.note||'')+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+
+  if((d.excluded||[]).length) h+='<div style="font-size:9px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:7px 10px;margin-bottom:8px">\u26A0 Excluded (N/A): '+E(d.excluded.join(', '))+' \u2014 score renormalized over available factors.</div>';
+  h+='<div style="font-size:8.5px;color:#94a3b8;margin-bottom:10px">Weights: '+E(d.weights_basis||'')+'. '+E(d.data_note||'')+'</div>';
+
+  // Log to journal
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+  h+='<button onclick="window._mcocLog()" style="padding:7px 16px;background:linear-gradient(135deg,#ea580c,#c2410c);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\uD83D\uDCD3 Log to CoC Journal</button>';
+  h+='<span style="font-size:9px;color:#94a3b8">Logs this call as a tracked experiment (entry '+ (d.entry_ref_price!=null?('$'+d.entry_ref_price):'\u2014') +') to build your evidence base.</span>';
+  h+='</div>';
+  return h;
+};
+
+window._mcocLog = function(){
+  var d=window._mcocLast; if(!d) return;
+  var j=window._mcocJournal();
+  if(j.some(function(e){return e.symbol===d.symbol && e.date.slice(0,10)===new Date().toISOString().slice(0,10);})){
+    alert('Already logged '+d.symbol+' today.'); return;
+  }
+  j.unshift({ id:Date.now()+'_'+d.symbol, symbol:d.symbol, region:d.region, date:new Date().toISOString(),
+    score:d.score, classification:d.classification, regime:(d.vix_regime||''),
+    entryPrice:d.entry_ref_price, benchSymbol:d.bench_symbol, benchPrice:d.bench_ref_price,
+    outcomes:{} });
+  window._mcocSaveJournal(j);
+  window._mcocShowTab('journal');
+};
+
+window._renderMcocJournal = function(){
+  var j=window._mcocJournal();
+  var h='';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">';
+  h+='<button onclick="window._mcocRefreshOutcomes()" id="mcocRefreshBtn" style="padding:6px 14px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\u21BB Update Outcomes</button>';
+  h+='<button onclick="window._mcocExport()" style="padding:6px 12px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">\u2B07 Export JSON</button>';
+  h+='<label style="padding:6px 12px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">\u2B06 Import<input type="file" accept="application/json" onchange="window._mcocImport(event)" style="display:none"></label>';
+  h+='<span style="font-size:9px;color:#94a3b8;margin-left:auto">Stored in this browser \u00B7 export to back up. Durable cross-device store (Neon) = a wiring step away.</span>';
+  h+='</div>';
+  if(!j.length) return h+'<div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">No logged signals yet. Score a name, then "Log to CoC Journal".</div>';
+
+  // summary
+  var withOut=j.filter(function(e){return Object.keys(e.outcomes||{}).length;});
+  var avg=Math.round(j.reduce(function(a,e){return a+(e.score||0);},0)/j.length);
+  // hit-rate at longest captured horizon (relative return > 0)
+  var hits=0,tot=0;
+  withOut.forEach(function(e){ var ks=Object.keys(e.outcomes); var last=e.outcomes[ks[ks.length-1]]; if(last){tot++; if(last.rel>0)hits++;} });
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">';
+  h+='<div style="flex:1;min-width:90px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:8px;color:#94a3b8;font-weight:700">LOGGED</div><div style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+j.length+'</div></div>';
+  h+='<div style="flex:1;min-width:90px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:8px;color:#94a3b8;font-weight:700">AVG READINESS</div><div style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+avg+'</div></div>';
+  h+='<div style="flex:1;min-width:90px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:8px;color:#94a3b8;font-weight:700">REL. HIT-RATE</div><div style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+(tot?Math.round(hits/tot*100)+'%':'\u2014')+'</div><div style="font-size:7px;color:#cbd5e1">n='+tot+'</div></div>';
+  h+='</div>';
+
+  // table
+  h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">';
+  h+='<tr style="background:#fff7ed;color:#7c2d12">'+['Date','Symbol','Score','Regime'].map(function(x){return '<th style="padding:5px 6px;text-align:left;font-weight:800">'+x+'</th>';}).join('');
+  window._MCOC_HORIZONS.forEach(function(hz){ h+='<th style="padding:5px 6px;text-align:right;font-weight:800">'+hz[1]+'</th>'; });
+  h+='<th></th></tr>';
+  j.forEach(function(e){
+    h+='<tr style="border-bottom:1px solid #f1f5f9">';
+    h+='<td style="padding:5px 6px;color:#64748b">'+E(e.date.slice(5,10))+'</td>';
+    h+='<td style="padding:5px 6px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">'+E(e.symbol)+'</td>';
+    var scol=e.score>=80?'#16a34a':e.score>=70?'#d97706':'#dc2626';
+    h+='<td style="padding:5px 6px;font-weight:800;color:'+scol+'">'+(e.score==null?'\u2014':e.score)+'</td>';
+    h+='<td style="padding:5px 6px;color:#94a3b8">'+E(e.regime||'\u2014')+'</td>';
+    window._MCOC_HORIZONS.forEach(function(hz){
+      var o=(e.outcomes||{})[hz[0]];
+      if(o){ var rc=o.rel>0?'#16a34a':'#dc2626'; h+='<td style="padding:5px 6px;text-align:right;font-weight:700;color:'+rc+'">'+(o.rel>0?'+':'')+o.rel.toFixed(1)+'%</td>'; }
+      else h+='<td style="padding:5px 6px;text-align:right;color:#cbd5e1">\u2014</td>';
+    });
+    h+='<td style="padding:5px 6px;text-align:right"><span onclick="window._mcocDel(\''+e.id+'\')" style="cursor:pointer;color:#cbd5e1;font-weight:900">\u00D7</span></td>';
+    h+='</tr>';
+  });
+  h+='</table></div>';
+  h+='<div style="font-size:8px;color:#94a3b8;margin-top:8px">Columns show <b>relative</b> return (stock \u2212 benchmark) captured the first time you refresh after each horizon elapses; timing is approximate to your refresh cadence. Alpha vs benchmark, not absolute, is the honest scorecard.</div>';
+  return h;
+};
+
+window._mcocDel = function(id){ var j=window._mcocJournal().filter(function(e){return e.id!==id;}); window._mcocSaveJournal(j); window._mcocShowTab('journal'); };
+
+window._mcocRefreshOutcomes = function(){
+  var j=window._mcocJournal();
+  var pending=j.filter(function(e){ return e.entryPrice && e.benchPrice; });
+  if(!pending.length){ return; }
+  var btn=document.getElementById('mcocRefreshBtn'); if(btn){btn.disabled=true;btn.innerHTML='\u23F3 Updating\u2026';}
+  var done=0;
+  pending.forEach(function(e){
+    fetch('/api/momentum-coc/quote?symbol='+encodeURIComponent(e.symbol)+'&region='+encodeURIComponent(e.region),{cache:'no-store'})
+      .then(function(x){return x.json();})
+      .then(function(q){
+        if(q&&q.success&&q.price&&q.bench_price){
+          var days=(Date.now()-new Date(e.date).getTime())/86400000;
+          var sret=(q.price/e.entryPrice-1)*100;
+          var bret=(q.bench_price/e.benchPrice-1)*100;
+          var rel=sret-bret;
+          e.outcomes=e.outcomes||{};
+          window._MCOC_HORIZONS.forEach(function(hz){
+            if(days>=hz[2] && !e.outcomes[hz[0]]) e.outcomes[hz[0]]={stock:+sret.toFixed(2),bench:+bret.toFixed(2),rel:+rel.toFixed(2),atDay:Math.round(days)};
+          });
+        }
+      })
+      .catch(function(){})
+      .finally(function(){ done++; if(done===pending.length){ window._mcocSaveJournal(j); window._mcocShowTab('journal'); } });
+  });
+};
+
+window._mcocExport = function(){
+  var blob=new Blob([JSON.stringify(window._mcocJournal(),null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='celesys_coc_journal_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+};
+window._mcocImport = function(ev){
+  var f=ev.target.files&&ev.target.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){ try{ var arr=JSON.parse(rd.result); if(Array.isArray(arr)){ window._mcocSaveJournal(arr); window._mcocShowTab('journal'); } }catch(e){ alert('Invalid JSON'); } };
+  rd.readAsText(f);
+};
+
+window._renderMcocLab = function(){
+  var n=window._mcocJournal().length;
+  var withOut=window._mcocJournal().filter(function(e){return Object.keys(e.outcomes||{}).length;}).length;
+  var need=window._MCOC_MIN_SIGNALS;
+  function card(emoji,title,desc,gateLabel,ready,progress){
+    var col=ready?'#16a34a':'#94a3b8';
+    var h='<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid '+col+';border-radius:10px;padding:12px 14px;margin-bottom:8px">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora,sans-serif">'+emoji+' '+title+'</div><span style="font-size:8px;font-weight:800;padding:2px 8px;border-radius:10px;background:'+(ready?'#dcfce7':'#f1f5f9')+';color:'+(ready?'#15803d':'#94a3b8')+'">'+(ready?'READY':'AWAITING DATA')+'</span></div>';
+    h+='<div style="font-size:10px;color:#64748b;line-height:1.5;margin-top:5px">'+desc+'</div>';
+    h+='<div style="font-size:9px;color:#94a3b8;margin-top:6px"><b>Gate:</b> '+gateLabel+' \u2014 <b style="color:'+col+'">'+progress+'</b></div>';
+    h+='</div>';
+    return h;
+  }
+  var h='<div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:9px 11px">\uD83D\uDD2C <b>Phase 2 Lab</b> \u2014 the learning loop. Each engine stays locked until it can be computed <i>honestly</i>. The hard part isn\u2019t code; it\u2019s avoiding survivorship bias, look-ahead leakage, and overfitting. Each unlocks only with enough real evidence.</div>';
+  h+=card('\uD83E\uDDEA','Control Group Engine',
+    'For every pick, sample same-sector / same-mcap names over the identical window and compare average <b>relative</b> return. This is what proves edge is real vs. a rising tide. Winners-only stats are forbidden here.',
+    '\u226510 logged signals with elapsed outcomes', withOut>=10, withOut+'/10 with outcomes');
+  h+=card('\uD83E\uDDEC','Multibagger DNA Engine',
+    'Profiles >100%/12mo historical movers <b>against a matched control set</b>, point-in-time (unrestated fundamentals, historical index membership). Every "82% had RS>90" stat must be paired with the control\u2019s rate, or it means nothing.',
+    'Point-in-time history source (free feeds leak the future)', false, 'needs PIT data \u2014 not wired');
+  h+=card('\uD83C\uDFAF','Expected Multibagger Probability (EMP)',
+    'Outputs P(+20%/3mo), P(+50%/6mo), P(+100%/12mo) \u2014 each <b>with a confidence band + sample count</b>, never a bare number. Requires a calibration curve so "68%" actually happens ~68% of the time.',
+    '\u2265'+need+' logged signals + calibration', n>=need, n+'/'+need+' signals');
+  return h;
+};
+
 // ═══════════════════ MARKET 360 ENGINE ═══════════════════
 window._loadMarket360 = function() {
+  if (window._m360Loading) return;            // hard guard: ignore rapid re-clicks
+  window._m360Loading = true;
   var reg = (window._engState.m360 && window._engState.m360.region) || 'US';
   var btn = document.getElementById('m360Btn');
   var resEl = document.getElementById('m360Result');
-  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '\u23F3 ANALYZING\u2026'; }
-  if (resEl) resEl.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px">\u23F3 Pulling indices, VIX, yields, oil, gold &amp; sector breadth\u2026 <span style="color:#cbd5e1">(up to ~30s)</span></div>';
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none'; btn.innerHTML = '\u23F3 ANALYZING\u2026'; }
+  var _done = function(){ window._m360Loading = false; if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.innerHTML = '\uD83C\uDF10 ANALYZE MARKET'; } };
+  if (resEl) resEl.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px"><span style="display:inline-block;width:14px;height:14px;border:2px solid #93c5fd;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px"></span>Pulling indices, VIX, yields, oil, gold &amp; sector breadth\u2026 <span style="color:#cbd5e1">(up to ~30s)</span></div>';
   var _ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
   var _to = setTimeout(function(){ if (_ac) _ac.abort(); }, 45000);
   fetch('/api/market-360?region=' + encodeURIComponent(reg), {cache:'no-store', signal: _ac ? _ac.signal : undefined})
     .then(function(r){ return r.json(); })
     .then(function(d){
-      clearTimeout(_to);
-      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDF10 ANALYZE MARKET'; }
+      clearTimeout(_to); _done();
       if (!d || !d.success) { if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + E((d && d.error) || 'Failed to load market data') + '</div>'; return; }
       if (resEl) resEl.innerHTML = window._renderMarket360(d);
     })
     .catch(function(e){
-      clearTimeout(_to);
-      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDF10 ANALYZE MARKET'; }
+      clearTimeout(_to); _done();
       var msg = (e && e.name === 'AbortError') ? 'Feeds are slow right now (data-center IPs are often rate-limited by Yahoo). Try again, or switch region.' : ('Network error: ' + E(String(e)));
       if (resEl) resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + msg + '</div>';
     });

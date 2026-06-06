@@ -2179,6 +2179,29 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <button onclick="window._engShow('inst360')" id="engBtnInst360" style="padding:7px 14px;background:linear-gradient(135deg,#fef3c7,#fed7aa);color:#7c2d12;border:1px solid #fb923c;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127919; 360&deg; Decision</button>
   <button onclick="window._engShow('marketwhy')" id="engBtnMarketWhy" style="padding:7px 14px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);color:#15803d;border:1px solid #86efac;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129504; Why Moving?</button>
   <button onclick="window._engShow('market360')" id="engBtnMarket360" style="padding:7px 14px;background:linear-gradient(135deg,#eff6ff,#dbeafe);color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127760; Market 360</button>
+  <button onclick="window._engShow('momcoc')" id="engBtnMomCoC" style="padding:7px 14px;background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129516; Momentum CoC</button>
+</div>
+
+<!-- MOMENTUM CoC ENGINE -->
+<div id="engMomCoCPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#c2410c;font-family:Sora,sans-serif;margin-bottom:6px">&#129516; Momentum CoC &mdash; Multibagger Readiness + Learning Loop</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Screens for pre-breakout asymmetry across 10 weighted factors, logs every call as a tracked experiment (alpha vs benchmark), and &mdash; in Phase 2 &mdash; learns your personal Circle of Competence. Weights are a v1 hypothesis, not truth; survivorship bias and look-ahead leakage are gated out by design.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <button id="mcocTabScore" onclick="window._mcocShowTab('score')" style="padding:6px 13px;background:linear-gradient(135deg,#ea580c,#c2410c);color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128202; Readiness Score</button>
+      <button id="mcocTabJournal" onclick="window._mcocShowTab('journal')" style="padding:6px 13px;background:#fff;color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128211; CoC Journal</button>
+      <button id="mcocTabLab" onclick="window._mcocShowTab('lab')" style="padding:6px 13px;background:#fff;color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128300; Phase 2 Lab</button>
+    </div>
+    <div id="mcocScoreInput" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">
+      <input id="mcocSym" type="text" placeholder="MRVL or RELIANCE" style="padding:6px 10px;border:1px solid #fed7aa;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#9a3412;width:150px">
+      <div style="display:flex;border:1px solid #fed7aa;border-radius:5px;overflow:hidden">
+        <button id="mcocRegIN" onclick="window._engSetRegion('mcoc','IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#c2410c">IN</button>
+        <button id="mcocRegUS" onclick="window._engSetRegion('mcoc','US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #fed7aa;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._mcocScore()" id="mcocBtn" style="padding:6px 16px;background:linear-gradient(135deg,#ea580c,#c2410c);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#129516; SCORE READINESS</button>
+    </div>
+    <div id="mcocResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter a symbol, click SCORE READINESS &mdash; or open the CoC Journal / Phase 2 Lab tabs.</div></div>
+  </div>
 </div>
 
 <!-- MARKET 360 ENGINE -->
@@ -2927,7 +2950,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=63103101"></script>
+<script src="/static/app.min.js?v=63104101"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>
