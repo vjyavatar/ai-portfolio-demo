@@ -28651,10 +28651,11 @@ def _mw_top_movers(region, limit=15):
             if data:
                 results[sym] = data
     ranked = sorted(results.items(), key=lambda x: x[1]["change_pct"], reverse=True)
-    top    = [{"symbol": s, "change_pct": d["change_pct"], "volume_ratio": d.get("volume_ratio")}
+    top    = [{"symbol": s, "change_pct": d["change_pct"], "price": d.get("close"), "volume_ratio": d.get("volume_ratio")}
               for s, d in ranked[:limit]]
-    bottom = [{"symbol": s, "change_pct": d["change_pct"], "volume_ratio": d.get("volume_ratio")}
+    bottom = [{"symbol": s, "change_pct": d["change_pct"], "price": d.get("close"), "volume_ratio": d.get("volume_ratio")}
               for s, d in ranked[-limit:]]
+    bottom.reverse()  # biggest loser FIRST (most-negative at top)
     return top, bottom
 
 
@@ -29615,6 +29616,130 @@ async def momentum_coc_quote(symbol: str = "", region: str = "US"):
         return {"success": False, "error": f"{type(_e).__name__}: {_e}"}
 
 
+_MCOC_TOP_TTL = 1800
+_mcoc_top_cache = {}
+
+
+@app.get("/api/momentum-coc/top")
+async def momentum_coc_top(region: str = "US", top_n: int = 20, refresh: int = 0):
+    """Rank a broad universe by Momentum Readiness Score — the names closest to a
+    pre-breakout / multibagger setup. Shared benchmark/regime/themes fetched once;
+    every symbol's 9-mo history fetched in parallel and scored with the same
+    10-factor engine. Honest: unreachable symbols are simply skipped, never faked."""
+    import asyncio as _aio, time as _time
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    top_n = max(5, min(40, top_n))
+
+    ck = f"{region}_{top_n}"
+    if not refresh and ck in _mcoc_top_cache:
+        e = _mcoc_top_cache[ck]
+        if (_time.time() - e["ts"]) < _MCOC_TOP_TTL:
+            return {**e["data"], "_cached": True, "_cache_age_sec": int(_time.time() - e["ts"])}
+
+    t0 = _time.time()
+    _lp = _aio.get_event_loop()
+    bench_sym = _MCOC_BENCH[region]
+
+    picks = _INST_PICKS_UNIVERSE.get(region, [])
+    theme_syms = [s for syms in _THEME_CONSTITUENTS.get(region, {}).values() for s in syms]
+    seen = set(); universe = []
+    for s in list(picks) + theme_syms:
+        if s not in seen and not s.startswith("^") and s not in ("SPY", "QQQ", "IWM"):
+            seen.add(s); universe.append(s)
+
+    async def _b(fn, *a, timeout=12, default=None):
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, fn, *a), timeout=timeout)
+        except Exception:
+            return default
+
+    bench, vix_pair, themes = await _aio.gather(
+        _b(_mcoc_fetch, bench_sym, timeout=10),
+        _b(_mw_fetch_vix, region, timeout=9, default=(None, "unknown")),
+        _b(_mw_compute_themes, region, timeout=14, default=[]),
+    )
+    vix_val, vix_regime = vix_pair if vix_pair else (None, "unknown")
+
+    theme_rank_map = {}
+    if themes:
+        ranked_themes = sorted(themes, key=lambda z: z.get("avg_change_pct", 0), reverse=True)
+        names = [z["theme"] for z in ranked_themes]
+        for th, syms in _THEME_CONSTITUENTS.get(region, {}).items():
+            if th in names:
+                r = names.index(th)
+                for s in syms:
+                    theme_rank_map[s] = (r, len(names))
+
+    regime_struct = None
+    if bench:
+        bc = bench["closes"]
+        above50 = bc[-1] > _mcoc_mean(bc[-50:]) if len(bc) >= 50 else None
+        above200 = bc[-1] > _mcoc_mean(bc[-200:]) if len(bc) >= 200 else above50
+        val = 0.5 + (0.25 if above50 else -0.25) + (0.15 if above200 else -0.15)
+        if vix_regime in ("elevated", "high"): val -= 0.2
+        elif vix_regime == "low":              val += 0.1
+        lbl = "risk-on" if val >= 0.6 else "risk-off" if val <= 0.4 else "mixed"
+        regime_struct = (_mcoc_clamp(val), lbl)
+
+    def _score_all():
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        yf_map = {s: (s if region == "US" else f"{s}.NS") for s in universe}
+        hist = {}
+        with ThreadPoolExecutor(max_workers=20) as ex:
+            futs = {ex.submit(_mcoc_fetch, yf_map[s]): s for s in universe}
+            for f in as_completed(futs):
+                s = futs[f]
+                try:
+                    d = f.result()
+                    if d:
+                        hist[s] = d
+                except Exception:
+                    pass
+        rows = []
+        for s, stock in hist.items():
+            subs = _mcoc_subscores(stock, bench, vix_regime, theme_rank_map.get(s), regime_struct)
+            num = den = 0.0; strengths = []
+            for key, label, wt in _MCOC_WEIGHTS:
+                sub, _note = subs.get(key, (None, ""))
+                if sub is not None:
+                    num += sub * wt; den += wt
+                    if sub >= 0.7:
+                        strengths.append(label)
+            if den <= 0:
+                continue
+            sc = round(num / den * 100)
+            rows.append({"symbol": s, "score": sc, "strengths": strengths[:3],
+                         "price": round(stock["closes"][-1], 2)})
+        rows.sort(key=lambda r: r["score"], reverse=True)
+        return rows
+
+    try:
+        rows = await _aio.wait_for(_lp.run_in_executor(None, _score_all), timeout=75)
+    except Exception:
+        rows = []
+
+    for r in rows:
+        sc = r["score"]
+        r["classification"] = ("ELITE" if sc >= 90 else "INSTITUTIONAL" if sc >= 80
+                               else "WATCHLIST" if sc >= 70 else "IGNORE")
+    n_ready = sum(1 for r in rows if r["score"] >= 70)
+
+    out = {
+        "success": True, "region": region,
+        "asof": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+        "universe_size": len(universe), "scored": len(rows), "n_ready": n_ready,
+        "rankings": rows[:top_n],
+        "weights_basis": "v1 hypothesis (O'Neil/Minervini/Weinstein) — pending DNA re-derivation",
+        "data_note": ("Ranked by the 10-factor readiness score (renormalized over available factors). "
+                      "Unreachable symbols are skipped, not faked. High score = strong pre-breakout "
+                      "SETUP, not a price prediction. Research tooling, not investment advice."),
+        "elapsed_sec": round(_time.time() - t0, 2), "_engine": "momentum_coc_top_v1",
+    }
+    _mcoc_top_cache[ck] = {"ts": _time.time(), "data": out}
+    return out
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # MARKET 360 — overall market analysis engine (Decide → Engines → 🌐 Market 360)
 # Aggregates indices + VIX + yields + oil + gold + dollar + sector breadth into
@@ -29777,13 +29902,94 @@ def _m360_build_prompt(region, regime, tiles_by_key, vix_val, vix_regime, breadt
         L.append(f"Sector breadth: best {best['theme']} {best['avg_change_pct']:+.1f}%, worst {worst['theme']} {worst['avg_change_pct']:+.1f}%.")
     data_block = "\n".join(L)
     return (
-        "You are a senior markets-desk strategist writing a brief 'how is the market behaving right now' note "
-        "for a sophisticated audience. Use ONLY the numbers in the data block; never invent figures or events you "
-        "were not given (you do NOT have today's news headlines, jobs, or CPI \u2014 reason purely from these prices). "
-        "Explain the cause-chain across assets (rates \u2192 equities, oil \u2192 inflation impulse, VIX \u2192 risk appetite). "
-        "Write 4\u20136 tight sentences, plain and quantitative, no preamble, no markdown headers.\n\n"
+        "You are a senior markets-desk strategist. From the live cross-asset data, write a POINT-WISE "
+        "desk note. Use ONLY the numbers given; never invent figures, news, jobs or CPI (you do NOT have "
+        "them \u2014 reason purely from these prices). Explain the cause-chain (rates\u2192equities, oil\u2192inflation "
+        "impulse, VIX\u2192risk appetite, sector spread\u2192rotation).\n\n"
+        "Return EXACTLY this structure, nothing else (no markdown, no preamble):\n"
+        "HEADLINE: <one punchy sentence, max 18 words>\n"
+        "- DRIVER: <the single biggest force moving the tape>\n"
+        "- EQUITIES: <index divergence / breadth, with the numbers>\n"
+        "- RATES: <yield level + move, and whether it explains the equity move>\n"
+        "- VOLATILITY: <VIX level + fear vs panic>\n"
+        "- ENERGY: <oil move + inflation/Fed implication>\n"
+        "- ROTATION: <best vs worst sector and what the spread signals>\n"
+        "- CROSS-ASSET: <gold/dollar/bitcoin posture \u2014 risk-off confirmation or not>\n"
+        "- BOTTOM LINE: <the verdict in one sentence>\n"
+        "Each bullet max 22 words, quantitative and specific.\n\n"
         f"DATA BLOCK:\n{data_block}"
     )
+
+
+def _m360_parse_synthesis(text):
+    """Parse the structured desk note into {headline, points[], bottom_line}.
+    Returns None if the text isn't in the expected structure (caller falls back)."""
+    if not text:
+        return None
+    headline = None; points = []; bottom = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        up = line.upper()
+        if up.startswith("HEADLINE:"):
+            headline = line.split(":", 1)[1].strip()
+        elif up.startswith("BOTTOM LINE:"):
+            bottom = line.split(":", 1)[1].strip()
+        elif line[0] in "-\u2022*":
+            body = line.lstrip("-\u2022* ").strip()
+            if ":" in body:
+                lab, txt = body.split(":", 1)
+                if lab.strip().upper().startswith("BOTTOM"):
+                    bottom = txt.strip()
+                else:
+                    points.append({"label": lab.strip(), "text": txt.strip()})
+            elif body:
+                points.append({"label": "", "text": body})
+    if not points and not headline:
+        return None
+    return {"headline": headline, "points": points, "bottom_line": bottom}
+
+
+def _m360_key_signals(region, tiles_by_key, vix_val, vix_regime, breadth):
+    """Deterministic, always-present 'Key Signals' bullets computed from the tiles."""
+    cur = "$" if region == "US" else "\u20b9"
+    g = lambda k: tiles_by_key.get(k)
+    sig = []
+    nq = g("nasdaq"); dw = g("dow")
+    if nq and dw and nq.get("change_pct") is not None and dw.get("change_pct") is not None:
+        spread = nq["change_pct"] - dw["change_pct"]
+        if abs(spread) >= 0.5:
+            who = "growth/tech being sold for defensives" if spread < 0 else "growth/tech leading the tape"
+            sig.append(f"Growth-vs-value split: Nasdaq {nq['change_pct']:+.1f}% vs Dow {dw['change_pct']:+.1f}% ({spread:+.1f}pp) \u2014 {who}.")
+    y = g("y10") or g("y10us")
+    if y and y.get("bps") is not None:
+        b = y["bps"]
+        sig.append(f"10Y {y['value']}% ({b:+d}bp): " + ("large enough to pressure long-duration equities." if abs(b) >= 8 else "a modest move \u2014 not enough to explain big equity swings alone."))
+    if vix_val is not None:
+        if vix_regime in ("elevated", "high"):
+            sig.append(f"VIX {vix_val} ({vix_regime}): elevated " + ("\u2014 approaching panic." if vix_val >= 30 else "fear, hedges bid, but not yet panic."))
+        else:
+            sig.append(f"VIX {vix_val} ({vix_regime}): calm \u2014 risk appetite intact.")
+    if breadth:
+        best = max(breadth, key=lambda t: t.get("avg_change_pct", 0))
+        worst = min(breadth, key=lambda t: t.get("avg_change_pct", 0))
+        spr = best.get("avg_change_pct", 0) - worst.get("avg_change_pct", 0)
+        sig.append(f"Rotation: {best['theme']} {best['avg_change_pct']:+.1f}% vs {worst['theme']} {worst['avg_change_pct']:+.1f}% \u2014 {spr:.0f}pp sector spread.")
+    wti = g("wti")
+    if wti and wti.get("change_pct") is not None:
+        sig.append(f"Oil (WTI {cur}{wti['value']}, {wti['change_pct']:+.1f}%): " + ("higher \u2192 inflation impulse, keeps the Fed restrictive." if wti["change_pct"] > 0 else "softer \u2192 eases the inflation impulse."))
+    gold = g("gold"); dxy = g("dxy") or g("usdinr"); btc = g("btc")
+    parts = []
+    if gold: parts.append(f"gold {gold['change_pct']:+.1f}%")
+    if dxy:  parts.append(("USD" if region == "US" else "USDINR") + f" {dxy['change_pct']:+.1f}%")
+    if btc:  parts.append(f"BTC {btc['change_pct']:+.1f}%")
+    if parts:
+        conf = ""
+        if gold and dxy and (gold.get("change_pct") or 0) < 0 and (dxy.get("change_pct") or 0) > 0:
+            conf = " \u2014 even safe havens sold = cash-raising / de-risking."
+        sig.append("Cross-asset: " + ", ".join(parts) + conf + ("" if conf else "."))
+    return sig
 
 
 @app.get("/api/market-360")
@@ -29890,6 +30096,9 @@ async def market_360(region: str = "US", refresh: int = 0):
             except Exception:
                 narrative = None
 
+        synthesis = _m360_parse_synthesis(narrative)
+        key_signals = _m360_key_signals(region, tiles_by_key, vix_val, vix_regime, breadth)
+
         n_avail = sum(1 for t in tiles if t.get("available"))
         data_note = (f"{n_avail}/{len(tiles)} live feeds reachable. Missing items show N/A "
                      f"(Treasury/commodity feeds are often blocked on data-center IPs; macro events like "
@@ -29898,8 +30107,9 @@ async def market_360(region: str = "US", refresh: int = 0):
         out = {
             "success": True, "region": region, "asof": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
             "regime": regime, "tiles": tiles, "pillars": pillars,
-            "breadth": breadth, "narrative": narrative, "data_note": data_note,
-            "elapsed_sec": round(_time.time() - t0, 2), "_engine": "market_360_v1",
+            "breadth": breadth, "narrative": narrative, "synthesis": synthesis,
+            "key_signals": key_signals, "data_note": data_note,
+            "elapsed_sec": round(_time.time() - t0, 2), "_engine": "market_360_v2_pointwise",
         }
         _market_360_cache[cache_key] = {"ts": _time.time(), "data": out}
         return out

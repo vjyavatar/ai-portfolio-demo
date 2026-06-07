@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.104.3";
-window.CELESYS_BUILD_TIME = 1780732800;
-window.CELESYS_BUILD_DATE = "2026-06-06 08:00:00 UTC";
+window.CELESYS_VERSION = "r63.105.0";
+window.CELESYS_BUILD_TIME = 1780743600;
+window.CELESYS_BUILD_DATE = "2026-06-06 11:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12846,7 +12846,7 @@ window._mcocShowTab = function(tab){
   window._mcocTab = tab;
   var inp = document.getElementById('mcocScoreInput');
   if (inp) inp.style.display = (tab==='score') ? 'flex' : 'none';
-  [['score','mcocTabScore'],['journal','mcocTabJournal'],['lab','mcocTabLab']].forEach(function(p){
+  [['score','mcocTabScore'],['journal','mcocTabJournal'],['lab','mcocTabLab'],['top','mcocTabTop']].forEach(function(p){
     var b=document.getElementById(p[1]); if(!b) return;
     if(p[0]===tab){ b.style.background='linear-gradient(135deg,#ea580c,#c2410c)'; b.style.color='#fff'; b.style.border='none'; }
     else { b.style.background='#fff'; b.style.color='#c2410c'; b.style.border='1px solid #fed7aa'; }
@@ -12855,6 +12855,8 @@ window._mcocShowTab = function(tab){
   if(!r) return;
   if(tab==='journal') r.innerHTML = window._renderMcocJournal();
   else if(tab==='lab') r.innerHTML = window._renderMcocLab();
+  else if(tab==='top') r.innerHTML = window._mcocTopLast ? window._renderMcocTop(window._mcocTopLast)
+      : '<div style="text-align:center;padding:30px"><div style="font-size:11px;color:#64748b;margin-bottom:12px">Scan the universe and rank every name by Momentum Readiness \u2014 the setups closest to a multibagger breakout.</div><button onclick="window._mcocLoadTop()" style="padding:8px 20px;background:linear-gradient(135deg,#ea580c,#c2410c);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\uD83C\uDFC6 SCAN TOP READINESS</button></div>';
   else r.innerHTML = window._mcocLast ? window._renderMcocScore(window._mcocLast) : '<div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter a symbol, click SCORE READINESS.</div>';
 };
 
@@ -13054,6 +13056,64 @@ window._renderMcocLab = function(){
   return h;
 };
 
+// ───── Momentum CoC · Top Readiness leaderboard ─────
+window._mcocLoadTop = function(){
+  if(window._mcocTopLoading) return;
+  window._mcocTopLoading=true;
+  var reg=(window._engState.mcoc&&window._engState.mcoc.region)||'US';
+  var r=document.getElementById('mcocResult');
+  if(r) r.innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8;font-size:11px"><span style="display:inline-block;width:14px;height:14px;border:2px solid #fed7aa;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px"></span>Scoring the universe for readiness\u2026 <span style="color:#cbd5e1">(up to ~60s)</span></div>';
+  var ac=(typeof AbortController!=='undefined')?new AbortController():null;
+  var to=setTimeout(function(){if(ac)ac.abort();},90000);
+  fetch('/api/momentum-coc/top?region='+encodeURIComponent(reg)+'&top_n=20',{cache:'no-store',signal:ac?ac.signal:undefined})
+    .then(function(x){return x.json();})
+    .then(function(d){
+      clearTimeout(to); window._mcocTopLoading=false;
+      if(!d||!d.success){ if(r) r.innerHTML='<div style="padding:12px;color:#dc2626;font-size:11px">'+window._esc((d&&d.error)||'Scan failed')+'</div>'; return; }
+      window._mcocTopLast=d; if(window._mcocTab==='top'&&r) r.innerHTML=window._renderMcocTop(d);
+    })
+    .catch(function(e){
+      clearTimeout(to); window._mcocTopLoading=false;
+      var msg=(e&&e.name==='AbortError')?'Scan slow/blocked on this host \u2014 try again.':('Network error: '+window._esc(String(e)));
+      if(r) r.innerHTML='<div style="padding:12px;color:#dc2626;font-size:11px">'+msg+'</div>';
+    });
+};
+
+window._mcocScoreFromTop = function(sym){
+  var inp=document.getElementById('mcocSym'); if(inp) inp.value=sym;
+  window._mcocShowTab('score'); setTimeout(function(){window._mcocScore();},60);
+};
+
+window._renderMcocTop = function(d){
+  var cur=(d.region==='IN')?'\u20b9':'$';
+  var h='';
+  h+='<div style="background:linear-gradient(135deg,#fff7ed,#ffedd5);border:1px solid #fed7aa;border-radius:12px;padding:12px 16px;margin-bottom:10px">';
+  h+='<div style="font-size:10px;font-weight:800;color:#c2410c;letter-spacing:0.5px">\uD83C\uDFC6 '+window._esc(d.region)+' \u00B7 TOP READINESS \u2014 CLOSEST TO A MULTIBAGGER SETUP</div>';
+  h+='<div style="font-size:11.5px;color:#7c2d12;margin-top:3px;line-height:1.45"><b>'+(d.n_ready||0)+'</b> of '+(d.scored||0)+' scored names are \u226570 (Watchlist+). A high score = a strong pre-breakout <i>setup</i>, not a price prediction. Tap any row to score it in full.</div>';
+  h+='</div>';
+  if(!(d.rankings||[]).length) return h+'<div style="padding:18px;text-align:center;color:#64748b;font-size:11px">No names could be scored (feed may be blocked on this host).</div>';
+  h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+  h+='<tr style="background:#fff7ed;color:#7c2d12">'+['#','Symbol','Price','Score','Class','Top strengths'].map(function(x,i){return '<th style="padding:6px 8px;text-align:'+(i>=2&&i<=3?'right':'left')+';font-weight:800">'+x+'</th>';}).join('')+'</tr>';
+  d.rankings.forEach(function(rw,i){
+    var col=rw.score>=90?'#16a34a':rw.score>=80?'#0ea5e9':rw.score>=70?'#d97706':'#94a3b8';
+    var cbg=rw.score>=90?'#dcfce7':rw.score>=80?'#e0f2fe':rw.score>=70?'#fef3c7':'#f1f5f9';
+    h+='<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="window._mcocScoreFromTop(\''+window._esc(rw.symbol)+'\')">';
+    h+='<td style="padding:6px 8px;font-weight:900;color:#c2410c;font-family:JetBrains Mono,monospace">'+(i+1)+'</td>';
+    h+='<td style="padding:6px 8px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">'+window._esc(rw.symbol)+'</td>';
+    h+='<td style="padding:6px 8px;text-align:right;color:#64748b;font-family:JetBrains Mono,monospace">'+(rw.price!=null?cur+Number(rw.price).toLocaleString(undefined,{maximumFractionDigits:2}):'\u2014')+'</td>';
+    h+='<td style="padding:6px 8px;text-align:right;font-weight:900;color:'+col+';font-family:JetBrains Mono,monospace;font-size:13px">'+rw.score+'</td>';
+    h+='<td style="padding:6px 8px"><span style="font-size:8.5px;font-weight:800;padding:2px 7px;border-radius:10px;background:'+cbg+';color:'+col+'">'+window._esc(rw.classification||'')+'</span></td>';
+    h+='<td style="padding:6px 8px;color:#475569;font-size:10px">'+window._esc((rw.strengths||[]).join(', ')||'\u2014')+'</td>';
+    h+='</tr>';
+  });
+  h+='</table></div>';
+  h+='<div style="font-size:8.5px;color:#94a3b8;margin-top:8px;line-height:1.4">'+window._esc(d.data_note||'')+'</div>';
+  h+='<div style="font-size:8px;color:#cbd5e1;margin-top:3px;font-family:JetBrains Mono,monospace">scored '+(d.scored||0)+'/'+(d.universe_size||0)+' \u00b7 '+(d.elapsed_sec||'?')+'s'+(d._cached?' \u00b7 cached':'')+' \u00b7 weights: '+window._esc(d.weights_basis||'')+'</div>';
+  h+='<div style="margin-top:8px"><button onclick="window._mcocLoadTop()" style="padding:5px 12px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\u21BB Re-scan</button></div>';
+  return h;
+};
+
+
 // ═══════════════════ MARKET 360 ENGINE ═══════════════════
 window._loadMarket360 = function() {
   if (window._m360Loading) return;            // hard guard: ignore rapid re-clicks
@@ -13100,9 +13160,32 @@ window._renderMarket360 = function(d) {
   h += '<div style="font-size:11px;color:#475569;margin-top:8px;line-height:1.4">' + window._esc(rg.tone || '') + '</div>';
   h += '<div style="font-size:9px;color:#94a3b8;margin-top:4px">As of ' + window._esc(d.asof || '') + (d._cached ? ' \u00B7 cached' : '') + '</div>';
   h += '</div>';
+  /* Key Signals — deterministic, always present */
+  if ((d.key_signals||[]).length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:12px">';
+    h += '<div style="font-size:10px;font-weight:800;color:#475569;letter-spacing:0.5px;margin-bottom:8px">\uD83D\uDCCD KEY SIGNALS</div>';
+    d.key_signals.forEach(function(s){
+      h += '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:flex-start">';
+      h += '<span style="color:#2563eb;font-weight:900;line-height:1.4">\u2022</span>';
+      h += '<span style="font-size:11.5px;color:#334155;line-height:1.45">' + window._esc(s) + '</span></div>';
+    });
+    h += '</div>';
+  }
 
-  /* AI synthesis */
-  if (d.narrative) {
+  /* AI Desk Synthesis — point-wise if structured, else prose fallback */
+  if (d.synthesis && ((d.synthesis.points||[]).length || d.synthesis.headline)) {
+    var syn = d.synthesis;
+    h += '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:10px;font-weight:800;color:#60a5fa;letter-spacing:0.5px;margin-bottom:8px">\uD83E\uDDE0 DESK SYNTHESIS \u00B7 AI</div>';
+    if (syn.headline) h += '<div style="font-size:13px;font-weight:800;color:#f8fafc;line-height:1.5;margin-bottom:10px">' + window._esc(syn.headline) + '</div>';
+    (syn.points||[]).forEach(function(p){
+      h += '<div style="display:flex;gap:8px;margin-bottom:7px;align-items:flex-start">';
+      if (p.label) h += '<span style="flex-shrink:0;font-size:8.5px;font-weight:800;letter-spacing:0.5px;color:#0b1220;background:#60a5fa;border-radius:4px;padding:2px 6px;margin-top:1px">' + window._esc(p.label.toUpperCase()) + '</span>';
+      h += '<span style="font-size:12px;color:#cbd5e1;line-height:1.5">' + window._esc(p.text) + '</span></div>';
+    });
+    if (syn.bottom_line) h += '<div style="margin-top:8px;padding-top:9px;border-top:1px solid #1e293b;font-size:12px;color:#fbbf24;font-weight:700;line-height:1.5">\u2192 ' + window._esc(syn.bottom_line) + '</div>';
+    h += '</div>';
+  } else if (d.narrative) {
     h += '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
     h += '<div style="font-size:10px;font-weight:800;color:#60a5fa;letter-spacing:0.5px;margin-bottom:8px">\uD83E\uDDE0 DESK SYNTHESIS \u00B7 AI</div>';
     h += '<div style="font-size:12.5px;color:#e2e8f0;line-height:1.65">' + window._esc(d.narrative) + '</div></div>';
@@ -13842,10 +13925,14 @@ window._renderMarketWhy = function(d) {
       h += '<div style="background:' + hBg + ';padding:11px 16px"><span style="font-size:12px;font-weight:900;color:#fff;letter-spacing:1px">' + lbl + '</span></div>';
       (items||[]).slice(0,15).forEach(function(m,i){
         var p=m.change_pct||0, bW=Math.round(Math.abs(p)/mx*45), ps=side==='gainers'?'left':'right';
+        var cur=(d.region==='IN')?'\u20b9':'$';
         h += '<div style="padding:9px 16px;' + (i>0?'border-top:1px solid #f8fafc;':'') + 'display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">';
         h += '<div style="position:absolute;top:0;bottom:0;' + ps + ':0;width:' + bW + '%;background:' + tc2 + '12"></div>';
         h += '<span style="position:relative;font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(m.symbol) + '</span>';
-        h += '<span style="position:relative;font-size:14px;font-weight:900;color:' + tc2 + ';font-family:JetBrains Mono,monospace">' + (side==='gainers'?'+':'') + p.toFixed(2) + '%</span>';
+        h += '<span style="position:relative;display:flex;align-items:baseline;gap:10px">';
+        if (m.price!=null) h += '<span style="font-size:11px;font-weight:600;color:#94a3b8;font-family:JetBrains Mono,monospace">' + cur + Number(m.price).toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>';
+        h += '<span style="font-size:14px;font-weight:900;color:' + tc2 + ';font-family:JetBrains Mono,monospace">' + (side==='gainers'?'+':'') + p.toFixed(2) + '%</span>';
+        h += '</span>';
         h += '</div>';
       });
       h += '</div>';
