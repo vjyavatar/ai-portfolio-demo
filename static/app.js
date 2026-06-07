@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.106.1";
-window.CELESYS_BUILD_TIME = 1780754400;
-window.CELESYS_BUILD_DATE = "2026-06-06 14:00:00 UTC";
+window.CELESYS_VERSION = "r63.108.0";
+window.CELESYS_BUILD_TIME = 1780761600;
+window.CELESYS_BUILD_DATE = "2026-06-06 16:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11741,6 +11741,7 @@ window._engShow = function(panel) {
     'insider': 'engInsiderPanel', 'diropts': 'engDirOptsPanel',
     'inst360': 'engInst360Panel', 'marketwhy': 'engMarketWhyPanel',
     'market360': 'engMarket360Panel', 'momcoc': 'engMomCoCPanel',
+    'forever': 'engForeverPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11756,6 +11757,7 @@ window._engShow = function(panel) {
     'insider': 'engBtnInsider', 'diropts': 'engBtnDirOpts',
     'inst360': 'engBtnInst360', 'marketwhy': 'engBtnMarketWhy',
     'market360': 'engBtnMarket360', 'momcoc': 'engBtnMomCoC',
+    'forever': 'engBtnForever',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12842,6 +12844,48 @@ window._MCOC_HORIZONS = [['w1','+1w',7],['w2','+2w',14],['m1','+1m',30],['m3','+
 window._mcocJournal = function(){ try { return JSON.parse(localStorage.getItem(window._MCOC_LS)||'[]'); } catch(e){ return []; } };
 window._mcocSaveJournal = function(j){ try { localStorage.setItem(window._MCOC_LS, JSON.stringify(j)); } catch(e){} };
 
+// ── Durable store (Neon) layer — localStorage stays the always-on local cache ──
+window._mcocStore = { mode:'local', configured:false, checked:false, user_key:'default' };
+window._mcocUserKey = function(){ try { return window._celesysUserKey || window._mcocStore.user_key || 'default'; } catch(e){ return 'default'; } };
+window._mcocCheckStore = function(cb){
+  fetch('/api/momentum-coc/journal/status',{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(s){ window._mcocStore.mode=s.available?'neon':'local'; window._mcocStore.configured=!!s.configured; window._mcocStore.checked=true; if(cb)cb(); })
+    .catch(function(){ window._mcocStore.mode='local'; window._mcocStore.checked=true; if(cb)cb(); });
+};
+window._mcocMerge = function(remote){
+  var byId={}; window._mcocJournal().forEach(function(e){ if(e&&e.id) byId[e.id]=e; });
+  (remote||[]).forEach(function(e){ if(e&&e.id) byId[e.id]=e; });   // Neon wins on conflict
+  var arr=Object.keys(byId).map(function(k){return byId[k];});
+  arr.sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+  window._mcocSaveJournal(arr); return arr;
+};
+window._mcocPullNeon = function(cb){
+  if(window._mcocStore.mode!=='neon'){ if(cb)cb(); return; }
+  fetch('/api/momentum-coc/journal?user_key='+encodeURIComponent(window._mcocUserKey()),{cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(d){ if(d.available&&Array.isArray(d.entries)) window._mcocMerge(d.entries); if(cb)cb(); })
+    .catch(function(){ if(cb)cb(); });
+};
+window._mcocPushEntry = function(entry){
+  if(window._mcocStore.mode!=='neon'||!entry) return;
+  fetch('/api/momentum-coc/journal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entry:entry,user_key:window._mcocUserKey()})}).catch(function(){});
+};
+window._mcocDelNeon = function(id){
+  if(window._mcocStore.mode!=='neon') return;
+  fetch('/api/momentum-coc/journal?id='+encodeURIComponent(id)+'&user_key='+encodeURIComponent(window._mcocUserKey()),{method:'DELETE'}).catch(function(){});
+};
+window._mcocSyncNeon = function(){
+  window._mcocCheckStore(function(){
+    if(window._mcocStore.mode!=='neon'){ alert('Neon not connected.\n\nSet DATABASE_URL (your Neon connection string) in Render \u2192 Environment, redeploy, then click Sync again.'); window._mcocShowTab('journal'); return; }
+    var btn=document.getElementById('mcocSyncBtn'); if(btn){btn.disabled=true;btn.innerHTML='\u23F3 Syncing\u2026';}
+    fetch('/api/momentum-coc/journal/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entries:window._mcocJournal(),user_key:window._mcocUserKey()})})
+      .then(function(r){return r.json();})
+      .then(function(d){ if(d.available&&Array.isArray(d.entries)) window._mcocMerge(d.entries); window._mcocShowTab('journal'); })
+      .catch(function(){ window._mcocShowTab('journal'); });
+  });
+};
+
 window._mcocShowTab = function(tab){
   window._mcocTab = tab;
   var inp = document.getElementById('mcocScoreInput');
@@ -12853,7 +12897,7 @@ window._mcocShowTab = function(tab){
   });
   var r=document.getElementById('mcocResult');
   if(!r) return;
-  if(tab==='journal') r.innerHTML = window._renderMcocJournal();
+  if(tab==='journal'){ r.innerHTML = window._renderMcocJournal(); if(!window._mcocStore.checked){ window._mcocCheckStore(function(){ window._mcocPullNeon(function(){ var rr=document.getElementById('mcocResult'); if(rr&&window._mcocTab==='journal') rr.innerHTML=window._renderMcocJournal(); }); }); } else if(window._mcocStore.mode==='neon'){ window._mcocPullNeon(function(){ var rr=document.getElementById('mcocResult'); if(rr&&window._mcocTab==='journal') rr.innerHTML=window._renderMcocJournal(); }); } }
   else if(tab==='lab') r.innerHTML = window._renderMcocLab();
   else if(tab==='top') r.innerHTML = window._mcocTopLast ? window._renderMcocTop(window._mcocTopLast)
       : '<div style="text-align:center;padding:30px"><div style="font-size:11px;color:#64748b;margin-bottom:12px">Scan the universe and rank every name by Momentum Readiness \u2014 the setups closest to a multibagger breakout.</div><button onclick="window._mcocLoadTop()" style="padding:8px 20px;background:linear-gradient(135deg,#ea580c,#c2410c);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\uD83C\uDFC6 SCAN TOP READINESS</button></div>';
@@ -12973,63 +13017,102 @@ window._mcocLog = function(){
   if(j.some(function(e){return e.symbol===d.symbol && e.date.slice(0,10)===new Date().toISOString().slice(0,10);})){
     alert('Already logged '+d.symbol+' today.'); return;
   }
-  j.unshift({ id:Date.now()+'_'+d.symbol, symbol:d.symbol, region:d.region, date:new Date().toISOString(),
+  var _ne={ id:Date.now()+'_'+d.symbol, symbol:d.symbol, region:d.region, date:new Date().toISOString(),
     score:d.score, classification:d.classification, regime:(d.vix_regime||''),
     entryPrice:d.entry_ref_price, benchSymbol:d.bench_symbol, benchPrice:d.bench_ref_price,
-    outcomes:{} });
+    pivot:(d.entry_plan&&d.entry_plan.pivot)||null, entryZone:(d.entry_plan&&d.entry_plan.current_zone)||null,
+    sector:null, outcomes:{} };
+  j.unshift(_ne);
   window._mcocSaveJournal(j);
+  window._mcocPushEntry(_ne);
   window._mcocShowTab('journal');
 };
 
 window._renderMcocJournal = function(){
+  var E=window._esc;
   var j=window._mcocJournal();
-  var h='';
-  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">';
-  h+='<button onclick="window._mcocRefreshOutcomes()" id="mcocRefreshBtn" style="padding:6px 14px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\u21BB Update Outcomes</button>';
-  h+='<button onclick="window._mcocExport()" style="padding:6px 12px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">\u2B07 Export JSON</button>';
-  h+='<label style="padding:6px 12px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">\u2B06 Import<input type="file" accept="application/json" onchange="window._mcocImport(event)" style="display:none"></label>';
-  h+='<span style="font-size:9px;color:#94a3b8;margin-left:auto">Stored in this browser \u00B7 export to back up. Durable cross-device store (Neon) = a wiring step away.</span>';
+  var HZ=window._MCOC_HORIZONS||[];
+  // storage pill
+  var sm=window._mcocStore||{mode:'local'};
+  var pill, pbg, pcol;
+  if(sm.mode==='neon'){ pill='\u2601 Synced to Neon'; pbg='#ecfdf5'; pcol='#047857'; }
+  else if(sm.configured){ pill='\u26A0 Neon set \u2014 reconnecting, using local'; pbg='#fffbeb'; pcol='#b45309'; }
+  else { pill='\uD83D\uDCBE Local only (this browser)'; pbg='#f1f5f9'; pcol='#64748b'; }
+
+  var h='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">';
+  h+='<span style="font-size:9px;font-weight:800;padding:4px 10px;border-radius:12px;background:'+pbg+';color:'+pcol+'">'+pill+'</span>';
+  h+='<button id="mcocSyncBtn" onclick="window._mcocSyncNeon()" style="padding:6px 12px;background:#0ea5e9;color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\u2601 Sync to Neon</button>';
+  h+='<button onclick="window._mcocRefreshOutcomes()" id="mcocRefreshBtn" style="padding:6px 12px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\u21BB Update Outcomes</button>';
+  h+='<button onclick="window._mcocExport()" style="padding:6px 10px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">\u2B07 Export</button>';
+  h+='<label style="padding:6px 10px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">\u2B06 Import<input type="file" accept="application/json" onchange="window._mcocImport(event)" style="display:none"></label>';
   h+='</div>';
-  if(!j.length) return h+'<div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">No logged signals yet. Score a name, then "Log to CoC Journal".</div>';
+
+  if(!j.length) return h+'<div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">No logged signals yet. Score a name, then \u201CLog to CoC Journal\u201D. Each log becomes a tracked experiment.</div>';
 
   // summary
   var withOut=j.filter(function(e){return Object.keys(e.outcomes||{}).length;});
   var avg=Math.round(j.reduce(function(a,e){return a+(e.score||0);},0)/j.length);
-  // hit-rate at longest captured horizon (relative return > 0)
-  var hits=0,tot=0;
-  withOut.forEach(function(e){ var ks=Object.keys(e.outcomes); var last=e.outcomes[ks[ks.length-1]]; if(last){tot++; if(last.rel>0)hits++;} });
-  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">';
-  h+='<div style="flex:1;min-width:90px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:8px;color:#94a3b8;font-weight:700">LOGGED</div><div style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+j.length+'</div></div>';
-  h+='<div style="flex:1;min-width:90px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:8px;color:#94a3b8;font-weight:700">AVG READINESS</div><div style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+avg+'</div></div>';
-  h+='<div style="flex:1;min-width:90px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:8px;color:#94a3b8;font-weight:700">REL. HIT-RATE</div><div style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+(tot?Math.round(hits/tot*100)+'%':'\u2014')+'</div><div style="font-size:7px;color:#cbd5e1">n='+tot+'</div></div>';
+  function lastOutcome(e){ var ks=Object.keys(e.outcomes||{}); return ks.length?e.outcomes[ks[ks.length-1]]:null; }
+  var lasts=withOut.map(lastOutcome).filter(Boolean);
+  var hits=lasts.filter(function(o){return o.rel>0;}).length;
+  var avgAlpha=lasts.length?+(lasts.reduce(function(a,o){return a+(o.rel||0);},0)/lasts.length).toFixed(1):null;
+  var best=lasts.length?Math.max.apply(null,lasts.map(function(o){return o.rel||0;})):null;
+  function stat(lbl,val,sub,col){ return '<div style="flex:1;min-width:84px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:8px;color:#94a3b8;font-weight:700">'+lbl+'</div><div style="font-size:17px;font-weight:900;color:'+(col||'#1e293b')+';font-family:JetBrains Mono,monospace">'+val+'</div>'+(sub?'<div style="font-size:7px;color:#cbd5e1">'+sub+'</div>':'')+'</div>'; }
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">';
+  h+=stat('LOGGED', j.length);
+  h+=stat('AVG READINESS', avg);
+  h+=stat('REL. HIT-RATE', lasts.length?Math.round(hits/lasts.length*100)+'%':'\u2014','n='+lasts.length);
+  h+=stat('AVG ALPHA', avgAlpha==null?'\u2014':(avgAlpha>0?'+':'')+avgAlpha+'%', 'vs bench', avgAlpha==null?'#1e293b':avgAlpha>0?'#16a34a':'#dc2626');
+  h+=stat('BEST', best==null?'\u2014':(best>0?'+':'')+best.toFixed(1)+'%', null, best==null?'#1e293b':best>0?'#16a34a':'#dc2626');
   h+='</div>';
 
-  // table
-  h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">';
-  h+='<tr style="background:#fff7ed;color:#7c2d12">'+['Date','Symbol','Score','Regime'].map(function(x){return '<th style="padding:5px 6px;text-align:left;font-weight:800">'+x+'</th>';}).join('');
-  window._MCOC_HORIZONS.forEach(function(hz){ h+='<th style="padding:5px 6px;text-align:right;font-weight:800">'+hz[1]+'</th>'; });
-  h+='<th></th></tr>';
+  // entry cards
   j.forEach(function(e){
-    h+='<tr style="border-bottom:1px solid #f1f5f9">';
-    h+='<td style="padding:5px 6px;color:#64748b">'+window._esc(e.date.slice(5,10))+'</td>';
-    h+='<td style="padding:5px 6px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">'+window._esc(e.symbol)+'</td>';
+    var cur=(e.region==='IN')?'\u20B9':'$';
     var scol=e.score>=80?'#16a34a':e.score>=70?'#d97706':'#dc2626';
-    h+='<td style="padding:5px 6px;font-weight:800;color:'+scol+'">'+(e.score==null?'\u2014':e.score)+'</td>';
-    h+='<td style="padding:5px 6px;color:#94a3b8">'+window._esc(e.regime||'\u2014')+'</td>';
-    window._MCOC_HORIZONS.forEach(function(hz){
+    var sbg=e.score>=80?'#dcfce7':e.score>=70?'#fef3c7':'#fee2e2';
+    var nOut=Object.keys(e.outcomes||{}).length;
+    h+='<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid '+scol+';border-radius:10px;padding:10px 12px;margin-bottom:8px">';
+    // header line
+    h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    h+='<span style="font-size:13px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+E(e.symbol)+'</span>';
+    h+='<span style="font-size:8px;font-weight:800;padding:2px 7px;border-radius:10px;background:'+sbg+';color:'+scol+'">'+(e.score==null?'\u2014':e.score)+' \u00B7 '+E(e.classification||'')+'</span>';
+    if(e.entryZone) h+='<span style="font-size:8px;color:#7c3aed;background:#f5f3ff;border-radius:8px;padding:2px 7px">'+E(e.entryZone)+'</span>';
+    h+='<span style="font-size:9px;color:#94a3b8;margin-left:auto">'+E(String(e.date||'').slice(0,10))+'</span>';
+    h+='<span onclick="window._mcocDel(\''+E(e.id)+'\')" style="cursor:pointer;color:#cbd5e1;font-weight:900;font-size:13px" title="Delete">\u00D7</span>';
+    h+='</div>';
+    // meta line
+    h+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:5px;font-size:9px;color:#64748b">';
+    if(e.entryPrice!=null) h+='<span>Entry <b style="color:#334155;font-family:JetBrains Mono,monospace">'+cur+Number(e.entryPrice).toLocaleString(undefined,{maximumFractionDigits:2})+'</b></span>';
+    if(e.pivot!=null) h+='<span>Pivot <b style="color:#334155;font-family:JetBrains Mono,monospace">'+cur+Number(e.pivot).toLocaleString(undefined,{maximumFractionDigits:2})+'</b></span>';
+    if(e.benchSymbol) h+='<span>vs <b style="color:#334155">'+E(e.benchSymbol)+'</b></span>';
+    if(e.regime) h+='<span>Regime <b style="color:#334155">'+E(e.regime)+'</b></span>';
+    h+='<span style="margin-left:auto;color:'+(nOut?'#16a34a':'#cbd5e1')+';font-weight:700">'+nOut+'/'+HZ.length+' horizons elapsed</span>';
+    h+='</div>';
+    // horizon strip
+    h+='<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">';
+    HZ.forEach(function(hz){
       var o=(e.outcomes||{})[hz[0]];
-      if(o){ var rc=o.rel>0?'#16a34a':'#dc2626'; h+='<td style="padding:5px 6px;text-align:right;font-weight:700;color:'+rc+'">'+(o.rel>0?'+':'')+o.rel.toFixed(1)+'%</td>'; }
-      else h+='<td style="padding:5px 6px;text-align:right;color:#cbd5e1">\u2014</td>';
+      if(o){
+        var rc=o.rel>0?'#16a34a':'#dc2626'; var rbg=o.rel>0?'#f0fdf4':'#fef2f2';
+        h+='<div style="flex:1;min-width:58px;background:'+rbg+';border:1px solid '+rc+'22;border-radius:7px;padding:5px 6px;text-align:center">';
+        h+='<div style="font-size:7px;color:#94a3b8;font-weight:700">'+E(hz[1])+'</div>';
+        h+='<div style="font-size:12px;font-weight:900;color:'+rc+';font-family:JetBrains Mono,monospace">'+(o.rel>0?'+':'')+o.rel.toFixed(1)+'%</div>';
+        if(o.stock!=null) h+='<div style="font-size:7px;color:#94a3b8">abs '+(o.stock>0?'+':'')+o.stock.toFixed(1)+'%</div>';
+        h+='</div>';
+      } else {
+        h+='<div style="flex:1;min-width:58px;background:#f8fafc;border:1px dashed #e2e8f0;border-radius:7px;padding:5px 6px;text-align:center"><div style="font-size:7px;color:#cbd5e1;font-weight:700">'+E(hz[1])+'</div><div style="font-size:12px;color:#cbd5e1;font-family:JetBrains Mono,monospace">\u2014</div><div style="font-size:7px;color:#e2e8f0">pending</div></div>';
+      }
     });
-    h+='<td style="padding:5px 6px;text-align:right"><span onclick="window._mcocDel(\''+e.id+'\')" style="cursor:pointer;color:#cbd5e1;font-weight:900">\u00D7</span></td>';
-    h+='</tr>';
+    h+='</div>';
+    h+='</div>';
   });
-  h+='</table></div>';
-  h+='<div style="font-size:8px;color:#94a3b8;margin-top:8px">Columns show <b>relative</b> return (stock \u2212 benchmark) captured the first time you refresh after each horizon elapses; timing is approximate to your refresh cadence. Alpha vs benchmark, not absolute, is the honest scorecard.</div>';
+
+  h+='<div style="font-size:8px;color:#94a3b8;margin-top:8px;line-height:1.5">Each card is a tracked experiment. The big number is <b>relative</b> return (stock \u2212 benchmark); <b>abs</b> is the raw move. Outcomes are captured the first time you hit <b>Update Outcomes</b> after a horizon elapses, so timing is approximate to your refresh cadence. Alpha vs benchmark \u2014 not absolute \u2014 is the honest scorecard. With Neon connected, this journal persists across devices.</div>';
   return h;
 };
 
-window._mcocDel = function(id){ var j=window._mcocJournal().filter(function(e){return e.id!==id;}); window._mcocSaveJournal(j); window._mcocShowTab('journal'); };
+window._mcocDel = function(id){ var j=window._mcocJournal().filter(function(e){return e.id!==id;}); window._mcocSaveJournal(j); window._mcocDelNeon(id); window._mcocShowTab('journal'); };
 
 window._mcocRefreshOutcomes = function(){
   var j=window._mcocJournal();
@@ -13053,7 +13136,7 @@ window._mcocRefreshOutcomes = function(){
         }
       })
       .catch(function(){})
-      .finally(function(){ done++; if(done===pending.length){ window._mcocSaveJournal(j); window._mcocShowTab('journal'); } });
+      .finally(function(){ done++; if(done===pending.length){ window._mcocSaveJournal(j); if(window._mcocStore.mode==='neon'){ j.forEach(function(e){window._mcocPushEntry(e);}); } window._mcocShowTab('journal'); } });
   });
 };
 
@@ -13274,6 +13357,99 @@ window._renderMcocTop = function(d){
   h+='<div style="font-size:8px;color:#cbd5e1;margin-top:3px;font-family:JetBrains Mono,monospace">scored '+(d.scored||0)+'/'+(d.universe_size||0)+' \u00b7 '+(d.elapsed_sec||'?')+'s'+(d._cached?' \u00b7 cached':'')+' \u00b7 weights: '+window._esc(d.weights_basis||'')+'</div>';
   h+='<div style="margin-top:8px"><button onclick="window._mcocLoadTop()" style="padding:5px 12px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\u21BB Re-scan</button></div>';
   return h;
+};
+
+
+// ═══════════════════ FOREVER HOLDS ENGINE ═══════════════════
+window._FOREVER_FILTERS = [
+  { n:1, key:'f1', accent:'#5b8def', icon:'shield', title:'A Moat That Widens', label:'Moat that widens',
+    desc:'Most competitive advantages erode. 20-yr holds need businesses where the lead OVER competitors GROWS year after year. Picks and shovels. Network effects. Switching costs. Decades of brand power.',
+    stats:[['WIDENS','NOT NARROWS'],['DECADES','NOT QUARTERS']] },
+  { n:2, key:'f2', accent:'#34d399', icon:'gem', title:'Real Sustainable Cash Flow', label:'Real, growing cash',
+    desc:'Not EBITDA. Not non-GAAP. Actual cash showing up in the bank account every quarter, growing year-over-year. If it doesn\u2019t print cash today, in 20 years it won\u2019t exist.',
+    stats:[['CASH','IN THE BANK'],['EVERY QTR','GROWING']] },
+  { n:3, key:'f3', accent:'#a78bfa', icon:'target', title:'Returns Cash To Shareholders', label:'Returns cash to holders',
+    desc:'Dividends. Buybacks. Both. Over 20 years, capital allocation is what separates compounders from value traps.',
+    stats:[['DIV','DIVIDENDS'],['BUY','BUYBACKS']] },
+];
+window._foreverState = { sym:'', f1:null, f2:null, f3:null };
+
+window._foreverIcon = function(type, acc){
+  var s='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="'+acc+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+  if(type==='shield') s+='<path d="M12 2l8 3v6c0 5-3.5 8-8 11-4.5-3-8-6-8-11V5l8-3z"/><path d="M9 12l2 2 4-4"/>';
+  else if(type==='gem') s+='<path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18"/><path d="M9 3l3 6 3-6"/>';
+  else s+='<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.6" fill="'+acc+'" stroke="none"/>';
+  return s+'</svg>';
+};
+
+window._foreverCard = function(f){
+  var E=window._esc, acc=f.accent;
+  var h='<div style="background:linear-gradient(165deg,#1b2335,#0e1524)!important;border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:22px 20px;margin-bottom:12px;text-align:center;position:relative;overflow:hidden">';
+  h+='<div style="position:absolute;top:-40px;right:-30px;width:170px;height:170px;background:radial-gradient(circle,'+acc+'22,transparent 70%);pointer-events:none"></div>';
+  h+='<div style="position:relative;width:46px;height:46px;border-radius:12px;background:#ffffff!important;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:0 4px 14px rgba(0,0,0,0.3)">'+window._foreverIcon(f.icon,acc)+'</div>';
+  h+='<div style="position:relative;font-size:21px;font-weight:900;color:#ffffff!important;font-family:Sora,sans-serif;line-height:1.25;margin-bottom:10px">Filter '+f.n+' \u2014 '+E(f.title)+'</div>';
+  h+='<div style="position:relative;font-size:13px;color:rgba(255,255,255,0.72)!important;line-height:1.6;max-width:560px;margin:0 auto 16px">'+E(f.desc)+'</div>';
+  h+='<div style="position:relative;height:1px;background:rgba(255,255,255,0.12);margin:0 auto 14px;max-width:580px"></div>';
+  h+='<div style="position:relative;display:flex;align-items:center;justify-content:center">';
+  f.stats.forEach(function(s,i){
+    if(i>0) h+='<div style="width:1px;height:34px;background:rgba(255,255,255,0.14);margin:0 26px"></div>';
+    h+='<div><div style="font-size:17px;font-weight:900;color:'+acc+'!important;font-family:Sora,sans-serif;letter-spacing:1px">'+E(s[0])+'</div><div style="font-size:8.5px;font-weight:700;color:rgba(255,255,255,0.45)!important;letter-spacing:1.5px;margin-top:2px">'+E(s[1])+'</div></div>';
+  });
+  h+='</div></div>';
+  return h;
+};
+
+window._foreverVerdict = function(){
+  var st=window._foreverState, E=window._esc;
+  if(st.f1==null||st.f2==null||st.f3==null) return '<div style="font-size:10px;color:#94a3b8">Score all three filters to get a verdict.</div>';
+  var total=st.f1+st.f2+st.f3, anyNo=(st.f1===0||st.f2===0||st.f3===0), cashNo=(st.f2===0);
+  var v,col,bg,msg;
+  if(cashNo){ v='VALUE-TRAP RISK'; col='#dc2626'; bg='#fef2f2'; msg='Filter 2 fails \u2014 no real, growing cash. \u201CIf it doesn\u2019t print cash today, in 20 years it won\u2019t exist.\u201D Does not clear the bar for a 20-year hold.'; }
+  else if(total>=6){ v='FOREVER-HOLD CANDIDATE'; col='#16a34a'; bg='#f0fdf4'; msg='All three moats present \u2014 widening edge, real cash, shareholder returns. The kind of business a 20-year hold is built on. Sizing and entry remain your call.'; }
+  else if(total>=4 && !anyNo){ v='PROMISING COMPOUNDER'; col='#0ea5e9'; bg='#f0f9ff'; msg='Clears the bar with a soft spot \u2014 watch the partial filter; that\u2019s where a compounder can quietly slip into a value trap.'; }
+  else if(anyNo){ v='DOES NOT CLEAR THE BAR'; col='#b45309'; bg='#fffbeb'; msg='At least one filter fails outright. For a decade-plus hold, all three need to be at least present.'; }
+  else { v='BORDERLINE'; col='#b45309'; bg='#fffbeb'; msg='Too many partials for a 20-year hold without more conviction \u2014 dig deeper before committing.'; }
+  var sym=st.sym?(E(st.sym).toUpperCase()+' \u2014 '):'';
+  return '<div style="background:'+bg+';border:1px solid '+col+'44;border-radius:8px;padding:10px 12px"><div style="font-size:8px;font-weight:800;color:'+col+';letter-spacing:1px">'+sym+'VERDICT</div><div style="font-size:15px;font-weight:900;color:'+col+';font-family:Sora,sans-serif;margin:2px 0 4px">'+v+' \u00B7 '+total+'/6</div><div style="font-size:10px;color:#475569;line-height:1.5">'+msg+'</div></div>';
+};
+
+window._foreverAssess = function(){
+  var st=window._foreverState, E=window._esc;
+  var h='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-top:4px">';
+  h+='<div style="font-size:11px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:3px">\uD83E\uDDED Score a Candidate</div>';
+  h+='<div style="font-size:9px;color:#94a3b8;line-height:1.5;margin-bottom:10px">Your judgment on each filter. The data behind these (moat trend, real FCF, buyback history) isn\u2019t reliably available on this host \u2014 so this is a disciplined checklist, not a fabricated auto-screen.</div>';
+  h+='<input id="foreverSym" oninput="window._foreverState.sym=this.value" value="'+E(st.sym||'')+'" placeholder="Ticker (optional label, e.g. AAPL)" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-family:JetBrains Mono,monospace;width:240px;margin-bottom:10px">';
+  window._FOREVER_FILTERS.forEach(function(f){
+    h+='<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px">';
+    h+='<span style="font-size:11px;font-weight:700;color:#334155;min-width:170px">Filter '+f.n+': '+E(f.label)+'</span>';
+    [['Yes',2,'#16a34a'],['Partial',1,'#d97706'],['No',0,'#dc2626']].forEach(function(o){
+      var on=st[f.key]===o[1];
+      h+='<button onclick="window._foreverSet(\''+f.key+'\','+o[1]+')" style="padding:4px 13px;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;border:1px solid '+o[2]+';'+(on?'background:'+o[2]+';color:#fff':'background:#fff;color:'+o[2])+'">'+o[0]+'</button>';
+    });
+    h+='</div>';
+  });
+  h+='<div id="foreverVerdictBox" style="margin-top:10px">'+window._foreverVerdict()+'</div>';
+  h+='</div>';
+  return h;
+};
+
+window._foreverSet = function(k,v){
+  window._foreverState[k]=v;
+  var el=document.getElementById('foreverAssess');
+  if(el) el.innerHTML=window._foreverAssess();
+};
+
+window._renderForever = function(){
+  var h='';
+  window._FOREVER_FILTERS.forEach(function(f){ h+=window._foreverCard(f); });
+  h+='<div id="foreverAssess">'+window._foreverAssess()+'</div>';
+  return h;
+};
+
+window._foreverShow = function(){
+  window._engShow('forever');
+  var el=document.getElementById('foreverBody');
+  if(el) el.innerHTML=window._renderForever();
 };
 
 

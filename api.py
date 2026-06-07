@@ -29700,6 +29700,179 @@ _mcoc_top_cache = {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# MOMENTUM CoC JOURNAL — durable store (Neon / Postgres) with graceful fallback
+#   Reads conn string from env DATABASE_URL (or NEON_DATABASE_URL). If unset or
+#   unreachable, every endpoint returns available:false and the frontend keeps
+#   using localStorage — ZERO regression. psycopg v3 (already a dependency).
+# ═══════════════════════════════════════════════════════════════════════════
+import os as _os_journal
+_COC_PG_URL = _os_journal.getenv("DATABASE_URL") or _os_journal.getenv("NEON_DATABASE_URL") or ""
+_coc_pg_ready = None   # tri-state: None = untried, True / False
+
+
+def _coc_pg_connect():
+    import psycopg
+    return psycopg.connect(_COC_PG_URL, connect_timeout=8, autocommit=True)
+
+
+def _coc_pg_init():
+    global _coc_pg_ready
+    if not _COC_PG_URL:
+        _coc_pg_ready = False
+        return False
+    try:
+        with _coc_pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""CREATE TABLE IF NOT EXISTS coc_journal(
+                    id          TEXT PRIMARY KEY,
+                    user_key    TEXT NOT NULL DEFAULT 'default',
+                    payload     JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+                )""")
+                cur.execute("CREATE INDEX IF NOT EXISTS coc_journal_user_idx ON coc_journal(user_key)")
+        _coc_pg_ready = True
+        return True
+    except Exception as _e:
+        print(f"[CoC journal] Neon/Postgres unavailable: {type(_e).__name__}: {_e}")
+        _coc_pg_ready = False
+        return False
+
+
+def _coc_pg_available():
+    if _coc_pg_ready is None:
+        _coc_pg_init()
+    return bool(_coc_pg_ready)
+
+
+@app.get("/api/momentum-coc/journal/status")
+async def momentum_coc_journal_status():
+    import asyncio as _aio
+    _lp = _aio.get_event_loop()
+    try:
+        ok = await _aio.wait_for(_lp.run_in_executor(None, _coc_pg_available), timeout=10)
+    except Exception:
+        ok = False
+    return {"available": bool(ok), "backend": ("neon" if ok else "local"), "configured": bool(_COC_PG_URL)}
+
+
+@app.get("/api/momentum-coc/journal")
+async def momentum_coc_journal_list(user_key: str = "default"):
+    import asyncio as _aio
+    _lp = _aio.get_event_loop()
+
+    def _list():
+        if not _coc_pg_available():
+            return None
+        with _coc_pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT payload FROM coc_journal WHERE user_key=%s ORDER BY updated_at DESC", (user_key,))
+                return [r[0] for r in cur.fetchall()]
+
+    try:
+        rows = await _aio.wait_for(_lp.run_in_executor(None, _list), timeout=12)
+    except Exception as _e:
+        return {"available": False, "error": f"{type(_e).__name__}: {_e}", "entries": []}
+    if rows is None:
+        return {"available": False, "entries": []}
+    return {"available": True, "entries": rows, "count": len(rows)}
+
+
+@app.post("/api/momentum-coc/journal")
+async def momentum_coc_journal_upsert(request: Request):
+    import asyncio as _aio, json as _json
+    try:
+        body = await request.json()
+    except Exception:
+        return {"available": False, "error": "bad json"}
+    entry = body.get("entry") or body
+    user_key = body.get("user_key") or "default"
+    eid = entry.get("id")
+    if not eid:
+        return {"available": False, "error": "entry.id required"}
+    _lp = _aio.get_event_loop()
+
+    def _up():
+        if not _coc_pg_available():
+            return None
+        with _coc_pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO coc_journal (id,user_key,payload,updated_at)
+                               VALUES (%s,%s,%s::jsonb,now())
+                               ON CONFLICT (id) DO UPDATE SET payload=EXCLUDED.payload, updated_at=now()""",
+                            (eid, user_key, _json.dumps(entry)))
+        return True
+
+    try:
+        ok = await _aio.wait_for(_lp.run_in_executor(None, _up), timeout=12)
+    except Exception as _e:
+        return {"available": False, "error": f"{type(_e).__name__}: {_e}"}
+    return {"available": bool(ok), "id": eid}
+
+
+@app.delete("/api/momentum-coc/journal")
+async def momentum_coc_journal_delete(id: str = "", user_key: str = "default"):
+    import asyncio as _aio
+    if not id:
+        return {"available": False, "error": "id required"}
+    _lp = _aio.get_event_loop()
+
+    def _del():
+        if not _coc_pg_available():
+            return None
+        with _coc_pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM coc_journal WHERE id=%s AND user_key=%s", (id, user_key))
+        return True
+
+    try:
+        ok = await _aio.wait_for(_lp.run_in_executor(None, _del), timeout=12)
+    except Exception as _e:
+        return {"available": False, "error": f"{type(_e).__name__}: {_e}"}
+    return {"available": bool(ok), "id": id}
+
+
+@app.post("/api/momentum-coc/journal/sync")
+async def momentum_coc_journal_sync(request: Request):
+    """Bulk upsert (localStorage → Neon migration) then return the merged set."""
+    import asyncio as _aio, json as _json
+    try:
+        body = await request.json()
+    except Exception:
+        return {"available": False, "error": "bad json"}
+    entries = body.get("entries") or []
+    user_key = body.get("user_key") or "default"
+    _lp = _aio.get_event_loop()
+
+    def _sync():
+        if not _coc_pg_available():
+            return None
+        cnt = 0
+        with _coc_pg_connect() as conn:
+            with conn.cursor() as cur:
+                for entry in entries:
+                    eid = (entry or {}).get("id")
+                    if not eid:
+                        continue
+                    cur.execute("""INSERT INTO coc_journal (id,user_key,payload,updated_at)
+                                   VALUES (%s,%s,%s::jsonb,now())
+                                   ON CONFLICT (id) DO UPDATE SET payload=EXCLUDED.payload, updated_at=now()""",
+                                (eid, user_key, _json.dumps(entry)))
+                    cnt += 1
+                cur.execute("SELECT payload FROM coc_journal WHERE user_key=%s ORDER BY updated_at DESC", (user_key,))
+                merged = [r[0] for r in cur.fetchall()]
+        return cnt, merged
+
+    try:
+        res = await _aio.wait_for(_lp.run_in_executor(None, _sync), timeout=25)
+    except Exception as _e:
+        return {"available": False, "error": f"{type(_e).__name__}: {_e}"}
+    if res is None:
+        return {"available": False}
+    cnt, merged = res
+    return {"available": True, "synced": cnt, "entries": merged, "count": len(merged)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # MOMENTUM CoC — PHASE 2 (the learning loop)
 #   • Control Group   — picks vs same-sector peers over the identical window
 #   • DNA + EMP        — look-ahead-clean rolling-window study over the universe:
