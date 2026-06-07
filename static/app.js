@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.105.0";
-window.CELESYS_BUILD_TIME = 1780743600;
-window.CELESYS_BUILD_DATE = "2026-06-06 11:00:00 UTC";
+window.CELESYS_VERSION = "r63.105.1";
+window.CELESYS_BUILD_TIME = 1780747200;
+window.CELESYS_BUILD_DATE = "2026-06-06 12:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -13175,20 +13175,20 @@ window._renderMarket360 = function(d) {
   /* AI Desk Synthesis — point-wise if structured, else prose fallback */
   if (d.synthesis && ((d.synthesis.points||[]).length || d.synthesis.headline)) {
     var syn = d.synthesis;
-    h += '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
-    h += '<div style="font-size:10px;font-weight:800;color:#60a5fa;letter-spacing:0.5px;margin-bottom:8px">\uD83E\uDDE0 DESK SYNTHESIS \u00B7 AI</div>';
-    if (syn.headline) h += '<div style="font-size:13px;font-weight:800;color:#f8fafc;line-height:1.5;margin-bottom:10px">' + window._esc(syn.headline) + '</div>';
+    h += '<div style="background:#f0f9ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:10px;font-weight:800;color:#2563eb;letter-spacing:0.5px;margin-bottom:8px">\uD83E\uDDE0 DESK SYNTHESIS \u00B7 AI</div>';
+    if (syn.headline) h += '<div style="font-size:13px;font-weight:800;color:#0f172a;line-height:1.5;margin-bottom:10px">' + window._esc(syn.headline) + '</div>';
     (syn.points||[]).forEach(function(p){
       h += '<div style="display:flex;gap:8px;margin-bottom:7px;align-items:flex-start">';
-      if (p.label) h += '<span style="flex-shrink:0;font-size:8.5px;font-weight:800;letter-spacing:0.5px;color:#0b1220;background:#60a5fa;border-radius:4px;padding:2px 6px;margin-top:1px">' + window._esc(p.label.toUpperCase()) + '</span>';
-      h += '<span style="font-size:12px;color:#cbd5e1;line-height:1.5">' + window._esc(p.text) + '</span></div>';
+      if (p.label) h += '<span style="flex-shrink:0;font-size:8.5px;font-weight:800;letter-spacing:0.5px;color:#fff;background:#2563eb;border-radius:4px;padding:2px 6px;margin-top:1px">' + window._esc(p.label.toUpperCase()) + '</span>';
+      h += '<span style="font-size:12px;color:#1e293b;line-height:1.5">' + window._esc(p.text) + '</span></div>';
     });
-    if (syn.bottom_line) h += '<div style="margin-top:8px;padding-top:9px;border-top:1px solid #1e293b;font-size:12px;color:#fbbf24;font-weight:700;line-height:1.5">\u2192 ' + window._esc(syn.bottom_line) + '</div>';
+    if (syn.bottom_line) h += '<div style="margin-top:8px;padding-top:9px;border-top:1px solid #bfdbfe;font-size:12px;color:#b45309;font-weight:800;line-height:1.5">\u2192 ' + window._esc(syn.bottom_line) + '</div>';
     h += '</div>';
   } else if (d.narrative) {
-    h += '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
-    h += '<div style="font-size:10px;font-weight:800;color:#60a5fa;letter-spacing:0.5px;margin-bottom:8px">\uD83E\uDDE0 DESK SYNTHESIS \u00B7 AI</div>';
-    h += '<div style="font-size:12.5px;color:#e2e8f0;line-height:1.65">' + window._esc(d.narrative) + '</div></div>';
+    h += '<div style="background:#f0f9ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:10px;font-weight:800;color:#2563eb;letter-spacing:0.5px;margin-bottom:8px">\uD83E\uDDE0 DESK SYNTHESIS \u00B7 AI</div>';
+    h += '<div style="font-size:12.5px;color:#1e293b;line-height:1.65">' + window._esc(d.narrative) + '</div></div>';
   }
 
   /* Tiles */
