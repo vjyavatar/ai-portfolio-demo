@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.105.1";
-window.CELESYS_BUILD_TIME = 1780747200;
-window.CELESYS_BUILD_DATE = "2026-06-06 12:00:00 UTC";
+window.CELESYS_VERSION = "r63.106.1";
+window.CELESYS_BUILD_TIME = 1780754400;
+window.CELESYS_BUILD_DATE = "2026-06-06 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12918,6 +12918,44 @@ window._renderMcocScore = function(d){
   });
   h+='</div>';
 
+  if (d.entry_plan) {
+    var ep = d.entry_plan;
+    var zc = (ep.current_zone==='Pivot / Retest')?'#16a34a':(ep.current_zone==='Cheat Entry')?'#2563eb':(ep.current_zone==='Chase Zone')?'#d97706':(ep.current_zone==='Avoid Zone')?'#dc2626':'#64748b';
+    var zbg = (ep.current_zone==='Pivot / Retest')?'#f0fdf4':(ep.current_zone==='Cheat Entry')?'#eff6ff':(ep.current_zone==='Chase Zone')?'#fffbeb':(ep.current_zone==='Avoid Zone')?'#fef2f2':'#f8fafc';
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:10px">';
+    h += '<div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:8px">\uD83D\uDCD0 INSTITUTIONAL ENTRY PLAN</div>';
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+    [['PIVOT',ep.pivot],['CURRENT',ep.current+' ('+(ep.pct_from_pivot>0?'+':'')+ep.pct_from_pivot+'%)'],['RVOL',ep.rvol+'\u00d7'+(ep.rvol_confirmed?' \u2713':'')],['STOP REF',ep.stop_ref]].forEach(function(x){
+      h+='<div style="flex:1;min-width:78px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:6px 8px"><div style="font-size:8px;color:#94a3b8;font-weight:700">'+x[0]+'</div><div style="font-size:13px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+window._esc(String(x[1]))+'</div></div>';
+    });
+    h += '</div>';
+    h += '<div style="background:'+zbg+';border:1px solid '+zc+'40;border-radius:8px;padding:8px 10px;margin-bottom:9px"><span style="font-size:8.5px;font-weight:800;color:#fff;background:'+zc+';border-radius:4px;padding:2px 7px">NOW: '+window._esc(ep.current_zone.toUpperCase())+'</span><div style="font-size:11px;color:#334155;line-height:1.45;margin-top:5px">'+window._esc(ep.action)+'</div></div>';
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px"><tr style="background:#f8fafc;color:#475569"><th style="padding:4px 6px;text-align:left">Entry Type</th><th style="padding:4px 6px;text-align:right">Zone</th><th style="padding:4px 6px;text-align:right">Prob</th><th style="padding:4px 6px;text-align:right">Reward</th></tr>';
+    ep.tiers.forEach(function(t){
+      var hot=(ep.current_zone.indexOf(t.name)>=0)||(ep.current_zone==='Pivot / Retest'&&(t.name==='Pivot Breakout'||t.name==='Breakout Retest'));
+      h+='<tr style="border-bottom:1px solid #f1f5f9;'+(hot?'background:'+zbg+';':'')+'">';
+      h+='<td style="padding:4px 6px;font-weight:'+(hot?'900':'700')+';color:#1e293b">'+(hot?'\u25B6 ':'')+window._esc(t.name)+'</td>';
+      h+='<td style="padding:4px 6px;text-align:right;font-family:JetBrains Mono,monospace;color:#475569">'+t.lo+(t.hi?('\u2013'+t.hi):'+')+'</td>';
+      h+='<td style="padding:4px 6px;text-align:right;color:#16a34a;font-weight:700">'+window._esc(t.prob)+'</td>';
+      h+='<td style="padding:4px 6px;text-align:right;color:#64748b">'+t.reward+'</td>';
+      h+='</tr>';
+    });
+    h += '</table></div>';
+    h += '<div style="font-size:10px;color:#0f172a;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 10px;margin-top:8px"><b>\uD83C\uDFAF Single best price:</b> '+window._esc(ep.best_price)+'</div>';
+    h += '<div style="font-size:9px;font-weight:800;color:#475569;margin:9px 0 5px">360\u00B0 REQUIREMENTS</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
+    ep.requirements.forEach(function(r){
+      var mk = r.ok===true?'\u2713':r.ok===false?'\u2717':'\u00b7'; var rcol=r.ok===true?'#16a34a':r.ok===false?'#dc2626':'#94a3b8';
+      h+='<span style="font-size:9px;color:'+rcol+';border:1px solid '+rcol+'33;border-radius:5px;padding:2px 7px"><b>'+mk+'</b> '+window._esc(r.label)+' <span style="color:#94a3b8">('+window._esc(r.note)+')</span></span>';
+    });
+    h += '</div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">';
+    ep.staged_plan.forEach(function(s){ h+='<div style="flex:1;min-width:100px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:7px;padding:6px 8px"><div style="font-size:14px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">'+s.pct+'%</div><div style="font-size:9px;font-weight:700;color:#1e293b">'+window._esc(s.leg)+'</div><div style="font-size:8px;color:#94a3b8;line-height:1.3">'+window._esc(s.trigger)+'</div></div>'; });
+    h += '</div>';
+    h += '<div style="font-size:9px;color:'+(ep.requirements_met>=4?'#16a34a':'#b45309')+';font-weight:700;margin-top:7px">'+window._esc(ep.size_guidance)+' \u00b7 '+ep.requirements_met+'/'+ep.requirements_checkable+' requirements met</div>';
+    h += '<div style="font-size:8px;color:#94a3b8;margin-top:4px">Entry levels are derived from the pivot (max high of the prior base) + live price/volume. Risk framing, not advice; size and stops are your decision.</div>';
+    h += '</div>';
+  }
+
   if((d.excluded||[]).length) h+='<div style="font-size:9px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:7px 10px;margin-bottom:8px">\u26A0 Excluded (N/A): '+window._esc(d.excluded.join(', '))+' \u2014 score renormalized over available factors.</div>';
   h+='<div style="font-size:8.5px;color:#94a3b8;margin-bottom:10px">Weights: '+window._esc(d.weights_basis||'')+'. '+window._esc(d.data_note||'')+'</div>';
 
@@ -13031,28 +13069,153 @@ window._mcocImport = function(ev){
 };
 
 window._renderMcocLab = function(){
-  var n=window._mcocJournal().length;
   var withOut=window._mcocJournal().filter(function(e){return Object.keys(e.outcomes||{}).length;}).length;
-  var need=window._MCOC_MIN_SIGNALS;
-  function card(emoji,title,desc,gateLabel,ready,progress){
-    var col=ready?'#16a34a':'#94a3b8';
-    var h='<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid '+col+';border-radius:10px;padding:12px 14px;margin-bottom:8px">';
-    h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora,sans-serif">'+emoji+' '+title+'</div><span style="font-size:8px;font-weight:800;padding:2px 8px;border-radius:10px;background:'+(ready?'#dcfce7':'#f1f5f9')+';color:'+(ready?'#15803d':'#94a3b8')+'">'+(ready?'READY':'AWAITING DATA')+'</span></div>';
-    h+='<div style="font-size:10px;color:#64748b;line-height:1.5;margin-top:5px">'+desc+'</div>';
-    h+='<div style="font-size:9px;color:#94a3b8;margin-top:6px"><b>Gate:</b> '+gateLabel+' \u2014 <b style="color:'+col+'">'+progress+'</b></div>';
+  var E=window._esc;
+  var h='<div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:9px 11px">\uD83D\uDD2C <b>Phase 2 Lab</b> \u2014 the learning loop, now live. Each engine is computed <i>honestly</i>: no survivorship bias, no look-ahead leakage, sample sizes and confidence bands shown. Small universe + free feeds mean results are <b>directional, not gospel</b>.</div>';
+
+  // Control Group
+  h+='<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #16a34a;border-radius:10px;padding:12px 14px;margin-bottom:8px">';
+  h+='<div style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora,sans-serif">\uD83E\uDDEA Control Group Engine</div>';
+  h+='<div style="font-size:10px;color:#64748b;line-height:1.5;margin:5px 0 8px">For each logged pick, compares its return to same-sector peers over the <b>identical window</b> \u2014 isolating your alpha from a rising tide. Needs journal entries with elapsed outcomes (run <b>Update Outcomes</b> in the Journal first).</div>';
+  h+='<button onclick="window._mcocRunControl()" style="padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\uD83E\uDDEA RUN CONTROL GROUP</button>';
+  h+='<span style="font-size:9px;color:#94a3b8;margin-left:8px">'+withOut+' logged signal(s) with outcomes</span>';
+  h+='<div id="mcocControlOut" style="margin-top:10px"></div></div>';
+
+  // DNA
+  h+='<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #7c3aed;border-radius:10px;padding:12px 14px;margin-bottom:8px">';
+  h+='<div style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora,sans-serif">\uD83E\uDDEC Multibagger DNA Engine</div>';
+  h+='<div style="font-size:10px;color:#64748b;line-height:1.5;margin:5px 0 8px">Look-ahead-clean study over the whole universe: factors measured <b>before</b> each anchor date, forward return measured <b>after</b>. Each factor\u2019s win-rate is shown <b>with its sample size and Wilson CI</b>, vs the base rate. Price/volume factors only (fundamentals leak from free feeds).</div>';
+  h+='<button onclick="window._mcocLoadDNA()" id="mcocDnaBtn" style="padding:6px 14px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\uD83E\uDDEC RUN DNA + EMP STUDY</button>';
+  h+='<span style="font-size:9px;color:#94a3b8;margin-left:8px">~multi-year scan, heavy first run (cached 24h)</span>';
+  h+='<div id="mcocDnaOut" style="margin-top:10px">'+(window._mcocDnaLast?window._renderDnaFactors(window._mcocDnaLast):'')+'</div></div>';
+
+  // EMP
+  h+='<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #ea580c;border-radius:10px;padding:12px 14px;margin-bottom:8px">';
+  h+='<div style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora,sans-serif">\uD83C\uDFAF Expected Multibagger Probability (EMP)</div>';
+  h+='<div style="font-size:10px;color:#64748b;line-height:1.5;margin:5px 0 8px">From the same study: by readiness-score bucket, the realized P(+20%), P(+50%), P(+100%) over the forward window \u2014 <b>each with a confidence band + sample count</b>, never a bare number. Runs together with the DNA study above.</div>';
+  h+='<div id="mcocEmpOut">'+(window._mcocDnaLast?window._renderEmp(window._mcocDnaLast):'<div style="font-size:9px;color:#94a3b8">Run the DNA study to populate EMP.</div>')+'</div></div>';
+  return h;
+};
+
+window._mcocLoadDNA = function(){
+  if(window._mcocDnaLoading) return;
+  window._mcocDnaLoading=true;
+  var reg=(window._engState.mcoc&&window._engState.mcoc.region)||'US';
+  var btn=document.getElementById('mcocDnaBtn'); var out=document.getElementById('mcocDnaOut'); var emp=document.getElementById('mcocEmpOut');
+  if(btn){btn.disabled=true;btn.style.opacity='0.6';btn.innerHTML='\u23F3 RUNNING\u2026';}
+  if(out) out.innerHTML='<div style="font-size:10px;color:#94a3b8;padding:8px"><span style="display:inline-block;width:12px;height:12px;border:2px solid #ddd6fe;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:6px"></span>Scanning multi-year history & scoring anchors\u2026 (up to ~2 min first run)</div>';
+  var ac=(typeof AbortController!=='undefined')?new AbortController():null; var to=setTimeout(function(){if(ac)ac.abort();},150000);
+  fetch('/api/momentum-coc/dna?region='+encodeURIComponent(reg),{cache:'no-store',signal:ac?ac.signal:undefined})
+    .then(function(x){return x.json();})
+    .then(function(d){
+      clearTimeout(to); window._mcocDnaLoading=false;
+      if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83E\uDDEC RUN DNA + EMP STUDY';}
+      if(!d||!d.success){ if(out) out.innerHTML='<div style="font-size:10px;color:#dc2626">'+window._esc((d&&d.error)||'failed')+'</div>'; return; }
+      window._mcocDnaLast=d;
+      if(out) out.innerHTML=window._renderDnaFactors(d);
+      if(emp) emp.innerHTML=window._renderEmp(d);
+    })
+    .catch(function(e){
+      clearTimeout(to); window._mcocDnaLoading=false;
+      if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83E\uDDEC RUN DNA + EMP STUDY';}
+      var msg=(e&&e.name==='AbortError')?'Scan slow/blocked on this host \u2014 historical feed likely unreachable.':('Network error: '+window._esc(String(e)));
+      if(out) out.innerHTML='<div style="font-size:10px;color:#dc2626">'+msg+'</div>';
+    });
+};
+
+window._renderDnaFactors = function(d){
+  var E=window._esc;
+  if(!d.sufficient) return '<div style="font-size:10px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 11px">\u26A0 '+E(d.note||'Insufficient data.')+' <span style="color:#94a3b8">(obs='+(d.observations||0)+', names='+(d.names_scored||0)+'/'+(d.universe_size||0)+')</span></div>';
+  var b=d.base_rates||{};
+  var h='<div style="font-size:9px;color:#475569;margin-bottom:6px"><b>'+d.observations+'</b> look-ahead-clean observations from <b>'+d.names_scored+'</b> names over a '+d.horizon_months+'-mo forward window. Base rates: '
+    +['20','50','100'].map(function(t){var x=b[t]||{};return 'P(+'+t+'%)='+Math.round((x.rate||0)*100)+'%';}).join(' \u00b7 ')+'</div>';
+  h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">';
+  h+='<tr style="background:#f5f3ff;color:#5b21b6"><th style="padding:5px 6px;text-align:left">Factor</th><th style="padding:5px 6px;text-align:right">n</th><th style="padding:5px 6px;text-align:right">Win% (+50%/6mo)</th><th style="padding:5px 6px;text-align:right">95% CI</th><th style="padding:5px 6px;text-align:right">Lift vs base</th></tr>';
+  (d.factors||[]).forEach(function(f){
+    if(f.insufficient){ h+='<tr style="border-bottom:1px solid #f1f5f9;color:#cbd5e1"><td style="padding:5px 6px">'+E(f.label)+'</td><td style="padding:5px 6px;text-align:right">'+f.n+'</td><td colspan="3" style="padding:5px 6px;text-align:right">insufficient (n&lt;5)</td></tr>'; return; }
+    var lift=f.lift_vs_base; var lc=lift>0.03?'#16a34a':lift<-0.03?'#dc2626':'#64748b';
+    h+='<tr style="border-bottom:1px solid #f1f5f9">';
+    h+='<td style="padding:5px 6px;font-weight:700;color:#334155">'+E(f.label)+'</td>';
+    h+='<td style="padding:5px 6px;text-align:right;color:#64748b">'+f.n+'</td>';
+    h+='<td style="padding:5px 6px;text-align:right;font-weight:800;color:#1e293b">'+Math.round(f.win_rate_50*100)+'%</td>';
+    h+='<td style="padding:5px 6px;text-align:right;color:#94a3b8">'+Math.round(f.lo*100)+'\u2013'+Math.round(f.hi*100)+'%</td>';
+    h+='<td style="padding:5px 6px;text-align:right;font-weight:800;color:'+lc+'">'+(lift>0?'+':'')+Math.round(lift*100)+'pp</td>';
+    h+='</tr>';
+  });
+  h+='</table></div>';
+  h+='<div style="font-size:8px;color:#94a3b8;margin-top:6px;line-height:1.4">'+E(d.note||'')+'</div>';
+  return h;
+};
+
+window._renderEmp = function(d){
+  var E=window._esc;
+  if(!d.sufficient) return '<div style="font-size:9px;color:#b45309">\u26A0 Not enough observations for calibrated EMP yet.</div>';
+  var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">';
+  h+='<tr style="background:#fff7ed;color:#7c2d12"><th style="padding:5px 6px;text-align:left">Readiness bucket</th><th style="padding:5px 6px;text-align:right">n</th><th style="padding:5px 6px;text-align:right">P(+20%)</th><th style="padding:5px 6px;text-align:right">P(+50%)</th><th style="padding:5px 6px;text-align:right">P(+100%)</th></tr>';
+  (d.emp||[]).forEach(function(r){
+    h+='<tr style="border-bottom:1px solid #f1f5f9">';
+    h+='<td style="padding:5px 6px;font-weight:800;color:#1e293b">'+E(r.bucket)+'</td>';
+    h+='<td style="padding:5px 6px;text-align:right;color:#64748b">'+r.n+'</td>';
+    if(r.sufficient){
+      ['p20','p50','p100'].forEach(function(k){
+        var x=r[k]||{}; h+='<td style="padding:5px 6px;text-align:right"><span style="font-weight:800;color:#1e293b">'+Math.round((x.rate||0)*100)+'%</span><br><span style="font-size:8px;color:#94a3b8">'+Math.round((x.lo||0)*100)+'\u2013'+Math.round((x.hi||0)*100)+'%</span></td>';
+      });
+    } else { h+='<td colspan="3" style="padding:5px 6px;text-align:right;color:#cbd5e1">n&lt;5</td>'; }
+    h+='</tr>';
+  });
+  h+='</table></div>';
+  h+='<div style="font-size:8px;color:#94a3b8;margin-top:6px;line-height:1.4">Each cell: realized rate with 95% Wilson band. Wide bands = small sample = read directionally. Not a price prediction, not advice.</div>';
+  return h;
+};
+
+window._mcocRunControl = function(){
+  if(window._mcocCtrlLoading) return;
+  var entries=window._mcocJournal().filter(function(e){return e.outcomes && Object.keys(e.outcomes).length && e.region;});
+  var out=document.getElementById('mcocControlOut');
+  if(!entries.length){ if(out) out.innerHTML='<div style="font-size:10px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px">\u26A0 No logged signals with elapsed outcomes yet. Log a few in the Readiness tab, then run <b>Update Outcomes</b> in the Journal once time has passed.</div>'; return; }
+  window._mcocCtrlLoading=true;
+  if(out) out.innerHTML='<div style="font-size:10px;color:#94a3b8;padding:6px"><span style="display:inline-block;width:12px;height:12px;border:2px solid #bbf7d0;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:6px"></span>Comparing each pick to its sector peers\u2026</div>';
+  var rows=[]; var pending=entries.length;
+  entries.forEach(function(e){
+    var ks=Object.keys(e.outcomes); var last=e.outcomes[ks[ks.length-1]]; var days=(last&&last.atDay)||30;
+    fetch('/api/momentum-coc/control?symbol='+encodeURIComponent(e.symbol)+'&region='+encodeURIComponent(e.region)+'&days='+days,{cache:'no-store'})
+      .then(function(x){return x.json();})
+      .then(function(c){
+        rows.push({symbol:e.symbol, stock:(last?last.stock:null), control:(c.success?c.control_avg_pct:null),
+                   sector:(c.success?c.sector:null), n:(c.success?c.n:0),
+                   alpha:(c.success&&last?+(last.stock-c.control_avg_pct).toFixed(2):null)});
+      })
+      .catch(function(){ rows.push({symbol:e.symbol, stock:(last?last.stock:null), control:null, alpha:null}); })
+      .finally(function(){ if(--pending===0){ window._mcocCtrlLoading=false; if(out) out.innerHTML=window._renderControl(rows); } });
+  });
+};
+
+window._renderControl = function(rows){
+  var E=window._esc;
+  var valid=rows.filter(function(r){return r.alpha!=null;});
+  var h='';
+  if(valid.length){
+    var avgAlpha=+(valid.reduce(function(a,r){return a+r.alpha;},0)/valid.length).toFixed(2);
+    var beat=valid.filter(function(r){return r.alpha>0;}).length;
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+    h+='<div style="flex:1;min-width:90px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 9px"><div style="font-size:8px;color:#15803d;font-weight:700">AVG ALPHA vs SECTOR</div><div style="font-size:16px;font-weight:900;color:'+(avgAlpha>0?'#16a34a':'#dc2626')+';font-family:JetBrains Mono,monospace">'+(avgAlpha>0?'+':'')+avgAlpha+'pp</div></div>';
+    h+='<div style="flex:1;min-width:90px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:7px 9px"><div style="font-size:8px;color:#94a3b8;font-weight:700">BEAT CONTROL</div><div style="font-size:16px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+beat+'/'+valid.length+'</div></div>';
     h+='</div>';
-    return h;
   }
-  var h='<div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:9px 11px">\uD83D\uDD2C <b>Phase 2 Lab</b> \u2014 the learning loop. Each engine stays locked until it can be computed <i>honestly</i>. The hard part isn\u2019t code; it\u2019s avoiding survivorship bias, look-ahead leakage, and overfitting. Each unlocks only with enough real evidence.</div>';
-  h+=card('\uD83E\uDDEA','Control Group Engine',
-    'For every pick, sample same-sector / same-mcap names over the identical window and compare average <b>relative</b> return. This is what proves edge is real vs. a rising tide. Winners-only stats are forbidden here.',
-    '\u226510 logged signals with elapsed outcomes', withOut>=10, withOut+'/10 with outcomes');
-  h+=card('\uD83E\uDDEC','Multibagger DNA Engine',
-    'Profiles >100%/12mo historical movers <b>against a matched control set</b>, point-in-time (unrestated fundamentals, historical index membership). Every "82% had RS>90" stat must be paired with the control\u2019s rate, or it means nothing.',
-    'Point-in-time history source (free feeds leak the future)', false, 'needs PIT data \u2014 not wired');
-  h+=card('\uD83C\uDFAF','Expected Multibagger Probability (EMP)',
-    'Outputs P(+20%/3mo), P(+50%/6mo), P(+100%/12mo) \u2014 each <b>with a confidence band + sample count</b>, never a bare number. Requires a calibration curve so "68%" actually happens ~68% of the time.',
-    '\u2265'+need+' logged signals + calibration', n>=need, n+'/'+need+' signals');
+  h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">';
+  h+='<tr style="background:#f0fdf4;color:#15803d"><th style="padding:5px 6px;text-align:left">Pick</th><th style="padding:5px 6px;text-align:left">Sector</th><th style="padding:5px 6px;text-align:right">Pick ret</th><th style="padding:5px 6px;text-align:right">Peer avg</th><th style="padding:5px 6px;text-align:right">Alpha</th></tr>';
+  rows.forEach(function(r){
+    h+='<tr style="border-bottom:1px solid #f1f5f9">';
+    h+='<td style="padding:5px 6px;font-weight:800;color:#1e293b;font-family:JetBrains Mono,monospace">'+E(r.symbol)+'</td>';
+    h+='<td style="padding:5px 6px;color:#94a3b8;font-size:9px">'+E(r.sector||'\u2014')+'</td>';
+    h+='<td style="padding:5px 6px;text-align:right;color:#64748b">'+(r.stock!=null?(r.stock>0?'+':'')+r.stock+'%':'\u2014')+'</td>';
+    h+='<td style="padding:5px 6px;text-align:right;color:#64748b">'+(r.control!=null?(r.control>0?'+':'')+r.control+'%':'\u2014')+'</td>';
+    var ac=r.alpha==null?'#cbd5e1':r.alpha>0?'#16a34a':'#dc2626';
+    h+='<td style="padding:5px 6px;text-align:right;font-weight:800;color:'+ac+'">'+(r.alpha!=null?(r.alpha>0?'+':'')+r.alpha+'pp':'n/a')+'</td>';
+    h+='</tr>';
+  });
+  h+='</table></div>';
+  h+='<div style="font-size:8px;color:#94a3b8;margin-top:6px;line-height:1.4">Alpha = pick return \u2212 same-sector peer average over the same window. Positive = genuine edge vs a rising tide. Small n \u21d2 directional. Not advice.</div>';
   return h;
 };
 

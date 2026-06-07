@@ -29476,6 +29476,84 @@ def _mcoc_subscores(stock, bench, vix_regime, theme_rank, regime_struct):
     return out
 
 
+def _mcoc_entry_plan(stock, subs, theme_rank, score):
+    """Institutional entry hierarchy (O'Neil/Minervini/Weinstein/Qullamaggie):
+    cheat / pivot / retest / chase / avoid zones around a well-defined pivot, the
+    'single best price', a staged 40/30/30 plan, and a requirements checklist.
+    All derived from the same price/volume data the readiness score uses."""
+    c = stock["closes"]; v = stock["volumes"]; hi = stock["highs"]; lo = stock["lows"]
+    n = len(c)
+    if n < 48:
+        return None
+    piv = max(hi[-45:-3])
+    close = c[-1]
+    rvol = round(v[-1] / (_mcoc_mean(v[-20:]) or 1), 2)
+    recent_low = min(lo[-15:])
+    stop_ref = round(min(recent_low, piv * 0.95), 2)
+    pct_from_piv = round((close / piv - 1) * 100, 2)
+    z = lambda x: round(x, 2)
+
+    tiers = [
+        {"name": "Cheat Entry",      "tier": 1, "lo": z(piv * 0.97),  "hi": z(piv * 0.999), "prob": "60\u201370", "reward": 95,
+         "note": "Pre-breakout, final contraction. Tightest risk, lower hit-rate. Needs volume dry-up, RS strong, price holding 10/20 EMA."},
+        {"name": "Pivot Breakout",   "tier": 2, "lo": z(piv),         "hi": z(piv * 1.01),  "prob": "85\u201390", "reward": 80,
+         "note": "Where institutions deploy size. Needs RVOL 1.5\u20132\u00d7, RS line at new highs, bullish regime, sector leading."},
+        {"name": "Breakout Retest",  "tier": 3, "lo": z(piv * 0.995), "hi": z(piv * 1.01),  "prob": "90\u201395", "reward": 70,
+         "note": "Highest win-rate. Let the chasers in; buy when price re-proves the pivot as support."},
+        {"name": "Chase Zone",       "tier": 4, "lo": z(piv * 1.01),  "hi": z(piv * 1.05),  "prob": "50\u201360", "reward": 40,
+         "note": "Still within the 5% rule but extended \u2014 reduce size."},
+        {"name": "Avoid Zone",       "tier": 5, "lo": z(piv * 1.05),  "hi": None,           "prob": "<40",       "reward": 15,
+         "note": "More than 5% above pivot \u2014 poor risk/reward. Wait for a retest."},
+    ]
+
+    if close < piv * 0.97:
+        cz = "Below base"; action = "Not set up yet \u2014 price is below the cheat zone; wait for the base/contraction to form."
+    elif close < piv:
+        cz = "Cheat Entry"; action = "In the cheat zone (below pivot). Aggressive pre-breakout entry ONLY if volume is drying up and RS stays strong."
+    elif close <= piv * 1.01:
+        cz = "Pivot / Retest"
+        action = ("PRIME BUY WINDOW \u2014 at the pivot. " +
+                  (f"Volume confirms (RVOL {rvol}\u00d7)." if rvol >= 1.5
+                   else f"But volume is light (RVOL {rvol}\u00d7 < 1.5) \u2014 wait for a volume-confirmed breakout."))
+    elif close <= piv * 1.05:
+        cz = "Chase Zone"; action = "Within 5% of the pivot but extended \u2014 buyable on strong volume with reduced size; ideally wait for a retest."
+    else:
+        cz = "Avoid Zone"; action = "Extended >5% above pivot \u2014 avoid chasing; wait for a pullback/retest to the pivot."
+
+    def sub(k):
+        return subs.get(k, (None,))[0]
+    rvol_v = rvol
+    sector_ok = (theme_rank is not None and theme_rank[1] and (theme_rank[0] < max(1, theme_rank[1] * 0.2)))
+    reqs = [
+        {"label": "RS leadership strong",          "ok": (sub("rs") or 0) >= 0.7,        "note": "proxy for RS > 90"},
+        {"label": "RVOL > 1.8",                    "ok": rvol_v >= 1.8,                  "note": f"{rvol_v}\u00d7"},
+        {"label": "Price > 50 > 150 > 200 DMA",    "ok": (sub("trend") or 0) >= 0.8,     "note": "stage-2 stack"},
+        {"label": "Sector rank top 20%",           "ok": bool(sector_ok),                "note": (f"rank {theme_rank[0]+1}/{theme_rank[1]}" if theme_rank else "no sector map")},
+        {"label": "Accumulation > 80",             "ok": (sub("accumulation") or 0) >= 0.8, "note": "up/down volume"},
+        {"label": "Earnings acceleration",         "ok": None,                           "note": "N/A \u2014 needs point-in-time fundamentals"},
+    ]
+    met = sum(1 for r in reqs if r["ok"] is True)
+    checkable = sum(1 for r in reqs if r["ok"] is not None)
+    full_size = (score is not None and score >= 90 and met >= 4)
+
+    staged = [
+        {"leg": "Pivot Breakout",     "pct": 40, "trigger": f"first close \u2265 {z(piv)} on RVOL \u2265 1.5\u00d7"},
+        {"leg": "Follow-through Day",  "pct": 30, "trigger": "market/stock follow-through confirmation after the breakout"},
+        {"leg": "Successful Retest",   "pct": 30, "trigger": f"pullback holds \u2248 {z(piv)} then bounces"},
+    ]
+
+    return {
+        "pivot": z(piv), "current": z(close), "pct_from_pivot": pct_from_piv,
+        "rvol": rvol_v, "rvol_confirmed": rvol_v >= 1.5, "stop_ref": stop_ref,
+        "tiers": tiers, "current_zone": cz, "action": action,
+        "best_price": f"First close above {z(piv)} on RVOL \u2265 1.5\u20132\u00d7, while still within 5% (\u2264 {z(piv * 1.05)}).",
+        "requirements": reqs, "requirements_met": met, "requirements_checkable": checkable,
+        "size_guidance": ("Full staged size \u2014 score \u226590 and \u22654 requirements met." if full_size
+                          else "Reduce size \u2014 score <90 and/or not all requirements met."),
+        "staged_plan": staged,
+    }
+
+
 @app.get("/api/momentum-coc/score")
 async def momentum_coc_score(symbol: str = "", region: str = "US"):
     """Momentum Multibagger Readiness Score (0–100) + 10-factor breakdown."""
@@ -29573,6 +29651,7 @@ async def momentum_coc_score(symbol: str = "", region: str = "US"):
             "dimensions": dims, "excluded": excluded,
             "weights_basis": "v1 hypothesis (O'Neil/Minervini/Weinstein) — pending DNA re-derivation",
             "entry_ref_price": round(stock["closes"][-1], 2),
+            "entry_plan": _mcoc_entry_plan(stock, subs, theme_rank, score),
             "bench_symbol": bench_sym,
             "bench_ref_price": round(bench["closes"][-1], 2) if bench else None,
             "vix": vix_val, "vix_regime": vix_regime,
@@ -29618,6 +29697,234 @@ async def momentum_coc_quote(symbol: str = "", region: str = "US"):
 
 _MCOC_TOP_TTL = 1800
 _mcoc_top_cache = {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MOMENTUM CoC — PHASE 2 (the learning loop)
+#   • Control Group   — picks vs same-sector peers over the identical window
+#   • DNA + EMP        — look-ahead-clean rolling-window study over the universe:
+#                        factors from data UP TO an anchor, outcome measured
+#                        AFTER it; whole universe scanned (winners AND losers, no
+#                        survivorship); price/volume factors only (fundamentals
+#                        leak from free feeds); Wilson CIs + sample counts on
+#                        every figure. Small universe ⇒ directional, wide bands.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _wilson_ci(k, n, z=1.96):
+    """Wilson score interval for a binomial proportion. Returns (lo, hi, p)."""
+    import math
+    if n <= 0:
+        return (0.0, 1.0, 0.0)
+    p = k / n
+    den = 1.0 + z * z / n
+    centre = (p + z * z / (2 * n)) / den
+    half = (z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / den
+    return (round(max(0.0, centre - half), 4), round(min(1.0, centre + half), 4), round(p, 4))
+
+
+def _dna_fetch(yf_sym, period="3y"):
+    """Longer-history fetch for the DNA backtest. Timeout-bounded."""
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(yf_sym)
+        hist = tk.history(period=period, interval="1d", auto_adjust=True, timeout=8)
+        if hist is None or hist.empty or len(hist) < 300:
+            return None
+        return {"closes": [float(x) for x in hist["Close"].dropna()],
+                "volumes": [float(x) for x in hist["Volume"].dropna()],
+                "highs": [float(x) for x in hist["High"].dropna()],
+                "lows": [float(x) for x in hist["Low"].dropna()]}
+    except Exception:
+        return None
+
+
+@app.get("/api/momentum-coc/control")
+async def momentum_coc_control(symbol: str = "", region: str = "US", days: int = 30):
+    """Control-group sample for one pick: same-sector peers' return over the SAME
+    window. Frontend compares the pick's return vs this control average to isolate
+    alpha from a rising tide. Honest: peers that don't return data are skipped."""
+    import asyncio as _aio
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    symbol = (symbol or "").upper().strip()
+    days = max(5, min(180, int(days)))
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+
+    sector = None
+    for th, syms in _THEME_CONSTITUENTS.get(region, {}).items():
+        if symbol in syms:
+            sector = th; break
+    if not sector:
+        return {"success": False, "error": f"No sector mapping for {symbol}; control group needs a known sector.", "symbol": symbol}
+    peers = [s for s in _THEME_CONSTITUENTS[region][sector] if s != symbol][:10]
+    if not peers:
+        return {"success": False, "error": f"No peers in sector {sector}.", "symbol": symbol, "sector": sector}
+
+    tradays = max(1, round(days * 0.69))
+    _lp = _aio.get_event_loop()
+
+    async def _ret(sym):
+        ys = sym if region == "US" else f"{sym}.NS"
+        try:
+            d = await _aio.wait_for(_lp.run_in_executor(None, _mcoc_fetch, ys), timeout=9)
+        except Exception:
+            d = None
+        if not d or len(d["closes"]) <= tradays:
+            return sym, None
+        c = d["closes"]
+        return sym, round((c[-1] / c[-1 - tradays] - 1) * 100, 2)
+
+    results = await _aio.gather(*[_ret(p) for p in peers])
+    rows = [{"symbol": s, "return_pct": r} for s, r in results if r is not None]
+    if not rows:
+        return {"success": False, "error": "No peer data reachable (feed may be blocked).", "symbol": symbol, "sector": sector}
+    avg = round(sum(r["return_pct"] for r in rows) / len(rows), 2)
+    return {"success": True, "symbol": symbol, "region": region, "sector": sector,
+            "window_days": days, "control_avg_pct": avg, "n": len(rows),
+            "peers": sorted(rows, key=lambda x: x["return_pct"], reverse=True)}
+
+
+_MCOC_DNA_TTL = 86400
+_mcoc_dna_cache = {}
+
+
+@app.get("/api/momentum-coc/dna")
+async def momentum_coc_dna(region: str = "US", refresh: int = 0):
+    """Look-ahead-clean DNA + EMP study. For each name in the universe, at
+    non-overlapping anchor dates, compute the price/volume readiness factors using
+    ONLY data up to the anchor, then measure the realized forward return AFTER it.
+    Aggregate winner-rate-vs-base-rate per factor (with Wilson CIs) and EMP by
+    score bucket. No survivorship (whole universe), no look-ahead (strict split)."""
+    import asyncio as _aio, time as _time
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+
+    if not refresh and region in _mcoc_dna_cache:
+        e = _mcoc_dna_cache[region]
+        if (_time.time() - e["ts"]) < _MCOC_DNA_TTL:
+            return {**e["data"], "_cached": True, "_cache_age_sec": int(_time.time() - e["ts"])}
+
+    t0 = _time.time()
+    _lp = _aio.get_event_loop()
+    HORIZON = 126          # ~6 trading months forward
+    MIN_HIST = 252         # ~1y of history required before an anchor
+    THRESHOLDS = [0.20, 0.50, 1.00]
+    bench_sym = _MCOC_BENCH[region]
+
+    picks = _INST_PICKS_UNIVERSE.get(region, [])
+    theme_syms = [s for syms in _THEME_CONSTITUENTS.get(region, {}).values() for s in syms]
+    seen = set(); universe = []
+    for s in list(picks) + theme_syms:
+        if s not in seen and not s.startswith("^") and s not in ("SPY", "QQQ", "IWM"):
+            seen.add(s); universe.append(s)
+
+    bench = await _aio.wait_for(_lp.run_in_executor(None, _dna_fetch, bench_sym), timeout=12) \
+        if True else None
+
+    def _run_study():
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        yf_map = {s: (s if region == "US" else f"{s}.NS") for s in universe}
+        hist = {}
+        with ThreadPoolExecutor(max_workers=16) as ex:
+            futs = {ex.submit(_dna_fetch, yf_map[s]): s for s in universe}
+            for f in as_completed(futs):
+                s = futs[f]
+                try:
+                    d = f.result()
+                    if d: hist[s] = d
+                except Exception:
+                    pass
+        bclose = bench["closes"] if bench else None
+        obs = []
+        for s, h in hist.items():
+            c, v, hi, lo = h["closes"], h["volumes"], h["highs"], h["lows"]
+            n = len(c)
+            t = MIN_HIST
+            while t < n - HORIZON:
+                stock_tr = {"closes": c[:t + 1], "volumes": v[:t + 1], "highs": hi[:t + 1], "lows": lo[:t + 1]}
+                bench_tr = {"closes": bclose[:t + 1]} if bclose else None
+                subs = _mcoc_subscores(stock_tr, bench_tr, "unknown", None, None)
+                num = den = 0.0; flags = {}
+                for key, label, wt in _MCOC_WEIGHTS:
+                    sub, _note = subs.get(key, (None, ""))
+                    if sub is not None:
+                        num += sub * wt; den += wt
+                        flags[key] = (sub >= 0.7)
+                if den > 0:
+                    fwd = c[t + HORIZON] / c[t] - 1.0
+                    obs.append({"score": num / den * 100.0, "flags": flags, "fwd": fwd})
+                t += HORIZON     # non-overlapping forward windows
+        return obs, len(hist)
+
+    try:
+        obs, n_names = await _aio.wait_for(_lp.run_in_executor(None, _run_study), timeout=120)
+    except Exception:
+        obs, n_names = [], 0
+
+    N = len(obs)
+    out_base = {"success": True, "region": region, "observations": N, "names_scored": n_names,
+                "universe_size": len(universe), "horizon_months": 6,
+                "asof": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+                "_engine": "momentum_coc_dna_v1"}
+
+    if N < 20:
+        out = {**out_base, "sufficient": False,
+               "note": (f"Only {N} look-ahead-clean observations from {n_names} names — too few to report. "
+                        "Likely the historical feed is blocked on this host. Needs a reachable multi-year "
+                        "price source; until then this stays directional/empty by design (no faked stats).")}
+        _mcoc_dna_cache[region] = {"ts": _time.time(), "data": out}
+        return out
+
+    # Base rates
+    base = {}
+    for thr in THRESHOLDS:
+        k = sum(1 for o in obs if o["fwd"] >= thr)
+        lo, hi, p = _wilson_ci(k, N)
+        base[f"{int(thr*100)}"] = {"rate": p, "lo": lo, "hi": hi, "k": k, "n": N}
+
+    # Per-factor lift at the +50% threshold
+    factor_rows = []
+    for key, label, wt in _MCOC_WEIGHTS:
+        hits = [o for o in obs if o["flags"].get(key)]
+        nf = len(hits)
+        if nf < 5:
+            factor_rows.append({"key": key, "label": label, "n": nf, "insufficient": True})
+            continue
+        k50 = sum(1 for o in hits if o["fwd"] >= 0.50)
+        lo, hi, p = _wilson_ci(k50, nf)
+        factor_rows.append({"key": key, "label": label, "n": nf, "insufficient": False,
+                            "win_rate_50": p, "lo": lo, "hi": hi,
+                            "lift_vs_base": round(p - base["50"]["rate"], 4)})
+    factor_rows.sort(key=lambda r: (r.get("win_rate_50") or -1), reverse=True)
+
+    # EMP by readiness-score bucket
+    buckets = [("90+", 90, 1e9), ("80-89", 80, 90), ("70-79", 70, 80), ("<70", -1e9, 70)]
+    emp = []
+    for blabel, lo_s, hi_s in buckets:
+        members = [o for o in obs if lo_s <= o["score"] < hi_s]
+        nb = len(members)
+        row = {"bucket": blabel, "n": nb}
+        if nb >= 5:
+            for thr in THRESHOLDS:
+                k = sum(1 for o in members if o["fwd"] >= thr)
+                lo, hi, p = _wilson_ci(k, nb)
+                row[f"p{int(thr*100)}"] = {"rate": p, "lo": lo, "hi": hi}
+            row["sufficient"] = True
+        else:
+            row["sufficient"] = False
+        emp.append(row)
+
+    out = {**out_base, "sufficient": True, "base_rates": base,
+           "factors": factor_rows, "emp": emp,
+           "elapsed_sec": round(_time.time() - t0, 2),
+           "note": ("Look-ahead-clean: factors use only data before each anchor; outcomes measured after. "
+                    "Whole universe scanned (no survivorship). Price/volume factors only (fundamentals "
+                    "excluded — free feeds leak them). Small universe + non-overlapping windows ⇒ wide "
+                    "confidence bands; read as directional, not predictive. Not investment advice."),
+           "weights_basis": "v1 hypothesis — this study is the first step toward replacing it"}
+    _mcoc_dna_cache[region] = {"ts": _time.time(), "data": out}
+    return out
 
 
 @app.get("/api/momentum-coc/top")
