@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.108.0";
-window.CELESYS_BUILD_TIME = 1780761600;
-window.CELESYS_BUILD_DATE = "2026-06-06 16:00:00 UTC";
+window.CELESYS_VERSION = "r63.108.2";
+window.CELESYS_BUILD_TIME = 1780768800;
+window.CELESYS_BUILD_DATE = "2026-06-06 18:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12968,24 +12968,44 @@ window._renderMcocScore = function(d){
     var zbg = (ep.current_zone==='Pivot / Retest')?'#f0fdf4':(ep.current_zone==='Cheat Entry')?'#eff6ff':(ep.current_zone==='Chase Zone')?'#fffbeb':(ep.current_zone==='Avoid Zone')?'#fef2f2':'#f8fafc';
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:10px">';
     h += '<div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:8px">\uD83D\uDCD0 INSTITUTIONAL ENTRY PLAN</div>';
+    // Plain-English headline
+    var sym = window._esc(d.symbol||'This stock');
+    var ph;
+    if (ep.current_zone==='Below base') ph='\uD83D\uDD34 <b>No buy yet.</b> '+sym+' is '+Math.abs(ep.pct_from_pivot)+'% below the buy trigger of '+ep.buy_trigger+'. It must rise ~'+ep.needs_to_rise_pct+'% and build a base first \u2014 then break out on strong volume.';
+    else if (ep.current_zone==='Cheat Entry') ph='\uD83D\uDFE1 <b>Early \u2014 not yet confirmed.</b> Price is just under the buy trigger ('+ep.buy_trigger+'). Only aggressive traders buy here, and only if volume is drying up.';
+    else if (ep.current_zone==='Pivot / Retest') ph='\uD83D\uDFE2 <b>Buy window NOW.</b> Price is at the buy trigger ('+ep.buy_trigger+').'+(ep.rvol_confirmed?' Volume confirms (RVOL '+ep.rvol+'\u00d7) \u2014 this is the entry.':' But volume is light (RVOL '+ep.rvol+'\u00d7) \u2014 wait for a close above '+ep.buy_trigger+' on heavy volume.');
+    else if (ep.current_zone==='Chase Zone') ph='\uD83D\uDFE0 <b>Extended.</b> Price is +'+ep.pct_from_pivot+'% past the trigger \u2014 beyond the ideal entry. Buy small, or wait for a pullback toward '+ep.buy_trigger+'.';
+    else ph='\uD83D\uDD34 <b>Too extended (+'+ep.pct_from_pivot+'%).</b> Don\u2019t chase \u2014 wait for a pullback/retest down to '+ep.buy_trigger+'.';
+    h += '<div style="font-size:12px;color:#0f172a;background:'+zbg+';border:1px solid '+zc+'40;border-radius:8px;padding:9px 11px;line-height:1.5;margin-bottom:10px">'+ph+'</div>';
+    // Three clear prices
     h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
-    [['PIVOT',ep.pivot],['CURRENT',ep.current+' ('+(ep.pct_from_pivot>0?'+':'')+ep.pct_from_pivot+'%)'],['RVOL',ep.rvol+'\u00d7'+(ep.rvol_confirmed?' \u2713':'')],['STOP REF',ep.stop_ref]].forEach(function(x){
-      h+='<div style="flex:1;min-width:78px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:6px 8px"><div style="font-size:8px;color:#94a3b8;font-weight:700">'+x[0]+'</div><div style="font-size:13px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+window._esc(String(x[1]))+'</div></div>';
+    [['BUY TRIGGER', ep.buy_trigger, 'first close above this', '#16a34a'],
+     ['BEST ENTRY', ep.best_entry_lo+'\u2013'+ep.best_entry_hi, 'ideal zone, on volume', '#16a34a'],
+     ['DON\u2019T PAY ABOVE', ep.max_pay, 'too extended past here', '#dc2626']].forEach(function(x){
+      h+='<div style="flex:1;min-width:104px;background:#fff;border:1px solid '+x[3]+'33;border-left:3px solid '+x[3]+';border-radius:8px;padding:7px 9px"><div style="font-size:8px;color:#94a3b8;font-weight:800;letter-spacing:0.3px">'+x[0]+'</div><div style="font-size:15px;font-weight:900;color:'+x[3]+';font-family:JetBrains Mono,monospace">'+window._esc(String(x[1]))+'</div><div style="font-size:8px;color:#94a3b8">'+x[2]+'</div></div>';
     });
     h += '</div>';
-    h += '<div style="background:'+zbg+';border:1px solid '+zc+'40;border-radius:8px;padding:8px 10px;margin-bottom:9px"><span style="font-size:8.5px;font-weight:800;color:#fff;background:'+zc+';border-radius:4px;padding:2px 7px">NOW: '+window._esc(ep.current_zone.toUpperCase())+'</span><div style="font-size:11px;color:#334155;line-height:1.45;margin-top:5px">'+window._esc(ep.action)+'</div></div>';
-    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px"><tr style="background:#f8fafc;color:#475569"><th style="padding:4px 6px;text-align:left">Entry Type</th><th style="padding:4px 6px;text-align:right">Zone</th><th style="padding:4px 6px;text-align:right">Prob</th><th style="padding:4px 6px;text-align:right">Reward</th></tr>';
+    // Secondary facts
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">';
+    [['CURRENT',ep.current+' ('+(ep.pct_from_pivot>0?'+':'')+ep.pct_from_pivot+'%)'],['RVOL (volume)',ep.rvol+'\u00d7'+(ep.rvol_confirmed?' \u2713 confirms':' \u2014 light')],['STOP / RISK',ep.stop_ref]].forEach(function(x){
+      h+='<div style="flex:1;min-width:84px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:5px 8px"><div style="font-size:8px;color:#94a3b8;font-weight:700">'+x[0]+'</div><div style="font-size:12px;font-weight:800;color:#475569;font-family:JetBrains Mono,monospace">'+window._esc(String(x[1]))+'</div></div>';
+    });
+    h += '</div>';
+    // Tier table with plain meanings
+    var _tm={'Cheat Entry':'early \u2014 before the breakout (riskier)','Pivot Breakout':'the breakout itself (pro entry)','Breakout Retest':'after a pullback to the breakout (best win-rate)','Chase Zone':'1\u20135% above \u2014 reduce size','Avoid Zone':'too extended \u2014 don\u2019t chase'};
+    h += '<div style="font-size:9px;font-weight:800;color:#475569;margin-bottom:4px">ENTRY TYPES (price ranges for '+sym+')</div>';
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px"><tr style="background:#f8fafc;color:#475569"><th style="padding:4px 6px;text-align:left">Entry Type</th><th style="padding:4px 6px;text-align:right">Price range</th><th style="padding:4px 6px;text-align:right">Win odds</th><th style="padding:4px 6px;text-align:right">Reward</th></tr>';
     ep.tiers.forEach(function(t){
       var hot=(ep.current_zone.indexOf(t.name)>=0)||(ep.current_zone==='Pivot / Retest'&&(t.name==='Pivot Breakout'||t.name==='Breakout Retest'));
       h+='<tr style="border-bottom:1px solid #f1f5f9;'+(hot?'background:'+zbg+';':'')+'">';
-      h+='<td style="padding:4px 6px;font-weight:'+(hot?'900':'700')+';color:#1e293b">'+(hot?'\u25B6 ':'')+window._esc(t.name)+'</td>';
+      h+='<td style="padding:4px 6px;color:#1e293b"><span style="font-weight:'+(hot?'900':'700')+'">'+(hot?'\u25B6 ':'')+window._esc(t.name)+'</span><div style="font-size:8px;color:#94a3b8;font-weight:600">'+window._esc(_tm[t.name]||'')+'</div></td>';
       h+='<td style="padding:4px 6px;text-align:right;font-family:JetBrains Mono,monospace;color:#475569">'+t.lo+(t.hi?('\u2013'+t.hi):'+')+'</td>';
       h+='<td style="padding:4px 6px;text-align:right;color:#16a34a;font-weight:700">'+window._esc(t.prob)+'</td>';
       h+='<td style="padding:4px 6px;text-align:right;color:#64748b">'+t.reward+'</td>';
       h+='</tr>';
     });
     h += '</table></div>';
-    h += '<div style="font-size:10px;color:#0f172a;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 10px;margin-top:8px"><b>\uD83C\uDFAF Single best price:</b> '+window._esc(ep.best_price)+'</div>';
+    h += '<div style="font-size:10px;color:#0f172a;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 10px;margin-top:8px"><b>\uD83C\uDFAF The one rule (if you buy just once):</b> '+window._esc(ep.best_price)+'</div>';
     h += '<div style="font-size:9px;font-weight:800;color:#475569;margin:9px 0 5px">360\u00B0 REQUIREMENTS</div><div style="display:flex;flex-wrap:wrap;gap:5px">';
     ep.requirements.forEach(function(r){
       var mk = r.ok===true?'\u2713':r.ok===false?'\u2717':'\u00b7'; var rcol=r.ok===true?'#16a34a':r.ok===false?'#dc2626':'#94a3b8';
@@ -13410,7 +13430,8 @@ window._foreverVerdict = function(){
   else if(anyNo){ v='DOES NOT CLEAR THE BAR'; col='#b45309'; bg='#fffbeb'; msg='At least one filter fails outright. For a decade-plus hold, all three need to be at least present.'; }
   else { v='BORDERLINE'; col='#b45309'; bg='#fffbeb'; msg='Too many partials for a 20-year hold without more conviction \u2014 dig deeper before committing.'; }
   var sym=st.sym?(E(st.sym).toUpperCase()+' \u2014 '):'';
-  return '<div style="background:'+bg+';border:1px solid '+col+'44;border-radius:8px;padding:10px 12px"><div style="font-size:8px;font-weight:800;color:'+col+';letter-spacing:1px">'+sym+'VERDICT</div><div style="font-size:15px;font-weight:900;color:'+col+';font-family:Sora,sans-serif;margin:2px 0 4px">'+v+' \u00B7 '+total+'/6</div><div style="font-size:10px;color:#475569;line-height:1.5">'+msg+'</div></div>';
+  var clarif='Based on the Yes/Partial/No <b>you</b> selected \u2014 not a Celesys analysis of '+(st.sym?E(st.sym).toUpperCase()+'\u2019s':'the')+' financials.';
+  return '<div style="background:'+bg+';border:1px solid '+col+'44;border-radius:8px;padding:10px 12px"><div style="font-size:8px;font-weight:800;color:'+col+';letter-spacing:1px">'+sym+'YOUR CHECKLIST RESULT</div><div style="font-size:15px;font-weight:900;color:'+col+';font-family:Sora,sans-serif;margin:2px 0 4px">'+v+' \u00B7 '+total+'/6</div><div style="font-size:10px;color:#475569;line-height:1.5">'+msg+'</div><div style="font-size:8px;color:#94a3b8;margin-top:6px;font-style:italic">'+clarif+'</div></div>';
 };
 
 window._foreverAssess = function(){
