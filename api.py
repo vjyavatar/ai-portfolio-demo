@@ -29542,6 +29542,66 @@ def _mcoc_entry_plan(stock, subs, theme_rank, score):
         {"leg": "Successful Retest",   "pct": 30, "trigger": f"pullback holds \u2248 {z(piv)} then bounces"},
     ]
 
+    # ── Institutional Entry Framework (status / zones / R:R / reasons / verdict) ──
+    sc = score if score is not None else 0
+    if cz == "Below base":      status = "WATCHLIST"
+    elif cz == "Cheat Entry":   status = "ACCUMULATION"
+    elif cz == "Pivot / Retest": status = "ACTIONABLE"
+    else:                       status = "EXTENDED"
+
+    support = min(lo[-15:])
+    base_low = min(lo[-45:-3]) if n >= 48 else min(lo[-20:])
+    agg_lo = z(max(support, piv * 0.95)); agg_hi = z(piv * 0.98)
+    optimal = z(piv); confirmation = z(piv * 1.017)
+    invalidation_inst = z(min(support * 0.985, piv * 0.945))
+    target = z(piv + (piv - base_low))
+    risk_ps = optimal - invalidation_inst
+    rr = round((target - optimal) / risk_ps, 1) if risk_ps > 0 and target > optimal else None
+    confidence = max(0, min(99, round(0.55 * sc + 0.45 * (met / max(1, checkable)) * 100)))
+
+    rs_s = sub("rs"); acc_s = sub("accumulation"); tr_s = sub("trend")
+    vcp_s = sub("vcp"); vd_s = sub("voldry"); grp_s = sub("group"); reg_s = sub("regime")
+    reasons = []; concerns = []
+    def _rc(val, thr, good, bad):
+        if val is None: return
+        (reasons if val >= thr else concerns).append(good if val >= thr else bad)
+    _rc(rs_s, 0.7, "RS leadership strong", "RS still lagging the market")
+    _rc(acc_s, 0.7, "Institutional accumulation present", "Accumulation not yet visible")
+    _rc(tr_s, 0.7, "Stage-2 uptrend (above rising MAs)", "Not in a clean Stage-2 uptrend")
+    _rc(vcp_s, 0.7, "Volatility contracting (VCP)", "Volatility contraction incomplete")
+    _rc(vd_s, 0.7, "Volume drying up into the pivot", "Volume dry-up not confirmed")
+    _rc(grp_s, 0.6, "Sector among the leaders", "Sector under pressure / lagging")
+    _rc(reg_s, 0.6, "Market regime supportive", "Market regime unfavorable")
+    (reasons if close >= piv else concerns).append("Trading at/above the pivot" if close >= piv else "Pivot not yet broken")
+
+    if status == "WATCHLIST":     verdict = "WAIT \u2014 build a base; not set up yet."
+    elif status == "ACCUMULATION": verdict = "WAIT FOR PIVOT BREAKOUT (aggressive entry only, small size)."
+    elif status == "ACTIONABLE":   verdict = ("BUY THE BREAKOUT \u2014 volume confirms." if rvol_v >= 1.5
+                                              else "PIVOT TAGGED \u2014 wait for volume (RVOL < 1.5\u00d7) to confirm.")
+    else:                          verdict = "DO NOT CHASE \u2014 wait for a pullback/retest to the pivot."
+
+    def cond(label, met_flag):
+        return {"label": label, "met": met_flag}
+    framework = {
+        "status": status, "confidence": confidence,
+        "zones": {
+            "aggressive": {"lo": agg_lo, "hi": agg_hi, "prob": "Medium", "risk": "High",
+                           "conds": [cond("Near support", close <= piv), cond("Accumulation visible", (acc_s or 0) >= 0.7),
+                                     cond("Risk controlled (stop defined)", True)]},
+            "optimal":    {"price": optimal, "prob": "High", "risk": "Moderate",
+                           "conds": [cond("Pivot breakout (close \u2265 pivot)", close >= piv),
+                                     cond("Volume > 1.5\u00d7 average", rvol_v >= 1.5),
+                                     cond("RS line at new highs", (rs_s or 0) >= 0.7),
+                                     cond("Trend intact (Stage 2)", (tr_s or 0) >= 0.7)]},
+            "confirmation": {"price": confirmation, "prob": "Highest", "risk": "Lowest",
+                             "conds": [cond("Breakout confirmed (held above pivot)", close >= piv * 1.01),
+                                       cond("Follow-through day", None),
+                                       cond("Market regime favorable", (reg_s or 0) >= 0.6)]},
+        },
+        "invalidation": invalidation_inst, "target": target, "risk_reward": rr,
+        "reasons": reasons[:6], "concerns": concerns[:6], "verdict": verdict,
+    }
+
     return {
         "pivot": z(piv), "current": z(close), "pct_from_pivot": pct_from_piv,
         "buy_trigger": z(piv), "best_entry_lo": z(piv), "best_entry_hi": z(piv * 1.01),
@@ -29553,6 +29613,7 @@ def _mcoc_entry_plan(stock, subs, theme_rank, score):
         "size_guidance": ("Full staged size \u2014 score \u226590 and \u22654 requirements met." if full_size
                           else "Reduce size \u2014 score <90 and/or not all requirements met."),
         "staged_plan": staged,
+        "framework": framework,
     }
 
 
@@ -30261,6 +30322,23 @@ def _d360_fvg(highs, lows, closes):
     return None
 
 
+def _d360_fundamentals(ys):
+    """Best-effort fundamentals via yfinance .info. Real when reachable; None on
+    failure (commonly blocked on this host) — never faked."""
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ys).info or {}
+        if not isinstance(info, dict) or not info.get("symbol") and not info.get("shortName"):
+            return None
+        g = info.get
+        return {"available": True, "sector": g("sector"), "industry": g("industry"),
+                "market_cap": g("marketCap"), "pe": g("trailingPE"), "peg": g("pegRatio"),
+                "debt_to_equity": g("debtToEquity"), "profit_margin": g("profitMargins"),
+                "revenue_growth": g("revenueGrowth"), "beta": g("beta")}
+    except Exception:
+        return None
+
+
 @app.get("/api/decision-360")
 async def decision_360(symbol: str = "", region: str = "US"):
     import asyncio as _aio, time as _time
@@ -30308,11 +30386,32 @@ async def decision_360(symbol: str = "", region: str = "US"):
     swing_low = min(lo[-20:])
     invalidation = z(max(swing_low, sma50 * 0.98)) if trend.startswith("Up") else z(swing_low)
 
-    # macro (light, honest)
-    try:
-        vix_val, vix_regime = await _aio.wait_for(_lp.run_in_executor(None, _mw_fetch_vix, region), timeout=9)
-    except Exception:
-        vix_val, vix_regime = None, "unknown"
+    def _ret(k): return round((c[-1] / c[-1 - k] - 1) * 100, 1) if n > k else None
+    ret_1m, ret_3m, ret_6m = _ret(21), _ret(63), _ret(126)
+    dist_high = round((price / hi6 - 1) * 100, 1)
+    dist_low = round((price / lo6 - 1) * 100, 1)
+    trs = [max(hi[i] - lo[i], abs(hi[i] - c[i - 1]), abs(lo[i] - c[i - 1])) for i in range(-14, 0)]
+    atr_pct = round(_mcoc_mean(trs) / price * 100, 1) if price else None
+    pv20 = round((price / sma20 - 1) * 100, 1)
+    pv50 = round((price / sma50 - 1) * 100, 1)
+    pv200 = round((price / sma200 - 1) * 100, 1) if sma200 else None
+
+    sector_theme = None
+    for _th, _syms in _THEME_CONSTITUENTS.get(region, {}).items():
+        if symbol in _syms:
+            sector_theme = _th; break
+
+    async def _b(fn, *a, timeout=9, default=None):
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, fn, *a), timeout=timeout)
+        except Exception:
+            return default
+    vix_pair, fundamentals = await _aio.gather(
+        _b(_mw_fetch_vix, region, timeout=9, default=(None, "unknown")),
+        _b(_d360_fundamentals, ys, timeout=9, default=None),
+    )
+    vix_val, vix_regime = vix_pair if vix_pair else (None, "unknown")
+    sector = (fundamentals or {}).get("sector") or sector_theme
     regime_lbl = ("Risk-ON / expansion-leaning" if vix_regime == "low"
                   else "Risk-OFF / contraction-leaning" if vix_regime in ("elevated", "high")
                   else "Mixed / two-sided" if vix_regime == "normal" else "Unknown")
@@ -30326,22 +30425,26 @@ async def decision_360(symbol: str = "", region: str = "US"):
     return {
         "success": True, "symbol": symbol, "region": region, "currency": cur,
         "price": z(price), "asof": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+        "sector": sector,
         "technical": {
-            "trend": trend,
+            "trend": trend, "pv20": pv20, "pv50": pv50, "pv200": pv200,
+            "sma20": z(sma20), "sma50": z(sma50), "sma200": (z(sma200) if sma200 else None),
             "zone": zone, "position_pct": round(pos * 100, 1),
-            "range_lo": z(lo6), "range_hi": z(hi6),
+            "range_lo": z(lo6), "range_hi": z(hi6), "dist_high": dist_high, "dist_low": dist_low,
+            "ret_1m": ret_1m, "ret_3m": ret_3m, "ret_6m": ret_6m, "atr_pct": atr_pct,
             "rvol": rvol, "vol_confirmed": vol_ok, "vol_text": vol_txt,
-            "rsi": rsi,
-            "fvg": fvg,
-            "invalidation": invalidation, "swing_low": z(swing_low), "sma50": z(sma50),
+            "rsi": rsi, "fvg": fvg,
+            "invalidation": invalidation, "swing_low": z(swing_low),
         },
+        "fundamentals": fundamentals,
         "macro": {"vix": (round(vix_val, 1) if vix_val else None), "vix_regime": vix_regime,
-                  "regime": regime_lbl, "policy_note": policy_note, "rate_note": rate_note},
+                  "regime": regime_lbl, "policy_note": policy_note, "rate_note": rate_note,
+                  "sector": sector},
         "data_note": ("Technical lens is computed from ~9 months of price/volume. Order-blocks/FVG are ICT-style "
-                      "approximations from swing structure, not exact zones. Fundamentals & FII/DII flow aren't "
-                      "reliably available on this host \u2014 those questions are answered as guided checks, not faked. "
+                      "approximations from swing structure, not exact zones. Fundamentals are best-effort (real when "
+                      "the feed is reachable, N/A otherwise \u2014 never faked); FII/DII flow isn't available on this host. "
                       "Research tooling, not investment advice."),
-        "_engine": "decision_360_v1",
+        "_engine": "decision_360_v2",
     }
 
 
