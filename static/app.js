@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.1";
-window.CELESYS_BUILD_TIME = 1780786800;
-window.CELESYS_BUILD_DATE = "2026-06-06 23:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.2";
+window.CELESYS_BUILD_TIME = 1780790400;
+window.CELESYS_BUILD_DATE = "2026-06-07 00:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -13465,64 +13465,125 @@ window._dec360SetStrat = function(k,val){
   if(out&&window._dec360Last) out.innerHTML=window._renderDec360(window._dec360Last);
 };
 
+// ── 360 Decision: pure decision helpers (group + combined) — unit-testable ──
+window._dec360TechDec = function(t){
+  var up=(t.trend||'').indexOf('Up')===0, down=(t.trend||'').indexOf('Down')===0;
+  var premium=t.position_pct>=60, ob=(t.rsi!=null&&t.rsi>=70), os=(t.rsi!=null&&t.rsi<=30);
+  var volok=(t.vol_confirmed===true);
+  if(down) return {label:'WEAK \u2014 wait for a base',tone:'neg',why:'Price is below its 50-DMA; there is no uptrend to trade yet.'};
+  if(up&&ob&&premium) return {label:'EXTENDED \u2014 let it pull back',tone:'caution',why:'Uptrend is intact but it\u2019s overbought and in the upper part of its range \u2014 chasing here invites a sharp pullback.'};
+  if(up&&volok) return {label:'CONSTRUCTIVE \u2014 trend intact',tone:'pos',why:'Up-days carry the volume and it\u2019s in a real uptrend \u2014 favour buying pullbacks or confirmed breakouts.'};
+  if(up) return {label:'CONSTRUCTIVE (unconfirmed) \u2014 watch volume',tone:'neutral',why:'The uptrend is there but volume isn\u2019t confirming it \u2014 you want heavier volume on up-days.'};
+  if(os) return {label:'OVERSOLD BOUNCE WATCH',tone:'neutral',why:'No clean trend, but it\u2019s oversold \u2014 a bounce is possible; not a trend entry.'};
+  return {label:'NEUTRAL \u2014 no clear edge',tone:'neutral',why:'No clean trend right now \u2014 wait for direction to establish.'};
+};
+window._dec360MacroDec = function(mc){
+  var r=mc.vix_regime;
+  if(r==='low') return {label:'SUPPORTIVE \u2014 risk-on backdrop',tone:'pos',why:'Low volatility favours trends and breakouts holding.'};
+  if(r==='elevated'||r==='high') return {label:'HEADWIND \u2014 risk-off backdrop',tone:'caution',why:'Elevated volatility means failed breakouts and sharp reversals are more common \u2014 size down.'};
+  if(r==='normal') return {label:'TWO-SIDED \u2014 neutral backdrop',tone:'neutral',why:'Mixed regime \u2014 the individual setup matters more than the market here.'};
+  return {label:'UNKNOWN \u2014 regime data unavailable',tone:'neutral',why:'Couldn\u2019t read the volatility regime on this feed.'};
+};
+window._dec360FundDec = function(fd){
+  if(!fd||!fd.available) return {label:'NEEDS YOUR INPUT \u2014 not on this feed',tone:'neutral',why:'Fundamentals aren\u2019t available on this host \u2014 score the moat, earnings quality and solvency yourself (or in \uD83C\uDFDB Forever Holds).'};
+  var flags=[];
+  if(fd.profit_margin!=null) flags.push(fd.profit_margin>=0.15?'healthy margins':fd.profit_margin<0?'losing money':'thin margins');
+  if(fd.debt_to_equity!=null) flags.push(fd.debt_to_equity>150?'high leverage':'manageable leverage');
+  if(fd.revenue_growth!=null) flags.push(fd.revenue_growth>=0.1?'growing revenue':fd.revenue_growth<0?'shrinking revenue':'flat revenue');
+  var neg=(fd.debt_to_equity!=null&&fd.debt_to_equity>200)||(fd.profit_margin!=null&&fd.profit_margin<0);
+  return {label:neg?'CAUTION \u2014 check the balance sheet':'MIXED \u2014 verify durability',tone:neg?'caution':'neutral',why:(flags.length?flags.join(', ')+'. ':'')+'Still confirm the edge is durable for 3\u20135 years.'};
+};
+window._dec360StratDec = function(st){
+  st=st||{};
+  if(!st.corr&&!st.horizon) return {label:'SET THE TOGGLES ABOVE',tone:'neutral',why:'Tell the engine whether this diversifies or doubles-down, and your time horizon.'};
+  var why=[];
+  if(st.corr==='double') why.push('you marked it as doubling-down (concentration risk)');
+  else if(st.corr==='div') why.push('you marked it as diversifying');
+  else if(st.corr==='unsure') why.push('correlation unclear');
+  if(st.horizon==='hold') why.push('secular hold \u2014 the Fundamental lens should dominate');
+  else if(st.horizon==='trade') why.push('tactical trade \u2014 the Technical lens should dominate');
+  return {label: st.corr==='double'?'MIND CONCENTRATION':'NOTED',tone: st.corr==='double'?'caution':'neutral',why: why.join('; ')+'.'};
+};
+window._dec360Combined = function(td,md,fdd,sd,fdAvail){
+  var TS={pos:1,neutral:0,caution:-0.5,neg:-1};
+  var s=TS[td.tone]*0.5+TS[md.tone]*0.25+TS[fdd.tone]*0.15+TS[sd.tone]*0.10;
+  var verdict,tone;
+  if(td.tone==='neg'){verdict='WAIT / AVOID';tone='neg';}
+  else if(s>=0.4){verdict='LEAN CONSTRUCTIVE';tone='pos';}
+  else if(s<=-0.3){verdict='LEAN CAUTIOUS';tone='caution';}
+  else{verdict='MIXED / NEUTRAL';tone='neutral';}
+  var pending=[];
+  if(!fdAvail) pending.push('fundamentals');
+  if(sd.label==='SET THE TOGGLES ABOVE') pending.push('your portfolio-fit inputs');
+  var why='Technical: '+td.label+' \u00b7 Macro: '+md.label+'.';
+  if(pending.length) why+=' Still pending \u2014 '+pending.join(' & ')+'; complete those before acting.';
+  return {verdict:verdict,tone:tone,why:why,score:Math.round(s*100)/100};
+};
+
 window._renderDec360 = function(d){
   var E=window._esc, t=d.technical, mc=d.macro, fd=d.fundamentals, cur=d.currency||'$', st=window._dec360State||{};
   function sp(x){ return (x==null)?'n/a':((x>0?'+':'')+x+'%'); }
   function cap(x){ if(x==null) return null; if(x>=1e12) return (x/1e12).toFixed(2)+'T'; if(x>=1e9) return (x/1e9).toFixed(1)+'B'; if(x>=1e6) return (x/1e6).toFixed(0)+'M'; return ''+x; }
   function badge(type){ var b={computed:['#16a34a','#dcfce7','\u2713 live'],guided:['#b45309','#fef3c7','\u2699 guided'],na:['#64748b','#f1f5f9','\u2014 manual'],you:['#0284c7','#e0f2fe','\uD83D\uDC64 your call']}[type]; return '<span style="font-size:7.5px;font-weight:800;padding:2px 6px;border-radius:9px;background:'+b[1]+';color:'+b[0]+';white-space:nowrap">'+b[2]+'</span>'; }
-  function item(q,type,ans){ return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div style="display:flex;gap:8px;align-items:flex-start">'+badge(type)+'<div style="flex:1"><div style="font-size:11px;font-weight:800;color:#1e293b">'+q+'</div><div style="font-size:10.5px;color:#475569;line-height:1.5;margin-top:2px">'+ans+'</div></div></div></div>'; }
+  function item(q,type,ans,lay){ var l = lay?'<div style="font-size:9.5px;color:#0e7490;background:#ecfeff;border-radius:6px;padding:5px 8px;margin-top:4px;line-height:1.5"><b>\uD83D\uDCA1 In plain English:</b> '+lay+'</div>':''; return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div style="display:flex;gap:8px;align-items:flex-start">'+badge(type)+'<div style="flex:1"><div style="font-size:11px;font-weight:800;color:#1e293b">'+q+'</div><div style="font-size:10.5px;color:#475569;line-height:1.5;margin-top:2px">'+ans+'</div>'+l+'</div></div></div>'; }
+  function grp(dec){ var c={pos:['#16a34a','#dcfce7'],neutral:['#475569','#f1f5f9'],caution:['#b45309','#fef3c7'],neg:['#dc2626','#fef2f2']}[dec.tone]||['#475569','#f1f5f9']; return '<div style="margin-top:9px;background:'+c[1]+';border-radius:8px;padding:8px 11px"><span style="font-size:8px;font-weight:800;color:'+c[0]+';letter-spacing:0.6px">GROUP DECISION</span><div style="font-size:12.5px;font-weight:900;color:'+c[0]+';font-family:Sora,sans-serif;margin-top:1px">'+E(dec.label)+'</div><div style="font-size:9.5px;color:#475569;margin-top:2px;line-height:1.5">'+E(dec.why)+'</div></div>'; }
   function lens(emoji,title,accent,body){ return '<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid '+accent+';border-radius:10px;padding:11px 14px;margin-bottom:10px"><div style="font-size:11px;font-weight:900;color:'+accent+';font-family:Sora,sans-serif;margin-bottom:2px">'+emoji+' '+title+'</div>'+body+'</div>'; }
+
+  // decisions
+  var td=window._dec360TechDec(t), md=window._dec360MacroDec(mc), fdd=window._dec360FundDec(fd), sd=window._dec360StratDec(st);
+  var haveF = fd && fd.available;
+  var cmb=window._dec360Combined(td,md,fdd,sd,haveF);
 
   var h='';
   h+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:18px;font-weight:900;color:#0f172a;font-family:JetBrains Mono,monospace">'+E(d.symbol)+'</span><span style="font-size:13px;color:#475569;font-family:JetBrains Mono,monospace">'+cur+E(String(d.price))+'</span>'+(d.sector?'<span style="font-size:9px;font-weight:700;color:#0e7490;background:#ecfeff;border-radius:8px;padding:2px 8px">'+E(d.sector)+'</span>':'')+'<span style="font-size:9px;color:#94a3b8">'+E(d.region)+' \u00b7 '+E(d.asof)+'</span></div>';
 
   // LENS 1 — Fundamentals
-  var haveF = fd && fd.available;
   var fl='';
-  var moatAns = (haveF&&(fd.sector||fd.industry)) ? ('<b>'+E(fd.sector||'')+(fd.industry?' / '+E(fd.industry):'')+'</b>'+(fd.market_cap?' \u00b7 mkt cap '+cur+cap(fd.market_cap):'')+'. Classify the moat type and whether it\u2019s <b>widening</b> \u2014 \uD83C\uDFDB Forever Holds scores this (Filter 1).') : 'Classify the moat (proprietary tech / network / switching costs / cost / brand) and whether it\u2019s <b>widening</b>. \uD83C\uDFDB Forever Holds scores this.';
-  fl+=item('Business moat \u2014 proprietary tech, regulatory edge, or cost leadership?',(haveF&&fd.sector)?'computed':'guided',moatAns);
-  var eqAns = (haveF&&(fd.profit_margin!=null||fd.revenue_growth!=null)) ? ('Net margin <b>'+(fd.profit_margin!=null?(fd.profit_margin*100).toFixed(1)+'%':'n/a')+'</b>, revenue growth <b>'+(fd.revenue_growth!=null?(fd.revenue_growth*100).toFixed(1)+'%':'n/a')+'</b>. Cross-check reported earnings vs operating cash flow for quality.') : 'Check reported earnings vs operating cash flow, one-offs and accruals. Margin/growth data N/A on this feed.';
-  fl+=item('Earnings quality \u2014 organic growth or inflated by one-offs / accounting?',(haveF&&fd.profit_margin!=null)?'computed':'guided',eqAns);
-  var solAns = (haveF&&fd.debt_to_equity!=null) ? ('Debt/Equity <b>'+Number(fd.debt_to_equity).toFixed(0)+'</b>'+(fd.debt_to_equity>150?' \u2014 elevated; verify interest coverage in a high-rate regime.':' \u2014 manageable; still verify interest coverage.')+' Beta '+(fd.beta!=null?Number(fd.beta).toFixed(2):'n/a')+'.') : 'Pull D/E + interest coverage from filings; coverage under ~2\u20133\u00d7 is fragile when rates are high. (D/E N/A on this feed.)';
-  fl+=item('Solvency \u2014 Debt/Equity & interest coverage in a high-rate regime?',(haveF&&fd.debt_to_equity!=null)?'computed':'na',solAns);
-  fl+=item('Management \u2014 capital allocation (buybacks / R&D / dividends) & aligned incentives?','guided','Review buyback cadence, R&D % of sales, dividend record and insider ownership. Forever Holds Filter 3 captures the cash-return half.');
+  var moatAns=(haveF&&(fd.sector||fd.industry))?('<b>'+E(fd.sector||'')+(fd.industry?' / '+E(fd.industry):'')+'</b>'+(fd.market_cap?' \u00b7 mkt cap '+cur+cap(fd.market_cap):'')+'. Classify the moat type and whether it\u2019s <b>widening</b> \u2014 \uD83C\uDFDB Forever Holds scores this (Filter 1).'):'Classify the moat (proprietary tech / network / switching costs / cost / brand) and whether it\u2019s <b>widening</b>. \uD83C\uDFDB Forever Holds scores this.';
+  fl+=item('Business moat \u2014 proprietary tech, regulatory edge, or cost leadership?',(haveF&&fd.sector)?'computed':'guided',moatAns,'Does this company have something rivals can\u2019t easily copy \u2014 a moat? Wide, growing moats protect profits for years; no moat means competition eats the returns.');
+  var eqAns=(haveF&&(fd.profit_margin!=null||fd.revenue_growth!=null))?('Net margin <b>'+(fd.profit_margin!=null?(fd.profit_margin*100).toFixed(1)+'%':'n/a')+'</b>, revenue growth <b>'+(fd.revenue_growth!=null?(fd.revenue_growth*100).toFixed(1)+'%':'n/a')+'</b>. Cross-check reported earnings vs operating cash flow for quality.'):'Check reported earnings vs operating cash flow, one-offs and accruals. Margin/growth data N/A on this feed.';
+  fl+=item('Earnings quality \u2014 organic growth or inflated by one-offs / accounting?',(haveF&&fd.profit_margin!=null)?'computed':'guided',eqAns,'Are the profits real cash, or accounting flattery? Earnings backed by actual cash flow are trustworthy; the gap between the two is where trouble hides.');
+  var solAns=(haveF&&fd.debt_to_equity!=null)?('Debt/Equity <b>'+Number(fd.debt_to_equity).toFixed(0)+'</b>'+(fd.debt_to_equity>150?' \u2014 elevated; verify interest coverage in a high-rate regime.':' \u2014 manageable; still verify interest coverage.')+' Beta '+(fd.beta!=null?Number(fd.beta).toFixed(2):'n/a')+'.'):'Pull D/E + interest coverage from filings; coverage under ~2\u20133\u00d7 is fragile when rates are high. (D/E N/A on this feed.)';
+  fl+=item('Solvency \u2014 Debt/Equity & interest coverage in a high-rate regime?',(haveF&&fd.debt_to_equity!=null)?'computed':'na',solAns,'Can it pay its debts when money gets expensive? Too much debt is dangerous in a high-rate world \u2014 it can sink even a good business.');
+  fl+=item('Management \u2014 capital allocation (buybacks / R&D / dividends) & aligned incentives?','guided','Review buyback cadence, R&D % of sales, dividend record and insider ownership. Forever Holds Filter 3 captures the cash-return half.','Is management spending shareholders\u2019 money wisely, and do they own stock themselves? Owners who eat their own cooking tend to make better decisions.');
+  fl+=grp(fdd);
   h+=lens('\uD83C\uDFDB','1. Fundamental Lens \u2014 Quality & Viability','#0891b2',fl);
 
   // LENS 2 — Technicals
   var tech='';
-  tech+=item('Structure \u2014 discount or premium? where in the range?','computed','<b>'+E(t.zone)+'</b> \u2014 at <b>'+t.position_pct+'%</b> of the 9-mo range ('+cur+t.range_lo+' \u2192 '+cur+t.range_hi+'); '+sp(t.dist_high)+' from the high, '+sp(t.dist_low)+' off the low. Trend: '+E(t.trend)+'. Price vs MAs: 20-DMA '+sp(t.pv20)+', 50-DMA '+sp(t.pv50)+(t.pv200!=null?', 200-DMA '+sp(t.pv200):'')+'.');
-  tech+=item('Momentum \u2014 is the move volume-confirmed (or a liquidity trap)?','computed','RVOL <b>'+t.rvol+'\u00d7</b>. '+E(t.vol_text)+' Volatility (ATR) \u2248 '+(t.atr_pct!=null?t.atr_pct+'%/day':'n/a')+'. Returns: 1m '+sp(t.ret_1m)+', 3m '+sp(t.ret_3m)+', 6m '+sp(t.ret_6m)+'.');
-  var fvgTxt = t.fvg ? ('Unfilled <b>'+E(t.fvg.type)+' FVG</b> at '+cur+t.fvg.lo+'\u2013'+cur+t.fvg.hi+' \u2014 price may be drawn back to retest it before continuing.') : 'No clean unfilled fair-value gap nearby right now.';
-  tech+=item('Fair value \u2014 any Fair Value Gap likely to draw price back for a retest?','computed',fvgTxt);
-  var rsiTxt = (t.rsi==null)?'RSI n/a.':('RSI(14) <b>'+t.rsi+'</b>'+(t.rsi>=70?' (overbought \u2014 watch for exhaustion)':t.rsi<=30?' (oversold \u2014 possible bounce)':' (neutral)')+'.');
-  tech+=item('Exit trigger \u2014 what invalidates the thesis?','computed','Thesis breaks on a decisive close below <b>'+cur+t.invalidation+'</b> (swing low '+cur+t.swing_low+' / ~50-DMA). '+rsiTxt);
+  tech+=item('Structure \u2014 discount or premium? where in the range?','computed','<b>'+E(t.zone)+'</b> \u2014 at <b>'+t.position_pct+'%</b> of the 9-mo range ('+cur+t.range_lo+' \u2192 '+cur+t.range_hi+'); '+sp(t.dist_high)+' from the high, '+sp(t.dist_low)+' off the low. Trend: '+E(t.trend)+'. Price vs MAs: 20-DMA '+sp(t.pv20)+', 50-DMA '+sp(t.pv50)+(t.pv200!=null?', 200-DMA '+sp(t.pv200):'')+'.','You\u2019d be buying in the '+(t.position_pct>=50?'<b>upper</b> (relatively expensive)':'<b>lower</b> (relatively cheap)')+' part of the recent range. Buying at a discount gives better risk/reward; paying a premium needs strong momentum to justify it.');
+  tech+=item('Momentum \u2014 is the move volume-confirmed (or a liquidity trap)?','computed','RVOL <b>'+t.rvol+'\u00d7</b>. '+E(t.vol_text)+' Volatility (ATR) \u2248 '+(t.atr_pct!=null?t.atr_pct+'%/day':'n/a')+'. Returns: 1m '+sp(t.ret_1m)+', 3m '+sp(t.ret_3m)+', 6m '+sp(t.ret_6m)+'.','Big institutions leave footprints in volume. A move on heavy volume is real conviction; a move on light volume can be a trap that reverses.');
+  var fvgTxt=t.fvg?('Unfilled <b>'+E(t.fvg.type)+' FVG</b> at '+cur+t.fvg.lo+'\u2013'+cur+t.fvg.hi+' \u2014 price may be drawn back to retest it before continuing.'):'No clean unfilled fair-value gap nearby right now.';
+  tech+=item('Fair value \u2014 any Fair Value Gap likely to draw price back for a retest?','computed',fvgTxt,'A price \u201Cgap\u201D often acts like a magnet \u2014 price tends to dip back to fill it before resuming. Waiting for that fill can get you a better entry.');
+  var rsiTxt=(t.rsi==null)?'RSI n/a.':('RSI(14) <b>'+t.rsi+'</b>'+(t.rsi>=70?' (overbought \u2014 watch for exhaustion)':t.rsi<=30?' (oversold \u2014 possible bounce)':' (neutral)')+'.');
+  tech+=item('Exit trigger \u2014 what invalidates the thesis?','computed','Thesis breaks on a decisive close below <b>'+cur+t.invalidation+'</b> (swing low '+cur+t.swing_low+' / ~50-DMA). '+rsiTxt,'This is your line in the sand: if it closes below '+cur+t.invalidation+', the reason you bought is gone \u2014 cut the loss instead of hoping.');
+  tech+=grp(td);
   h+=lens('\uD83D\uDCC8','2. Technical Lens \u2014 Execution & Timing','#7c3aed',tech);
 
   // LENS 3 — Macro/Region
   var m='';
-  m+=item('Regional policy \u2014 RBI/SEBI (IN) or Fed/SEC (US) tailwind or headwind?','guided',E(mc.policy_note));
-  m+=item('Macro cycle \u2014 expansion or contraction?','computed','Current market read: <b>'+E(mc.regime)+'</b>'+(mc.vix!=null?' (VIX '+mc.vix+').':'.')+(d.sector?' '+E(d.symbol)+' sits in <b>'+E(d.sector)+'</b> \u2014 weigh how that sector behaves in this regime.':'')+' Run \uD83C\uDF10 Market 360 for the full board.');
-  m+=item('Currency & rates \u2014 how do FX / yields hit the bottom line?','guided',E(mc.rate_note));
-  m+=item('Institutional flow \u2014 FIIs/DIIs (IN) or 13F holders (US) accumulating or distributing?','na','Net FII/DII (IN) or 13F (US) flow isn\u2019t available on this feed. Check the NSE/SEBI daily FII-DII figures (IN) or 13F trackers (US).');
+  m+=item('Regional policy \u2014 RBI/SEBI (IN) or Fed/SEC (US) tailwind or headwind?','guided',E(mc.policy_note),'Central banks and regulators move the whole market. A friendly policy lifts most stocks; a hostile one drags them down regardless of how good the company is.');
+  m+=item('Macro cycle \u2014 expansion or contraction?','computed','Current market read: <b>'+E(mc.regime)+'</b>'+(mc.vix!=null?' (VIX '+mc.vix+').':'.')+(d.sector?' '+E(d.symbol)+' sits in <b>'+E(d.sector)+'</b> \u2014 weigh how that sector behaves in this regime.':'')+' Run \uD83C\uDF10 Market 360 for the full board.','Is the market in \u201Crisk-on\u201D (buy) or \u201Crisk-off\u201D (defensive) mode right now? Trading against the tide is much harder \u2014 the regime sets the difficulty.');
+  m+=item('Currency & rates \u2014 how do FX / yields hit the bottom line?','guided',E(mc.rate_note),'Interest rates and the currency quietly change what a company earns and what its shares are worth \u2014 rising rates squeeze valuations, a weak currency helps exporters.');
+  m+=item('Institutional flow \u2014 FIIs/DIIs (IN) or 13F holders (US) accumulating or distributing?','na','Net FII/DII (IN) or 13F (US) flow isn\u2019t available on this feed. Check the NSE/SEBI daily FII-DII figures (IN) or 13F trackers (US).','Are the big funds buying or selling? They move price more than retail \u2014 following their footprints beats guessing.');
+  m+=grp(md);
   h+=lens('\uD83C\uDF0D','3. Regional / Macro Lens \u2014 Environment','#059669',m);
 
   // LENS 4 — Strategic
   function toggle(k,opts){ var s=''; opts.forEach(function(o){ var on=st[k]===o[1]; s+='<button onclick="window._dec360SetStrat(\''+k+'\',\''+o[1]+'\')" style="padding:3px 10px;margin:2px 4px 2px 0;border-radius:6px;font-size:9px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;border:1px solid #0284c7;'+(on?'background:#0284c7;color:#fff':'background:#fff;color:#0284c7')+'">'+o[0]+'</button>'; }); return s; }
   var s='';
-  s+=item('Correlation \u2014 does this diversify, or double-down on a factor you already hold?','you','If you already hold the same theme'+(d.sector?' ('+E(d.sector)+')':'')+', adding this may concentrate risk rather than spread it.<div style="margin-top:5px">'+toggle('corr',[['Adds diversification','div'],['Doubles down','double'],['Not sure','unsure']])+'</div>');
-  s+=item('Risk allocation \u2014 max % loss before you liquidate?','you','Tie your stop to the computed invalidation ('+cur+t.invalidation+'): size the position so a stop-out there costs no more than your max risk per trade (commonly ~1\u20132% of the portfolio). At '+(t.atr_pct!=null?t.atr_pct+'%/day volatility':'current volatility')+', avoid a stop tighter than ~1\u00d7 ATR.');
-  s+=item('Horizon \u2014 secular long-term hold or short-term technical trade?','you','Decide before entry \u2014 it changes the stop, the size, and which lens dominates.<div style="margin-top:5px">'+toggle('horizon',[['Secular hold','hold'],['Tactical trade','trade']])+'</div>');
+  s+=item('Correlation \u2014 does this diversify, or double-down on a factor you already hold?','you','If you already hold the same theme'+(d.sector?' ('+E(d.sector)+')':'')+', adding this may concentrate risk rather than spread it.<div style="margin-top:5px">'+toggle('corr',[['Adds diversification','div'],['Doubles down','double'],['Not sure','unsure']])+'</div>','If this moves just like things you already own, you\u2019re not spreading risk \u2014 you\u2019re piling more onto the same bet.');
+  s+=item('Risk allocation \u2014 max % loss before you liquidate?','you','Tie your stop to the computed invalidation ('+cur+t.invalidation+'): size the position so a stop-out there costs no more than your max risk per trade (commonly ~1\u20132% of the portfolio). At '+(t.atr_pct!=null?t.atr_pct+'%/day volatility':'current volatility')+', avoid a stop tighter than ~1\u00d7 ATR.','Decide your maximum acceptable loss BEFORE you buy, then size the position so hitting your stop is survivable \u2014 not account-ending.');
+  s+=item('Horizon \u2014 secular long-term hold or short-term technical trade?','you','Decide before entry \u2014 it changes the stop, the size, and which lens dominates.<div style="margin-top:5px">'+toggle('horizon',[['Secular hold','hold'],['Tactical trade','trade']])+'</div>','A multi-year hold and a quick trade need completely different stops and sizes \u2014 pick which one this is up front so you don\u2019t improvise mid-trade.');
+  s+=grp(sd);
   h+=lens('\uD83C\uDFAF','4. Strategic Lens \u2014 Your Portfolio','#0284c7',s);
 
-  // SUMMARY
-  var accumTxt = (t.position_pct<50 && t.trend.indexOf('Down')!==0) ? '\u2705 Yes \u2014 discount half of the range and not breaking down.' : (t.position_pct>=50?'\u26A0 Premium \u2014 not an obvious accumulation point; prefer a pullback.':'\u26A0 In a downtrend \u2014 wait for structure to turn.');
-  var corrTxt = st.corr==='div'?'\u2705 You marked it as diversifying.':st.corr==='double'?'\u26A0 You marked it as doubling-down \u2014 concentration risk.':'\u2014 Set the correlation toggle above.';
-  var sc='';
-  sc+='<div style="padding:7px 0;border-top:1px solid #f1f5f9;font-size:10.5px;color:#475569"><b style="color:#0891b2">Fundamentals:</b> Is the edge durable for 3\u20135 years? \u2014 <i>'+(haveF&&fd.sector?E(fd.sector)+'; score durability in Forever Holds.':'guided; score it in Forever Holds.')+'</i></div>';
-  sc+='<div style="padding:7px 0;border-top:1px solid #f1f5f9;font-size:10.5px;color:#475569"><b style="color:#7c3aed">Technicals:</b> Entering at an accumulation point? \u2014 '+accumTxt+'</div>';
-  sc+='<div style="padding:7px 0;border-top:1px solid #f1f5f9;font-size:10.5px;color:#475569"><b style="color:#059669">Macro/Region:</b> Does the cycle support this sector? \u2014 <i>'+E(mc.regime)+(d.sector?' \u00b7 '+E(d.sector):'')+'.</i></div>';
-  sc+='<div style="padding:7px 0;border-top:1px solid #f1f5f9;font-size:10.5px;color:#475569"><b style="color:#0284c7">Strategic:</b> Adds risk or diversification? \u2014 '+corrTxt+'</div>';
-  h+='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:11px 14px;margin-bottom:8px"><div style="font-size:11px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:2px">\u2705 Must-Ask Summary</div>'+sc+'</div>';
+  // COMBINED DECISION
+  var cc={pos:['#16a34a','#dcfce7'],neutral:['#475569','#f1f5f9'],caution:['#b45309','#fef3c7'],neg:['#dc2626','#fef2f2']}[cmb.tone]||['#475569','#f1f5f9'];
+  function chip(lbl,dec){ var c={pos:['#16a34a','#dcfce7'],neutral:['#475569','#f1f5f9'],caution:['#b45309','#fef3c7'],neg:['#dc2626','#fef2f2']}[dec.tone]||['#475569','#f1f5f9']; var dot=dec.tone==='pos'?'\u25CF':dec.tone==='neg'?'\u25CF':dec.tone==='caution'?'\u25CF':'\u25CB'; return '<div style="flex:1;min-width:120px;background:'+c[1]+';border-radius:7px;padding:6px 9px"><div style="font-size:8px;font-weight:800;color:#64748b">'+lbl+'</div><div style="font-size:10px;font-weight:900;color:'+c[0]+';line-height:1.3;margin-top:1px">'+E(dec.label)+'</div></div>'; }
+  var cb='<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px">'+chip('FUNDAMENTAL',fdd)+chip('TECHNICAL',td)+chip('MACRO',md)+chip('STRATEGIC',sd)+'</div>';
+  cb+='<div style="background:'+cc[1]+';border:2px solid '+cc[0]+';border-radius:10px;padding:11px 14px"><div style="font-size:8px;font-weight:800;color:'+cc[0]+';letter-spacing:1px">COMBINED DECISION \u2014 ALL 4 LENSES</div><div style="font-size:17px;font-weight:900;color:'+cc[0]+';font-family:Sora,sans-serif;margin-top:2px">'+E(cmb.verdict)+'</div><div style="font-size:10px;color:#475569;margin-top:4px;line-height:1.5">'+E(cmb.why)+'</div></div>';
+  h+='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:11px 14px;margin-bottom:8px"><div style="font-size:11px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:7px">\u2705 Decision Stack</div>'+cb+'</div>';
 
   h+='<div style="font-size:8px;color:#94a3b8;line-height:1.4">'+E(d.data_note||'')+'</div>';
   return h;
