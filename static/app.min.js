@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.108.2";
-window.CELESYS_BUILD_TIME = 1780768800;
-window.CELESYS_BUILD_DATE = "2026-06-06 18:00:00 UTC";
+window.CELESYS_VERSION = "r63.109.0";
+window.CELESYS_BUILD_TIME = 1780776000;
+window.CELESYS_BUILD_DATE = "2026-06-06 20:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11741,7 +11741,7 @@ window._engShow = function(panel) {
     'insider': 'engInsiderPanel', 'diropts': 'engDirOptsPanel',
     'inst360': 'engInst360Panel', 'marketwhy': 'engMarketWhyPanel',
     'market360': 'engMarket360Panel', 'momcoc': 'engMomCoCPanel',
-    'forever': 'engForeverPanel',
+    'forever': 'engForeverPanel', 'dec360': 'engDec360Panel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11757,7 +11757,7 @@ window._engShow = function(panel) {
     'insider': 'engBtnInsider', 'diropts': 'engBtnDirOpts',
     'inst360': 'engBtnInst360', 'marketwhy': 'engBtnMarketWhy',
     'market360': 'engBtnMarket360', 'momcoc': 'engBtnMomCoC',
-    'forever': 'engBtnForever',
+    'forever': 'engBtnForever', 'dec360': 'engBtnDec360',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12970,18 +12970,23 @@ window._renderMcocScore = function(d){
     h += '<div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:8px">\uD83D\uDCD0 INSTITUTIONAL ENTRY PLAN</div>';
     // Plain-English headline
     var sym = window._esc(d.symbol||'This stock');
+    var _pv = ep.pivot;
+    var _beLo = ep.pivot;
+    var _beHi = (ep.pivot!=null)?Math.round(ep.pivot*1.01*100)/100:null;
+    var _maxPay = (ep.pivot!=null)?Math.round(ep.pivot*1.05*100)/100:null;
+    var _needRise = (ep.pivot!=null&&ep.current)?Math.round((ep.pivot/ep.current-1)*1000)/10:null;
     var ph;
-    if (ep.current_zone==='Below base') ph='\uD83D\uDD34 <b>No buy yet.</b> '+sym+' is '+Math.abs(ep.pct_from_pivot)+'% below the buy trigger of '+ep.buy_trigger+'. It must rise ~'+ep.needs_to_rise_pct+'% and build a base first \u2014 then break out on strong volume.';
-    else if (ep.current_zone==='Cheat Entry') ph='\uD83D\uDFE1 <b>Early \u2014 not yet confirmed.</b> Price is just under the buy trigger ('+ep.buy_trigger+'). Only aggressive traders buy here, and only if volume is drying up.';
-    else if (ep.current_zone==='Pivot / Retest') ph='\uD83D\uDFE2 <b>Buy window NOW.</b> Price is at the buy trigger ('+ep.buy_trigger+').'+(ep.rvol_confirmed?' Volume confirms (RVOL '+ep.rvol+'\u00d7) \u2014 this is the entry.':' But volume is light (RVOL '+ep.rvol+'\u00d7) \u2014 wait for a close above '+ep.buy_trigger+' on heavy volume.');
-    else if (ep.current_zone==='Chase Zone') ph='\uD83D\uDFE0 <b>Extended.</b> Price is +'+ep.pct_from_pivot+'% past the trigger \u2014 beyond the ideal entry. Buy small, or wait for a pullback toward '+ep.buy_trigger+'.';
-    else ph='\uD83D\uDD34 <b>Too extended (+'+ep.pct_from_pivot+'%).</b> Don\u2019t chase \u2014 wait for a pullback/retest down to '+ep.buy_trigger+'.';
+    if (ep.current_zone==='Below base') ph='\uD83D\uDD34 <b>No buy yet.</b> '+sym+' is '+Math.abs(ep.pct_from_pivot)+'% below the buy trigger of '+_pv+'. It must rise ~'+_needRise+'% and build a base first \u2014 then break out on strong volume.';
+    else if (ep.current_zone==='Cheat Entry') ph='\uD83D\uDFE1 <b>Early \u2014 not yet confirmed.</b> Price is just under the buy trigger ('+_pv+'). Only aggressive traders buy here, and only if volume is drying up.';
+    else if (ep.current_zone==='Pivot / Retest') ph='\uD83D\uDFE2 <b>Buy window NOW.</b> Price is at the buy trigger ('+_pv+').'+(ep.rvol_confirmed?' Volume confirms (RVOL '+ep.rvol+'\u00d7) \u2014 this is the entry.':' But volume is light (RVOL '+ep.rvol+'\u00d7) \u2014 wait for a close above '+_pv+' on heavy volume.');
+    else if (ep.current_zone==='Chase Zone') ph='\uD83D\uDFE0 <b>Extended.</b> Price is +'+ep.pct_from_pivot+'% past the trigger \u2014 beyond the ideal entry. Buy small, or wait for a pullback toward '+_pv+'.';
+    else ph='\uD83D\uDD34 <b>Too extended (+'+ep.pct_from_pivot+'%).</b> Don\u2019t chase \u2014 wait for a pullback/retest down to '+_pv+'.';
     h += '<div style="font-size:12px;color:#0f172a;background:'+zbg+';border:1px solid '+zc+'40;border-radius:8px;padding:9px 11px;line-height:1.5;margin-bottom:10px">'+ph+'</div>';
     // Three clear prices
     h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
-    [['BUY TRIGGER', ep.buy_trigger, 'first close above this', '#16a34a'],
-     ['BEST ENTRY', ep.best_entry_lo+'\u2013'+ep.best_entry_hi, 'ideal zone, on volume', '#16a34a'],
-     ['DON\u2019T PAY ABOVE', ep.max_pay, 'too extended past here', '#dc2626']].forEach(function(x){
+    [['BUY TRIGGER', _pv, 'first close above this', '#16a34a'],
+     ['BEST ENTRY', _beLo+'\u2013'+_beHi, 'ideal zone, on volume', '#16a34a'],
+     ['DON\u2019T PAY ABOVE', _maxPay, 'too extended past here', '#dc2626']].forEach(function(x){
       h+='<div style="flex:1;min-width:104px;background:#fff;border:1px solid '+x[3]+'33;border-left:3px solid '+x[3]+';border-radius:8px;padding:7px 9px"><div style="font-size:8px;color:#94a3b8;font-weight:800;letter-spacing:0.3px">'+x[0]+'</div><div style="font-size:15px;font-weight:900;color:'+x[3]+';font-family:JetBrains Mono,monospace">'+window._esc(String(x[1]))+'</div><div style="font-size:8px;color:#94a3b8">'+x[2]+'</div></div>';
     });
     h += '</div>';
@@ -13376,6 +13381,112 @@ window._renderMcocTop = function(d){
   h+='<div style="font-size:8.5px;color:#94a3b8;margin-top:8px;line-height:1.4">'+window._esc(d.data_note||'')+'</div>';
   h+='<div style="font-size:8px;color:#cbd5e1;margin-top:3px;font-family:JetBrains Mono,monospace">scored '+(d.scored||0)+'/'+(d.universe_size||0)+' \u00b7 '+(d.elapsed_sec||'?')+'s'+(d._cached?' \u00b7 cached':'')+' \u00b7 weights: '+window._esc(d.weights_basis||'')+'</div>';
   h+='<div style="margin-top:8px"><button onclick="window._mcocLoadTop()" style="padding:5px 12px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">\u21BB Re-scan</button></div>';
+  return h;
+};
+
+
+// ═══════════════════ 360 DECISION ENGINE ═══════════════════
+window._dec360Region = 'US';
+window._dec360State = { corr:null, horizon:null };
+window._dec360Last = null;
+
+window._dec360SetRegion = function(r){
+  window._dec360Region = r;
+  ['IN','US'].forEach(function(x){
+    var b=document.getElementById('dec360Reg'+x); if(!b) return;
+    if(x===r){ b.style.background='linear-gradient(135deg,#0891b2,#0e7490)'; b.style.color='#fff'; }
+    else { b.style.background='#fff'; b.style.color='#0e7490'; }
+  });
+};
+
+window._dec360Run = function(){
+  if(window._dec360Loading) return;
+  var sym=(document.getElementById('dec360Sym')||{}).value;
+  sym=(sym||'').trim().toUpperCase();
+  var out=document.getElementById('dec360Result');
+  if(!sym){ if(out) out.innerHTML='<div style="font-size:11px;color:#dc2626;padding:8px">Enter a symbol first.</div>'; return; }
+  window._dec360Loading=true; window._dec360State={corr:null,horizon:null};
+  var btn=document.getElementById('dec360Btn'); if(btn){btn.disabled=true;btn.style.opacity='0.6';btn.innerHTML='\u23F3 RUNNING\u2026';}
+  if(out) out.innerHTML='<div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px"><span style="display:inline-block;width:13px;height:13px;border:2px solid #a5f3fc;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px"></span>Running the 4-lens diagnostic on '+window._esc(sym)+'\u2026</div>';
+  var ac=(typeof AbortController!=='undefined')?new AbortController():null; var to=setTimeout(function(){if(ac)ac.abort();},45000);
+  fetch('/api/decision-360?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(window._dec360Region),{cache:'no-store',signal:ac?ac.signal:undefined})
+    .then(function(x){return x.json();})
+    .then(function(d){
+      clearTimeout(to); window._dec360Loading=false;
+      if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83E\uDDED RUN 360 ANALYSIS';}
+      if(!d||!d.success){ if(out) out.innerHTML='<div style="font-size:11px;color:#dc2626;padding:8px">\u26A0 '+window._esc((d&&d.error)||'Analysis failed')+'</div>'; return; }
+      window._dec360Last=d; if(out) out.innerHTML=window._renderDec360(d);
+    })
+    .catch(function(e){
+      clearTimeout(to); window._dec360Loading=false;
+      if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83E\uDDED RUN 360 ANALYSIS';}
+      var msg=(e&&e.name==='AbortError')?'Slow/blocked on this host \u2014 price feed may be unreachable.':('Network error: '+window._esc(String(e)));
+      if(out) out.innerHTML='<div style="font-size:11px;color:#dc2626;padding:8px">'+msg+'</div>';
+    });
+};
+
+window._dec360SetStrat = function(k,val){
+  window._dec360State[k]=val;
+  var out=document.getElementById('dec360Result');
+  if(out&&window._dec360Last) out.innerHTML=window._renderDec360(window._dec360Last);
+};
+
+window._renderDec360 = function(d){
+  var E=window._esc, t=d.technical, mc=d.macro, cur=d.currency||'$', st=window._dec360State||{};
+  function badge(type){ var b={computed:['#16a34a','#dcfce7','\u2713 live'],guided:['#b45309','#fef3c7','\u2699 guided'],na:['#64748b','#f1f5f9','\u2014 manual'],you:['#0284c7','#e0f2fe','\uD83D\uDC64 your call']}[type]; return '<span style="font-size:7.5px;font-weight:800;padding:2px 6px;border-radius:9px;background:'+b[1]+';color:'+b[0]+';white-space:nowrap">'+b[2]+'</span>'; }
+  function item(q,type,ans){ return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div style="display:flex;gap:8px;align-items:flex-start">'+badge(type)+'<div style="flex:1"><div style="font-size:11px;font-weight:800;color:#1e293b">'+q+'</div><div style="font-size:10.5px;color:#475569;line-height:1.5;margin-top:2px">'+ans+'</div></div></div></div>'; }
+  function lens(emoji,title,accent,body){ return '<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid '+accent+';border-radius:10px;padding:11px 14px;margin-bottom:10px"><div style="font-size:11px;font-weight:900;color:'+accent+';font-family:Sora,sans-serif;margin-bottom:2px">'+emoji+' '+title+'</div>'+body+'</div>'; }
+
+  var h='';
+  // header
+  h+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:18px;font-weight:900;color:#0f172a;font-family:JetBrains Mono,monospace">'+E(d.symbol)+'</span><span style="font-size:13px;color:#475569;font-family:JetBrains Mono,monospace">'+cur+E(String(d.price))+'</span><span style="font-size:9px;color:#94a3b8">'+E(d.region)+' \u00b7 '+E(d.asof)+'</span></div>';
+
+  // LENS 1 — Fundamentals (guided)
+  var f='';
+  f+=item('Business moat \u2014 proprietary tech, regulatory edge, or cost leadership?','guided','Not auto-derivable on this feed. Classify the moat type and whether it\u2019s <b>widening</b> \u2014 the \uD83C\uDFDB Forever Holds engine scores exactly this (Filter 1).');
+  f+=item('Earnings quality \u2014 organic growth or inflated by one-offs / aggressive accounting?','guided','Check reported earnings vs operating cash flow, non-recurring items and accruals in the filings/screener. Treat a persistent earnings-&gt;cash gap as a red flag.');
+  f+=item('Solvency \u2014 Debt/Equity & interest coverage in a high-rate regime?','na','Fundamentals aren\u2019t reliable on this host. Pull D/E and interest-coverage from the latest filing; coverage under ~2\u20133\u00d7 is fragile when rates are high.');
+  f+=item('Management \u2014 capital allocation (buybacks / R&D / dividends) & aligned incentives?','guided','Review buyback cadence, R&D as % of sales, dividend record and insider ownership. Forever Holds Filter 3 captures the cash-return half.');
+  h+=lens('\uD83C\uDFDB','1. Fundamental Lens \u2014 Quality & Viability','#0891b2',f);
+
+  // LENS 2 — Technicals (computed)
+  var tech='';
+  tech+=item('Structure \u2014 discount or premium? where are we in the range?','computed','<b>'+E(t.zone)+'</b> \u2014 at <b>'+t.position_pct+'%</b> of the 6-mo range ('+cur+t.range_lo+' \u2192 '+cur+t.range_hi+'). Trend: '+E(t.trend)+'. '+(t.position_pct<50?'Lower half = closer to an accumulation/order-block zone.':'Upper half = premium; better risk on a pullback.'));
+  tech+=item('Momentum \u2014 is the move volume-confirmed (or a liquidity trap)?','computed','RVOL <b>'+t.rvol+'\u00d7</b>. '+E(t.vol_text));
+  var fvgTxt = t.fvg ? ('Unfilled <b>'+E(t.fvg.type)+' FVG</b> at '+cur+t.fvg.lo+'\u2013'+cur+t.fvg.hi+' \u2014 price may be drawn back to retest it before continuing.') : 'No clean unfilled fair-value gap nearby right now.';
+  tech+=item('Fair value \u2014 any Fair Value Gap likely to draw price back for a retest?','computed',fvgTxt);
+  var rsiTxt = (t.rsi==null)?'RSI n/a.':('RSI(14) <b>'+t.rsi+'</b>'+(t.rsi>=70?' (overbought \u2014 watch for exhaustion)':t.rsi<=30?' (oversold \u2014 possible bounce)':' (neutral)')+'.');
+  tech+=item('Exit trigger \u2014 what invalidates the thesis?','computed','Thesis breaks on a decisive close below <b>'+cur+t.invalidation+'</b> (swing low '+cur+t.swing_low+' / 50-DMA '+cur+t.sma50+'). '+rsiTxt);
+  h+=lens('\uD83D\uDCC8','2. Technical Lens \u2014 Execution & Timing','#7c3aed',tech);
+
+  // LENS 3 — Macro/Region
+  var m='';
+  m+=item('Regional policy \u2014 RBI/SEBI (IN) or Fed/SEC (US) tailwind or headwind?','guided',E(mc.policy_note));
+  m+=item('Macro cycle \u2014 expansion or contraction?','computed','Current market read: <b>'+E(mc.regime)+'</b>'+(mc.vix!=null?' (VIX '+mc.vix+').':'.')+' Run \uD83C\uDF10 Market 360 for the full macro board.');
+  m+=item('Currency & rates \u2014 how do FX / yields hit the bottom line?','guided',E(mc.rate_note));
+  m+=item('Institutional flow \u2014 are FIIs/DIIs (IN) or 13F holders (US) accumulating or distributing?','na','Net FII/DII (IN) or 13F (US) flow isn\u2019t available on this feed. Check the NSE/SEBI daily FII-DII figures (IN) or 13F trackers (US).');
+  h+=lens('\uD83C\uDF0D','3. Regional / Macro Lens \u2014 Environment','#059669',m);
+
+  // LENS 4 — Strategic (your call)
+  function toggle(k,opts){ var s=''; opts.forEach(function(o){ var on=st[k]===o[1]; s+='<button onclick="window._dec360SetStrat(\''+k+'\',\''+o[1]+'\')" style="padding:3px 10px;margin:2px 4px 2px 0;border-radius:6px;font-size:9px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;border:1px solid #0284c7;'+(on?'background:#0284c7;color:#fff':'background:#fff;color:#0284c7')+'">'+o[0]+'</button>'; }); return s; }
+  var s='';
+  s+=item('Correlation \u2014 does this diversify, or just double-down on a factor you already hold?','you','If you already hold the same theme (e.g. another semi / DRAM / NVDA), adding this may concentrate risk rather than spread it.<div style="margin-top:5px">'+toggle('corr',[['Adds diversification','div'],['Doubles down','double'],['Not sure','unsure']])+'</div>');
+  s+=item('Risk allocation \u2014 max % loss before you liquidate?','you','Tie your stop to the computed invalidation ('+cur+t.invalidation+'): size the position so a stop-out there costs no more than your max risk per trade (commonly ~1\u20132% of the portfolio).');
+  s+=item('Horizon \u2014 secular long-term hold or short-term technical trade?','you','Decide before entry \u2014 it changes the stop, the size, and which lens dominates.<div style="margin-top:5px">'+toggle('horizon',[['Secular hold','hold'],['Tactical trade','trade']])+'</div>');
+  h+=lens('\uD83C\uDFAF','4. Strategic Lens \u2014 Your Portfolio','#0284c7',s);
+
+  // SUMMARY CHECKLIST
+  var accumYes = (t.position_pct<50 && !t.trend.indexOf('Down')===0);
+  var accumTxt = (t.position_pct<50 && t.trend.indexOf('Down')!==0) ? '\u2705 Yes \u2014 discount half of the range and not breaking down.' : (t.position_pct>=50?'\u26A0 Premium \u2014 not an obvious accumulation point; prefer a pullback.':'\u26A0 In a downtrend \u2014 wait for structure to turn.');
+  var corrTxt = st.corr==='div'?'\u2705 You marked it as diversifying.':st.corr==='double'?'\u26A0 You marked it as doubling-down \u2014 concentration risk.':'\u2014 Decide the correlation toggle above.';
+  var sc='';
+  sc+='<div style="padding:7px 0;border-top:1px solid #f1f5f9;font-size:10.5px;color:#475569"><b style="color:#0891b2">Fundamentals:</b> Is the edge durable for 3\u20135 years? \u2014 <i>guided; score it in Forever Holds.</i></div>';
+  sc+='<div style="padding:7px 0;border-top:1px solid #f1f5f9;font-size:10.5px;color:#475569"><b style="color:#7c3aed">Technicals:</b> Entering at an accumulation point (discount / order block)? \u2014 '+accumTxt+'</div>';
+  sc+='<div style="padding:7px 0;border-top:1px solid #f1f5f9;font-size:10.5px;color:#475569"><b style="color:#059669">Macro/Region:</b> Does the rate cycle support this sector? \u2014 <i>'+E(mc.regime)+'; see policy note above.</i></div>';
+  sc+='<div style="padding:7px 0;border-top:1px solid #f1f5f9;font-size:10.5px;color:#475569"><b style="color:#0284c7">Strategic:</b> Adds risk or diversification? \u2014 '+corrTxt+'</div>';
+  h+='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:11px 14px;margin-bottom:8px"><div style="font-size:11px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:2px">\u2705 Must-Ask Summary</div>'+sc+'</div>';
+
+  h+='<div style="font-size:8px;color:#94a3b8;line-height:1.4">'+E(d.data_note||'')+'</div>';
   return h;
 };
 

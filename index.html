@@ -2181,6 +2181,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <button onclick="window._engShow('market360')" id="engBtnMarket360" style="padding:7px 14px;background:linear-gradient(135deg,#eff6ff,#dbeafe);color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127760; Market 360</button>
   <button onclick="window._engShow('momcoc')" id="engBtnMomCoC" style="padding:7px 14px;background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129516; Momentum CoC</button>
   <button onclick="window._foreverShow()" id="engBtnForever" style="padding:7px 14px;background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;border:1px solid #334155;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127963; Forever Holds</button>
+  <button onclick="window._engShow('dec360')" id="engBtnDec360" style="padding:7px 14px;background:linear-gradient(135deg,#ecfeff,#cffafe);color:#0e7490;border:1px solid #67e8f9;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129517; 360 Decision</button>
 </div>
 
 <!-- MOMENTUM CoC ENGINE -->
@@ -2212,6 +2213,23 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
     <div style="font-size:13px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:6px">&#127963; Forever Holds &mdash; 20-Year Compounder Filters</div>
     <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:4px">Three qualitative filters that separate decade-plus compounders from value traps. These are <b>fundamental judgments</b> (moat trend, real cash, capital allocation), not a price screen &mdash; so you score them, with the framework as your guide.</div>
     <div id="foreverBody" style="min-height:80px;margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- 360 DECISION ENGINE -->
+<div id="engDec360Panel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#0e7490;font-family:Sora,sans-serif;margin-bottom:6px">&#129517; 360 Decision &mdash; 4-Lens Diagnostic</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Every question across four lenses &mdash; Fundamentals, Technicals, Macro/Region, Strategic. Technicals are computed live from price/volume; fundamentals &amp; FII/DII aren&rsquo;t reliable on this host, so those are answered as guided checks (never faked); Strategic is your portfolio&rsquo;s call.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px">
+      <input id="dec360Sym" type="text" placeholder="NVDA or RELIANCE" style="padding:6px 10px;border:1px solid #a5f3fc;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#0e7490;width:160px">
+      <div style="display:flex;border:1px solid #a5f3fc;border-radius:5px;overflow:hidden">
+        <button id="dec360RegIN" onclick="window._dec360SetRegion('IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#0e7490">IN</button>
+        <button id="dec360RegUS" onclick="window._dec360SetRegion('US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #a5f3fc;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff">US</button>
+      </div>
+      <button onclick="window._dec360Run()" id="dec360Btn" style="padding:6px 16px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#129517; RUN 360 ANALYSIS</button>
+    </div>
+    <div id="dec360Result" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter a symbol and run the 4-lens diagnostic.</div></div>
   </div>
 </div>
 
@@ -2961,7 +2979,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=63108201"></script>
+<script src="/static/app.min.js?v=63109001"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>

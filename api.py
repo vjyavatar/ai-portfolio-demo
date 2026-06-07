@@ -29544,6 +29544,8 @@ def _mcoc_entry_plan(stock, subs, theme_rank, score):
 
     return {
         "pivot": z(piv), "current": z(close), "pct_from_pivot": pct_from_piv,
+        "buy_trigger": z(piv), "best_entry_lo": z(piv), "best_entry_hi": z(piv * 1.01),
+        "max_pay": z(piv * 1.05), "needs_to_rise_pct": round((piv / close - 1) * 100, 1),
         "rvol": rvol_v, "rvol_confirmed": rvol_v >= 1.5, "stop_ref": stop_ref,
         "tiers": tiers, "current_zone": cz, "action": action,
         "best_price": f"First close above {z(piv)} on RVOL \u2265 1.5\u20132\u00d7, while still within 5% (\u2264 {z(piv * 1.05)}).",
@@ -30218,6 +30220,129 @@ async def momentum_coc_top(region: str = "US", top_n: int = 20, refresh: int = 0
     }
     _mcoc_top_cache[ck] = {"ts": _time.time(), "data": out}
     return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 360 DECISION — 4-lens diagnostic (Decide → Engines → 🧭 360 Decision)
+#   Fundamentals (guided — fundamentals not reliable on this feed),
+#   Technicals (COMPUTED from price/volume), Macro/Region (live regime where
+#   computable), Strategic (your-portfolio prompts). Honest by construction.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _d360_rsi(closes, n=14):
+    if len(closes) < n + 1:
+        return None
+    gains = losses = 0.0
+    for i in range(-n, 0):
+        d = closes[i] - closes[i - 1]
+        gains += max(d, 0.0); losses += max(-d, 0.0)
+    ag = gains / n; al = losses / n
+    if al == 0:
+        return 100.0
+    rs = ag / al
+    return round(100 - 100 / (1 + rs), 1)
+
+
+def _d360_fvg(highs, lows, closes):
+    """Nearest unfilled 3-candle Fair Value Gap in the last ~40 bars (ICT-style)."""
+    n = len(closes)
+    last = closes[-1]
+    for i in range(n - 1, max(n - 40, 2) - 1, -1):
+        if lows[i] > highs[i - 2]:                       # bullish gap
+            glo, ghi = highs[i - 2], lows[i]
+            filled = any(lows[j] <= ghi for j in range(i + 1, n))
+            if not filled and last > ghi:
+                return {"type": "bullish", "lo": round(glo, 2), "hi": round(ghi, 2)}
+        if highs[i] < lows[i - 2]:                       # bearish gap
+            glo, ghi = highs[i], lows[i - 2]
+            filled = any(highs[j] >= glo for j in range(i + 1, n))
+            if not filled and last < glo:
+                return {"type": "bearish", "lo": round(glo, 2), "hi": round(ghi, 2)}
+    return None
+
+
+@app.get("/api/decision-360")
+async def decision_360(symbol: str = "", region: str = "US"):
+    import asyncio as _aio, time as _time
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    symbol = (symbol or "").upper().strip()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    ys = symbol if region == "US" else f"{symbol}.NS"
+    _lp = _aio.get_event_loop()
+
+    try:
+        stock = await _aio.wait_for(_lp.run_in_executor(None, _mcoc_fetch, ys), timeout=12)
+    except Exception:
+        stock = None
+    if not stock or len(stock["closes"]) < 60:
+        return {"success": False, "symbol": symbol, "region": region,
+                "error": "No / insufficient price data for this symbol (the feed may be blocked on this host)."}
+
+    c = stock["closes"]; v = stock["volumes"]; hi = stock["highs"]; lo = stock["lows"]
+    n = len(c); price = c[-1]; cur = "\u20B9" if region == "IN" else "$"
+    z = lambda x: round(x, 2)
+
+    sma20 = _mcoc_mean(c[-20:]); sma50 = _mcoc_mean(c[-50:])
+    sma200 = _mcoc_mean(c[-200:]) if n >= 200 else None
+    stacked = price > sma20 > sma50 and (sma200 is None or sma50 > sma200)
+    if stacked:                       trend = "Up \u2014 stage-2 uptrend (price > 20 > 50" + (" > 200" if sma200 else "") + " DMA)"
+    elif price < sma50:               trend = "Down / weak \u2014 price below the 50-DMA"
+    else:                             trend = "Sideways \u2014 no clean trend"
+
+    win = c[-126:] if n >= 126 else c
+    lo6, hi6 = min(win), max(win)
+    pos = (price - lo6) / (hi6 - lo6) if hi6 > lo6 else 0.5
+    zone = "Discount (lower half of range)" if pos < 0.5 else "Premium (upper half of range)"
+
+    rvol = round(v[-1] / (_mcoc_mean(v[-20:]) or 1), 2)
+    upv = sum(v[i] for i in range(-20, 0) if c[i] > c[i - 1])
+    dnv = sum(v[i] for i in range(-20, 0) if c[i] < c[i - 1])
+    if trend.startswith("Up"):   vol_ok = upv >= dnv; vol_txt = "Up-days carry the volume \u2014 trend is volume-confirmed." if vol_ok else "Advance is on LIGHTER volume than declines \u2014 weak confirmation (possible liquidity sweep)."
+    elif trend.startswith("Down"): vol_ok = dnv >= upv; vol_txt = "Down-days carry the volume \u2014 distribution confirmed." if vol_ok else "Selling is on lighter volume \u2014 decline may be exhausting."
+    else:                          vol_ok = None; vol_txt = "No clean trend to confirm; volume mixed."
+
+    rsi = _d360_rsi(c, 14)
+    fvg = _d360_fvg(hi, lo, c)
+    swing_low = min(lo[-20:])
+    invalidation = z(max(swing_low, sma50 * 0.98)) if trend.startswith("Up") else z(swing_low)
+
+    # macro (light, honest)
+    try:
+        vix_val, vix_regime = await _aio.wait_for(_lp.run_in_executor(None, _mw_fetch_vix, region), timeout=9)
+    except Exception:
+        vix_val, vix_regime = None, "unknown"
+    regime_lbl = ("Risk-ON / expansion-leaning" if vix_regime == "low"
+                  else "Risk-OFF / contraction-leaning" if vix_regime in ("elevated", "high")
+                  else "Mixed / two-sided" if vix_regime == "normal" else "Unknown")
+    policy_note = ("US: Fed rate path + SEC rules drive the tape \u2014 a hawkish Fed is a headwind for long-duration/growth names; a cutting cycle is a tailwind."
+                   if region == "US" else
+                   "India: RBI rate stance + SEBI policy set the tone \u2014 rate cuts and an infra/credit push favour cyclicals & financials; tightening pressures high-multiple names.")
+    rate_note = ("Watch the US 10-yr: rising yields compress valuations (esp. tech); falling yields support them."
+                 if region == "US" else
+                 "Watch RBI policy + the 10-yr G-sec and USD/INR: a weaker rupee helps exporters/IT, hurts importers.")
+
+    return {
+        "success": True, "symbol": symbol, "region": region, "currency": cur,
+        "price": z(price), "asof": _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime()),
+        "technical": {
+            "trend": trend,
+            "zone": zone, "position_pct": round(pos * 100, 1),
+            "range_lo": z(lo6), "range_hi": z(hi6),
+            "rvol": rvol, "vol_confirmed": vol_ok, "vol_text": vol_txt,
+            "rsi": rsi,
+            "fvg": fvg,
+            "invalidation": invalidation, "swing_low": z(swing_low), "sma50": z(sma50),
+        },
+        "macro": {"vix": (round(vix_val, 1) if vix_val else None), "vix_regime": vix_regime,
+                  "regime": regime_lbl, "policy_note": policy_note, "rate_note": rate_note},
+        "data_note": ("Technical lens is computed from ~9 months of price/volume. Order-blocks/FVG are ICT-style "
+                      "approximations from swing structure, not exact zones. Fundamentals & FII/DII flow aren't "
+                      "reliably available on this host \u2014 those questions are answered as guided checks, not faked. "
+                      "Research tooling, not investment advice."),
+        "_engine": "decision_360_v1",
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
