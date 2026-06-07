@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.3";
-window.CELESYS_BUILD_TIME = 1780794000;
-window.CELESYS_BUILD_DATE = "2026-06-07 01:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.5";
+window.CELESYS_BUILD_TIME = 1780801200;
+window.CELESYS_BUILD_DATE = "2026-06-07 03:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11813,7 +11813,7 @@ window._loadExitEngine = function() {
   var resEl = document.getElementById('exitResult');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ COMPUTING…'; }
   resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Running 5-trigger exit analysis for ' + sym + '…</div>';
-  var url = '/api/smart-exit-engine?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg) + (entry > 0 ? '&entry_price=' + entry : '');
+  var url = '/api/smart-exit-v2?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg) + (entry > 0 ? '&entry_price=' + entry : '');
   fetch(url, {cache: 'no-store'}).then(function(r) { return r.json().catch(function(){return null;}); }).then(function(d) {
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔥 ANALYZE EXIT'; }
     if (!d || !d.success) {
@@ -11821,11 +11821,49 @@ window._loadExitEngine = function() {
       window._engRenderError('exitResult', sym, msg, d && d.trace);
       return;
     }
-    resEl.innerHTML = window._renderExitEngine(d);
+    resEl.innerHTML = window._renderExitEngineV2(d);
   }).catch(function(e) {
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🔥 ANALYZE EXIT'; }
     window._engRenderError('exitResult', sym, 'Network error: ' + e.message);
   });
+};
+
+window._renderExitEngineV2 = function(d) {
+  var E = window._esc;
+  var colors = {green:'#16a34a', lime:'#84cc16', amber:'#d97706', red:'#dc2626'};
+  var col = colors[d.color] || '#64748b';
+  var bgs = {green:'#dcfce7', lime:'#ecfccb', amber:'#fef3c7', red:'#fef2f2'};
+  var bg = bgs[d.color] || '#f1f5f9';
+  var h = '';
+  // header
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:10px">';
+  h += '<div><div style="font-size:10px;font-weight:800;color:' + col + ';letter-spacing:0.8px">EXIT VERDICT · ' + E(d.symbol||'?') + '</div><div style="font-size:24px;font-weight:900;color:' + col + ';font-family:Sora,sans-serif;line-height:1.1">' + E(d.verdict) + '</div><div style="font-size:9px;color:#64748b;margin-top:2px">' + E(d.urgency||'') + (d.current_price?' · Current $' + E(String(d.current_price)):'') + (d.gain_pct!=null?' · P&L ' + (d.gain_pct>0?'+':'') + d.gain_pct + '%':'') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:9px;color:#64748b;letter-spacing:0.5px">KEEP SCORE</div><div style="font-size:30px;font-weight:900;color:' + col + ';font-family:JetBrains Mono,monospace;line-height:1">' + d.keep_score + '</div><div style="font-size:8px;color:#94a3b8">/100 · ' + d.failed_count + ' tier' + (d.failed_count===1?'':'s') + ' failed · exit-conf ' + d.exit_confidence_score + '</div></div>';
+  h += '</div>';
+  // guard note
+  if (d.guard_note) h += '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 11px;margin-bottom:9px;font-size:9.5px;color:#1e40af"><b>Guard:</b> ' + E(d.guard_note) + '</div>';
+  // tiers
+  h += '<div style="background:' + bg + ';border-left:3px solid ' + col + ';border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:10px;color:#334155">' + d.failed_count + ' of ' + (d.tiers||[]).filter(function(t){return t.available;}).length + ' available tiers failing · composite keep ' + d.keep_score + '/100. ' + (d.verdict.indexOf('HOLD')>=0?'Thesis intact — continue holding.':d.verdict.indexOf('TRIM')>=0?'Begin scaling out.':'Thesis degraded across multiple dimensions.') + '</div>';
+  h += '<div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:6px">⬇ SEVEN-TIER BREAKDOWN (weighted, honest-NULL)</div>';
+  (d.tiers||[]).forEach(function(t) {
+    var na = !t.available;
+    var pc = na ? '#94a3b8' : (t.pressure>=0.6 ? '#dc2626' : t.pressure>=0.35 ? '#d97706' : '#16a34a');
+    var pbg = na ? '#f8fafc' : (t.pressure>=0.6 ? '#fef2f2' : t.pressure>=0.35 ? '#fef3c7' : '#f0fdf4');
+    var barW = na ? 0 : Math.round(t.pressure*100);
+    h += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 11px;margin-bottom:6px;background:#fff">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="font-size:10.5px;font-weight:800;color:#1e293b">' + E(t.name) + ' <span style="font-size:8px;color:#94a3b8;font-weight:600">w' + t.weight + '%</span></div><div style="font-size:9px;font-weight:800;color:' + pc + ';background:' + pbg + ';border-radius:8px;padding:2px 8px">' + (na?'N/A':E(t.verdict)) + '</div></div>';
+    if (!na) {
+      h += '<div style="display:flex;align-items:center;gap:6px;margin-top:4px"><div style="flex:1;height:5px;background:#e2e8f0;border-radius:3px;overflow:hidden"><div style="height:100%;width:' + barW + '%;background:' + pc + '"></div></div><span style="font-size:8px;color:#94a3b8;font-family:JetBrains Mono,monospace">pressure ' + barW + '</span></div>';
+    }
+    if (t.evidence && t.evidence.length) {
+      h += '<div style="font-size:9px;color:#64748b;margin-top:4px;line-height:1.5">' + t.evidence.map(function(e){return '· ' + E(e);}).join('<br>') + '</div>';
+    }
+    h += '</div>';
+  });
+  // daily question + note
+  h += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px 12px;margin-top:8px;font-size:10px;color:#334155;font-style:italic">“' + E(d.daily_question||'') + '”</div>';
+  h += '<div style="font-size:8px;color:#94a3b8;line-height:1.4;margin-top:6px">' + E(d.data_note||'') + '</div>';
+  return h;
 };
 
 window._renderExitEngine = function(d) {

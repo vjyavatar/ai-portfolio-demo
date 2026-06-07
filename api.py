@@ -6025,6 +6025,333 @@ _smart_exit_cache = {}
 _SMART_EXIT_TTL = 1800  # 30 minutes
 
 
+
+# ═══════════════════ SMART EXIT ENGINE v2 (institutional, tiered) ═══════════════════
+# Seven weighted tiers per SMART_EXIT_REQUIREMENTS.md. Honest-NULL: tiers without data
+# report available=False and are EXCLUDED from the weighted denominator (re-normalised).
+# Polarity: each tier yields an "exit pressure" 0..1 (1 = max reason to leave). keep_score
+# = 100 - weighted_pressure. Multiple independent tier failures (or a hard Tier-1 break)
+# are REQUIRED before any SELL-side verdict.
+
+_SE2_WEIGHTS = {"risk": 25, "trend": 20, "distribution": 15, "rs": 15,
+                "earnings": 15, "leadership": 5, "valuation": 5}
+
+
+def _se2_clamp(x, lo=0.0, hi=1.0):
+    try:
+        x = float(x)
+    except Exception:
+        return lo
+    if x != x or x in (float("inf"), float("-inf")):  # NaN / inf guard
+        return lo
+    return lo if x < lo else hi if x > hi else x
+
+
+def _se2_sma(a, n):
+    return (sum(a[-n:]) / n) if len(a) >= n else None
+
+
+def _se2_ema(a, n):
+    if len(a) < n:
+        return None
+    k = 2.0 / (n + 1)
+    e = sum(a[:n]) / n
+    for x in a[n:]:
+        e = x * k + e * (1 - k)
+    return e
+
+
+def _se2_adx(hi, lo, c, n=14):
+    if len(c) < n * 3:
+        return None
+    trs, pdm, ndm = [], [], []
+    for i in range(1, len(c)):
+        up = hi[i] - hi[i - 1]; dn = lo[i - 1] - lo[i]
+        pdm.append(up if (up > dn and up > 0) else 0.0)
+        ndm.append(dn if (dn > up and dn > 0) else 0.0)
+        trs.append(max(hi[i] - lo[i], abs(hi[i] - c[i - 1]), abs(lo[i] - c[i - 1])))
+
+    def smooth(x):
+        s = sum(x[:n]); out = [s]
+        for v in x[n:]:
+            s = s - s / n + v; out.append(s)
+        return out
+    atr, pdi, ndi = smooth(trs), smooth(pdm), smooth(ndm)
+    dx = []
+    for i in range(len(atr)):
+        a = atr[i] or 1e-9
+        p = 100 * pdi[i] / a; q = 100 * ndi[i] / a
+        dx.append(100 * abs(p - q) / ((p + q) or 1e-9))
+    return (sum(dx[-n:]) / n) if len(dx) >= n else None
+
+
+def _se2_dist_days(c, v, win=25):
+    cnt = 0
+    for i in range(max(1, len(c) - win), len(c)):
+        if c[i] < c[i - 1] * 0.998 and v[i] > v[i - 1]:
+            cnt += 1
+    return cnt
+
+
+def _se2_compute(c, v, hi, lo, bc=None, sc=None, info=None, entry_price=None):
+    info = info or {}
+    n = len(c); close = c[-1]
+    tiers = []
+
+    def add(key, name, available, pressure, verdict, evidence):
+        tiers.append({"key": key, "name": name, "weight": _SE2_WEIGHTS[key],
+                      "available": available,
+                      "pressure": (round(pressure, 3) if available else None),
+                      "verdict": verdict, "evidence": evidence})
+
+    sma50 = _se2_sma(c, 50); sma150 = _se2_sma(c, 150); sma200 = _se2_sma(c, 200)
+    ema21 = _se2_ema(c, 21); ema50 = _se2_ema(c, 50)
+    long_ma = sma200 or sma150 or sma50
+    dd = _se2_dist_days(c, v, 25)
+    recent_support = min(lo[-40:-2]) if n >= 42 else (min(lo[:-1]) if n > 1 else close)
+    peak60 = max(c[-60:]) if n >= 60 else max(c)
+
+    # ── TIER 1 — Capital Preservation (25%) ──
+    ev1 = []
+    s_below = 0.0
+    if long_ma:
+        if close < long_ma:
+            s_below = _se2_clamp((long_ma - close) / long_ma / 0.10)
+            ev1.append(f"Below long MA ({'200' if sma200 else '150' if sma150 else '50'}d) by {round((1-close/long_ma)*100,1)}%")
+        else:
+            ev1.append(f"Above long MA — structure intact")
+    s_supp = 0.6 if (n >= 42 and close < recent_support) else 0.0
+    if s_supp:
+        ev1.append("Broke recent swing support")
+    s_dd = _se2_clamp(dd / 6.0)
+    ev1.append(f"{dd} distribution days (last 25)")
+    draw = (peak60 - close) / peak60 if peak60 else 0
+    s_draw = _se2_clamp((draw - 0.10) / 0.25)
+    if draw > 0.10:
+        ev1.append(f"{round(draw*100,1)}% off 60-day high")
+    p1 = _se2_clamp(0.40 * s_below + 0.20 * s_supp + 0.25 * s_dd + 0.15 * s_draw)
+    add("risk", "Capital Preservation", True, p1,
+        ("Break — reduce/hedge" if p1 >= 0.6 else "Stress building" if p1 >= 0.35 else "Protected"), ev1)
+
+    # ── TIER 2 — Trend Integrity (20%) ──
+    ev2 = []; broken = 0; checks = 0
+    if ema21 is not None and ema50 is not None:
+        checks += 1; broken += (0 if ema21 > ema50 else 1)
+    if sma50 and sma150:
+        checks += 1; broken += (0 if sma50 > sma150 else 1)
+    if sma150 and sma200:
+        checks += 1; broken += (0 if sma150 > sma200 else 1)
+    adx = _se2_adx(hi, lo, c, 14)
+    if checks:
+        ev2.append(f"MA stack: {checks-broken}/{checks} aligned")
+        below50 = 1.0 if (sma50 and close < sma50) else 0.0
+        adx_w = (1 - _se2_clamp(adx / 30.0)) if adx is not None else 0.5
+        if adx is not None:
+            ev2.append(f"ADX {round(adx,1)} ({'trending' if adx>=25 else 'weak/choppy'})")
+        p2 = _se2_clamp(0.6 * (broken / checks) + 0.2 * below50 + 0.2 * adx_w)
+        add("trend", "Trend Integrity", True, p2,
+            ("Broken — exit-side" if p2 >= 0.6 else "Weakening — trim" if p2 >= 0.35 else "Strong — hold"), ev2)
+    else:
+        add("trend", "Trend Integrity", False, None, "N/A — insufficient history", ["Need ≥50 closes"])
+
+    # ── TIER 3 — Distribution (15%) ──
+    ev3 = []
+    s_dd3 = _se2_clamp(dd / 6.0); ev3.append(f"{dd} distribution days (last 25)")
+    if n >= 21:
+        upv = sum(v[i] for i in range(n - 20, n) if c[i] >= c[i - 1])
+        dnv = sum(v[i] for i in range(n - 20, n) if c[i] < c[i - 1])
+        dvr = (dnv / upv) if upv else 2.0
+        s_dvr = _se2_clamp((dvr - 1.0) / 0.8)
+        ev3.append(f"Down/Up volume ratio {round(dvr,2)}")
+    else:
+        s_dvr = 0.0
+    fail_bo = 0.0
+    if n >= 12:
+        prior_high = max(hi[-30:-3]) if n >= 33 else max(hi[:-3])
+        if max(hi[-5:]) > prior_high and close < prior_high:
+            fail_bo = 0.5; ev3.append("Failed breakout — poked above then closed back under")
+    p3 = _se2_clamp(0.5 * s_dd3 + 0.3 * s_dvr + 0.2 * fail_bo)
+    add("distribution", "Distribution", True, p3,
+        ("Heavy distribution" if p3 >= 0.6 else "Some selling" if p3 >= 0.35 else "Accumulation/neutral"),
+        ev3 + ["Dark-pool / block prints: N/A on this feed"])
+
+    # ── TIER 4 — Relative Strength (15%) ──
+    if bc and len(bc) >= 60 and n >= 60:
+        ml = min(n, len(bc)); cc = c[-ml:]; bb = bc[-ml:]
+        rl = [cc[i] / bb[i] for i in range(ml) if bb[i]]
+        ev4 = []
+        rl_ma = _se2_sma(rl, 50)
+        rs_below = 1.0 if (rl_ma and rl[-1] < rl_ma) else 0.0
+        rs_slope = (rl[-1] - rl[-21]) / abs(rl[-21]) if len(rl) >= 21 and rl[-21] else 0
+        s_slope = _se2_clamp((-rs_slope) / 0.08)
+        ev4.append(f"RS line vs benchmark {'below' if rs_below else 'above'} its 50d MA; 1-mo slope {round(rs_slope*100,1)}%")
+        sect = 0.0
+        if sc and len(sc) >= 60:
+            mls = min(n, len(sc))
+            st_ret = (c[-1] / c[-mls]) - 1 if c[-mls] else 0
+            se_ret = (sc[-1] / sc[-mls]) - 1 if sc[-mls] else 0
+            if st_ret < se_ret:
+                sect = _se2_clamp((se_ret - st_ret) / 0.15)
+                ev4.append(f"Lagging sector by {round((se_ret-st_ret)*100,1)}pts")
+            else:
+                ev4.append("Leading or matching sector")
+        else:
+            ev4.append("Sector ETF unavailable — RS vs broad index only")
+        p4 = _se2_clamp(0.5 * rs_below + 0.3 * s_slope + 0.2 * sect)
+        add("rs", "Relative Strength", True, p4,
+            ("RS broken" if p4 >= 0.6 else "RS softening" if p4 >= 0.35 else "RS firm"), ev4)
+    else:
+        add("rs", "Relative Strength", False, None, "N/A — benchmark history unavailable", [])
+
+    # ── TIER 5 — Earnings Thesis (15%) — DATA-GATED ──
+    rg = info.get("revenueGrowth"); eg = info.get("earningsGrowth")
+    if rg is not None or eg is not None:
+        ev5 = []
+        s = 0.0
+        if rg is not None:
+            ev5.append(f"Revenue growth {round(rg*100,1)}%")
+            s = max(s, _se2_clamp((0.10 - rg) / 0.30))
+        if eg is not None:
+            ev5.append(f"Earnings growth {round(eg*100,1)}%")
+            s = max(s, _se2_clamp((0.10 - eg) / 0.30))
+        add("earnings", "Earnings Thesis", True, s,
+            ("Thesis decaying" if s >= 0.6 else "Slowing" if s >= 0.35 else "Intact"), ev5)
+    else:
+        add("earnings", "Earnings Thesis", False, None,
+            "N/A — needs a fundamentals/estimates feed", ["Revenue/EPS growth, guidance, revisions not on this feed"])
+
+    # ── TIER 6 — Leadership (5%) ──
+    if n >= 60:
+        hi60 = max(c[-60:]); near = sum(1 for x in c[-60:] if x >= hi60 * 0.98)
+        freq = near / 60.0
+        ev6 = [f"Near 60-day high on {near}/60 sessions"]
+        p6 = _se2_clamp(1.0 - freq * 3.0)
+        add("leadership", "Leadership", True, p6,
+            ("Laggard" if p6 >= 0.6 else "Fading" if p6 >= 0.35 else "Leader"), ev6)
+    else:
+        add("leadership", "Leadership", False, None, "N/A — insufficient history", [])
+
+    # ── TIER 7 — Valuation (5%) — DATA-GATED ──
+    peg = info.get("pegRatio") or info.get("trailingPegRatio"); pe = info.get("trailingPE")
+    if peg is not None or pe is not None:
+        ev7 = []; s = 0.0
+        if peg is not None:
+            ev7.append(f"PEG {round(peg,2)}"); s = max(s, _se2_clamp((peg - 2.0) / 1.5))
+        if pe is not None:
+            ev7.append(f"P/E {round(pe,1)}"); s = max(s, _se2_clamp((pe - 40) / 40.0))
+        add("valuation", "Valuation", True, s,
+            ("Stretched" if s >= 0.6 else "Rich" if s >= 0.35 else "Reasonable"), ev7)
+    else:
+        add("valuation", "Valuation", False, None,
+            "N/A — needs fundamentals", ["Forward PE/PEG/EV-Sales/FCF not on this feed"])
+
+    # ── Compose: weighted pressure over AVAILABLE tiers only (honest-NULL) ──
+    avail = [t for t in tiers if t["available"]]
+    wsum = sum(t["weight"] for t in avail) or 1
+    pressure = sum(t["pressure"] * t["weight"] for t in avail) / wsum
+    keep = round(100 - pressure * 100)
+    exit_conf = round(pressure * 100)
+    failed = [t["name"] for t in avail if t["pressure"] >= 0.6]
+    t1 = next((t for t in tiers if t["key"] == "risk"), None)
+    t1_hard = bool(t1 and t1["available"] and t1["pressure"] >= 0.7)
+
+    # ── Matrix verdict on KEEP score ──
+    if keep >= 90:   action, urgency, color = "STRONG HOLD / ADD", "REVIEW QUARTERLY", "green"
+    elif keep >= 80: action, urgency, color = "HOLD", "MONITOR MONTHLY", "green"
+    elif keep >= 70: action, urgency, color = "HOLD WITH CAUTION", "WATCH WEEKLY", "lime"
+    elif keep >= 60: action, urgency, color = "TRIM 25%", "WATCH WEEKLY", "amber"
+    elif keep >= 50: action, urgency, color = "TRIM 50%", "ACT THIS WEEK", "amber"
+    elif keep >= 40: action, urgency, color = "EXIT MAJORITY", "ACT NOW", "red"
+    else:            action, urgency, color = "FULL EXIT", "ACT NOW", "red"
+
+    # ── Guard: multiple independent failures required before SELL-side ──
+    guard_note = None
+    sell_side = action in ("EXIT MAJORITY", "FULL EXIT")
+    if sell_side and not (len(failed) >= 2 or t1_hard):
+        action, urgency, color = "TRIM 50%", "ACT THIS WEEK", "amber"
+        guard_note = "Single-dimension stress only — guard requires ≥2 independent tier failures (or a hard capital-preservation break) before a full exit."
+
+    return {
+        "keep_score": keep, "exit_confidence_score": exit_conf,
+        "verdict": action, "urgency": urgency, "color": color,
+        "failed_tiers": failed, "failed_count": len(failed), "t1_hard_break": t1_hard,
+        "guard_note": guard_note, "tiers": tiers,
+        "available_weight": wsum, "_engine": "smart_exit_v2",
+        "daily_question": "If I had fresh capital today, knowing everything I know now, would I still buy this stock?",
+    }
+
+
+@app.get("/api/smart-exit-v2")
+async def smart_exit_v2(symbol: str = "", region: str = "US", entry_price: float = 0.0):
+    import asyncio as _aio, time as _t
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    t0 = _t.time()
+    yf_sym = symbol if region == "US" else f"{symbol}.NS"
+    bench_sym = _MCOC_BENCH.get(region, "SPY")
+
+    def _hist(sym, period="1y"):
+        try:
+            import yfinance as yf
+            h = yf.Ticker(sym).history(period=period, interval="1d", auto_adjust=True, timeout=8)
+            if h is None or h.empty or len(h) < 40:
+                return None
+            return {"closes": [float(x) for x in h["Close"].dropna()],
+                    "volumes": [float(x) for x in h["Volume"].dropna()],
+                    "highs": [float(x) for x in h["High"].dropna()],
+                    "lows": [float(x) for x in h["Low"].dropna()]}
+        except Exception:
+            return None
+
+    def _info():
+        try:
+            import yfinance as yf
+            return yf.Ticker(yf_sym).info or {}
+        except Exception:
+            return {}
+
+    _lp = _aio.get_event_loop()
+    async def _b(fn, *a, timeout=10, default=None):
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, fn, *a), timeout=timeout)
+        except Exception:
+            return default
+
+    stock = await _b(_hist, yf_sym, timeout=11)
+    if not stock:
+        return {"success": False, "symbol": symbol, "region": region,
+                "error": "price history unavailable", "_engine": "smart_exit_v2"}
+    info = await _b(_info, timeout=9, default={}) or {}
+    bench = await _b(_hist, bench_sym, timeout=9)
+    sector_etf = None
+    try:
+        sector_etf = _get_sector_etf(info.get("sector"), region)
+    except Exception:
+        sector_etf = None
+    sector = await _b(_hist, sector_etf, timeout=9) if sector_etf else None
+
+    r = _se2_compute(stock["closes"], stock["volumes"], stock["highs"], stock["lows"],
+                     bc=(bench or {}).get("closes") if bench else None,
+                     sc=(sector or {}).get("closes") if sector else None,
+                     info=info, entry_price=(entry_price or None))
+    r["success"] = True
+    r["symbol"] = symbol
+    r["region"] = region
+    r["current_price"] = round(stock["closes"][-1], 2)
+    r["bench_symbol"] = bench_sym
+    r["sector_etf"] = sector_etf
+    if entry_price and entry_price > 0:
+        r["entry_price"] = entry_price
+        r["gain_pct"] = round((stock["closes"][-1] - entry_price) / entry_price * 100, 2)
+    r["elapsed_sec"] = round(_t.time() - t0, 2)
+    r["data_note"] = ("Tiers compute from price/volume + benchmark/sector. Earnings Thesis & "
+                      "Valuation are best-effort fundamentals (N/A when the feed is silent, and "
+                      "then excluded from the weighted denominator). Dark-pool/block prints and "
+                      "13F flow are not available. Research tooling, not investment advice.")
+    return r
+
+
 @app.get("/api/smart-exit-engine")
 async def smart_exit_engine(symbol: str = "", region: str = "US",
                             entry_price: float = 0.0, refresh: int = 0):
