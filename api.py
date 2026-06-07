@@ -29476,7 +29476,7 @@ def _mcoc_subscores(stock, bench, vix_regime, theme_rank, regime_struct):
     return out
 
 
-def _mcoc_entry_plan(stock, subs, theme_rank, score):
+def _mcoc_entry_plan(stock, subs, theme_rank, score, bench=None):
     """Institutional entry hierarchy (O'Neil/Minervini/Weinstein/Qullamaggie):
     cheat / pivot / retest / chase / avoid zones around a well-defined pivot, the
     'single best price', a staged 40/30/30 plan, and a requirements checklist.
@@ -29602,18 +29602,86 @@ def _mcoc_entry_plan(stock, subs, theme_rank, score):
         "reasons": reasons[:6], "concerns": concerns[:6], "verdict": verdict,
     }
 
+    # ── Stage pipeline + real RS line + adaptive best price (price/volume + bench only) ──
+    acc_v = sub("accumulation") or 0; vcp_v = sub("vcp") or 0; vd_v = sub("voldry") or 0; rs_v = sub("rs") or 0
+    PIPE = ["Accumulation", "VCP", "Volume Dry-Up", "Pivot", "Breakout", "Retest", "Expansion"]
+    # Stage uses a STABLE base pivot (excludes the last 8 bars) so a recent breakout
+    # high isn't absorbed into the pivot — otherwise "broke out then retested" can
+    # never register. Separate from the entry pivot `piv` on purpose.
+    stage_piv = max(hi[-45:-8]) if n >= 45 else piv
+    peak8 = max(hi[-8:])
+    broke_out = peak8 >= stage_piv * 1.02
+    if close > stage_piv * 1.05 and not (broke_out and close <= stage_piv * 1.02):
+        stage = "Expansion"
+    elif broke_out and stage_piv * 0.97 <= close <= stage_piv * 1.02:
+        stage = "Retest"
+    elif stage_piv < close <= stage_piv * 1.05:
+        stage = "Breakout"
+    elif stage_piv * 0.97 <= close <= stage_piv:
+        stage = "Pivot"
+    elif vd_v >= 0.6:
+        stage = "Volume Dry-Up"
+    elif vcp_v >= 0.6:
+        stage = "VCP"
+    else:
+        stage = "Accumulation"
+    si = PIPE.index(stage)
+    next_stage = PIPE[si + 1] if si < len(PIPE) - 1 else "Mature \u2014 manage the position"
+
+    rs_line = None; rs_new_high = False; rs_rising = False; rs_before_price = False
+    try:
+        bc = bench.get("closes") if isinstance(bench, dict) else None
+        if bc and len(bc) >= 30 and len(c) >= 30:
+            ml = min(len(c), len(bc)); cc = c[-ml:]; bb = bc[-ml:]
+            rl = [cc[i] / bb[i] for i in range(ml) if bb[i]]
+            if len(rl) >= 30:
+                look = rl[-126:] if len(rl) >= 126 else rl
+                rs_line = round(rl[-1], 4)
+                rs_new_high = rl[-1] >= max(look) * 0.999
+                rs_rising = rl[-1] > (_mcoc_mean(rl[-10:-1]) or rl[-1])
+                phi = hi[-126:] if n >= 126 else hi
+                price_new_high = close >= max(phi) * 0.999
+                rs_before_price = rs_new_high and (not price_new_high) and (close < piv)
+    except Exception:
+        rs_line = None
+
+    bq = min(1.0, rvol / 2.0)
+    _comps = [("Accumulation", 15, acc_v), ("VCP", 20, vcp_v), ("Volume Dry-Up", 15, vd_v),
+              ("RS Leadership", 20, rs_v), ("Breakout Quality", 20, bq)]
+    _wsum = sum(w for _, w, _ in _comps)
+    stage_quality = round(sum(w * val for _, w, val in _comps) / _wsum * 100)
+    stage_components = [{"name": nm, "weight": w, "value": round(val * 100)} for nm, w, val in _comps]
+    stage_components.append({"name": "Institutional Sponsorship", "weight": 10, "value": None})
+
+    explosive = (rvol >= 3.0 and rs_v >= 0.7 and rs_rising)
+    if explosive:
+        best_price = (f"Buy the breakout NOW \u2014 explosive thrust (RVOL {rvol}\u00d7 \u2265 3, RS rising). "
+                      f"This is the skip-the-wait case; don\u2019t hold out for a retest.")
+        best_mode = "breakout-now"
+    else:
+        best_price = (f"Prefer the retest \u2014 buy a pullback that holds \u2248 {z(piv)}, or the first close above "
+                      f"{z(piv)} on RVOL \u2265 1.5\u20132\u00d7 while still within 5% (\u2264 {z(piv * 1.05)}).")
+        best_mode = "retest-preferred"
+
+    stage_obj = {"current": stage, "next": next_stage, "index": si, "pipeline": PIPE,
+                 "sweet_spot": "Pivot Breakout \u2192 First Retest", "sweet_idx": [3, 5],
+                 "quality": stage_quality, "components": stage_components,
+                 "rs_line": rs_line, "rs_new_high": rs_new_high, "rs_rising": rs_rising,
+                 "rs_before_price": rs_before_price}
+
     return {
         "pivot": z(piv), "current": z(close), "pct_from_pivot": pct_from_piv,
         "buy_trigger": z(piv), "best_entry_lo": z(piv), "best_entry_hi": z(piv * 1.01),
         "max_pay": z(piv * 1.05), "needs_to_rise_pct": round((piv / close - 1) * 100, 1),
         "rvol": rvol_v, "rvol_confirmed": rvol_v >= 1.5, "stop_ref": stop_ref,
         "tiers": tiers, "current_zone": cz, "action": action,
-        "best_price": f"First close above {z(piv)} on RVOL \u2265 1.5\u20132\u00d7, while still within 5% (\u2264 {z(piv * 1.05)}).",
+        "best_price": best_price, "best_mode": best_mode,
         "requirements": reqs, "requirements_met": met, "requirements_checkable": checkable,
         "size_guidance": ("Full staged size \u2014 score \u226590 and \u22654 requirements met." if full_size
                           else "Reduce size \u2014 score <90 and/or not all requirements met."),
         "staged_plan": staged,
         "framework": framework,
+        "stage": stage_obj,
     }
 
 
@@ -29714,7 +29782,7 @@ async def momentum_coc_score(symbol: str = "", region: str = "US"):
             "dimensions": dims, "excluded": excluded,
             "weights_basis": "v1 hypothesis (O'Neil/Minervini/Weinstein) — pending DNA re-derivation",
             "entry_ref_price": round(stock["closes"][-1], 2),
-            "entry_plan": _mcoc_entry_plan(stock, subs, theme_rank, score),
+            "entry_plan": _mcoc_entry_plan(stock, subs, theme_rank, score, bench),
             "bench_symbol": bench_sym,
             "bench_ref_price": round(bench["closes"][-1], 2) if bench else None,
             "vix": vix_val, "vix_regime": vix_regime,

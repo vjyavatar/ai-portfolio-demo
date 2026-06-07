@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.2";
-window.CELESYS_BUILD_TIME = 1780790400;
-window.CELESYS_BUILD_DATE = "2026-06-07 00:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.3";
+window.CELESYS_BUILD_TIME = 1780794000;
+window.CELESYS_BUILD_DATE = "2026-06-07 01:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12930,6 +12930,33 @@ window._mcocScore = function(){
     });
 };
 
+window._mcocStagePipeline = function(s, region){
+  var E=window._esc;
+  var pipe=s.pipeline||[];
+  var h='<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:11px 14px;margin-bottom:10px">';
+  h+='<div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:9px">\uD83D\uDD2C STAGE PIPELINE \u2014 where this stock is in its lifecycle</div>';
+  h+='<div style="display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding-bottom:4px">';
+  pipe.forEach(function(name,i){
+    var cur=(i===s.index), done=(i<s.index), sweet=(s.sweet_idx && i>=s.sweet_idx[0] && i<=s.sweet_idx[1]);
+    var bg=cur?'#7c3aed':done?'#ede9fe':'#f8fafc', fg=cur?'#fff':done?'#7c3aed':'#94a3b8', bd=cur?'#7c3aed':sweet?'#a78bfa':'#e2e8f0';
+    h+='<div style="flex:1;min-width:60px;text-align:center"><div style="background:'+bg+';color:'+fg+';border:1.5px solid '+bd+';border-radius:7px;padding:5px 3px;font-size:8px;font-weight:800;line-height:1.15;font-family:Sora,sans-serif">'+(cur?'\u25C9 ':done?'\u2713 ':'')+E(name)+'</div>'+(sweet?'<div style="font-size:6.5px;color:#a78bfa;font-weight:700;margin-top:1px">sweet spot</div>':'<div style="height:11px"></div>')+'</div>';
+    if(i<pipe.length-1) h+='<div style="display:flex;align-items:center;color:#cbd5e1;font-size:10px;padding:6px 1px 0">\u2192</div>';
+  });
+  h+='</div>';
+  h+='<div style="font-size:10px;color:#475569;margin-top:6px"><b style="color:#7c3aed">Current:</b> '+E(s.current)+' \u00b7 <b>Next expected:</b> '+E(s.next)+' \u00b7 <b>Sweet spot:</b> '+E(s.sweet_spot)+'</div>';
+  if(s.rs_before_price) h+='<div style="margin-top:7px;background:#dcfce7;border:1px solid #86efac;border-radius:7px;padding:6px 9px;font-size:9.5px;color:#15803d"><b>\u26A1 RS line at a NEW HIGH before price</b> \u2014 the classic early-leader tell (O\u2019Neil/Minervini): relative strength is leading while price is still under the pivot.</div>';
+  else if(s.rs_new_high) h+='<div style="margin-top:7px;background:#ecfeff;border:1px solid #a5f3fc;border-radius:7px;padding:6px 9px;font-size:9.5px;color:#0e7490"><b>RS line at new highs.</b> Leadership confirmed'+(s.rs_rising?' and rising':'')+'.</div>';
+  else if(s.rs_line!=null) h+='<div style="margin-top:7px;font-size:9px;color:#64748b">RS line (vs benchmark): '+s.rs_line+(s.rs_rising?' \u00b7 rising':' \u00b7 flat/falling')+'.</div>';
+  else h+='<div style="margin-top:7px;font-size:9px;color:#94a3b8">RS line: benchmark series unavailable on this run.</div>';
+  h+='<div style="margin-top:9px;display:flex;align-items:center;gap:8px"><span style="font-size:8px;font-weight:800;color:#64748b">STAGE QUALITY</span><div style="flex:1;height:7px;background:#e2e8f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+s.quality+'%;background:#7c3aed"></div></div><span style="font-size:12px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">'+s.quality+'</span></div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">';
+  (s.components||[]).forEach(function(cp){ var na=(cp.value==null); h+='<div style="font-size:8px;color:'+(na?'#94a3b8':'#475569')+';background:'+(na?'#f8fafc':'#f1f5f9')+';border-radius:5px;padding:2px 6px">'+E(cp.name)+' <b>'+(na?'N/A':cp.value)+'</b><span style="color:#cbd5e1"> /'+cp.weight+'</span></div>'; });
+  h+='</div>';
+  h+='<div style="font-size:7.5px;color:#94a3b8;margin-top:6px">Stage is a best-effort read from price/volume structure. Institutional Sponsorship needs an ownership feed (N/A here); Earnings acceleration is a separate, unavailable factor.</div>';
+  h+='</div>';
+  return h;
+};
+
 window._mcocFramework = function(fw, sym, region){
   var E=window._esc, cur=(region==='IN')?'\u20B9':'$';
   var sc={WATCHLIST:['#64748b','#f1f5f9'],ACCUMULATION:['#2563eb','#eff6ff'],ACTIONABLE:['#16a34a','#dcfce7'],EXTENDED:['#dc2626','#fef2f2']}[fw.status]||['#64748b','#f1f5f9'];
@@ -13007,6 +13034,7 @@ window._renderMcocScore = function(d){
     var _beHi = (ep.pivot!=null)?Math.round(ep.pivot*1.01*100)/100:null;
     var _maxPay = (ep.pivot!=null)?Math.round(ep.pivot*1.05*100)/100:null;
     var _needRise = (ep.pivot!=null&&ep.current)?Math.round((ep.pivot/ep.current-1)*1000)/10:null;
+    if (ep.stage) { h += window._mcocStagePipeline(ep.stage, d.region); }
     if (ep.framework) { h += window._mcocFramework(ep.framework, (d.symbol||''), d.region); } else {
     var ph;
     if (ep.current_zone==='Below base') ph='\uD83D\uDD34 <b>No buy yet.</b> '+sym+' is '+Math.abs(ep.pct_from_pivot)+'% below the buy trigger of '+_pv+'. It must rise ~'+_needRise+'% and build a base first \u2014 then break out on strong volume.';
