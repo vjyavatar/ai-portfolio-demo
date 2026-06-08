@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.12";
-window.CELESYS_BUILD_TIME = 1780826400;
-window.CELESYS_BUILD_DATE = "2026-06-07 10:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.13";
+window.CELESYS_BUILD_TIME = 1780830000;
+window.CELESYS_BUILD_DATE = "2026-06-07 11:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -13908,6 +13908,71 @@ window._runwayLoadThesis = function(sym){
   var el=document.getElementById('runwayResult'); if(el&&el.scrollIntoView){ try{el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){} }
 };
 
+window._runwayProfile = {risk:null, horizon:'Years'};
+window._runwaySetProfile = function(k,v){
+  if(!window._runwayProfile) window._runwayProfile={risk:null,horizon:'Years'};
+  if(k==='risk' && window._runwayProfile.risk===v){ window._runwayProfile.risk=null; }
+  else { window._runwayProfile[k]=v; }
+  if(window._runwayTopData) window._renderRunwayTop(window._runwayTopData);
+};
+window._runwayWatch = function(label){
+  var m={
+    'CONFIRMED RUNWAY LEADER':'Thesis and tape agree. The main risk is paying up after a big run - watch for the stock losing relative strength or the trend stalling.',
+    'EARLY \u2014 THESIS AHEAD OF TAPE':'You would be early: the story is there but big money has not confirmed it yet. Only worth it if you believe the thesis and can wait - watch for the tape turning up.',
+    'MOMENTUM, NO DURABLE RUNWAY':'The tape is hot but the long-term case is weaker. Treat it as a momentum trade, not a hold - watch for it losing strength and set an exit.',
+    'NO EDGE YET':'Neither the thesis nor the tape is compelling right now - most likely a pass until one side improves.',
+    'STRONG THESIS \u2014 NOW CONFIRM THE TAPE':'Good story, but the live tape has not loaded or has not confirmed. Treat as a watchlist idea until institutions show up.',
+    'THESIS STILL THIN':'The long-run case here is weak - not a high-conviction idea regardless of the tape.'
+  };
+  return m[label] || 'Weigh the thesis against what the tape is doing, size small, and decide your exit before you act.';
+};
+window._runwayFit = function(it, thScore, risk, horizon){
+  var th = thScore||0;
+  var tp = it.confirmation_score;
+  var tapeKnown = (tp!=null);
+  var tapeVal = tapeKnown? tp : 50;
+  var riskLvl = ({'Medium':1,'Medium-High':2,'High':3,'Very High':4})[it.risk] || 2;
+  var spec = it.trendStrength==='Speculative'?2 : it.trendStrength==='Emerging'?1 : 0;
+  var score=0, fits=[], stretch=[];
+  if(risk==='Conservative'){
+    score = th*0.30 + tapeVal*0.50;
+    if(tapeKnown && tp>=67){ score+=8; fits.push('the tape is already confirming it'); }
+    score -= Math.max(0,riskLvl-1)*9;
+    score -= spec*14;
+    if(riskLvl<=1 && th>=80) fits.push('strong thesis with lower risk');
+    if(riskLvl>=3) stretch.push('higher risk than a steady profile usually wants');
+    if(spec>=2) stretch.push('pre-revenue / speculative');
+    if(!tapeKnown) stretch.push('tape not confirming yet');
+  } else if(risk==='Aggressive'){
+    score = th*0.45 + tapeVal*0.20 + spec*9 + (riskLvl>=3?6:0);
+    if(spec>=1) fits.push('asymmetric early-stage upside');
+    if(!tapeKnown) fits.push('still early - ahead of the crowd');
+    if(riskLvl>=3) fits.push('high risk / high reward');
+    if(th<55) stretch.push('thesis is thin even for a speculative bet');
+  } else {
+    score = th*0.38 + tapeVal*0.38;
+    score -= Math.max(0,riskLvl-2)*8;
+    score -= spec*6;
+    if(tapeKnown && tp>=67 && th>=75) fits.push('solid thesis the tape is backing');
+    if(riskLvl>=4) stretch.push('very high risk for a balanced profile');
+    if(spec>=2) stretch.push('speculative - keep it small');
+  }
+  if(horizon==='Years'){
+    score += th*0.10;
+    if(!tapeKnown) score+=4;
+    if(th>=80) fits.push('long structural runway');
+  } else {
+    if(tapeKnown){ score += (tp-50)*0.25; if(tp>=80) fits.push('strong current momentum'); }
+    else { score-=12; stretch.push('no live tape - weak fit for a short horizon'); }
+  }
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  var tier = score>=72?'Strong fit': (score>=50?'Possible fit':'Stretch');
+  var reason='';
+  if(tier==='Stretch' && stretch.length){ reason='Why it is a stretch: '+stretch.slice(0,2).join(', ')+'.'; }
+  else if(fits.length){ reason='Why it fits: '+fits.slice(0,2).join(', ')+'.'+(stretch.length?' Watch: '+stretch[0]+'.':''); }
+  else if(stretch.length){ reason='Watch: '+stretch.slice(0,2).join(', ')+'.'; }
+  return {score:score, tier:tier, reason:reason, fits:fits, stretch:stretch};
+};
 window._renderRunwayTop = function(d){
   var box=document.getElementById('runwayScreenResult'); if(!box) return;
   var E=window._esc;
@@ -13919,8 +13984,20 @@ window._renderRunwayTop = function(d){
   h+='<div style="font-size:12px;font-weight:900;color:#b45309;font-family:Sora,sans-serif;margin-bottom:3px">\uD83C\uDFAF Top Opportunities \u2014 '+(d.region==='IN'?'India':'US')+'</div>';
   h+='<div style="font-size:8.5px;color:#92400e;margin-bottom:9px">Editorial thesis as of '+E(d.as_of||'')+' (your judgment should override) \u00b7 tape computed live vs '+E(d.benchmark)+(d.cached?' \u00b7 cached':'')+(d.bench_available?'':' \u00b7 \u26A0 benchmark unavailable')+'. Tap a name to load its thesis into the framework and edit it.</div>';
   h+='<div style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:9px;font-size:9px;color:#475569;line-height:1.55"><b style="color:#b45309">&#128214; In plain English:</b> A <b>hand-picked shortlist</b> of big structural-trend ideas (AI power, nuclear, India consumer&hellip;) <b>with written reasoning</b> for each &mdash; then we check the live tape. <i>Different from</i> <b>&#128269; Scan Index for Leaders</b>, which scans the <i>whole</i> market by the tape alone with no opinion on the business. Use this for curated ideas to research and edit.</div>';
-  items.forEach(function(it,idx){
-    var th=window._runwayThesis({trend:it.trend,trendStrength:it.trendStrength,curAdopt:it.curAdopt,futAdopt:it.futAdopt,captureType:it.captureType,capture:it.capture,leader:it.leader});
+  var _pf=window._runwayProfile||{risk:null,horizon:'Years'};
+  function pbtn(k,v,lbl){ var on=_pf[k]===v; return '<button onclick="window._runwaySetProfile(\''+k+'\',\''+v+'\')" style="padding:4px 10px;border-radius:6px;font-size:9px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;border:1px solid '+(on?'#d97706':'#fde68a')+';background:'+(on?'#d97706':'#fff')+';color:'+(on?'#fff':'#b45309')+'">'+lbl+'</button>'; }
+  h+='<div style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:9px 11px;margin-bottom:9px">';
+  h+='<div style="font-size:9px;font-weight:900;color:#b45309;margin-bottom:6px">&#129518; Which fit YOU? &mdash; highlights &amp; re-sorts the list (nothing is hidden)</div>';
+  h+='<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:5px"><span style="font-size:8.5px;color:#92400e;font-weight:700;min-width:64px">Risk appetite</span>'+pbtn('risk','Conservative','Conservative')+pbtn('risk','Balanced','Balanced')+pbtn('risk','Aggressive','Aggressive')+'</div>';
+  h+='<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span style="font-size:8.5px;color:#92400e;font-weight:700;min-width:64px">Horizon</span>'+pbtn('horizon','Years','Patient (years)')+pbtn('horizon','Months','Near-term (months)')+'</div>';
+  h+=(_pf.risk?'<div style="font-size:8px;color:#16a34a;margin-top:6px;font-weight:700">&#10003; Sorted by fit for a '+E(_pf.risk.toLowerCase())+', '+(_pf.horizon==='Years'?'patient':'near-term')+' profile. Tap your risk again to clear. This is educational, not a recommendation to buy.</div>':'<div style="font-size:8px;color:#94a3b8;margin-top:6px">Pick a risk appetite to see which names fit you best &mdash; educational, not a recommendation to buy.</div>');
+  h+='</div>';
+  var prof=window._runwayProfile||{risk:null,horizon:'Years'};
+  var view=items.map(function(it){ var th=window._runwayThesis({trend:it.trend,trendStrength:it.trendStrength,curAdopt:it.curAdopt,futAdopt:it.futAdopt,captureType:it.captureType,capture:it.capture,leader:it.leader}); var fit=prof.risk?window._runwayFit(it,th.score,prof.risk,prof.horizon):null; return {it:it,th:th,fit:fit}; });
+  if(prof.risk){ view.sort(function(a,b){ return (b.fit.score)-(a.fit.score); }); }
+  else { view.sort(function(a,b){ var av=a.it.confirmation_score, bv=b.it.confirmation_score; return (bv==null?-1:bv)-(av==null?-1:av); }); }
+  view.forEach(function(row,idx){
+    var it=row.it; var th=row.th; var fit=row.fit;
     var conf=it.confirmation_score;
     var vd=window._runwayVerdict(th.score, conf);
     var tc=tone(vd.tone);
@@ -13935,11 +14012,14 @@ window._renderRunwayTop = function(d){
     if(tp.accumulation) h+=tag(tp.accumulation==='accumulating'?['#16a34a','#dcfce7']:tp.accumulation==='neutral'?['#b45309','#fef3c7']:['#dc2626','#fef2f2'],tp.accumulation);
     h+=tag(['#64748b','#f1f5f9'],it.risk||'');
     h+='</div>';
+    if(fit){ var ftc=fit.tier==='Strong fit'?['#16a34a','#dcfce7']:(fit.tier==='Possible fit'?['#b45309','#fef3c7']:['#dc2626','#fef2f2']); h+='<div style="background:'+ftc[1]+';border-radius:7px;padding:5px 8px;margin-bottom:6px"><span style="font-size:9px;font-weight:900;color:'+ftc[0]+'">'+fit.tier+' for your profile &middot; '+fit.score+'/100</span>'+(fit.reason?'<div style="font-size:8.5px;color:#475569;line-height:1.45;margin-top:2px">'+E(fit.reason)+'</div>':'')+'</div>'; }
     h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="font-size:10px;font-weight:900;color:'+tc[0]+';font-family:Sora,sans-serif">'+E(vd.label)+'</div>';
     h+='<button onclick="window._runwayLoadThesis(\''+E(it.symbol)+'\')" style="padding:3px 10px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:8.5px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">Assess \u2192</button></div>';
     h+='<div style="font-size:8px;color:#94a3b8;margin-top:3px">'+E(it.earliness||'')+'</div>';
+    h+='<div style="font-size:8.5px;color:#64748b;line-height:1.45;margin-top:3px"><b>What this means:</b> '+E(window._runwayWatch(vd.label))+'</div>';
     h+='</div>';
   });
+  h+='<div style="background:#fffaf0;border:1px dashed #f59e0b;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:8.5px;color:#92400e;line-height:1.55"><b>&#9888; Before you act (every name):</b> size each position so you could hold a 30&#8211;50% drop without being forced out &middot; decide your exit <i>before</i> you buy &middot; don&rsquo;t let one theme dominate &middot; keep money you&rsquo;ll need soon out of these &middot; most early bets fail, so expect the <i>basket</i> to work, not every name. Educational, not investment advice.</div>';
   h+='<div style="font-size:8px;color:#b45309;line-height:1.4;margin-top:4px">'+E(d.data_note||'')+'</div>';
   h+='</div>';
   box.innerHTML=h;
@@ -13999,6 +14079,7 @@ window._renderRunwayScreen = function(d){
     });
     h+='</table></div>';
   }
+  h+='<div style="background:#faf5ff;border:1px dashed #a855f7;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:8.5px;color:#6b21a8;line-height:1.55"><b>&#9888; A scan is not a buy list:</b> these names already ran &mdash; strength can reverse. Size so you could hold a 30&#8211;50% drop &middot; decide your exit before you buy &middot; don&rsquo;t chase the most extended names &middot; form your own view before acting. Educational, not investment advice.</div>';
   h+='<div style="font-size:8px;color:#94a3b8;line-height:1.4;margin-top:8px">'+E(d.universe_note||'')+' '+E(d.data_note||'')+'</div>';
   h+='</div>';
   box.innerHTML=h;
