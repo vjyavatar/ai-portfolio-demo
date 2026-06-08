@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.11";
-window.CELESYS_BUILD_TIME = 1780822800;
-window.CELESYS_BUILD_DATE = "2026-06-07 09:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.12";
+window.CELESYS_BUILD_TIME = 1780826400;
+window.CELESYS_BUILD_DATE = "2026-06-07 10:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -13918,6 +13918,7 @@ window._renderRunwayTop = function(d){
   var h='<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:11px 14px">';
   h+='<div style="font-size:12px;font-weight:900;color:#b45309;font-family:Sora,sans-serif;margin-bottom:3px">\uD83C\uDFAF Top Opportunities \u2014 '+(d.region==='IN'?'India':'US')+'</div>';
   h+='<div style="font-size:8.5px;color:#92400e;margin-bottom:9px">Editorial thesis as of '+E(d.as_of||'')+' (your judgment should override) \u00b7 tape computed live vs '+E(d.benchmark)+(d.cached?' \u00b7 cached':'')+(d.bench_available?'':' \u00b7 \u26A0 benchmark unavailable')+'. Tap a name to load its thesis into the framework and edit it.</div>';
+  h+='<div style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:9px;font-size:9px;color:#475569;line-height:1.55"><b style="color:#b45309">&#128214; In plain English:</b> A <b>hand-picked shortlist</b> of big structural-trend ideas (AI power, nuclear, India consumer&hellip;) <b>with written reasoning</b> for each &mdash; then we check the live tape. <i>Different from</i> <b>&#128269; Scan Index for Leaders</b>, which scans the <i>whole</i> market by the tape alone with no opinion on the business. Use this for curated ideas to research and edit.</div>';
   items.forEach(function(it,idx){
     var th=window._runwayThesis({trend:it.trend,trendStrength:it.trendStrength,curAdopt:it.curAdopt,futAdopt:it.futAdopt,captureType:it.captureType,capture:it.capture,leader:it.leader});
     var conf=it.confirmation_score;
@@ -13970,16 +13971,18 @@ window._renderRunwayScreen = function(d){
     return;
   }
   var rows=d.results||[];
+  function reason(r){ var b=[]; if(r.rs==='leading') b.push('beating the market'+(r.rs_excess!=null?' by '+(r.rs_excess>0?'+':'')+r.rs_excess+'%':'')); else if(r.rs==='inline') b.push('roughly matching the market'); else if(r.rs==='lagging') b.push('lagging the market'); if(r.accumulation==='accumulating') b.push('big buyers accumulating'); else if(r.accumulation==='distributing') b.push('sellers in control'); if(r.stage2&&r.near_high) b.push('uptrend near new highs'); else if(r.stage2) b.push('healthy uptrend'); else if(r.near_high) b.push('near its highs'); if(r.rs_new_high) b.push('leadership at new highs'); var s=b.length?b.join(', '):'mixed signals'; return s.charAt(0).toUpperCase()+s.slice(1); }
   function sc(v){ return v>=67?['#16a34a','#dcfce7']:v>=34?['#b45309','#fef3c7']:['#dc2626','#fef2f2']; }
   function tag(ok,mid,txt){ var c=ok?['#16a34a','#dcfce7']:mid?['#b45309','#fef3c7']:['#64748b','#f1f5f9']; return '<span style="font-size:8.5px;font-weight:800;padding:1px 6px;border-radius:7px;background:'+c[1]+';color:'+c[0]+'">'+txt+'</span>'; }
   var h='<div style="background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:11px 14px">';
   h+='<div style="font-size:11px;font-weight:900;color:#7c3aed;font-family:Sora,sans-serif;margin-bottom:3px">\uD83D\uDD0D Tape-Confirmed Leaders \u2014 '+(d.region==='IN'?'India':'US')+'</div>';
   h+='<div style="font-size:8.5px;color:#64748b;margin-bottom:8px">Ranked by the computable tape (RS vs '+E(d.benchmark)+', accumulation, breakout). Scanned '+E(String(d.completed))+'/'+E(String(d.scanned))+' in '+E(String(d.scan_time_sec))+'s'+(d.cached?' \u00b7 cached '+E(String(d.cache_age_sec))+'s ago':'')+(d.bench_available?'':' \u00b7 \u26A0 benchmark unavailable, RS limited')+'. Tap a row to assess its thesis.</div>';
+  h+='<div style="background:#fff;border:1px solid #ede9fe;border-radius:8px;padding:8px 10px;margin-bottom:9px;font-size:9px;color:#475569;line-height:1.55"><b style="color:#7c3aed">&#128214; In plain English:</b> A <b>broad scan of the whole large-cap market</b>, ranked only by what big investors are doing <b>right now</b> &mdash; relative strength (beating the market), accumulation (buying volume) and breakouts. It has <b>no view on the business</b> &mdash; it just shows where money is flowing today. <i>Different from</i> <b>&#127919; Top 10 Opportunities</b>, which is a hand-picked shortlist of big-trend ideas <i>with written reasoning</i>. Use this to spot names the market already backs, then form your own thesis.</div>';
   if(!rows.length){
     h+='<div style="padding:14px;text-align:center;color:#94a3b8;font-size:10px">No names cleared the scan (feed may be thin on this host right now).</div>';
   } else {
     h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9.5px">';
-    h+='<tr style="color:#7c3aed;text-align:left;font-weight:800"><th style="padding:4px 6px">#</th><th style="padding:4px 6px">Symbol</th><th style="padding:4px 6px">Tape</th><th style="padding:4px 6px">RS</th><th style="padding:4px 6px">Accum.</th><th style="padding:4px 6px">Breakout</th><th style="padding:4px 6px;text-align:right">Price</th><th></th></tr>';
+    h+='<tr style="color:#7c3aed;text-align:left;font-weight:800"><th style="padding:4px 6px">#</th><th style="padding:4px 6px">Symbol</th><th style="padding:4px 6px">Tape</th><th style="padding:4px 6px">RS</th><th style="padding:4px 6px">Accum.</th><th style="padding:4px 6px">Why it&rsquo;s here</th><th style="padding:4px 6px">Breakout</th><th style="padding:4px 6px;text-align:right">Price</th><th></th></tr>';
     rows.forEach(function(r,i){
       var c=sc(r.confirmation_score);
       h+='<tr style="border-top:1px solid #ede9fe">';
@@ -13988,6 +13991,7 @@ window._renderRunwayScreen = function(d){
       h+='<td style="padding:4px 6px"><span style="font-weight:900;font-family:JetBrains Mono,monospace;padding:1px 7px;border-radius:7px;background:'+c[1]+';color:'+c[0]+'">'+r.confirmation_score+'</span></td>';
       h+='<td style="padding:4px 6px">'+tag(r.rs==='leading',r.rs==='inline',(r.rs||'n/a')+(r.rs_excess!=null?' '+(r.rs_excess>0?'+':'')+r.rs_excess+'%':''))+(r.rs_new_high?' '+tag(true,false,'\u26A1'):'')+'</td>';
       h+='<td style="padding:4px 6px">'+tag(r.accumulation==='accumulating',r.accumulation==='neutral',r.accumulation||'n/a')+'</td>';
+      h+='<td style="padding:4px 6px;color:#475569;max-width:230px;line-height:1.4">'+E(reason(r))+'</td>';
       h+='<td style="padding:4px 6px">'+tag(r.stage2&&r.near_high,r.stage2||r.near_high,(r.stage2?'Stage-2':'\u2014')+(r.near_high?' \u2191high':''))+'</td>';
       h+='<td style="padding:4px 6px;text-align:right;font-family:JetBrains Mono,monospace;color:#475569">'+(d.region==='IN'?'\u20B9':'$')+E(String(r.price))+'</td>';
       h+='<td style="padding:4px 6px;text-align:right"><button onclick="window._runwayPick(\''+E(r.symbol).replace(/&#39;|\x27/g,'')+'\')" style="padding:3px 9px;background:#7c3aed;color:#fff;border:none;border-radius:5px;font-size:8.5px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">Assess \u2192</button></td>';
