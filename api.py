@@ -30854,6 +30854,287 @@ async def opportunity_runway(symbol: str = "", region: str = "US"):
     return r
 
 
+
+# ═══════════════════ RUNWAY SCREENER (tape-confirmation ranking, batch) ═══════════════════
+# Ranks a broad large-cap universe by the COMPUTABLE Layer-5 confirmation only
+# (RS leadership vs benchmark + accumulation + trend/breakout). NOT an opportunity score —
+# the runway/thesis (Layers 1-4) is the user's judgment. One batch yf.download(), then pure math.
+_RUNWAY_SCAN_CACHE = {}
+_RUNWAY_SCAN_TTL = 1800  # 30 min
+
+def _runway_extract(sub):
+    """yf.download per-ticker subframe -> {closes,highs,lows,volumes} for _oppr_confirm."""
+    try:
+        closes = [float(x) for x in sub["Close"].tolist()]
+        highs  = [float(x) for x in sub["High"].tolist()]
+        lows   = [float(x) for x in sub["Low"].tolist()]
+        vols   = [float(x) for x in sub["Volume"].tolist()]
+    except Exception:
+        return None
+    if len(closes) < 60:
+        return None
+    if any(x != x for x in closes):   # NaN guard (defensive; upstream dropna)
+        return None
+    return {"closes": closes, "highs": highs, "lows": lows, "volumes": vols}
+
+
+@app.get("/api/runway-screener")
+async def runway_screener(region: str = "US", limit: int = 40, force: int = 0):
+    import asyncio as _aio, time as _time
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+    try: limit = max(5, min(int(limit or 40), 100))
+    except Exception: limit = 40
+
+    cached = _RUNWAY_SCAN_CACHE.get(region)
+    if cached and not force and (_time.time() - cached["ts"]) < _RUNWAY_SCAN_TTL:
+        out = dict(cached["data"]); out["cached"] = True
+        out["cache_age_sec"] = int(_time.time() - cached["ts"])
+        out["results"] = cached["data"]["results"][:limit]
+        return out
+
+    universe = list(dict.fromkeys(_FIND_SIMILAR_US_UNIVERSE if region == "US" else (_FIND_SIMILAR_IN_UNIVERSE or [])))
+    bench_sym = _MCOC_BENCH.get(region, "SPY")
+    yf_syms = [(s if region == "US" else s + ".NS") for s in universe]
+    all_syms = yf_syms + [bench_sym]
+    t0 = _time.time()
+
+    import yfinance as yf
+    def _dl():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        return yf.download(tickers=" ".join(all_syms), period="1y", interval="1d",
+                           group_by="ticker", progress=False, threads=True, auto_adjust=False)
+    try:
+        hist = await _aio.wait_for(_aio.get_event_loop().run_in_executor(None, _dl), timeout=75)
+    except Exception:
+        return {"success": False, "region": region,
+                "error": "batch price download failed or timed out (the feed may be blocked/slow on this host).",
+                "_engine": "runway_screener_v1"}
+    if hist is None or len(hist) == 0:
+        return {"success": False, "region": region, "error": "no price data returned",
+                "_engine": "runway_screener_v1"}
+
+    def _sub(sym):
+        try:
+            if sym not in hist.columns.get_level_values(0): return None
+            return hist[sym].dropna()
+        except Exception:
+            return None
+
+    bench = None
+    bsub = _sub(bench_sym)
+    if bsub is not None and len(bsub) >= 130:
+        try: bench = {"closes": [float(x) for x in bsub["Close"].tolist()]}
+        except Exception: bench = None
+
+    rows = []; completed = 0
+    for sym, ys in zip(universe, yf_syms):
+        sub = _sub(ys)
+        if sub is None: continue
+        stock = _runway_extract(sub)
+        if not stock: continue
+        try:
+            r = _oppr_confirm(stock, bench, {})
+        except Exception:
+            continue
+        completed += 1
+        if r.get("confirmation_score") is None: continue
+        rows.append({
+            "symbol": sym, "confirmation_score": r["confirmation_score"],
+            "rs": r["rs"], "rs_excess": r["rs_excess"], "rs_new_high": r["rs_new_high"],
+            "accumulation": r["accumulation"], "up_down_vol": r["up_down_vol"],
+            "stage2": r["stage2"], "near_high": r["near_high"],
+            "price": round(stock["closes"][-1], 2),
+        })
+
+    rows.sort(key=lambda x: (x["confirmation_score"],
+                             1 if x["rs"] == "leading" else 0,
+                             1 if x["near_high"] else 0,
+                             x["rs_excess"] if x["rs_excess"] is not None else -999),
+              reverse=True)
+    elapsed = round(_time.time() - t0, 1)
+    data = {
+        "success": True, "region": region, "benchmark": bench_sym,
+        "scanned": len(universe), "completed": completed, "failed": len(universe) - completed,
+        "scan_time_sec": elapsed, "bench_available": bench is not None,
+        "universe_note": "~%d broad large-cap names (a wide market scan, not the exact full-index constituent list)." % len(universe),
+        "data_note": ("Ranks the TAPE-confirmation half only \u2014 RS leadership vs %s, accumulation (up/down volume), "
+                      "and trend/breakout \u2014 computed from price/volume. This is NOT an opportunity score: the runway "
+                      "and thesis (Layers 1-4) are your judgment. Use this to shortlist, then assess each name's thesis. "
+                      "Earnings/fundamentals are N/A on this host. Research tooling, not advice." % bench_sym),
+        "results": rows[:limit],
+        "_engine": "runway_screener_v1",
+    }
+    _RUNWAY_SCAN_CACHE[region] = {"ts": _time.time(), "data": dict(data, results=rows)}
+    return data
+
+
+
+# ═══════════════════ RUNWAY TOP OPPORTUNITIES (curated editorial thesis + live tape) ═══════════════════
+# The Layers 1-4 (trend/runway/value-capture/leader) below are a CURATED EDITORIAL thesis
+# (a dated research snapshot, not a live computation and not advice). Layer 5 (tape) is computed
+# live per name. Trends move — this list is meant to be re-examined and overridden by the user.
+_RUNWAY_TOP_AS_OF = "2026-06-08"
+_RUNWAY_TOP_OPPS = {
+  "US": [
+    {"symbol":"GEV","name":"GE Vernova","trend":"AI infrastructure","trendStrength":"Strong",
+     "curAdopt":"15","futAdopt":"75","captureType":"Picks-and-shovels","capture":"Yes",
+     "leader":{"moat":"Yes","share":"Yes","exec":"Yes","pricing":"Partial","balance":"Yes"},
+     "why":"Grid + gas turbines + electrification; data-center orders tripled in 2025.",
+     "risk":"Medium","earliness":"Trend early, price already re-rated"},
+    {"symbol":"ETN","name":"Eaton","trend":"AI infrastructure","trendStrength":"Strong",
+     "curAdopt":"15","futAdopt":"75","captureType":"Picks-and-shovels","capture":"Yes",
+     "leader":{"moat":"Yes","share":"Yes","exec":"Yes","pricing":"Partial","balance":"Yes"},
+     "why":"Grid-to-chip electrical path + liquid cooling (Boyd Thermal).",
+     "risk":"Medium","earliness":"Large-cap, partly priced in"},
+    {"symbol":"VRT","name":"Vertiv","trend":"AI infrastructure","trendStrength":"Strong",
+     "curAdopt":"15","futAdopt":"75","captureType":"Picks-and-shovels","capture":"Yes",
+     "leader":{"moat":"Yes","share":"Yes","exec":"Yes","pricing":"Partial","balance":"Partial"},
+     "why":"Thermal management / cooling for AI racks.",
+     "risk":"Medium-High","earliness":"Extended after a large run"},
+    {"symbol":"BE","name":"Bloom Energy","trend":"AI infrastructure","trendStrength":"Emerging",
+     "curAdopt":"8","futAdopt":"55","captureType":"Picks-and-shovels","capture":"Partial",
+     "leader":{"moat":"Partial","share":"Partial","exec":"Partial","pricing":"Partial","balance":"No"},
+     "why":"Behind-the-meter fuel cells when the grid can't deliver.",
+     "risk":"High","earliness":"Earlier, profitability unproven"},
+    {"symbol":"LEU","name":"Centrus Energy","trend":"Energy transition","trendStrength":"Emerging",
+     "curAdopt":"2","futAdopt":"40","captureType":"Toll-road / Infrastructure","capture":"Yes",
+     "leader":{"moat":"Yes","share":"Yes","exec":"Partial","pricing":"Yes","balance":"Partial"},
+     "why":"Only licensed domestic HALEU fuel supplier — the toll-collector for advanced nuclear.",
+     "risk":"High","earliness":"Early; ramps as SMRs deploy"},
+    {"symbol":"OKLO","name":"Oklo","trend":"Energy transition","trendStrength":"Speculative",
+     "curAdopt":"2","futAdopt":"40","captureType":"Platform / Network","capture":"Partial",
+     "leader":{"moat":"Partial","share":"No","exec":"Partial","pricing":"No","balance":"Partial"},
+     "why":"Micro-SMR developer for behind-the-meter data-center power.",
+     "risk":"Very High","earliness":"Pre-revenue moonshot — tiny size only"},
+    {"symbol":"NVDA","name":"NVIDIA","trend":"AI infrastructure","trendStrength":"Strong",
+     "curAdopt":"20","futAdopt":"75","captureType":"Toll-road / Infrastructure","capture":"Yes",
+     "leader":{"moat":"Yes","share":"Yes","exec":"Yes","pricing":"Yes","balance":"Yes"},
+     "why":"Compute toll-road for both digital AI and physical AI (Isaac robotics).",
+     "risk":"Medium","earliness":"Not early; mega-cap leader"},
+    {"symbol":"CRDO","name":"Credo Technology","trend":"AI infrastructure","trendStrength":"Emerging",
+     "curAdopt":"12","futAdopt":"65","captureType":"Picks-and-shovels","capture":"Yes",
+     "leader":{"moat":"Partial","share":"Partial","exec":"Yes","pricing":"Partial","balance":"Yes"},
+     "why":"High-speed, power-efficient connectivity inside AI data centers.",
+     "risk":"High","earliness":"Smaller-cap, earlier"},
+  ],
+  "IN": [
+    {"symbol":"DIXON","name":"Dixon Technologies","trend":"Consumer formalization","trendStrength":"Strong",
+     "curAdopt":"10","futAdopt":"50","captureType":"Picks-and-shovels","capture":"Yes",
+     "leader":{"moat":"Partial","share":"Yes","exec":"Yes","pricing":"Partial","balance":"Yes"},
+     "why":"EMS leader riding China+1 + PLI; profits no matter whose brand sells.",
+     "risk":"Medium","earliness":"China+1 still early"},
+    {"symbol":"PAGEIND","name":"Page Industries","trend":"Consumer formalization","trendStrength":"Strong",
+     "curAdopt":"20","futAdopt":"60","captureType":"Platform / Network","capture":"Yes",
+     "leader":{"moat":"Yes","share":"Yes","exec":"Yes","pricing":"Yes","balance":"Yes"},
+     "why":"Branded apparel pricing power as unbranded->branded shift plays out.",
+     "risk":"Medium","earliness":"Branded-share runway multi-decade"},
+    {"symbol":"TRENT","name":"Trent","trend":"Consumer formalization","trendStrength":"Strong",
+     "curAdopt":"20","futAdopt":"60","captureType":"Platform / Network","capture":"Yes",
+     "leader":{"moat":"Partial","share":"Yes","exec":"Yes","pricing":"Partial","balance":"Yes"},
+     "why":"Organized fashion retail scaling into semi-urban India.",
+     "risk":"Medium-High","earliness":"Strong run already; valuation rich"},
+    {"symbol":"CDSL","name":"Central Depository Services","trend":"Financialization","trendStrength":"Strong",
+     "curAdopt":"15","futAdopt":"55","captureType":"Toll-road / Infrastructure","capture":"Yes",
+     "leader":{"moat":"Yes","share":"Yes","exec":"Yes","pricing":"Yes","balance":"Yes"},
+     "why":"Depository toll-road — earns a fee on every new demat account / participant.",
+     "risk":"Medium","earliness":"Formalization of savings still early"},
+    {"symbol":"BSE","name":"BSE Ltd","trend":"Financialization","trendStrength":"Emerging",
+     "curAdopt":"15","futAdopt":"55","captureType":"Toll-road / Infrastructure","capture":"Yes",
+     "leader":{"moat":"Yes","share":"Partial","exec":"Yes","pricing":"Partial","balance":"Yes"},
+     "why":"Exchange toll-road on rising participation / derivatives volumes.",
+     "risk":"Medium-High","earliness":"Re-rated on derivatives growth"},
+  ],
+}
+_RUNWAY_TOP_CACHE = {}
+_RUNWAY_TOP_TTL = 1800  # 30 min
+
+
+@app.get("/api/runway-top")
+async def runway_top(region: str = "US", force: int = 0):
+    import asyncio as _aio, time as _time
+    region = (region or "US").upper()
+    if region not in ("US", "IN"): region = "US"
+
+    cached = _RUNWAY_TOP_CACHE.get(region)
+    if cached and not force and (_time.time() - cached["ts"]) < _RUNWAY_TOP_TTL:
+        out = dict(cached["data"]); out["cached"] = True
+        out["cache_age_sec"] = int(_time.time() - cached["ts"])
+        return out
+
+    cand = _RUNWAY_TOP_OPPS.get(region, [])
+    bench_sym = _MCOC_BENCH.get(region, "SPY")
+    yf_syms = [(c["symbol"] if region == "US" else c["symbol"] + ".NS") for c in cand]
+    all_syms = yf_syms + [bench_sym]
+    t0 = _time.time()
+
+    import yfinance as yf
+    def _dl():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        return yf.download(tickers=" ".join(all_syms), period="1y", interval="1d",
+                           group_by="ticker", progress=False, threads=True, auto_adjust=False)
+    try:
+        hist = await _aio.wait_for(_aio.get_event_loop().run_in_executor(None, _dl), timeout=60)
+    except Exception:
+        hist = None
+
+    def _sub(sym):
+        try:
+            if hist is None or len(hist) == 0: return None
+            if sym not in hist.columns.get_level_values(0): return None
+            return hist[sym].dropna()
+        except Exception:
+            return None
+
+    bench = None
+    bsub = _sub(bench_sym)
+    if bsub is not None and len(bsub) >= 130:
+        try: bench = {"closes": [float(x) for x in bsub["Close"].tolist()]}
+        except Exception: bench = None
+
+    items = []
+    for c, ys in zip(cand, yf_syms):
+        tape = None
+        sub = _sub(ys)
+        if sub is not None:
+            stock = _runway_extract(sub)
+            if stock:
+                try:
+                    r = _oppr_confirm(stock, bench, {})
+                    r.update({"success": True, "symbol": c["symbol"], "region": region,
+                              "current_price": round(stock["closes"][-1], 2),
+                              "data_note": "Tape (Layer 5) computed from price/volume + benchmark; earnings N/A on this host."})
+                    tape = r
+                except Exception:
+                    tape = None
+        item = dict(c)
+        item["tape"] = tape
+        item["confirmation_score"] = (tape or {}).get("confirmation_score")
+        items.append(item)
+
+    # rank by live tape confirmation (None last), then by trendStrength
+    _ts = {"Strong": 3, "Emerging": 2, "Speculative": 1}
+    items.sort(key=lambda x: (x["confirmation_score"] if x["confirmation_score"] is not None else -1,
+                              _ts.get(x.get("trendStrength"), 0)), reverse=True)
+
+    data = {
+        "success": True, "region": region, "benchmark": bench_sym,
+        "as_of": _RUNWAY_TOP_AS_OF, "bench_available": bench is not None,
+        "scan_time_sec": round(_time.time() - t0, 1),
+        "items": items,
+        "data_note": ("Layers 1-4 (trend, runway, value capture, leader) are a CURATED EDITORIAL thesis "
+                      "snapshot as of " + _RUNWAY_TOP_AS_OF + " \u2014 not a live computation, not a prediction, "
+                      "and not investment advice. Layer 5 (the tape) is computed live per name. Trends move and "
+                      "early-stage names fail often \u2014 treat this as a research starting point to override with "
+                      "your own judgment and size tiny. Tap a name to load its thesis into the framework and edit it."),
+        "_engine": "runway_top_v1",
+    }
+    _RUNWAY_TOP_CACHE[region] = {"ts": _time.time(), "data": data}
+    return data
+
+
 @app.get("/api/decision-360")
 async def decision_360(symbol: str = "", region: str = "US"):
     import asyncio as _aio, time as _time

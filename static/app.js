@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.9";
-window.CELESYS_BUILD_TIME = 1780815600;
-window.CELESYS_BUILD_DATE = "2026-06-07 07:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.11";
+window.CELESYS_BUILD_TIME = 1780822800;
+window.CELESYS_BUILD_DATE = "2026-06-07 09:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -13881,6 +13881,125 @@ window._runwayRender = function(){
   el.innerHTML=h;
 };
 window._runwaySetCapture = function(v){ window._runwaySet('capture',v); };
+
+window._runwayTopData = null;
+window._runwayTop = function(){
+  var box=document.getElementById('runwayScreenResult'); if(!box) return;
+  var btn=document.getElementById('runwayTopBtn');
+  box.innerHTML='<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:18px;text-align:center;color:#b45309;font-size:11px">\u23F3 Running the Top Opportunities through the framework ('+(window._runwayState.region==='IN'?'India':'US')+')\u2026<div style="font-size:9px;color:#d97706;margin-top:4px">computing the live tape for each name</div></div>';
+  if(btn){btn.disabled=true;btn.style.opacity='0.6';}
+  fetch('/api/runway-top?region='+encodeURIComponent(window._runwayState.region),{cache:'no-store'})
+    .then(function(r){return r.json().catch(function(){return null;});})
+    .then(function(d){ if(btn){btn.disabled=false;btn.style.opacity='1';} window._runwayTopData=d; window._renderRunwayTop(d); })
+    .catch(function(){ if(btn){btn.disabled=false;btn.style.opacity='1';} window._renderRunwayTop({success:false,error:'Network error'}); });
+};
+
+window._runwayLoadThesis = function(sym){
+  var d=window._runwayTopData; if(!d||!d.items) return;
+  var it=null; for(var i=0;i<d.items.length;i++){ if(d.items[i].symbol===sym){ it=d.items[i]; break; } }
+  if(!it) return;
+  var st=window._runwayState;
+  st.trend=it.trend; st.trendStrength=it.trendStrength; st.curAdopt=it.curAdopt; st.futAdopt=it.futAdopt;
+  st.captureType=it.captureType; st.capture=it.capture;
+  st.leader={moat:it.leader.moat,share:it.leader.share,exec:it.leader.exec,pricing:it.leader.pricing,balance:it.leader.balance};
+  st.sym=sym; st.data=it.tape||null;
+  var inp=document.getElementById('runwaySym'); if(inp) inp.value=sym;
+  window._runwayRender();
+  var el=document.getElementById('runwayResult'); if(el&&el.scrollIntoView){ try{el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){} }
+};
+
+window._renderRunwayTop = function(d){
+  var box=document.getElementById('runwayScreenResult'); if(!box) return;
+  var E=window._esc;
+  if(!d || !d.success){ box.innerHTML='<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;font-size:10px;color:#991b1b">Top Opportunities unavailable: '+E((d&&d.error)||'unknown error')+'</div>'; return; }
+  var items=d.items||[];
+  function tone(t){ return {pos:['#16a34a','#dcfce7'],neutral:['#475569','#f1f5f9'],caution:['#b45309','#fef3c7'],neg:['#dc2626','#fef2f2']}[t]||['#475569','#f1f5f9']; }
+  function tag(c,txt){ return '<span style="font-size:8.5px;font-weight:800;padding:1px 7px;border-radius:7px;background:'+c[1]+';color:'+c[0]+';margin:1px 4px 1px 0;display:inline-block">'+txt+'</span>'; }
+  var h='<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:11px 14px">';
+  h+='<div style="font-size:12px;font-weight:900;color:#b45309;font-family:Sora,sans-serif;margin-bottom:3px">\uD83C\uDFAF Top Opportunities \u2014 '+(d.region==='IN'?'India':'US')+'</div>';
+  h+='<div style="font-size:8.5px;color:#92400e;margin-bottom:9px">Editorial thesis as of '+E(d.as_of||'')+' (your judgment should override) \u00b7 tape computed live vs '+E(d.benchmark)+(d.cached?' \u00b7 cached':'')+(d.bench_available?'':' \u00b7 \u26A0 benchmark unavailable')+'. Tap a name to load its thesis into the framework and edit it.</div>';
+  items.forEach(function(it,idx){
+    var th=window._runwayThesis({trend:it.trend,trendStrength:it.trendStrength,curAdopt:it.curAdopt,futAdopt:it.futAdopt,captureType:it.captureType,capture:it.capture,leader:it.leader});
+    var conf=it.confirmation_score;
+    var vd=window._runwayVerdict(th.score, conf);
+    var tc=tone(vd.tone);
+    var tp=it.tape||{};
+    h+='<div style="background:#fff;border:1px solid #fde68a;border-left:3px solid '+tc[0]+';border-radius:9px;padding:9px 11px;margin-bottom:7px">';
+    h+='<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:3px"><span style="font-size:10px;color:#d97706;font-weight:800">#'+(idx+1)+'</span><span style="font-size:13px;font-weight:900;color:#0f172a;font-family:JetBrains Mono,monospace">'+E(it.symbol)+'</span><span style="font-size:10px;color:#475569;font-weight:700">'+E(it.name||'')+'</span><span style="font-size:8px;font-weight:700;color:#7c3aed;background:#f3e8ff;border-radius:7px;padding:1px 7px">'+E(it.trend||'')+'</span></div>';
+    h+='<div style="font-size:9.5px;color:#475569;line-height:1.5;margin-bottom:5px">'+E(it.why||'')+'</div>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:5px">';
+    h+='<span style="font-size:8px;font-weight:800;color:#7c3aed">THESIS</span><span style="font-size:13px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">'+(th.score!=null?th.score:'\u2014')+'</span>';
+    h+='<span style="font-size:8px;font-weight:800;color:#0891b2">TAPE</span><span style="font-size:13px;font-weight:900;color:#0891b2;font-family:JetBrains Mono,monospace">'+(conf!=null?conf:'\u2014')+'</span>';
+    if(tp.rs) h+=tag(tp.rs==='leading'?['#16a34a','#dcfce7']:tp.rs==='inline'?['#b45309','#fef3c7']:['#dc2626','#fef2f2'],'RS '+tp.rs);
+    if(tp.accumulation) h+=tag(tp.accumulation==='accumulating'?['#16a34a','#dcfce7']:tp.accumulation==='neutral'?['#b45309','#fef3c7']:['#dc2626','#fef2f2'],tp.accumulation);
+    h+=tag(['#64748b','#f1f5f9'],it.risk||'');
+    h+='</div>';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="font-size:10px;font-weight:900;color:'+tc[0]+';font-family:Sora,sans-serif">'+E(vd.label)+'</div>';
+    h+='<button onclick="window._runwayLoadThesis(\''+E(it.symbol)+'\')" style="padding:3px 10px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:8.5px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">Assess \u2192</button></div>';
+    h+='<div style="font-size:8px;color:#94a3b8;margin-top:3px">'+E(it.earliness||'')+'</div>';
+    h+='</div>';
+  });
+  h+='<div style="font-size:8px;color:#b45309;line-height:1.4;margin-top:4px">'+E(d.data_note||'')+'</div>';
+  h+='</div>';
+  box.innerHTML=h;
+};
+
+
+window._runwayScreen = function(){
+  var box=document.getElementById('runwayScreenResult'); if(!box) return;
+  var btn=document.getElementById('runwayScanBtn');
+  box.innerHTML='<div style="background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:18px;text-align:center;color:#7c3aed;font-size:11px">\u23F3 Scanning the '+(window._runwayState.region==='IN'?'India':'US')+' large-cap universe for tape-confirmed leaders\u2026<div style="font-size:9px;color:#a78bfa;margin-top:4px">one batch request \u2014 usually ~10\u201340s</div></div>';
+  if(btn){btn.disabled=true;btn.style.opacity='0.6';}
+  fetch('/api/runway-screener?region='+encodeURIComponent(window._runwayState.region)+'&limit=40',{cache:'no-store'})
+    .then(function(r){return r.json().catch(function(){return null;});})
+    .then(function(d){ if(btn){btn.disabled=false;btn.style.opacity='1';} window._renderRunwayScreen(d); })
+    .catch(function(){ if(btn){btn.disabled=false;btn.style.opacity='1';} window._renderRunwayScreen({success:false,error:'Network error'}); });
+};
+
+window._runwayPick = function(sym){
+  var inp=document.getElementById('runwaySym'); if(inp) inp.value=sym;
+  window._runwayRun();
+  var el=document.getElementById('runwayResult'); if(el&&el.scrollIntoView){ try{el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){} }
+};
+
+window._renderRunwayScreen = function(d){
+  var box=document.getElementById('runwayScreenResult'); if(!box) return;
+  var E=window._esc;
+  if(!d || !d.success){
+    box.innerHTML='<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;font-size:10px;color:#991b1b">Screener unavailable: '+E((d&&d.error)||'unknown error')+'</div>';
+    return;
+  }
+  var rows=d.results||[];
+  function sc(v){ return v>=67?['#16a34a','#dcfce7']:v>=34?['#b45309','#fef3c7']:['#dc2626','#fef2f2']; }
+  function tag(ok,mid,txt){ var c=ok?['#16a34a','#dcfce7']:mid?['#b45309','#fef3c7']:['#64748b','#f1f5f9']; return '<span style="font-size:8.5px;font-weight:800;padding:1px 6px;border-radius:7px;background:'+c[1]+';color:'+c[0]+'">'+txt+'</span>'; }
+  var h='<div style="background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:11px 14px">';
+  h+='<div style="font-size:11px;font-weight:900;color:#7c3aed;font-family:Sora,sans-serif;margin-bottom:3px">\uD83D\uDD0D Tape-Confirmed Leaders \u2014 '+(d.region==='IN'?'India':'US')+'</div>';
+  h+='<div style="font-size:8.5px;color:#64748b;margin-bottom:8px">Ranked by the computable tape (RS vs '+E(d.benchmark)+', accumulation, breakout). Scanned '+E(String(d.completed))+'/'+E(String(d.scanned))+' in '+E(String(d.scan_time_sec))+'s'+(d.cached?' \u00b7 cached '+E(String(d.cache_age_sec))+'s ago':'')+(d.bench_available?'':' \u00b7 \u26A0 benchmark unavailable, RS limited')+'. Tap a row to assess its thesis.</div>';
+  if(!rows.length){
+    h+='<div style="padding:14px;text-align:center;color:#94a3b8;font-size:10px">No names cleared the scan (feed may be thin on this host right now).</div>';
+  } else {
+    h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9.5px">';
+    h+='<tr style="color:#7c3aed;text-align:left;font-weight:800"><th style="padding:4px 6px">#</th><th style="padding:4px 6px">Symbol</th><th style="padding:4px 6px">Tape</th><th style="padding:4px 6px">RS</th><th style="padding:4px 6px">Accum.</th><th style="padding:4px 6px">Breakout</th><th style="padding:4px 6px;text-align:right">Price</th><th></th></tr>';
+    rows.forEach(function(r,i){
+      var c=sc(r.confirmation_score);
+      h+='<tr style="border-top:1px solid #ede9fe">';
+      h+='<td style="padding:4px 6px;color:#94a3b8">'+(i+1)+'</td>';
+      h+='<td style="padding:4px 6px;font-weight:900;color:#0f172a;font-family:JetBrains Mono,monospace">'+E(r.symbol)+'</td>';
+      h+='<td style="padding:4px 6px"><span style="font-weight:900;font-family:JetBrains Mono,monospace;padding:1px 7px;border-radius:7px;background:'+c[1]+';color:'+c[0]+'">'+r.confirmation_score+'</span></td>';
+      h+='<td style="padding:4px 6px">'+tag(r.rs==='leading',r.rs==='inline',(r.rs||'n/a')+(r.rs_excess!=null?' '+(r.rs_excess>0?'+':'')+r.rs_excess+'%':''))+(r.rs_new_high?' '+tag(true,false,'\u26A1'):'')+'</td>';
+      h+='<td style="padding:4px 6px">'+tag(r.accumulation==='accumulating',r.accumulation==='neutral',r.accumulation||'n/a')+'</td>';
+      h+='<td style="padding:4px 6px">'+tag(r.stage2&&r.near_high,r.stage2||r.near_high,(r.stage2?'Stage-2':'\u2014')+(r.near_high?' \u2191high':''))+'</td>';
+      h+='<td style="padding:4px 6px;text-align:right;font-family:JetBrains Mono,monospace;color:#475569">'+(d.region==='IN'?'\u20B9':'$')+E(String(r.price))+'</td>';
+      h+='<td style="padding:4px 6px;text-align:right"><button onclick="window._runwayPick(\''+E(r.symbol).replace(/&#39;|\x27/g,'')+'\')" style="padding:3px 9px;background:#7c3aed;color:#fff;border:none;border-radius:5px;font-size:8.5px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">Assess \u2192</button></td>';
+      h+='</tr>';
+    });
+    h+='</table></div>';
+  }
+  h+='<div style="font-size:8px;color:#94a3b8;line-height:1.4;margin-top:8px">'+E(d.universe_note||'')+' '+E(d.data_note||'')+'</div>';
+  h+='</div>';
+  box.innerHTML=h;
+};
+
 
 
 window._renderDec360 = function(d){
