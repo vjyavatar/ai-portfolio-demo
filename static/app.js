@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.5";
-window.CELESYS_BUILD_TIME = 1780801200;
-window.CELESYS_BUILD_DATE = "2026-06-07 03:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.8";
+window.CELESYS_BUILD_TIME = 1780812000;
+window.CELESYS_BUILD_DATE = "2026-06-07 06:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11728,7 +11728,8 @@ window._engState = {exit: {region: 'US'}, risk: {region: 'US'},
                     eps: {region: 'US'}, macro: {region: 'US'},
                     mgmt: {region: 'US'}, picks: {region: 'US'},
                     insider: {region: 'US'}, diropts: {region: 'US'},
-                    inst360: {region: 'US'}, m360: {region: 'US'}, mcoc: {region: 'US'}};
+                    inst360: {region: 'US'}, m360: {region: 'US'}, mcoc: {region: 'US'},
+                    runway: {region: 'US'}};
 
 window._engShow = function(panel) {
   // Hide all panels, show selected, update button styling
@@ -11742,6 +11743,7 @@ window._engShow = function(panel) {
     'inst360': 'engInst360Panel', 'marketwhy': 'engMarketWhyPanel',
     'market360': 'engMarket360Panel', 'momcoc': 'engMomCoCPanel',
     'forever': 'engForeverPanel', 'dec360': 'engDec360Panel',
+    'runway': 'engRunwayPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11758,6 +11760,7 @@ window._engShow = function(panel) {
     'inst360': 'engBtnInst360', 'marketwhy': 'engBtnMarketWhy',
     'market360': 'engBtnMarket360', 'momcoc': 'engBtnMomCoC',
     'forever': 'engBtnForever', 'dec360': 'engBtnDec360',
+    'runway': 'engBtnRunway',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -11924,6 +11927,134 @@ window._renderExitEngine = function(d) {
 };
 
 // ═══════════════════ PORTFOLIO RISK RADAR ═══════════════════
+window._riskClearHoldings = function(){
+  var t=document.getElementById('riskHoldings'); if(t) t.value='';
+  var n=document.getElementById('riskImportNote'); if(n){ n.style.display='none'; n.innerHTML=''; }
+  var f=document.getElementById('riskCsvFile'); if(f) f.value='';
+};
+
+window._riskParseCSV = function(text){
+  // returns array of row-arrays. Handles quotes, comma/tab/semicolon delimiters.
+  text = String(text||'').replace(/\r\n?/g,'\n').replace(/^\uFEFF/,'');
+  var lines = text.split('\n').filter(function(l){ return l.trim().length; });
+  if(!lines.length) return [];
+  var cand=[',','\t',';','|'], best=',', bestN=-1;
+  cand.forEach(function(d){ var n=(lines[0].split(d).length); if(n>bestN){bestN=n;best=d;} });
+  var delim=best;
+  function splitLine(line){
+    var out=[], cur='', q=false;
+    for(var i=0;i<line.length;i++){ var ch=line[i];
+      if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+      else { if(ch==='"') q=true; else if(ch===delim){ out.push(cur); cur=''; } else cur+=ch; }
+    }
+    out.push(cur); return out.map(function(s){ return s.trim().replace(/^"|"$/g,''); });
+  }
+  return lines.map(splitLine);
+};
+
+window._riskNum = function(s){
+  if(s==null) return null;
+  var v=String(s).replace(/[^0-9.\-]/g,'');           // strip $ , % spaces ₹ etc
+  if(v===''||v==='-'||v==='.') return null;
+  var n=parseFloat(v); return isFinite(n)?n:null;
+};
+
+window._riskRegion = function(sym, exch){
+  var s=String(sym||'').toUpperCase().trim(), e=String(exch||'').toUpperCase().trim();
+  if(/\.NS$|\.BO$|:NSE|:BSE/.test(s) || /\b(NSE|BSE)\b/.test(e)) return 'IN';
+  if(/\.T$|\.JP$|:TSE/.test(s) || /\b(TSE|TSEJ|TOKYO)\b/.test(e)) return 'JP';
+  if(/\.L$|:LON/.test(s) || /\b(LSE|LONDON)\b/.test(e)) return 'UK';
+  if(/^\d{4}$/.test(s)) return 'JP';                  // 4-digit code (e.g. 9984)
+  return 'US';
+};
+
+window._riskCleanSym = function(sym){
+  return String(sym||'').toUpperCase().replace(/\.(NS|BO|T|JP|L)$/,'').replace(/:(NSE|BSE|TSE|LON|NASDAQ|NYSE).*$/,'').trim();
+};
+
+window._riskImportCSV = function(file){
+  var note=document.getElementById('riskImportNote');
+  function show(kind,msg){
+    if(!note) return;
+    var c={ok:['#065f46','#d1fae5'],warn:['#92400e','#fef3c7'],err:['#991b1b','#fee2e2']}[kind];
+    note.style.display='block'; note.style.background=c[1]; note.style.color=c[0]; note.innerHTML=msg;
+  }
+  if(!file){ return; }
+  var reader=new FileReader();
+  reader.onerror=function(){ show('err','Could not read the file.'); };
+  reader.onload=function(ev){
+    try{
+      var rows=window._riskParseCSV(ev.target.result);
+      if(rows.length<2){ show('err','No data rows found in the file.'); return; }
+      // locate header row (first row containing a recognizable column)
+      var hdrIdx=0;
+      function norm(x){ return String(x||'').toLowerCase().replace(/[^a-z%]/g,''); }
+      var header=rows[0].map(norm);
+      var symCol=-1, valCol=-1, wtCol=-1, exchCol=-1, qtyCol=-1, pxCol=-1, nameCol=-1;
+      header.forEach(function(h,i){
+        if(symCol<0 && /(symbol|ticker|instrument|scrip|code|secid)/.test(h)) symCol=i;
+        if(nameCol<0 && /(name|description|security)/.test(h)) nameCol=i;
+        if(wtCol<0 && /(weight|%ofportfolio|portfolio%|allocation|wtg|%nav|weightage)/.test(h)) wtCol=i;
+        if(valCol<0 && /(marketvalue|mktval|currentvalue|positionvalue|value|amount|holdingvalue|investedvalue|currentvalue)/.test(h)) valCol=i;
+        if(exchCol<0 && /(exchange|exch|market|venue)/.test(h)) exchCol=i;
+        if(qtyCol<0 && /(qty|quantity|shares|units)/.test(h)) qtyCol=i;
+        if(pxCol<0 && /(price|ltp|lastprice|currentprice|cmp|nav)/.test(h)) pxCol=i;
+      });
+      if(symCol<0){ show('err','Could not find a Symbol/Ticker column. Columns seen: '+rows[0].join(', ')+'. Rename one to "Symbol" or paste manually.'); return; }
+      var data=rows.slice(1);
+      // build holdings with a value basis
+      var items=[], cashVal=0, skipped=[], basis=null;
+      data.forEach(function(r){
+        var symRaw=r[symCol]; if(symRaw==null) return;
+        var symU=String(symRaw).toUpperCase().trim();
+        if(!symU) return;
+        if(/^(cash|cash &|cashbalance|cash balance|sgov|liquid)/i.test(symU) || (nameCol>=0 && /cash/i.test(r[nameCol]||''))){
+          var cv=window._riskNum(valCol>=0?r[valCol]:null); if(cv!=null) cashVal+=cv; return;
+        }
+        var sym=window._riskCleanSym(symU);
+        if(!/^[A-Z0-9.\-]{1,12}$/.test(sym)){ skipped.push(symU); return; }
+        var wt=wtCol>=0?window._riskNum(r[wtCol]):null;
+        var val=valCol>=0?window._riskNum(r[valCol]):null;
+        if(val==null && qtyCol>=0 && pxCol>=0){ var q=window._riskNum(r[qtyCol]),p=window._riskNum(r[pxCol]); if(q!=null&&p!=null) val=q*p; }
+        var region=window._riskRegion(symU, exchCol>=0?r[exchCol]:'');
+        items.push({sym:sym, wt:wt, val:val, region:region});
+      });
+      if(!items.length){ show('err','Found the Symbol column but no usable rows. Skipped: '+(skipped.join(', ')||'none')); return; }
+      // decide weighting basis
+      var haveAllWt=items.every(function(x){ return x.wt!=null; });
+      var haveAllVal=items.every(function(x){ return x.val!=null; });
+      var out=[], usedBasis='';
+      if(haveAllWt){
+        usedBasis='explicit weight column';
+        items.forEach(function(x){ out.push(x.sym+','+(Math.round(x.wt*100)/100)+','+x.region); });
+      } else if(haveAllVal){
+        usedBasis='market value';
+        var tot=items.reduce(function(a,x){return a+x.val;},0)+cashVal;
+        if(tot<=0){ show('err','Market values sum to zero — cannot derive weights.'); return; }
+        items.forEach(function(x){ out.push(x.sym+','+(Math.round(x.val/tot*10000)/100)+','+x.region); });
+        if(cashVal>0){ var cInp=document.getElementById('riskCash'); if(cInp) cInp.value=String(Math.round(cashVal/tot*10000)/100); }
+      } else {
+        // partial — use whichever each row has, normalize values; honest about mix
+        var partial=items.filter(function(x){return x.val!=null;});
+        if(partial.length===items.length-0 && partial.length){ /* handled above */ }
+        show('warn','Could not find a consistent weight or market-value column for every row. Columns seen: '+rows[0].join(', ')+'. I filled what I could; please verify the weights before analyzing.');
+        var totp=items.reduce(function(a,x){return a+(x.val||0);},0)||1;
+        items.forEach(function(x){ var w=x.wt!=null?x.wt:(x.val!=null?Math.round(x.val/totp*10000)/100:0); out.push(x.sym+','+w+','+x.region); });
+        usedBasis='mixed (verify)';
+      }
+      document.getElementById('riskHoldings').value=out.join('\n');
+      var regions={}; items.forEach(function(x){ regions[x.region]=(regions[x.region]||0)+1; });
+      var regStr=Object.keys(regions).map(function(k){return regions[k]+' '+k;}).join(', ');
+      if(note && note.style.display!=='block'){}
+      show(haveAllWt||haveAllVal?'ok':'warn',
+        '<b>Imported '+items.length+' holdings</b> ('+regStr+') · weights from <b>'+usedBasis+'</b>'+
+        (cashVal>0?' · cash auto-filled':'')+(skipped.length?(' · skipped: '+skipped.slice(0,6).join(', ')):'')+
+        '. Review the lines, then click ANALYZE RISK.');
+    }catch(e){ show('err','Parse error: '+(e.message||e)); }
+  };
+  reader.readAsText(file);
+};
+
 window._loadRiskRadar = function() {
   var raw = (document.getElementById('riskHoldings').value || '').trim();
   if (!raw) {
@@ -13585,6 +13716,151 @@ window._dec360Combined = function(td,md,fdd,sd,fdAvail){
   if(pending.length) why+=' Still pending \u2014 '+pending.join(' & ')+'; complete those before acting.';
   return {verdict:verdict,tone:tone,why:why,score:Math.round(s*100)/100};
 };
+
+
+// ═══════════════════ OPPORTUNITY RUNWAY ENGINE ═══════════════════
+window._runwayState = {region:'US', sym:'', data:null, trend:null, trendStrength:null,
+  curAdopt:'', futAdopt:'', captureType:null, capture:null,
+  leader:{moat:null, share:null, exec:null, pricing:null, balance:null}};
+
+window._RUNWAY_TRENDS = [
+  ['AI infrastructure','GPUs · data centers · accelerators'],
+  ['Cloud / SaaS','infrastructure & application software'],
+  ['Digital payments / Fintech','rails, processors, neobanks'],
+  ['EV adoption','batteries · charging · materials'],
+  ['Aging / Healthcare','devices · biotech · services'],
+  ['Defense spending','primes & defense electronics'],
+  ['Energy transition','solar · grid · storage'],
+  ['Consumer formalization','branded share gains (EM)'],
+  ['Infrastructure buildout','construction · materials · power'],
+  ['Digital transformation','enterprise software · data'],
+  ['Financialization','exchanges · asset mgmt · insurers'],
+  ['Demographic shifts','housing · staples · leisure']];
+
+window._RUNWAY_QUESTIONS = [
+  'If this company succeeds completely, what changes in the world?',
+  'How large can the addressable market become?',
+  'Why is THIS company the winner (not a rival)?',
+  'Can revenue become 5\u201310x?',
+  'Can profit become 10x?'];
+
+// ── pure, testable composite ──
+window._runwayThesis = function(st){
+  var parts={}, w={trend:0.25, runway:0.30, capture:0.20, leader:0.25}, num=0, den=0;
+  if(st.trend && st.trendStrength){ var ts={Strong:1.0,Emerging:0.6,Speculative:0.3}[st.trendStrength]||0; parts.trend=ts; num+=ts*w.trend; den+=w.trend; }
+  var cur=parseFloat(st.curAdopt), fut=parseFloat(st.futAdopt);
+  if(isFinite(cur)&&isFinite(fut)&&cur>0&&fut>=cur){ var mult=fut/cur; var rs=Math.max(0,Math.min(1,(mult-1)/6)); parts.runway=rs; parts.mult=Math.round(mult*10)/10; num+=rs*w.runway; den+=w.runway; }
+  if(st.capture){ var cs={Yes:1.0,Partial:0.5,No:0.0}[st.capture]; if(cs!=null){ parts.capture=cs; num+=cs*w.capture; den+=w.capture; } }
+  var lk=st.leader||{}, lv=['moat','share','exec','pricing','balance'].map(function(k){return lk[k];}).filter(function(x){return x!=null;});
+  if(lv.length){ var ls=lv.reduce(function(a,x){return a+({Yes:1,Partial:0.5,No:0}[x]||0);},0)/lv.length; parts.leader=ls; parts.leaderN=lv.length; num+=ls*w.leader; den+=w.leader; }
+  return {score: den>0?Math.round(num/den*100):null, parts:parts, coverage:Math.round(den*100)};
+};
+window._runwayVerdict = function(thesis, conf){
+  if(thesis==null) return {label:'COMPLETE THE THESIS LAYERS',tone:'neutral',why:'Assess the trend, runway, value capture and leadership above to score the opportunity.'};
+  var T=thesis>=60;
+  if(conf==null) return {label:T?'STRONG THESIS \u2014 NOW CONFIRM THE TAPE':'THESIS STILL THIN',tone:T?'pos':'neutral',why:'Run the tape confirmation (Layer 5/6) to see whether institutions agree with the thesis.'};
+  var C=conf>=60;
+  if(T&&C) return {label:'CONFIRMED RUNWAY LEADER',tone:'pos',why:'A durable long-run opportunity AND the tape confirms it \u2014 thesis and institutions agree. This is the combination behind most large winners.'};
+  if(T&&!C) return {label:'EARLY \u2014 THESIS AHEAD OF TAPE',tone:'neutral',why:'Compelling runway, but the tape isn\u2019t confirming yet. Watchlist for institutional accumulation + a breakout before committing size.'};
+  if(!T&&C) return {label:'MOMENTUM, NO DURABLE RUNWAY',tone:'caution',why:'The tape is strong but the 5\u201310yr opportunity looks thin \u2014 tradeable, but not a multibagger thesis. Don\u2019t marry it.'};
+  return {label:'NO EDGE YET',tone:'neg',why:'Neither a clear runway nor tape confirmation. Pass until one side improves.'};
+};
+
+window._runwaySetRegion = function(r){ window._runwayState.region=r;
+  var inb=document.getElementById('runwayRegIN'), usb=document.getElementById('runwayRegUS');
+  if(inb&&usb){ if(r==='IN'){inb.style.background='linear-gradient(135deg,#7c3aed,#6d28d9)';inb.style.color='#fff';usb.style.background='#fff';usb.style.color='#7c3aed';} else {usb.style.background='linear-gradient(135deg,#7c3aed,#6d28d9)';usb.style.color='#fff';inb.style.background='#fff';inb.style.color='#7c3aed';} } };
+window._runwaySet = function(k,v){ window._runwayState[k]=(window._runwayState[k]===v?null:v); window._runwayRender(); };
+window._runwaySetLeader = function(k,v){ window._runwayState.leader[k]=(window._runwayState.leader[k]===v?null:v); window._runwayRender(); };
+window._runwaySetAdopt = function(){ var a=document.getElementById('rwCur'), b=document.getElementById('rwFut'); if(a)window._runwayState.curAdopt=a.value; if(b)window._runwayState.futAdopt=b.value; window._runwayRender(); };
+window._runwayShow = function(){ window._engShow('runway'); window._runwayRender(); };
+
+window._runwayRun = function(){
+  var inp=document.getElementById('runwaySym'); var sym=((inp&&inp.value)||'').trim().toUpperCase();
+  if(!sym){ window._runwayState.sym=''; window._runwayRender(); return; }
+  window._runwayState.sym=sym;
+  var btn=document.getElementById('runwayBtn');
+  if(btn){ btn.disabled=true; btn.style.opacity='0.6'; btn.innerHTML='\u23F3 CONFIRMING\u2026'; }
+  fetch('/api/opportunity-runway?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(window._runwayState.region),{cache:'no-store'})
+    .then(function(r){return r.json().catch(function(){return null;});})
+    .then(function(d){ if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83D\uDE80 CONFIRM TAPE (Layer 5/6)';}
+      if(!d||!d.success){ window._runwayState.data={error:(d&&d.error)||'unavailable'}; } else { window._runwayState.data=d; }
+      window._runwayRender(); })
+    .catch(function(e){ if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83D\uDE80 CONFIRM TAPE (Layer 5/6)';} window._runwayState.data={error:'Network error'}; window._runwayRender(); });
+};
+
+window._runwayRender = function(){
+  var el=document.getElementById('runwayResult'); if(!el) return;
+  var E=window._esc, st=window._runwayState, d=(st.data&&!st.data.error)?st.data:null;
+  function lens(emoji,title,accent,body){ return '<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid '+accent+';border-radius:10px;padding:11px 14px;margin-bottom:10px"><div style="font-size:11px;font-weight:900;color:'+accent+';font-family:Sora,sans-serif;margin-bottom:6px">'+emoji+' '+title+'</div>'+body+'</div>'; }
+  function chip(label,active,onclick){ return '<button onclick="'+onclick+'" style="padding:4px 10px;margin:2px 4px 2px 0;border-radius:7px;font-size:9.5px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;border:1px solid #c4b5fd;'+(active?'background:#7c3aed;color:#fff':'background:#fff;color:#7c3aed')+'">'+label+'</button>'; }
+  function ypn(key,setter){ var cur=key; return ['Yes','Partial','No'].map(function(o){var on=cur===o;var c=o==='Yes'?'#16a34a':o==='No'?'#dc2626':'#b45309';return '<button onclick="'+setter+'(\''+o+'\')" style="padding:3px 9px;margin:2px 4px 2px 0;border-radius:6px;font-size:9px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;border:1px solid '+c+';'+(on?'background:'+c+';color:#fff':'background:#fff;color:'+c)+'">'+o+'</button>';}).join(''); }
+
+  var h='';
+  if(st.data&&st.data.error) h+='<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 11px;margin-bottom:10px;font-size:10px;color:#991b1b">Tape confirmation unavailable for '+E(st.sym)+': '+E(st.data.error)+'. The thesis layers below still work.</div>';
+  if(d) h+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px"><span style="font-size:17px;font-weight:900;color:#0f172a;font-family:JetBrains Mono,monospace">'+E(d.symbol)+'</span><span style="font-size:12px;color:#475569;font-family:JetBrains Mono,monospace">'+(d.region==='IN'?'\u20B9':'$')+E(String(d.current_price))+'</span>'+(d.sector?'<span style="font-size:9px;font-weight:700;color:#7c3aed;background:#f3e8ff;border-radius:8px;padding:2px 8px">'+E(d.sector)+'</span>':'')+'</div>';
+
+  // LAYER 1 — Trend
+  var t1='<div style="font-size:9px;color:#64748b;margin-bottom:5px">What structural change is becoming inevitable? Pick the trend this company rides:</div>';
+  window._RUNWAY_TRENDS.forEach(function(tr){ t1+=chip(tr[0], st.trend===tr[0], "window._runwaySet('trend','"+tr[0].replace(/'/g,"")+"')"); });
+  if(st.trend){ var hint=(window._RUNWAY_TRENDS.find(function(x){return x[0]===st.trend;})||[])[1]; t1+='<div style="font-size:9px;color:#7c3aed;margin-top:5px">Opportunity: <b>'+E(hint||'')+'</b></div>'; }
+  t1+='<div style="margin-top:7px;font-size:9px;color:#64748b">How real / proven is this trend?</div><div style="margin-top:3px">'+['Strong','Emerging','Speculative'].map(function(o){return chip(o, st.trendStrength===o, "window._runwaySet('trendStrength','"+o+"')");}).join('')+'</div>';
+  h+=lens('\uD83D\uDD2D','1. Find the Trend','#7c3aed',t1);
+
+  // LAYER 2 — Runway
+  var th=window._runwayThesis(st);
+  var t2='<div style="font-size:9px;color:#64748b;margin-bottom:5px">Estimate adoption. Today vs where it goes in 5\u201310 years (% of the eventual market):</div>'+
+    '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label style="font-size:9px;color:#475569">Current %<input id="rwCur" type="number" value="'+E(st.curAdopt)+'" oninput="window._runwaySetAdopt()" style="width:64px;margin-left:5px;padding:4px 6px;border:1px solid #c4b5fd;border-radius:5px;font-size:10px;font-family:JetBrains Mono,monospace"></label>'+
+    '<label style="font-size:9px;color:#475569">Future %<input id="rwFut" type="number" value="'+E(st.futAdopt)+'" oninput="window._runwaySetAdopt()" style="width:64px;margin-left:5px;padding:4px 6px;border:1px solid #c4b5fd;border-radius:5px;font-size:10px;font-family:JetBrains Mono,monospace"></label>';
+  if(th.parts.mult!=null) t2+='<span style="font-size:12px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">= '+th.parts.mult+'\u00d7 runway</span>';
+  t2+='</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">The biggest money is made when adoption is still low but inevitable. A 10%\u219270% shift = 7\u00d7.</div>';
+  h+=lens('\uD83D\uDCC8','2. Estimate the Runway','#7c3aed',t2);
+
+  // LAYER 3 — Value capture
+  var t3='<div style="font-size:9px;color:#64748b;margin-bottom:5px">Good trend \u2260 good stock. Who captures the economics? What role does THIS company play?</div>';
+  ['Picks-and-shovels','Platform / Network','Toll-road / Infrastructure','Commodity-exposed'].forEach(function(o){ t3+=chip(o, st.captureType===o, "window._runwaySet('captureType','"+o+"')"); });
+  t3+='<div style="margin-top:7px;font-size:9px;color:#64748b">Does this company actually capture the value (durable economics, not a commodity)?</div><div style="margin-top:3px">'+ypn(st.capture,"window._runwaySetCapture")+'</div>';
+  h+=lens('\uD83D\uDCB0','3. Find the Value Capture','#7c3aed',t3);
+
+  // LAYER 4 — Leader
+  var lk=st.leader; var rows=[['moat','Strong moat (hard to copy)'],['share','Gaining market share'],['exec','Superior execution'],['pricing','Pricing power'],['balance','Strong balance sheet']];
+  var t4='';
+  rows.forEach(function(r){ t4+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-top:1px solid #f1f5f9"><span style="font-size:10px;color:#1e293b;font-weight:700">'+r[1]+'</span><span>'+ypn(lk[r[0]],"window._runwaySetLeader.bind(null,'"+r[0]+"')")+'</span></div>'; });
+  h+=lens('\uD83C\uDFC6','4. Find the Leader','#7c3aed',t4);
+
+  // LAYER 5 — Confirmation (computed)
+  var t5='';
+  if(!d){ t5='<div style="font-size:10px;color:#64748b">Enter a symbol above and click <b>CONFIRM TAPE</b> to compute institutional confirmation (RS, accumulation, trend/breakout) from price/volume.</div>'; }
+  else {
+    function badge(ok,mid,txt){ var c=ok==='ok'?['#16a34a','#dcfce7']:ok==='mid'?['#b45309','#fef3c7']:ok==='na'?['#64748b','#f1f5f9']:['#dc2626','#fef2f2']; return '<span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:9px;background:'+c[1]+';color:'+c[0]+';margin:2px 5px 2px 0;display:inline-block">'+txt+'</span>'; }
+    t5+=badge(d.rs==='leading'?'ok':d.rs==='inline'?'mid':d.rs==null?'na':'bad', null, 'RS: '+(d.rs||'n/a')+(d.rs_excess!=null?' ('+(d.rs_excess>0?'+':'')+d.rs_excess+'% vs bench)':''));
+    if(d.rs_new_high) t5+=badge('ok',null,'\u26A1 RS line new high');
+    t5+=badge(d.accumulation==='accumulating'?'ok':d.accumulation==='neutral'?'mid':d.accumulation==null?'na':'bad', null, 'Accumulation: '+(d.accumulation||'n/a')+(d.up_down_vol!=null?' ('+d.up_down_vol+'\u00d7)':''));
+    t5+=badge(d.stage2&&d.near_high?'ok':d.stage2||d.near_high?'mid':'bad', null, 'Trend/breakout: '+(d.stage2?'Stage-2':'not Stage-2')+(d.near_high?', near high':''));
+    t5+=badge(d.earnings_available?(d.earnings==='growing'?'ok':d.earnings==='modest'?'mid':'bad'):'na', null, 'Earnings: '+(d.earnings_available?d.earnings:'N/A (no feed)'));
+    t5+='<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><span style="font-size:8px;font-weight:800;color:#64748b">CONFIRMATION</span><div style="flex:1;height:7px;background:#e2e8f0;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+(d.confirmation_score||0)+'%;background:#7c3aed"></div></div><span style="font-size:12px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">'+(d.confirmation_score!=null?d.confirmation_score:'n/a')+'</span></div>';
+  }
+  h+=lens('\uD83C\uDFDB','5. Institutional Confirmation (computed)','#0891b2',t5);
+
+  // reflective questions
+  var q='<div style="font-size:9px;color:#64748b;margin-bottom:4px">Before buying, you should be able to answer:</div>';
+  window._RUNWAY_QUESTIONS.forEach(function(qq){ q+='<div style="font-size:9.5px;color:#475569;line-height:1.6">\u2022 '+E(qq)+'</div>'; });
+  h+=lens('\u2753','6. The Multibagger Questions','#64748b',q);
+
+  // COMPOSITE
+  var conf=d?d.confirmation_score:null;
+  var vd=window._runwayVerdict(th.score, conf);
+  var cc={pos:['#16a34a','#dcfce7'],neutral:['#475569','#f1f5f9'],caution:['#b45309','#fef3c7'],neg:['#dc2626','#fef2f2']}[vd.tone]||['#475569','#f1f5f9'];
+  var comp='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">';
+  comp+='<div style="flex:1;min-width:130px;background:#f3e8ff;border-radius:8px;padding:8px 11px"><div style="font-size:8px;font-weight:800;color:#7c3aed">YOUR THESIS (Layers 1\u20134)</div><div style="font-size:20px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">'+(th.score!=null?th.score:'\u2014')+'<span style="font-size:9px;color:#a78bfa">/100</span></div><div style="font-size:7.5px;color:#a78bfa">'+th.coverage+'% of layers assessed</div></div>';
+  comp+='<div style="flex:1;min-width:130px;background:#ecfeff;border-radius:8px;padding:8px 11px"><div style="font-size:8px;font-weight:800;color:#0891b2">THE TAPE (Layer 5)</div><div style="font-size:20px;font-weight:900;color:#0891b2;font-family:JetBrains Mono,monospace">'+(conf!=null?conf:'\u2014')+'<span style="font-size:9px;color:#67e8f9">/100</span></div><div style="font-size:7.5px;color:#67e8f9">'+(d?'computed from price/volume':'run confirmation')+'</div></div>';
+  comp+='</div>';
+  comp+='<div style="background:'+cc[1]+';border:2px solid '+cc[0]+';border-radius:10px;padding:11px 14px"><div style="font-size:8px;font-weight:800;color:'+cc[0]+';letter-spacing:1px">OPPORTUNITY RUNWAY VERDICT</div><div style="font-size:16px;font-weight:900;color:'+cc[0]+';font-family:Sora,sans-serif;margin-top:2px">'+E(vd.label)+'</div><div style="font-size:10px;color:#475569;margin-top:4px;line-height:1.5">'+E(vd.why)+'</div></div>';
+  h+='<div style="background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:11px 14px;margin-bottom:8px"><div style="font-size:11px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:7px">\uD83D\uDE80 Opportunity Verdict</div>'+comp+'</div>';
+  if(d) h+='<div style="font-size:8px;color:#94a3b8;line-height:1.4">'+E(d.data_note||'')+'</div>';
+  el.innerHTML=h;
+};
+window._runwaySetCapture = function(v){ window._runwaySet('capture',v); };
+
 
 window._renderDec360 = function(d){
   var E=window._esc, t=d.technical, mc=d.macro, fd=d.fundamentals, cur=d.currency||'$', st=window._dec360State||{};

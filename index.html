@@ -2181,6 +2181,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <button onclick="window._engShow('market360')" id="engBtnMarket360" style="padding:7px 14px;background:linear-gradient(135deg,#eff6ff,#dbeafe);color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127760; Market 360</button>
   <button onclick="window._engShow('momcoc')" id="engBtnMomCoC" style="padding:7px 14px;background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#c2410c;border:1px solid #fed7aa;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129516; Momentum CoC</button>
   <button onclick="window._foreverShow()" id="engBtnForever" style="padding:7px 14px;background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;border:1px solid #334155;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127963; Forever Holds</button>
+  <button onclick="window._runwayShow()" id="engBtnRunway" style="padding:7px 14px;background:linear-gradient(135deg,#faf5ff,#f3e8ff);color:#7c3aed;border:1px solid #d8b4fe;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128640; Opportunity Runway</button>
   <button onclick="window._engShow('dec360')" id="engBtnDec360" style="padding:7px 14px;background:linear-gradient(135deg,#ecfeff,#cffafe);color:#0e7490;border:1px solid #67e8f9;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129517; 360 Decision</button>
 </div>
 
@@ -2233,6 +2234,22 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   </div>
 </div>
 
+<div id="engRunwayPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#7c3aed;font-family:Sora,sans-serif;margin-bottom:6px">&#128640; Opportunity Runway &mdash; Thesis-First (5&ndash;10yr)</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Top-down: find the structural trend, estimate the adoption runway, identify who captures the economics, confirm the leader &mdash; THEN check the tape. Layers 1&ndash;4 are your judgment (the engine can&rsquo;t compute future opportunity from price). Layer 5 (institutional confirmation) and Layer 6 (price) are computed live; earnings acceleration is best-effort (N/A when the feed is silent).</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#faf5ff;border:1px solid #d8b4fe;border-radius:8px">
+      <input id="runwaySym" type="text" placeholder="NVDA or RELIANCE" style="padding:6px 10px;border:1px solid #d8b4fe;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#7c3aed;width:160px">
+      <div style="display:flex;border:1px solid #d8b4fe;border-radius:5px;overflow:hidden">
+        <button id="runwayRegIN" onclick="window._runwaySetRegion('IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#7c3aed">IN</button>
+        <button id="runwayRegUS" onclick="window._runwaySetRegion('US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #d8b4fe;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">US</button>
+      </div>
+      <button onclick="window._runwayRun()" id="runwayBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128640; CONFIRM TAPE (Layer 5/6)</button>
+    </div>
+    <div id="runwayResult" style="min-height:80px;margin-top:12px"></div>
+  </div>
+</div>
+
 <!-- MARKET 360 ENGINE -->
 <div id="engMarket360Panel" style="display:none">
   <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
@@ -2274,6 +2291,13 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
     <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Where is the risk in this portfolio? 6 risk dimensions: single-position, top-3, sector, region, beta, cash. Suggests specific fixes.</div>
     <div style="padding:10px;background:#faf5ff;border:1px solid #c4b5fd;border-radius:8px">
       <div style="font-size:10px;color:#5b21b6;font-weight:700;margin-bottom:6px;letter-spacing:0.3px">Holdings (one per line: SYMBOL,WEIGHT%,REGION)</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <label for="riskCsvFile" style="padding:5px 12px;background:#fff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:5px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128206; Import broker CSV</label>
+        <input id="riskCsvFile" type="file" accept=".csv,.tsv,.txt,text/csv" style="display:none" onchange="window._riskImportCSV(this.files&&this.files[0])">
+        <button type="button" onclick="window._riskClearHoldings()" style="padding:5px 10px;background:#fff;color:#7c3aed;border:1px solid #ddd6fe;border-radius:5px;font-size:9px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Clear</button>
+        <span style="font-size:8.5px;color:#94a3b8">Parsed in your browser — nothing is uploaded. Weights are derived from market value if your CSV has no weight column.</span>
+      </div>
+      <div id="riskImportNote" style="display:none;font-size:9.5px;margin-bottom:6px;padding:6px 9px;border-radius:6px"></div>
       <textarea id="riskHoldings" rows="6" placeholder="AAPL,15,US&#10;MSFT,12,US&#10;NVDA,10,US&#10;GOOG,8,US&#10;META,7,US&#10;TSLA,6,US&#10;RELIANCE,12,IN&#10;HDFCBANK,8,IN" style="width:100%;padding:8px;border:1px solid #c4b5fd;border-radius:5px;font-size:10px;font-family:'JetBrains Mono',monospace;color:#4c1d95;background:#fff;resize:vertical"></textarea>
       <div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap">
         <label style="font-size:10px;color:#5b21b6;font-weight:700">CASH %:</label>
@@ -2979,7 +3003,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=63110501"></script>
+<script src="/static/app.min.js?v=63110801"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>

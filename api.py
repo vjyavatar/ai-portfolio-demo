@@ -30694,7 +30694,7 @@ def _d360_rsi(closes, n=14):
         gains += max(d, 0.0); losses += max(-d, 0.0)
     ag = gains / n; al = losses / n
     if al == 0:
-        return 100.0
+        return 100.0 if ag > 0 else 50.0   # only-gains = 100; no movement at all = neutral 50
     rs = ag / al
     return round(100 - 100 / (1 + rs), 1)
 
@@ -30732,6 +30732,126 @@ def _d360_fundamentals(ys):
                 "revenue_growth": g("revenueGrowth"), "beta": g("beta")}
     except Exception:
         return None
+
+
+
+# ═══════════════════ OPPORTUNITY RUNWAY ENGINE (thesis-first, top-down) ═══════════════════
+# Layers 1-4 (trend / adoption runway / value capture / leadership) are QUALITATIVE and
+# cannot be computed from price — they are the user's judgment (rendered as guided inputs).
+# Layer 5 (institutional confirmation) + Layer 6 (price confirmation) ARE computable from
+# price/volume + benchmark; earnings acceleration is best-effort fundamentals (honest N/A).
+
+def _oppr_confirm(stock, bench=None, info=None):
+    info = info or {}
+    c = stock["closes"]; v = stock["volumes"]
+    n = len(c); close = c[-1]
+    def mean(a): return (sum(a) / len(a)) if a else 0.0
+
+    # Layer 5a — RS leadership vs benchmark (126d) + RS-line new high
+    rs = None; rs_excess = None; rs_new_high = False
+    bc = (bench or {}).get("closes") if isinstance(bench, dict) else None
+    if bc and n >= 130 and len(bc) >= 130 and c[-126] and bc[-126]:
+        st = (c[-1] / c[-126] - 1) * 100
+        bn = (bc[-1] / bc[-126] - 1) * 100
+        rs_excess = round(st - bn, 1)
+        rs = "leading" if rs_excess > 5 else "lagging" if rs_excess < -5 else "inline"
+        ml = min(n, len(bc)); cc = c[-ml:]; bb = bc[-ml:]
+        rl = [cc[i] / bb[i] for i in range(ml) if bb[i]]
+        if rl:
+            look = rl[-126:] if len(rl) >= 126 else rl
+            rs_new_high = rl[-1] >= max(look) * 0.999
+
+    # Layer 5b — accumulation (up vs down volume, last 25)
+    acc = None; updown = None
+    if n >= 26:
+        upv = sum(v[i] for i in range(n - 25, n) if c[i] >= c[i - 1])
+        dnv = sum(v[i] for i in range(n - 25, n) if c[i] < c[i - 1])
+        if dnv == 0 and upv > 0:
+            acc = "accumulating"               # no distribution at all = strongest accumulation
+        elif dnv > 0:
+            updown = round(upv / dnv, 2)
+            acc = "accumulating" if updown > 1.15 else "distributing" if updown < 0.85 else "neutral"
+
+    # Layer 6 — trend / breakout (price confirmation)
+    sma50 = mean(c[-50:]) if n >= 50 else None
+    sma200 = mean(c[-200:]) if n >= 200 else (mean(c[-150:]) if n >= 150 else None)
+    stage2 = bool(sma50 and sma200 and close > sma50 > sma200)
+    hi9 = max(c[-189:]) if n >= 189 else max(c)
+    near_high = bool(hi9 and close >= hi9 * 0.95)
+
+    # Layer 5c — earnings acceleration (DATA-GATED: best-effort, honest N/A)
+    rg = info.get("revenueGrowth"); eg = info.get("earningsGrowth")
+    earn_avail = (rg is not None or eg is not None)
+    earn = None
+    if earn_avail:
+        g = max([x for x in [rg, eg] if x is not None])
+        earn = "growing" if g >= 0.15 else "modest" if g >= 0 else "declining"
+
+    # Confirmation score — honest-NULL: average over AVAILABLE components only
+    comps = []
+    if rs is not None:
+        comps.append(("RS leadership", 1.0 if rs == "leading" else 0.5 if rs == "inline" else 0.0))
+    if acc is not None:
+        comps.append(("Accumulation", 1.0 if acc == "accumulating" else 0.5 if acc == "neutral" else 0.0))
+    tb = (0.6 if stage2 else 0.0) + (0.4 if near_high else 0.0)
+    comps.append(("Trend / breakout", round(tb, 2)))
+    if earn is not None:
+        comps.append(("Earnings acceleration", 1.0 if earn == "growing" else 0.5 if earn == "modest" else 0.0))
+    conf = round(sum(x[1] for x in comps) / len(comps) * 100) if comps else None
+
+    return {
+        "rs": rs, "rs_excess": rs_excess, "rs_new_high": rs_new_high,
+        "accumulation": acc, "up_down_vol": updown,
+        "stage2": stage2, "near_high": near_high,
+        "earnings_available": earn_avail, "earnings": earn,
+        "components": [{"name": nm, "value": round(val * 100)} for nm, val in comps],
+        "confirmation_score": conf,
+    }
+
+
+@app.get("/api/opportunity-runway")
+async def opportunity_runway(symbol: str = "", region: str = "US"):
+    import asyncio as _aio
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    yf_sym = symbol if region == "US" else f"{symbol}.NS"
+    bench_sym = _MCOC_BENCH.get(region, "SPY")
+    _lp = _aio.get_event_loop()
+
+    async def _b(fn, *a, timeout=10, default=None):
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, fn, *a), timeout=timeout)
+        except Exception:
+            return default
+
+    stock = await _b(_mcoc_fetch, yf_sym, timeout=11)
+    if not stock:
+        return {"success": False, "symbol": symbol, "region": region,
+                "error": "price history unavailable", "_engine": "opportunity_runway_v1"}
+    bench = await _b(_mcoc_fetch, bench_sym, timeout=9)
+
+    def _info():
+        try:
+            import yfinance as yf
+            return yf.Ticker(yf_sym).info or {}
+        except Exception:
+            return {}
+    info = await _b(_info, timeout=9, default={}) or {}
+
+    r = _oppr_confirm(stock, bench, info)
+    r.update({
+        "success": True, "symbol": symbol, "region": region,
+        "current_price": round(stock["closes"][-1], 2),
+        "sector": info.get("sector"),
+        "data_note": ("Layer 5 confirmation (RS, accumulation, trend/breakout) is computed from "
+                      "price/volume + benchmark. Earnings acceleration is best-effort fundamentals "
+                      "(N/A when the feed is silent, then excluded). Layers 1-4 (trend, adoption "
+                      "runway, value capture, leadership) are your qualitative judgment \u2014 the "
+                      "engine cannot compute future opportunity from price. Research tooling, not advice."),
+        "_engine": "opportunity_runway_v1",
+    })
+    return r
 
 
 @app.get("/api/decision-360")
