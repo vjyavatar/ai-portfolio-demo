@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.8";
-window.CELESYS_BUILD_TIME = 1780812000;
-window.CELESYS_BUILD_DATE = "2026-06-07 06:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.9";
+window.CELESYS_BUILD_TIME = 1780815600;
+window.CELESYS_BUILD_DATE = "2026-06-07 07:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -13851,12 +13851,33 @@ window._runwayRender = function(){
   var vd=window._runwayVerdict(th.score, conf);
   var cc={pos:['#16a34a','#dcfce7'],neutral:['#475569','#f1f5f9'],caution:['#b45309','#fef3c7'],neg:['#dc2626','#fef2f2']}[vd.tone]||['#475569','#f1f5f9'];
   var comp='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px">';
-  comp+='<div style="flex:1;min-width:130px;background:#f3e8ff;border-radius:8px;padding:8px 11px"><div style="font-size:8px;font-weight:800;color:#7c3aed">YOUR THESIS (Layers 1\u20134)</div><div style="font-size:20px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">'+(th.score!=null?th.score:'\u2014')+'<span style="font-size:9px;color:#a78bfa">/100</span></div><div style="font-size:7.5px;color:#a78bfa">'+th.coverage+'% of layers assessed</div></div>';
+  comp+='<div style="flex:1;min-width:130px;background:#f3e8ff;border-radius:8px;padding:8px 11px"><div style="font-size:8px;font-weight:800;color:#7c3aed">YOUR THESIS (Layers 1\u20134)</div><div style="font-size:20px;font-weight:900;color:#7c3aed;font-family:JetBrains Mono,monospace">'+(th.score!=null?th.score:'\u2014')+'<span style="font-size:9px;color:#a78bfa">/100</span></div><div style="font-size:7.5px;color:#a78bfa">'+th.coverage+'% of layers assessed'+(th.score!=null&&th.coverage<100?' \u2014 fill all 4 for a true score':'')+'</div></div>';
   comp+='<div style="flex:1;min-width:130px;background:#ecfeff;border-radius:8px;padding:8px 11px"><div style="font-size:8px;font-weight:800;color:#0891b2">THE TAPE (Layer 5)</div><div style="font-size:20px;font-weight:900;color:#0891b2;font-family:JetBrains Mono,monospace">'+(conf!=null?conf:'\u2014')+'<span style="font-size:9px;color:#67e8f9">/100</span></div><div style="font-size:7.5px;color:#67e8f9">'+(d?'computed from price/volume':'run confirmation')+'</div></div>';
   comp+='</div>';
   comp+='<div style="background:'+cc[1]+';border:2px solid '+cc[0]+';border-radius:10px;padding:11px 14px"><div style="font-size:8px;font-weight:800;color:'+cc[0]+';letter-spacing:1px">OPPORTUNITY RUNWAY VERDICT</div><div style="font-size:16px;font-weight:900;color:'+cc[0]+';font-family:Sora,sans-serif;margin-top:2px">'+E(vd.label)+'</div><div style="font-size:10px;color:#475569;margin-top:4px;line-height:1.5">'+E(vd.why)+'</div></div>';
   h+='<div style="background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:11px 14px;margin-bottom:8px"><div style="font-size:11px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:7px">\uD83D\uDE80 Opportunity Verdict</div>'+comp+'</div>';
   if(d) h+='<div style="font-size:8px;color:#94a3b8;line-height:1.4">'+E(d.data_note||'')+'</div>';
+  var gstep=function(nm,t,b){return '<div style="margin:6px 0"><b style="color:#7c3aed">Step '+nm+' \u2014 '+t+'</b><br>'+b+'</div>';};
+  var g='<details open style="margin-top:12px;background:#fff;border:1px solid #d8b4fe;border-radius:10px;padding:0 14px 12px"><summary style="cursor:pointer;font-size:12px;font-weight:900;color:#7c3aed;font-family:Sora,sans-serif;padding:11px 0">\uD83D\uDCD6 How to use this \u2014 step by step (with an example)</summary>';
+  g+='<div style="font-size:10px;color:#475569;line-height:1.6">';
+  g+='<div style="margin-bottom:8px">Think of this page as a way to spot a company that could become <b>much</b> bigger over the next 5\u201310 years \u2014 and then check whether big investors are <b>already</b> buying it. You give your judgment in Steps 1\u20134; the app checks the market for you in Step 5.</div>';
+  g+=gstep('1','Pick the big trend.','What change in the world is this company riding (AI, electric vehicles, digital payments\u2026)? Tap the trend, then say how real it is: <b>Strong</b> (already happening), <b>Emerging</b> (early), or <b>Speculative</b> (a maybe).');
+  g+=gstep('2','How much room to grow?','Roughly what % of the market uses this <b>today</b>, and what % might use it in 5\u201310 years? Example: today 10, future 70 \u2192 the app shows \u201C7\u00d7 runway.\u201D A bigger gap means more room to grow.');
+  g+=gstep('3','Does THIS company make the money?','A good trend isn\u2019t always a good stock. When everyone started flying more, airlines still struggled \u2014 the plane <b>makers</b> won. Pick the company\u2019s role, then say whether it truly captures the profit.');
+  g+=gstep('4','Is it the leader?','Answer Yes / Partial / No on five marks of a winner: a moat (hard to copy), gaining market share, strong execution, pricing power, and a healthy balance sheet.');
+  g+=gstep('5','Let the app check the market.','Type the stock symbol at the top and click <b>CONFIRM TAPE</b>. The app reads price and volume and tells you whether big money is already buying \u2014 relative strength, accumulation, and breakout.');
+  g+=gstep('6','Read the verdict.','Two scores appear: <b>Your Thesis</b> (your answers in 1\u20134) and <b>The Tape</b> (what the market is doing). The verdict combines them.');
+  g+='<div style="margin-top:10px;background:#faf5ff;border:1px solid #d8b4fe;border-radius:8px;padding:9px 11px"><div style="font-weight:900;color:#7c3aed;margin-bottom:4px">\uD83D\uDCA1 Worked example \u2014 an \u201CAI chip leader\u201D</div><div style="font-size:9.5px;line-height:1.7">';
+  g+='\u2022 <b>Step 1:</b> Trend = AI infrastructure, Strength = Strong.<br>';
+  g+='\u2022 <b>Step 2:</b> Today 10% of computing is AI-accelerated, future 70% \u2192 <b>7\u00d7 runway</b>.<br>';
+  g+='\u2022 <b>Step 3:</b> Role = Picks-and-shovels (it sells the chips everyone needs); Captures value = Yes.<br>';
+  g+='\u2022 <b>Step 4:</b> Moat Yes, share-gains Yes, execution Yes, pricing power Yes, balance sheet Yes.<br>';
+  g+='\u2022 <b>Step 5:</b> Type the symbol, click CONFIRM TAPE \u2192 say it comes back RS <i>leading</i>, <i>accumulating</i>, breakout \u2192 a high Tape score.<br>';
+  g+='\u2022 <b>Step 6:</b> Thesis high + Tape high \u2192 <b>CONFIRMED RUNWAY LEADER</b>: your story and the market agree. If the Tape were weak instead, you\u2019d see <b>EARLY \u2014 THESIS AHEAD OF TAPE</b>: good story, but wait for the market to confirm before buying.';
+  g+='</div></div>';
+  g+='<div style="margin-top:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 11px;font-size:9.5px;color:#92400e;line-height:1.6"><b>\u2139\uFE0F Good to know:</b> the <b>Your Thesis</b> score only counts the layers you\u2019ve filled in. If it shows 100 but \u201C20% of layers assessed,\u201D you\u2019ve answered just one section \u2014 fill all four (trend, runway, value capture, leader) for a score you can trust. This is research tooling to organise your thinking, not buy/sell advice.</div>';
+  g+='</div></details>';
+  h+=g;
   el.innerHTML=h;
 };
 window._runwaySetCapture = function(v){ window._runwaySet('capture',v); };
