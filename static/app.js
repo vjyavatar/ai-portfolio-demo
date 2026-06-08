@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.14";
-window.CELESYS_BUILD_TIME = 1780833600;
-window.CELESYS_BUILD_DATE = "2026-06-07 12:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.15";
+window.CELESYS_BUILD_TIME = 1780837200;
+window.CELESYS_BUILD_DATE = "2026-06-07 13:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -14066,6 +14066,7 @@ window._renderRunwayScreen = function(d){
   }
   var rows=d.results||[];
   function reason(r){ var b=[]; if(r.rs==='leading') b.push('beating the market'+(r.rs_excess!=null?' by '+(r.rs_excess>0?'+':'')+r.rs_excess+'%':'')); else if(r.rs==='inline') b.push('roughly matching the market'); else if(r.rs==='lagging') b.push('lagging the market'); if(r.accumulation==='accumulating') b.push('big buyers accumulating'); else if(r.accumulation==='distributing') b.push('sellers in control'); if(r.stage2&&r.near_high) b.push('uptrend near new highs'); else if(r.stage2) b.push('healthy uptrend'); else if(r.near_high) b.push('near its highs'); if(r.rs_new_high) b.push('leadership at new highs'); var s=b.length?b.join(', '):'mixed signals'; return s.charAt(0).toUpperCase()+s.slice(1); }
+  function actn(r){ var sc=r.confirmation_score, ex=r.rs_excess; var veryExt=(ex!=null&&ex>=150), ext=(ex!=null&&ex>=80); var weak=(sc<60)||r.rs==='lagging'||r.accumulation==='distributing'; var v,dt,c; if(weak){ v='Avoid / wait'; dt='Tape is weak or rolling over - let it prove itself first.'; c=['#dc2626','#fef2f2']; } else if(veryExt){ v='Do not chase'; dt='Huge run already in - wait for a pullback or pass; use a tight stop if you trade it.'; c=['#b45309','#fef3c7']; } else if(ext){ v='Extended - wait for a pullback'; dt='Strong but stretched; let it cool and set an exit first. Momentum, not a hold.'; c=['#b45309','#fef3c7']; } else if(sc>=80){ v='Confirmed - verify, then decide'; dt='Leading and not overextended. Check the business yourself, size for a drop, set an exit before buying.'; c=['#16a34a','#dcfce7']; } else { v='Watchlist'; dt='Confirming but second-tier; wait for it to lead or pull back to support.'; c=['#b45309','#fef3c7']; } return {v:v,dt:dt,c:c}; }
   function sc(v){ return v>=67?['#16a34a','#dcfce7']:v>=34?['#b45309','#fef3c7']:['#dc2626','#fef2f2']; }
   function tag(ok,mid,txt){ var c=ok?['#16a34a','#dcfce7']:mid?['#b45309','#fef3c7']:['#64748b','#f1f5f9']; return '<span style="font-size:8.5px;font-weight:800;padding:1px 6px;border-radius:7px;background:'+c[1]+';color:'+c[0]+'">'+txt+'</span>'; }
   var h='<div style="background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:11px 14px">';
@@ -14076,7 +14077,7 @@ window._renderRunwayScreen = function(d){
     h+='<div style="padding:14px;text-align:center;color:#94a3b8;font-size:10px">No names cleared the scan (feed may be thin on this host right now).</div>';
   } else {
     h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9.5px">';
-    h+='<tr style="color:#7c3aed;text-align:left;font-weight:800"><th style="padding:4px 6px">#</th><th style="padding:4px 6px">Symbol</th><th style="padding:4px 6px">Tape</th><th style="padding:4px 6px">RS</th><th style="padding:4px 6px">Accum.</th><th style="padding:4px 6px">Why it&rsquo;s here</th><th style="padding:4px 6px">Breakout</th><th style="padding:4px 6px;text-align:right">Price</th><th></th></tr>';
+    h+='<tr style="color:#7c3aed;text-align:left;font-weight:800"><th style="padding:4px 6px">#</th><th style="padding:4px 6px">Symbol</th><th style="padding:4px 6px">Tape</th><th style="padding:4px 6px">RS</th><th style="padding:4px 6px">Accum.</th><th style="padding:4px 6px">Why it&rsquo;s here</th><th style="padding:4px 6px">What to do</th><th style="padding:4px 6px">Breakout</th><th style="padding:4px 6px;text-align:right">Price</th><th></th></tr>';
     rows.forEach(function(r,i){
       var c=sc(r.confirmation_score);
       h+='<tr style="border-top:1px solid #ede9fe">';
@@ -14086,6 +14087,7 @@ window._renderRunwayScreen = function(d){
       h+='<td style="padding:4px 6px">'+tag(r.rs==='leading',r.rs==='inline',(r.rs||'n/a')+(r.rs_excess!=null?' '+(r.rs_excess>0?'+':'')+r.rs_excess+'%':''))+(r.rs_new_high?' '+tag(true,false,'\u26A1'):'')+'</td>';
       h+='<td style="padding:4px 6px">'+tag(r.accumulation==='accumulating',r.accumulation==='neutral',r.accumulation||'n/a')+'</td>';
       h+='<td style="padding:4px 6px;color:#475569;max-width:230px;line-height:1.4">'+E(reason(r))+'</td>';
+      var ac=actn(r); h+='<td style="padding:4px 6px;max-width:210px;line-height:1.4"><b style="color:'+ac.c[0]+'">'+E(ac.v)+'</b><div style="color:#64748b;font-size:8.5px;margin-top:1px">'+E(ac.dt)+'</div></td>';
       h+='<td style="padding:4px 6px">'+tag(r.stage2&&r.near_high,r.stage2||r.near_high,(r.stage2?'Stage-2':'\u2014')+(r.near_high?' \u2191high':''))+'</td>';
       h+='<td style="padding:4px 6px;text-align:right;font-family:JetBrains Mono,monospace;color:#475569">'+(d.region==='IN'?'\u20B9':'$')+E(String(r.price))+'</td>';
       h+='<td style="padding:4px 6px;text-align:right"><button onclick="window._runwayPick(\''+E(r.symbol).replace(/&#39;|\x27/g,'')+'\')" style="padding:3px 9px;background:#7c3aed;color:#fff;border:none;border-radius:5px;font-size:8.5px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">Assess \u2192</button></td>';
