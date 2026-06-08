@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.13";
-window.CELESYS_BUILD_TIME = 1780830000;
-window.CELESYS_BUILD_DATE = "2026-06-07 11:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.14";
+window.CELESYS_BUILD_TIME = 1780833600;
+window.CELESYS_BUILD_DATE = "2026-06-07 12:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -13926,6 +13926,17 @@ window._runwayWatch = function(label){
   };
   return m[label] || 'Weigh the thesis against what the tape is doing, size small, and decide your exit before you act.';
 };
+window._runwayStance = function(label){
+  var m={
+    'CONFIRMED RUNWAY LEADER':{verb:'Consider (highest-quality setup)',detail:'story and money agree. It has already run, so scale in or wait for a pullback rather than chasing, and size for a drawdown.',tone:'pos'},
+    'EARLY \u2014 THESIS AHEAD OF TAPE':{verb:'Watchlist',detail:'good story, but the market has not confirmed yet. Wait for accumulation plus a breakout, or take only a small starter if conviction is high.',tone:'caution'},
+    'MOMENTUM, NO DURABLE RUNWAY':{verb:'Trade only, not a hold',detail:'the tape is hot but the long-term case is thin. Keep a tight exit and do not marry it.',tone:'caution'},
+    'NO EDGE YET':{verb:'Pass for now',detail:'neither the story nor the tape is compelling. Revisit if one improves.',tone:'neg'},
+    'STRONG THESIS \u2014 NOW CONFIRM THE TAPE':{verb:'Watchlist',detail:'good story; let the live tape load and confirm before committing size.',tone:'caution'},
+    'THESIS STILL THIN':{verb:'Low conviction, likely skip',detail:'the long-run case here is weak.',tone:'neg'}
+  };
+  return m[label] || {verb:'Weigh it yourself',detail:'compare the thesis against the tape, size small, and set an exit first.',tone:'neutral'};
+};
 window._runwayFit = function(it, thScore, risk, horizon){
   var th = thScore||0;
   var tp = it.confirmation_score;
@@ -13992,6 +14003,7 @@ window._renderRunwayTop = function(d){
   h+='<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span style="font-size:8.5px;color:#92400e;font-weight:700;min-width:64px">Horizon</span>'+pbtn('horizon','Years','Patient (years)')+pbtn('horizon','Months','Near-term (months)')+'</div>';
   h+=(_pf.risk?'<div style="font-size:8px;color:#16a34a;margin-top:6px;font-weight:700">&#10003; Sorted by fit for a '+E(_pf.risk.toLowerCase())+', '+(_pf.horizon==='Years'?'patient':'near-term')+' profile. Tap your risk again to clear. This is educational, not a recommendation to buy.</div>':'<div style="font-size:8px;color:#94a3b8;margin-top:6px">Pick a risk appetite to see which names fit you best &mdash; educational, not a recommendation to buy.</div>');
   h+='</div>';
+  h+='<details style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:7px 10px;margin-bottom:9px"><summary style="font-size:9px;font-weight:900;color:#b45309;cursor:pointer">&#10067; How to read each card (Thesis vs Tape vs Verdict vs Fit)</summary><div style="font-size:8.5px;color:#475569;line-height:1.6;margin-top:6px"><b>THESIS</b> = is the long-term story strong? &nbsp; <b>TAPE</b> = is big money buying it right now? &nbsp; <b>VERDICT</b> = the two combined into a stance &nbsp; <b>FIT</b> = does it suit your risk / horizon.<br>You do not pick &ldquo;thesis&rdquo; <i>or</i> &ldquo;leader&rdquo; &mdash; the verdict already blends them. <b>Confirmed Runway Leader</b> = story <i>and</i> money agree (strongest). <b>Early &mdash; Thesis Ahead of Tape</b> = only the story is there yet (watchlist). The best candidates are a <b>Confirmed Leader</b> that is also a good <b>Fit</b> for you and whose thesis you actually believe. None of this is a guarantee &mdash; read the <b>What to do</b> line on each card.</div></details>';
   var prof=window._runwayProfile||{risk:null,horizon:'Years'};
   var view=items.map(function(it){ var th=window._runwayThesis({trend:it.trend,trendStrength:it.trendStrength,curAdopt:it.curAdopt,futAdopt:it.futAdopt,captureType:it.captureType,capture:it.capture,leader:it.leader}); var fit=prof.risk?window._runwayFit(it,th.score,prof.risk,prof.horizon):null; return {it:it,th:th,fit:fit}; });
   if(prof.risk){ view.sort(function(a,b){ return (b.fit.score)-(a.fit.score); }); }
@@ -14015,6 +14027,8 @@ window._renderRunwayTop = function(d){
     if(fit){ var ftc=fit.tier==='Strong fit'?['#16a34a','#dcfce7']:(fit.tier==='Possible fit'?['#b45309','#fef3c7']:['#dc2626','#fef2f2']); h+='<div style="background:'+ftc[1]+';border-radius:7px;padding:5px 8px;margin-bottom:6px"><span style="font-size:9px;font-weight:900;color:'+ftc[0]+'">'+fit.tier+' for your profile &middot; '+fit.score+'/100</span>'+(fit.reason?'<div style="font-size:8.5px;color:#475569;line-height:1.45;margin-top:2px">'+E(fit.reason)+'</div>':'')+'</div>'; }
     h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div style="font-size:10px;font-weight:900;color:'+tc[0]+';font-family:Sora,sans-serif">'+E(vd.label)+'</div>';
     h+='<button onclick="window._runwayLoadThesis(\''+E(it.symbol)+'\')" style="padding:3px 10px;background:#d97706;color:#fff;border:none;border-radius:5px;font-size:8.5px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">Assess \u2192</button></div>';
+    var stance=window._runwayStance(vd.label); var stc=tone(stance.tone);
+    h+='<div style="font-size:9px;margin-top:5px;background:'+stc[1]+';border-radius:6px;padding:4px 8px;color:'+stc[0]+';line-height:1.45"><b>&#128073; What to do:</b> <b>'+E(stance.verb)+'</b> &mdash; <span style="color:#475569">'+E(stance.detail)+'</span></div>';
     h+='<div style="font-size:8px;color:#94a3b8;margin-top:3px">'+E(it.earliness||'')+'</div>';
     h+='<div style="font-size:8.5px;color:#64748b;line-height:1.45;margin-top:3px"><b>What this means:</b> '+E(window._runwayWatch(vd.label))+'</div>';
     h+='</div>';
