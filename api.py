@@ -9162,54 +9162,85 @@ def _build_trade_ticket(candidate, direction, vix_zone, region):
     vol    = ind.get("vol_ratio") or 1.0
     h20d   = ind.get("high_20d")
     l20d   = ind.get("low_20d")
+    atr14  = ind.get("atr14")
+
+    def _ext_tier(side_pct):
+        # side_pct = how far price is on the trade's side of its 20d average (>=0 typical).
+        # Decide on ATR-normalized extension when ATR is available; else widened % bands.
+        if atr14 and ema20 and atr14 > 0:
+            ea = abs(side_pct) / 100.0 * ema20 / atr14
+            if ea <= 1.0: return 0, ea
+            if ea <= 2.0: return 1, ea
+            if ea <= 3.0: return 2, ea
+            return 3, ea
+        a = abs(side_pct)
+        if a <= 3: return 0, None
+        if a <= 6: return 1, None
+        if a <= 10: return 2, None
+        return 3, None
+
+    def _volq(ea):
+        if ea is None: return ""
+        if ea <= 1.2: return " (a normal-sized move for this stock)"
+        if ea <= 2.5: return " (a sizable move for this stock)"
+        return " (a very large move for this stock)"
 
     if direction == "CE":
         if ema20 and spot:
             dist = (spot - ema20) / ema20 * 100
-            if dist <= 0.5 and vol >= 1.5 and adx and adx > 20:
+            tier, ea = _ext_tier(dist)
+            vq = _volq(ea)
+            near_bo = bool(h20d and spot >= h20d * 0.985)
+            conf = (vol >= 1.5) and adx and adx > 20
+            if tier == 0:
+                if conf:
+                    entry_guidance = (
+                        f"\u2705 BUY NOW \u2014 {sym} is hugging its 20-day average "
+                        f"({sym_disp}{ema20:.0f}) with strong buying volume ({vol:.1f}x normal) and a firm trend. "
+                        f"Good entry \u2014 buy the call now and set your stop just below {sym_disp}{ema20:.0f}."
+                    )
+                else:
+                    entry_guidance = (
+                        f"\u2705 GOOD ENTRY \u2014 {sym} is close to its 20-day average "
+                        f"({sym_disp}{ema20:.0f}){vq}, which acts like a floor. Reasonable to buy the call now, "
+                        f"or wait for a small dip to {sym_disp}{ema20:.0f} for a slightly better price. "
+                        f"Stop just below {sym_disp}{ema20:.0f}."
+                    )
+            elif tier == 1:
+                if near_bo and vol >= 1.2:
+                    entry_guidance = (
+                        f"\u2705 ENTER ON STRENGTH \u2014 {sym} is breaking out to new highs with rising volume; "
+                        f"being {dist:.1f}% above its average{vq} is normal in a breakout. "
+                        f"Enter now or scale in, and set your stop at {sym_disp}{ema20:.0f}."
+                    )
+                else:
+                    entry_guidance = (
+                        f"\U0001f7e1 STARTER ENTRY \u2014 {sym} is {dist:.1f}% above its average "
+                        f"({sym_disp}{ema20:.0f}){vq} \u2014 a bit extended but still trending. "
+                        f"Consider a small/partial position now and add on a dip toward {sym_disp}{ema20:.0f}."
+                    )
+            elif tier == 2:
                 entry_guidance = (
-                    f"✅ BUY NOW — {sym} is sitting right at its 20-day average price "
-                    f"({sym_disp}{ema20:.0f}) with unusually high buying volume ({vol:.1f}x normal). "
-                    f"This is a strong signal. The stock is at support AND has momentum. Enter the call option now."
-                )
-            elif dist <= 0.5:
-                entry_guidance = (
-                    f"✅ GOOD TIME TO ENTER — {sym} is right at its 20-day average "
-                    f"({sym_disp}{ema20:.0f}), which acts like a floor. "
-                    f"Buy the call option now, or wait for price to briefly dip to {sym_disp}{ema20:.0f} "
-                    f"for an even better entry."
-                )
-            elif dist <= 2.0:
-                entry_guidance = (
-                    f"⚠️ WAIT A LITTLE — {sym} has already moved {dist:.1f}% above its average "
-                    f"({sym_disp}{ema20:.0f}). You're buying a little late. "
-                    f"Better to wait for price to pull back to {sym_disp}{ema20:.0f} before buying the call — "
-                    f"that gives you a cheaper entry and a clear stop loss level."
-                )
-            elif dist <= 4.0:
-                entry_guidance = (
-                    f"⚠️ DON'T BUY YET — {sym} has run up {dist:.1f}% above its average price. "
-                    f"Think of it like buying a shirt after the price already went up — you're overpaying. "
-                    f"Wait for price to come back down to {sym_disp}{ema20:.0f}–{sym_disp}{ema20*1.01:.0f} "
-                    f"(its average). Buy the call ONLY when it bounces back up from there."
+                    f"\u26a0\ufe0f WAIT FOR A PULLBACK \u2014 {sym} is {dist:.1f}% above its average "
+                    f"({sym_disp}{ema20:.0f}){vq}. Buying here is chasing. Wait for a dip toward "
+                    f"{sym_disp}{ema20:.0f}, or take only a small starter."
                 )
             else:
                 entry_guidance = (
-                    f"🚫 DO NOT ENTER NOW — {sym} is {dist:.1f}% above its average price. "
-                    f"It's very stretched. Stocks almost always pull back after running this far. "
-                    f"Be patient — wait for price to drop back toward {sym_disp}{ema20:.0f} first. "
-                    f"Missing this trade is better than buying at the top."
+                    f"\U0001f6ab DO NOT CHASE \u2014 {sym} is {dist:.1f}% above its average{vq} and very stretched. "
+                    f"Big pullbacks are common after runs like this. Be patient and wait for price to come back "
+                    f"toward {sym_disp}{ema20:.0f}."
                 )
         elif h20d and spot >= h20d * 0.995:
             entry_guidance = (
-                f"✅ BREAKOUT — {sym} just broke above a key resistance level "
+                f"\u2705 BREAKOUT \u2014 {sym} just broke above a key resistance level "
                 f"({sym_disp}{h20d:.0f}). This is a momentum trade. Enter now if volume is rising. "
                 f"The stock is showing strength."
             )
         else:
             entry_guidance = (
                 f"Wait for {sym} to clearly move above its average daily price (VWAP) "
-                f"with higher-than-normal buying volume. Don't guess — wait for clear confirmation."
+                f"with higher-than-normal buying volume. Don't guess \u2014 wait for clear confirmation."
             )
         sl_underlying = (f"EXIT immediately if {sym} closes BELOW {sym_disp}{ema20:.0f} "
                          f"(its 20-day average). That means the bullish trend has broken."
@@ -9217,50 +9248,58 @@ def _build_trade_ticket(candidate, direction, vix_zone, region):
     else:
         if ema20 and spot:
             dist = (ema20 - spot) / ema20 * 100
-            if dist <= 0.5 and vol >= 1.5 and adx and adx > 20:
+            tier, ea = _ext_tier(dist)
+            vq = _volq(ea)
+            near_bd = bool(l20d and spot <= l20d * 1.015)
+            conf = (vol >= 1.5) and adx and adx > 20
+            if tier == 0:
+                if conf:
+                    entry_guidance = (
+                        f"\u2705 BUY PUT NOW \u2014 {sym} is right at its 20-day average "
+                        f"({sym_disp}{ema20:.0f}) and getting rejected, with heavy selling volume ({vol:.1f}x). "
+                        f"Buy the put now; stop just above {sym_disp}{ema20:.0f}."
+                    )
+                else:
+                    entry_guidance = (
+                        f"\u2705 GOOD PE ENTRY \u2014 {sym} is near its 20-day average "
+                        f"({sym_disp}{ema20:.0f}){vq} and failing to hold. Buy the put now, or wait for one small "
+                        f"bounce to {sym_disp}{ema20:.0f} that fails \u2014 that's the cleaner entry. "
+                        f"Stop just above {sym_disp}{ema20:.0f}."
+                    )
+            elif tier == 1:
+                if near_bd and vol >= 1.2:
+                    entry_guidance = (
+                        f"\u2705 ENTER ON WEAKNESS \u2014 {sym} is breaking down to new lows with rising volume; "
+                        f"being {dist:.1f}% below its average{vq} is normal in a breakdown. "
+                        f"Enter the put now or scale in; stop at {sym_disp}{ema20:.0f}."
+                    )
+                else:
+                    entry_guidance = (
+                        f"\U0001f7e1 STARTER ENTRY \u2014 {sym} is {dist:.1f}% below its average "
+                        f"({sym_disp}{ema20:.0f}){vq} \u2014 a bit extended down. Take a small/partial put now "
+                        f"and add if it bounces toward {sym_disp}{ema20:.0f} and fails."
+                    )
+            elif tier == 2:
                 entry_guidance = (
-                    f"✅ SELL (BUY PUT) NOW — {sym} is right at its 20-day average "
-                    f"({sym_disp}{ema20:.0f}) and getting rejected, with high selling volume ({vol:.1f}x). "
-                    f"The stock is weak at resistance. Buy the put option now."
-                )
-            elif dist <= 0.5:
-                entry_guidance = (
-                    f"✅ GOOD PE ENTRY — {sym} is failing to hold above its average price "
-                    f"({sym_disp}{ema20:.0f}). This confirms weakness. "
-                    f"Buy the put now, OR wait for one small bounce up to {sym_disp}{ema20:.0f} — "
-                    f"if it fails to break above, that's the perfect put entry."
-                )
-            elif dist <= 2.0:
-                entry_guidance = (
-                    f"⚠️ SLIGHTLY LATE FOR PE — {sym} is already {dist:.1f}% below its average "
-                    f"({sym_disp}{ema20:.0f}). The stock may bounce up first. "
-                    f"Better entry: if price bounces up toward {sym_disp}{ema20:.0f} and then starts "
-                    f"falling again — THAT is the ideal time to buy the put."
-                )
-            elif dist <= 4.0:
-                entry_guidance = (
-                    f"⚠️ WAIT FOR BOUNCE — {sym} dropped {dist:.1f}% below its average. "
-                    f"When stocks fall this much quickly, they often bounce UP temporarily. "
-                    f"Don't chase the drop. Wait: if it bounces up to {sym_disp}{ema20:.0f} and "
-                    f"then starts failing again, buy the put at that point."
+                    f"\u26a0\ufe0f WAIT FOR A BOUNCE \u2014 {sym} is {dist:.1f}% below its average "
+                    f"({sym_disp}{ema20:.0f}){vq}. Fast drops often bounce first. Wait for a bounce toward "
+                    f"{sym_disp}{ema20:.0f} that fails, then buy the put."
                 )
             else:
                 entry_guidance = (
-                    f"🚫 DO NOT ENTER PE NOW — {sym} has dropped {dist:.1f}% and is oversold. "
-                    f"It's like a rubber band stretched too far — it WILL bounce up soon. "
-                    f"Wait for the bounce UP toward {sym_disp}{ema20:.0f}. Only buy the put "
-                    f"if price reaches {sym_disp}{ema20:.0f} and FAILS to go higher."
+                    f"\U0001f6ab DO NOT CHASE \u2014 {sym} is {dist:.1f}% below its average{vq} and likely oversold; "
+                    f"a bounce is common. Wait for a rally toward {sym_disp}{ema20:.0f} that fails before buying the put."
                 )
         elif l20d and spot <= l20d * 1.005:
             entry_guidance = (
-                f"✅ BREAKDOWN — {sym} broke below a key support level ({sym_disp}{l20d:.0f}). "
+                f"\u2705 BREAKDOWN \u2014 {sym} broke below a key support level ({sym_disp}{l20d:.0f}). "
                 f"This is a momentum PUT trade. Enter now if volume is high. "
                 f"Weakness is confirmed."
             )
         else:
             entry_guidance = (
                 f"Wait for {sym} to clearly break below its average daily price "
-                f"with higher-than-normal selling volume. Don't guess — wait for confirmation."
+                f"with higher-than-normal selling volume. Don't guess \u2014 wait for confirmation."
             )
         sl_underlying = (f"EXIT the put immediately if {sym} closes ABOVE {sym_disp}{ema20:.0f} "
                          f"(its 20-day average). That means sellers have lost control."
@@ -9470,6 +9509,17 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
         # 20d return for RS
         ret_20 = (closes[-1] - closes[-21]) / closes[-21] * 100 if len(closes) >= 21 and closes[-21] > 0 else 0
         rs_vs_bench = ret_20 - benchmark_ret_20d if benchmark_ret_20d is not None else None
+        # ATR(14) — for volatility-normalized entry timing (a 4% move means different things per stock)
+        atr14 = None
+        try:
+            if len(highs) >= 15 and len(lows) >= 15 and len(closes) >= 15:
+                _trs = []
+                for _i in range(1, len(highs)):
+                    _trs.append(max(highs[_i]-lows[_i], abs(highs[_i]-closes[_i-1]), abs(lows[_i]-closes[_i-1])))
+                if len(_trs) >= 14:
+                    atr14 = sum(_trs[-14:]) / 14.0
+        except Exception:
+            atr14 = None
 
         out["indicators"] = {
             "close": round(close_now, 2),
@@ -9484,6 +9534,7 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
             "rs_vs_bench_pct": round(rs_vs_bench, 2) if rs_vs_bench is not None else None,
             "high_20d": round(high_20, 2) if high_20 else None,
             "low_20d": round(low_20, 2) if low_20 else None,
+            "atr14": round(atr14, 2) if atr14 else None,
             "pre_high_15": round(pre_high_15, 2) if pre_high_15 else None,
             "pre_low_15": round(pre_low_15, 2) if pre_low_15 else None,
         }
