@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.15";
-window.CELESYS_BUILD_TIME = 1780837200;
-window.CELESYS_BUILD_DATE = "2026-06-07 13:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.16";
+window.CELESYS_BUILD_TIME = 1780840800;
+window.CELESYS_BUILD_DATE = "2026-06-07 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -14399,7 +14399,7 @@ window._loadDirectionalOptions = function() {
   var resEl = document.getElementById('diroptsResult');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ SCANNING…'; }
   resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:16px;height:16px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Scoring ' + reg + ' universe by 7-check institutional checklist (this may take 30-60s on first call)…</div>';
-  fetch('/api/directional-options-scanner?region=' + encodeURIComponent(reg) + '&top_n=' + topN + '&min_score=' + minScore, {cache:'no-store'})
+  fetch('/api/directional-options-scanner?region=' + encodeURIComponent(reg) + '&top_n=' + topN + '&min_score=' + minScore + '&refresh=1', {cache:'no-store'})
     .then(function(r) { return r.json().catch(function(){return null;}); })
     .then(function(d) {
       if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '🎯 SCAN CE / PE'; }

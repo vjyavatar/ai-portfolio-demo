@@ -8723,7 +8723,7 @@ async def _inst_picks_impl(region, top_n, refresh):
 # ════════════════════════════════════════════════════════════════════════════
 
 _directional_options_cache = {}
-_DIRECTIONAL_OPTIONS_TTL = 1800  # 30min — stocks move during day
+_DIRECTIONAL_OPTIONS_TTL = 120  # 2min safety net only — SCAN button passes refresh=1 for live options data
 
 
 def _ema(values, period):
