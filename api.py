@@ -8597,9 +8597,21 @@ _INST_PICKS_TTL = 21600  # 6 hours
 # Curated universe for r99.40 scaffold (top by mcap, names with strong yfinance coverage)
 _INST_PICKS_UNIVERSE = {
     "US": [
+        # Mega-cap core
         "NVDA", "MSFT", "AAPL", "GOOG", "AMZN", "META", "TSLA", "AVGO",
         "LLY", "JPM", "V", "MA", "UNH", "XOM", "JNJ", "WMT",
         "PG", "HD", "COST", "ABBV", "ORCL", "BAC", "CRM", "NFLX", "AMD",
+        # Semis / AI hardware — liquid options, high momentum
+        "MU", "MRVL", "QCOM", "AMAT", "LRCX", "ASML", "ARM", "NXPI",
+        "ON", "SMCI", "DELL", "ANET", "WDC", "STX", "SNDK",
+        # Software / momentum
+        "PLTR", "SNOW", "NOW", "PANW", "CRWD", "NET", "DDOG",
+        # High-beta / crypto proxies
+        "COIN", "MSTR",
+        # Power / energy infrastructure (AI-power theme)
+        "GEV", "VRT", "CEG",
+        # Industrials / materials momentum
+        "STLD", "NUE", "GE", "BA", "RKLB",
         # Indexes / ETF proxies — liquid CE/PE options, directional signals
         "SPY",   # S&P 500 — most liquid US options
         "QQQ",   # NASDAQ 100 — tech-heavy, high CE/PE activity
@@ -8611,6 +8623,10 @@ _INST_PICKS_UNIVERSE = {
         "BAJFINANCE", "KOTAKBANK", "AXISBANK", "MARUTI", "ASIANPAINT",
         "NESTLEIND", "HCLTECH", "SUNPHARMA", "M&M", "WIPRO",
         "TITAN", "ULTRACEMCO", "POWERGRID", "NTPC", "TATAMOTORS",
+        # F&O momentum / sector leaders
+        "ADANIENT", "ADANIPORTS", "TATASTEEL", "JSWSTEEL", "HINDALCO",
+        "BEL", "HAL", "TATAPOWER", "COALINDIA", "ONGC",
+        "DIXON", "TRENT", "DLF", "VEDL",
         # Indexes — NIFTY F&O is the highest-volume CE/PE market in India
         "^NSEI",     # NIFTY 50 — most liquid F&O
         "^NSEBANK",  # BANK NIFTY — second-highest F&O volume
@@ -9435,7 +9451,7 @@ def _suggest_expiry(candidate, vix_zone, direction):
     }
 
 
-def _score_directional_ticker(symbol, region, benchmark_ret_20d):
+def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None):
     """Compute CE/PE directional score for one ticker. Sync — runs in executor.
 
     Returns dict with:
@@ -9461,17 +9477,24 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d):
         "data_quality": "ok", "_excluded_reason": None,
     }
     try:
-        tk = yf.Ticker(yf_sym)
         info = {}
-        try: info = tk.info or {}
-        except Exception: info = {}
-        if _is_index:
-            out["index_name"] = (info.get("longName") or info.get("shortName") or symbol)
-            out["sector"] = "Index"
+        if prefetched is not None:
+            # FAST PATH (r63.110.19): use batch-downloaded history; skip slow/unreliable .info + per-ticker .history
+            hist = prefetched
+            if _is_index:
+                out["index_name"] = symbol
+                out["sector"] = "Index"
         else:
-            out["sector"] = (info.get("sector") or "Unknown")
-        out["price"] = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
-        hist = tk.history(period="6mo", interval="1d", auto_adjust=True)
+            tk = yf.Ticker(yf_sym)
+            try: info = tk.info or {}
+            except Exception: info = {}
+            if _is_index:
+                out["index_name"] = (info.get("longName") or info.get("shortName") or symbol)
+                out["sector"] = "Index"
+            else:
+                out["sector"] = (info.get("sector") or "Unknown")
+            out["price"] = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
+            hist = tk.history(period="6mo", interval="1d", auto_adjust=True)
         if hist is None or hist.empty or len(hist) < 30:
             out["data_quality"] = "insufficient_history"
             out["_excluded_reason"] = "< 30 daily bars available"
@@ -10298,14 +10321,48 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     vix_zone          = _classify_vix_zone(vix_val, vix_trend_pct, region)
     combined_signal   = _price_vix_combined_signal(benchmark_today_chg, vix_trend_pct)
 
-    # ───────── Score each ticker (sequential for rate-limit safety) ─────────
+    # ───────── Batch-fetch ALL history in ONE call (r63.110.19 perf) ─────────
+    # Was N sequential throttled per-ticker fetches, each also doing a slow/unreliable .info call.
+    def _yf_sym(s):
+        _ix = (s in _INDEX_SYMBOLS or s.startswith("^"))
+        return s if (_ix or region == "US") else f"{s}.NS"
+    yf_syms = [_yf_sym(s) for s in universe]
+
+    def _batch_dl():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        try:
+            return yf.download(tickers=" ".join(yf_syms), period="6mo", interval="1d",
+                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+        except Exception:
+            return None
+    hist_all = await _lp.run_in_executor(None, _batch_dl)
+
+    def _slice(ys):
+        try:
+            if hist_all is None or len(hist_all) == 0:
+                return None
+            cols = hist_all.columns
+            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                sub = hist_all[ys].dropna()
+                return sub if (sub is not None and len(sub) >= 30) else None
+            if (not hasattr(cols, "levels")) and len(yf_syms) == 1:
+                sub = hist_all.dropna()
+                return sub if (sub is not None and len(sub) >= 30) else None
+            return None
+        except Exception:
+            return None
+
     results = []
     excluded = []
     for sym in universe:
-        try: _yahoo_rate_wait()
-        except Exception: pass
+        sub = _slice(_yf_sym(sym))
+        if sub is None:
+            # batch miss for this ticker — fall back to a single throttled per-ticker fetch
+            try: _yahoo_rate_wait()
+            except Exception: pass
         scored = await _lp.run_in_executor(None, _score_directional_ticker,
-                                            sym, region, benchmark_ret_20d)
+                                            sym, region, benchmark_ret_20d, sub)
         if scored["data_quality"] != "ok":
             excluded.append({"symbol": sym, "reason": scored.get("_excluded_reason", "?")})
             continue
