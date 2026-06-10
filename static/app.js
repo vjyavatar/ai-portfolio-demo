@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.28";
-window.CELESYS_BUILD_TIME = 1780884000;
-window.CELESYS_BUILD_DATE = "2026-06-08 02:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.30";
+window.CELESYS_BUILD_TIME = 1780891200;
+window.CELESYS_BUILD_DATE = "2026-06-08 04:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11792,15 +11792,33 @@ window._engSetRegion = function(eng, reg) {
 };
 
 // ───── Shared error rendering ─────
+window._engFmtErr = function(e){
+  // Turn any error shape (string, FastAPI detail array, Pydantic objects, nested) into readable text.
+  if (e == null) return 'unknown error';
+  if (typeof e === 'string') return e;
+  if (Array.isArray(e)) {
+    var parts = e.map(function(x){ return window._engFmtErr(x); }).filter(Boolean);
+    return parts.length ? parts.join('; ') : 'unknown error';
+  }
+  if (typeof e === 'object') {
+    if (e.msg) { var loc = Array.isArray(e.loc) ? e.loc.filter(function(p){return p!=='query'&&p!=='body';}).join('.') : ''; return (loc ? loc + ': ' : '') + e.msg; }
+    if (e.error) return window._engFmtErr(e.error);
+    if (e.detail) return window._engFmtErr(e.detail);
+    if (e.message) return e.message;
+    try { return JSON.stringify(e); } catch(_) { return 'unreadable error object'; }
+  }
+  return String(e);
+};
 window._engRenderError = function(elId, sym, errMsg, trace) {
   var el = document.getElementById(elId);
   if (!el) return;
+  var safeMsg = window._engFmtErr(errMsg).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   var traceHtml = trace ?
     '<details style="margin-top:8px;font-size:9px"><summary style="cursor:pointer;color:#991b1b;font-weight:700">▸ Backend trace</summary>' +
     '<pre style="margin-top:5px;padding:6px;background:#fff;border:1px solid #fca5a5;border-radius:4px;font-size:9px;color:#7f1d1d;overflow:auto;max-height:160px;font-family:\'JetBrains Mono\',monospace;white-space:pre-wrap">' +
     String(trace).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre></details>' : '';
   el.innerHTML = '<div style="padding:14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:11px">' +
-    '<strong>Error analyzing ' + (sym || '?') + ':</strong> ' + errMsg + traceHtml + '</div>';
+    '<strong>Error analyzing ' + (sym || '?') + ':</strong> ' + safeMsg + traceHtml + '</div>';
 };
 
 // ═══════════════════ SMART EXIT ENGINE ═══════════════════
@@ -14458,10 +14476,43 @@ window._renderMarket360 = function(d) {
 };
 
 
-window._loadDirectionalOptions = function() {
+window._renderDirectionalSingle = function(d, sym){
+  var E = window._esc || function(s){return String(s||'');};
+  var ce = (d.ce_buy_candidates||[])[0], pe = (d.pe_buy_candidates||[])[0];
+  var ceS = ce ? (ce.score||ce.ce_score||0) : 0, peS = pe ? (pe.score||pe.pe_score||0) : 0;
+  var side, col, label;
+  if (ceS >= peS && ceS > 0) { side='CE'; col='#059669'; label='\uD83D\uDFE2 CE BUY \u2014 Calls favored'; }
+  else if (peS > ceS) { side='PE'; col='#dc2626'; label='\uD83D\uDD34 PE BUY \u2014 Puts favored'; }
+  else { side='NONE'; col='#d97706'; label='\u26A0\uFE0F No clear directional edge'; }
+  var conflict = Math.abs(ceS - peS) <= 8;
+  var bg = side==='NONE'?'#fffbeb':side==='CE'?'#f0fdf4':'#fef2f2';
+  var h = '<div style="background:' + bg + ';border:2px solid ' + col + ';border-radius:12px;padding:14px 16px;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><span style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(sym) + '</span><span style="font-size:14px;font-weight:900;color:' + col + ';margin-left:10px">' + label + '</span></div><div style="font-size:12px;color:#475569;font-weight:800">CE ' + Math.round(ceS) + ' \u00B7 PE ' + Math.round(peS) + '</div></div>';
+  if (conflict && side!=='NONE') h += '<div style="margin-top:6px;font-size:11px;color:#d97706;font-weight:700">\u26A0\uFE0F Scores are close \u2014 direction is marginal; treat as low-conviction or wait for confirmation.</div>';
+  h += '<div style="margin-top:6px;font-size:11px;color:#64748b">Both the CALL case and PUT case are shown below with best-time-to-enter, VIX grade, A+ checklist and trade ticket. The banner is the side with the stronger score.</div></div>';
+  h += window._renderDirectionalOptions(d);
+  return h;
+};
+window._loadDirectionalOptions = function(symbol) {
   var reg = window._engState.diropts.region;
-  var topN = parseInt(document.getElementById('diroptsTopN').value || '10');
-  var minScore = parseInt(document.getElementById('diroptsMinScore').value || '55');
+  symbol = (symbol || '').trim();
+  if (symbol) {
+    var sBtn = document.getElementById('diroptsSingleBtn');
+    var sEl = document.getElementById('diroptsSingleResult');
+    if (sBtn) { sBtn.disabled = true; sBtn.style.opacity = '0.6'; sBtn.innerHTML = '\u23F3\u2026'; }
+    if (sEl) sEl.innerHTML = '<div style="padding:20px;text-align:center;font-size:11px;color:#7c3aed"><div style="display:inline-block;width:14px;height:14px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Analyzing ' + symbol.toUpperCase() + ' (' + reg + ')\u2026</div>';
+    fetch('/api/directional-options-scanner?region=' + encodeURIComponent(reg) + '&symbol=' + encodeURIComponent(symbol) + '&refresh=1', {cache:'no-store'})
+      .then(function(r){ return r.json().catch(function(){return null;}); })
+      .then(function(d){
+        if (sBtn) { sBtn.disabled = false; sBtn.style.opacity = '1'; sBtn.innerHTML = '\uD83D\uDD0D ANALYZE SYMBOL'; }
+        if (!d || !d.success) { var m = (d && (d.error || d.detail)) || 'unknown'; if (sEl) sEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + symbol.toUpperCase() + ': ' + m + '</div>'; return; }
+        if (sEl) sEl.innerHTML = window._renderDirectionalSingle(d, symbol.toUpperCase());
+      })
+      .catch(function(e){ if (sBtn) { sBtn.disabled = false; sBtn.style.opacity = '1'; sBtn.innerHTML = '\uD83D\uDD0D ANALYZE SYMBOL'; } if (sEl) sEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Network error: ' + e.message + '</div>'; });
+    return;
+  }
+  var topN = parseInt(document.getElementById('diroptsTopN').value || '10') || 10;
+  var minScore = parseInt(document.getElementById('diroptsMinScore').value || '55') || 55;
   var btn = document.getElementById('diroptsBtn');
   var resEl = document.getElementById('diroptsResult');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '⏳ SCANNING…'; }

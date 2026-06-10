@@ -2682,6 +2682,19 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
         <div style="font-size:8px;color:#94a3b8;margin-top:8px;line-height:1.5">Most Indian momentum returns come from a handful of leaders (Trent, HAL, BEL, Polycab, BSE, Dixon, Kaynes) during their leadership phases, not from trading hundreds of names. Educational watchlist for active trading, not investment advice. Tiers are an editorial view, not a prediction. Some small-cap / PSU names and the ETFs have thin or no options &mdash; treat those as cash-market ideas. Size for a drawdown and set an exit before entering.</div>
       </div>
     </details>
+    <!-- SINGLE-SYMBOL MODE (r63.110.29) -->
+    <div style="margin-top:12px;padding:10px 12px;background:#faf5ff;border:1px solid #d8b4fe;border-radius:8px">
+      <div style="font-size:11px;font-weight:900;color:#7c3aed;font-family:Sora,sans-serif;margin-bottom:6px">&#128269; Single-Symbol Mode &mdash; type any index or stock &rarr; CE or PE buy + best entry</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <input id="diroptsSym" type="text" placeholder="NIFTY &middot; BANKNIFTY &middot; SENSEX &middot; RELIANCE &middot; NVDA &middot; SPY" onkeydown="if(event.key==='Enter')window._loadDirectionalOptions((document.getElementById('diroptsSym').value||''))" style="padding:6px 10px;border:1px solid #d8b4fe;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#7c3aed;width:260px">
+        <button onclick="window._loadDirectionalOptions((document.getElementById('diroptsSym').value||''))" id="diroptsSingleBtn" style="padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128269; ANALYZE SYMBOL</button>
+        <span style="font-size:10px;color:#94a3b8">Uses the US/IN region toggle above.</span>
+      </div>
+      <div id="diroptsSingleResult" style="margin-top:10px"></div>
+    </div>
+    <div onclick="(function(){var x=document.getElementById('diroptsResult');var a=document.getElementById('diroptsFoldArrow');if(x){var open=x.style.display!=='none';x.style.display=open?'none':'block';if(a)a.textContent=open?'\u25B8':'\u25BE';}})()" style="margin-top:14px;cursor:pointer;padding:8px 12px;background:#f1f5f9;border-radius:6px;font-size:11px;font-weight:800;color:#334155;font-family:Sora,sans-serif;display:flex;align-items:center;justify-content:space-between">
+      <span>&#128203; Full Universe Scan (CE/PE leaderboard)</span><span id="diroptsFoldArrow">&#9662;</span>
+    </div>
     <div id="diroptsResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Scores the full momentum universe <strong>live on each scan</strong> (one batched fetch &mdash; usually a few seconds). Educational, not advice.</div></div>
   </div>
 </div>
@@ -3173,7 +3186,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=63112801"></script>
+<script src="/static/app.min.js?v=63113001"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>

@@ -10432,13 +10432,14 @@ def _aplus_checklist(row, direction, regime, region):
 async def directional_options_scanner(region: str = "US",
                                        top_n: int = 10,
                                        min_score: int = 50,
-                                       refresh: int = 0):
+                                       refresh: int = 0,
+                                       symbol: str = ""):
     """Directional Options Scanner — CE BUY + PE BUY institutional ranking.
 
     Vijay's spec: trend FIRST, options data CONFIRMS.
     """
     try:
-        return await _directional_options_impl(region, top_n, min_score, refresh)
+        return await _directional_options_impl(region, top_n, min_score, refresh, symbol)
     except Exception as _exc:
         import traceback as _tb
         _err = f"{type(_exc).__name__}: {str(_exc)[:200]}"
@@ -10446,7 +10447,7 @@ async def directional_options_scanner(region: str = "US",
         return {"success": False, "error": _err, "trace": _tb.format_exc()[:1500]}
 
 
-async def _directional_options_impl(region, top_n, min_score, refresh):
+async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""):
     import time as _time
     import asyncio as _aio
     region = (region or "US").upper()
@@ -10454,7 +10455,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
     top_n = max(3, min(25, top_n))
     min_score = max(0, min(100, min_score))
 
-    cache_key = f"{region}_{top_n}_{min_score}"
+    cache_key = f"{region}_{top_n}_{min_score}_" + (symbol or "").strip().upper()
     if not refresh and cache_key in _directional_options_cache:
         c = _directional_options_cache[cache_key]
         if (_time.time() - c["ts"]) < _DIRECTIONAL_OPTIONS_TTL:
@@ -10464,6 +10465,14 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
 
     t0 = _time.time()
     universe = _INST_PICKS_UNIVERSE.get(region, _INST_PICKS_UNIVERSE["US"])
+    single_symbol = (symbol or "").strip().upper()
+    if single_symbol:
+        _idx_alias = {"NIFTY": "^NSEI", "NIFTY50": "^NSEI", "BANKNIFTY": "^NSEBANK",
+                      "FINNIFTY": "^NSEI", "SENSEX": "^BSESN", "MIDCPNIFTY": "^NSEI",
+                      "SPX": "^GSPC", "NDX": "^NDX", "VIX": "^VIX"}
+        universe = [_idx_alias.get(single_symbol, single_symbol)]
+        min_score = 0
+        top_n = 1
 
     # ───────── Fetch VIX + benchmark in parallel ─────────
     try:
@@ -10678,6 +10687,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         "dominant_direction": dominant_direction,
         "chop_mode":          bool(both_active and dominant_direction is None),
         "regime":             regime,
+        "single_symbol":      single_symbol or None,
         "bubbles":           bubbles,
         # VIX context — the whole point of this algorithm
         "vix_context": {
