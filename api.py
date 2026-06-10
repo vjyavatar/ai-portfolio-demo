@@ -10272,6 +10272,163 @@ def _enrich_oi_flow(ce_rows, pe_rows, region, budget_sec=6):
 
 
 @app.get("/api/directional-options-scanner")
+# ═══ A+ TRADE FRAMEWORK (r63.110.26) — institutional 5-layer grading cascade ═══
+# Implements the expert option-buyer workflow: regime → stock quality → entry quality →
+# option structure → risk. Honest by construction: layers backed by LIVE indicators are graded
+# pass/warn/fail; layers needing data unavailable on this deployment (live option delta/liquidity,
+# confirmed event dates, sector-participation breadth) are surfaced as "verify" — never auto-passed.
+def _aplus_regime(vix_zone, vix_trend_pct, bench_ret_20d, bench_today_chg, bull_pct):
+    """LAYER 1 — market regime (shared by the whole scan).
+    Risk-On favors CE buyers, Risk-Off favors PE buyers, Neutral favors neither."""
+    def _n(v):
+        return v if isinstance(v, (int, float)) and v == v else None
+    drivers = []
+    score = 0  # >0 risk-on, <0 risk-off
+    vt = _n(vix_trend_pct)
+    if vt is not None:
+        if vt >= 5:    score -= 2; drivers.append("VIX rising fast (+%.0f%% vs 5d) — risk-off pressure" % vt)
+        elif vt >= 1.5: score -= 1; drivers.append("VIX ticking up (+%.0f%%) — caution" % vt)
+        elif vt <= -5:  score += 2; drivers.append("VIX falling (%.0f%%) — risk appetite returning" % vt)
+        elif vt <= -1.5: score += 1; drivers.append("VIX easing (%.0f%%)" % vt)
+        else:           drivers.append("VIX stable")
+    zc = (vix_zone or {}).get("zone_code", "") or ""
+    zn = (vix_zone or {}).get("zone_name", "elevated")
+    if zc in ("ELEVATED", "HIGH", "EXTREME", "ABOVE_20", "ABOVE_25", "ABOVE_30", "ABOVE_18"):
+        score -= 1; drivers.append("VIX zone %s — premiums expensive, wrong way hurts fast" % zn)
+    elif zc in ("COMPRESSED", "BELOW_12", "LOW", "BELOW_15"):
+        score += 1; drivers.append("VIX compressed — calm tape")
+    br = _n(bench_ret_20d)
+    if br is not None:
+        if br >= 2:   score += 1; drivers.append("Index +%.1f%% over 20d — uptrend intact" % br)
+        elif br <= -2: score -= 1; drivers.append("Index %.1f%% over 20d — downtrend" % br)
+        else:         drivers.append("Index flat (%+.1f%% 20d) — no trend" % br)
+    bt = _n(bench_today_chg)
+    if bt is not None:
+        if bt <= -1.0:  score -= 1; drivers.append("Index down %.1f%% today — risk-off session" % bt)
+        elif bt >= 1.0: score += 1; drivers.append("Index up +%.1f%% today" % bt)
+    bp = _n(bull_pct)
+    if bp is not None:
+        if bp >= 60:   score += 1; drivers.append("Breadth %.0f%% of names bullish — broad participation" % bp)
+        elif bp <= 40: score -= 1; drivers.append("Breadth weak (%.0f%% bullish) — narrow/deteriorating" % bp)
+        else:          drivers.append("Breadth mixed (%.0f%% bullish)" % bp)
+    if score >= 2:
+        label, favors, color = "RISK-ON", "CE", "#16a34a"
+        headline = "Risk-On — long calls have the wind at their back. CE setups can run."
+    elif score <= -2:
+        label, favors, color = "RISK-OFF", "PE", "#dc2626"
+        headline = "Risk-Off — even Grade A CE setups fail often here. Favor puts or sit out."
+    else:
+        label, favors, color = "NEUTRAL", "NONE", "#d97706"
+        headline = "Neutral / mixed tape — no regime edge. Demand A+ only and cut size."
+    return {
+        "label": label, "favors": favors, "color": color, "score": score,
+        "headline": headline, "drivers": drivers[:6],
+        "breadth_bull_pct": round(bp, 0) if bp is not None else None,
+        "note": "Sector-participation breadth not evaluated (data unavailable on this feed).",
+    }
+def _aplus_checklist(row, direction, regime, region):
+    """LAYERS 2-5 + regime alignment → A+ / A / B / PASS cascade for one CE or PE setup.
+    Reads only live indicators + the already-built trade ticket. Gated checks → 'verify'."""
+    ind = row.get("indicators") or {}
+    tk = row.get("trade_ticket") or {}
+    grade = row.get("grade", "C")
+    is_ce = (direction == "CE")
+    checks = []
+    def add(layer, label, status, detail):
+        checks.append({"layer": layer, "label": label, "status": status, "detail": detail})
+    def num(v):
+        return v if isinstance(v, (int, float)) and v == v else None
+    close = num(ind.get("close")); ema20 = num(ind.get("ema20")); atr = num(ind.get("atr14"))
+    rs = num(ind.get("rs_vs_bench_pct")); volr = num(ind.get("vol_ratio"))
+    hi20 = num(ind.get("high_20d")); lo20 = num(ind.get("low_20d"))
+    pre_hi = num(ind.get("pre_high_15")); pre_lo = num(ind.get("pre_low_15"))
+    hard_fail = 0; soft_fail = 0
+    # LAYER 1 — regime alignment
+    fav = (regime or {}).get("favors", "NONE"); rlab = (regime or {}).get("label", "NEUTRAL")
+    if fav == direction:
+        add("Regime", "Regime supports this side", "pass", "%s favors %s buyers" % (rlab, direction))
+    elif fav == "NONE":
+        add("Regime", "Regime neutral — no tailwind", "warn", "%s; size down" % rlab); soft_fail += 1
+    else:
+        add("Regime", "Regime AGAINST this side", "fail", "%s favors %s, not %s" % (rlab, fav, direction)); hard_fail += 1
+    # LAYER 2 — relative-strength leadership
+    if rs is None:
+        add("Quality", "Relative strength", "verify", "RS vs index unavailable — verify manually")
+    elif is_ce and rs > 0.5:
+        add("Quality", "Leader (outperforming index)", "pass", "RS +%.1f%% vs index over 20d" % rs)
+    elif (not is_ce) and rs < -0.5:
+        add("Quality", "Laggard (underperforming index)", "pass", "RS %.1f%% vs index — weak names fall fastest" % rs)
+    else:
+        add("Quality", "No RS leadership", "fail", "RS %+.1f%% vs index — not leading the move" % rs); hard_fail += 1
+    # LAYER 3a — volume expansion
+    if volr is None:
+        add("Entry", "Volume expansion", "verify", "Volume ratio unavailable")
+    elif volr >= 1.2:
+        add("Entry", "Volume expansion present", "pass", "%.1fx 20d avg volume" % volr)
+    else:
+        add("Entry", "No volume expansion", "warn", "%.1fx avg — move not confirmed by volume" % volr); soft_fail += 1
+    # LAYER 3b — fresh breakout / clean pullback
+    bq = None
+    if is_ce and hi20 and close:
+        if pre_hi and close >= pre_hi: bq = ("pass", "Breaking 15d consolidation high %.2f" % pre_hi)
+        elif ema20 and close >= ema20 and close <= (hi20 * 1.005): bq = ("pass", "Pullback holding above EMA20 near 20d high")
+    if (not is_ce) and lo20 and close:
+        if pre_lo and close <= pre_lo: bq = ("pass", "Breaking 15d consolidation low %.2f" % pre_lo)
+        elif ema20 and close <= ema20 and close >= (lo20 * 0.995): bq = ("pass", "Bounce failing below EMA20 near 20d low")
+    if bq:
+        add("Entry", "Fresh breakout / clean pullback", bq[0], bq[1])
+    else:
+        add("Entry", "Not a fresh breakout/pullback", "warn", "Mid-range entry — lower-quality location"); soft_fail += 1
+    # LAYER 3c — not >1 ATR extended
+    if close and ema20 and atr and atr > 0:
+        ext = (close - ema20) / atr if is_ce else (ema20 - close) / atr
+        if ext <= 1.0:
+            add("Entry", "Entry not extended (<=1 ATR)", "pass", "%.1f ATR from EMA20" % ext)
+        elif ext <= 2.0:
+            add("Entry", "Mildly extended (1-2 ATR)", "warn", "%.1f ATR — wait for pullback if possible" % ext); soft_fail += 1
+        else:
+            add("Entry", "Over-extended (>2 ATR) — chasing", "fail", "%.1f ATR from EMA20" % ext); hard_fail += 1
+    else:
+        add("Entry", "Extension vs ATR", "verify", "ATR/EMA unavailable — check chart")
+    # LAYER 4 — option structure (targets always shown; live confirmation gated)
+    add("Structure", "Target delta 0.55-0.70", "verify",
+        "Choose a strike near 0.55-0.70 delta (slightly ITM). Scanner strike: %s" % str(tk.get("entry_strike", "n/a")))
+    add("Structure", "Target 30-60 DTE", "verify",
+        "For directional buying use 30-60 DTE, not weeklies. Scanner DTE: %s" % str(tk.get("dte", "n/a")))
+    add("Structure", "Liquidity (tight spread, real OI)", "verify",
+        "Confirm tight bid/ask + open interest on the chain before entry")
+    # LAYER 5 — risk predefined
+    if tk.get("stop_loss_premium") is not None and tk.get("target_premium") is not None:
+        add("Risk", "Risk predefined before entry", "pass",
+            "Stop %s%% | Target %s%% | R:R %s" % (str(tk.get("stop_loss_pct", "?")), str(tk.get("target_pct", "?")), str(tk.get("rrr", "?"))))
+    else:
+        add("Risk", "Risk not yet defined", "warn", "Set stop + target before entering"); soft_fail += 1
+    # CASCADE
+    base_a = (grade == "A")
+    if hard_fail > 0:
+        cls = "PASS"
+    elif soft_fail == 0 and base_a:
+        cls = "A+"
+    elif soft_fail <= 1 and base_a:
+        cls = "A"
+    elif soft_fail <= 2:
+        cls = "B"
+    else:
+        cls = "PASS"
+    qualified = cls in ("A+", "A")
+    summaries = {
+        "A+": "A+ — every live filter passed and the base setup is Grade A. Highest-expectancy slice. Still verify option structure + liquidity before entry.",
+        "A": "A — strong setup with one soft caveat. Tradeable with discipline; size normal to slightly reduced.",
+        "B": "B — playable only on high conviction with reduced size. Several quality checks soft-failed.",
+        "PASS": "PASS — a hard filter failed (regime against side, no RS leadership, or over-extended). No edge here — skip it.",
+    }
+    return {
+        "classification": cls, "qualified": qualified,
+        "hard_fails": hard_fail, "soft_fails": soft_fail, "base_grade": grade,
+        "checks": checks, "summary": summaries[cls],
+        "targets": {"delta": "0.55-0.70", "dte": "30-60 DTE"},
+    }
+
 async def directional_options_scanner(region: str = "US",
                                        top_n: int = 10,
                                        min_score: int = 50,
@@ -10387,6 +10544,13 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
             continue
         results.append(scored)
 
+    # ───────── A+ FRAMEWORK: internal breadth + market regime (r63.110.26) ─────────
+    _ap_bull = sum(1 for r in results if (r.get("ce_score") or 0) > (r.get("pe_score") or 0))
+    _ap_bear = sum(1 for r in results if (r.get("pe_score") or 0) > (r.get("ce_score") or 0))
+    _ap_tot = _ap_bull + _ap_bear
+    _ap_bull_pct = (100.0 * _ap_bull / _ap_tot) if _ap_tot > 0 else None
+    regime = _aplus_regime(vix_zone, vix_trend_pct, benchmark_ret_20d, benchmark_today_chg, _ap_bull_pct)
+
     # ───────── Build CE + PE leaderboards ─────────
     ce_passing = [r for r in results if r["ce_score"] >= min_score]
     pe_passing = [r for r in results if r["pe_score"] >= min_score]
@@ -10436,6 +10600,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
                 _hint.get("strike_gap"), vix_val)
             if _mb:
                 row["momentum"] = _mb
+        row["aplus"] = _aplus_checklist(row, direction, regime, region)
         return row
 
     # Sort by conviction: Grade A first, then B, then C, then by score desc within each grade
@@ -10512,6 +10677,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         "conflict_warning":  conflict_warning,
         "dominant_direction": dominant_direction,
         "chop_mode":          bool(both_active and dominant_direction is None),
+        "regime":             regime,
         "bubbles":           bubbles,
         # VIX context — the whole point of this algorithm
         "vix_context": {
@@ -32814,7 +32980,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
             # Risk 1-2% of assumed capital (₹5L India, $50K US)
             capital = 500000 if not is_us else 50000
             risk_per_trade = capital * 0.015  # 1.5% risk
-            max_lots = max(1, int(risk_per_trade / max(premium_per_lot, 1)))
+            max_lots = max(1, _safe_int(risk_per_trade / max(premium_per_lot, 1)))
             trade_spec["maxLots"] = max_lots
             trade_spec["capitalRequired"] = round(premium_per_lot * max_lots, 0)
             trade_spec["riskPct"] = round(premium_per_lot * max_lots / capital * 100, 1)
@@ -32915,7 +33081,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
         position_sizing = []
         for cap in sample_capitals:
             max_risk = cap * risk_pct
-            qty = int(max_risk / risk_per_unit) if risk_per_unit > 0 else 0
+            qty = _safe_int(max_risk / risk_per_unit) if risk_per_unit > 0 else 0
             position_sizing.append({
                 "capital": cap, "riskAmt": round(max_risk, 0),
                 "qty": qty, "value": round(qty * entry, 0),
@@ -32950,10 +33116,10 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
         
         # ═══ 10B. TRADE VERDICT — ELITE ENGINE (Always gives a trade) ═══
         _elite = algo.get("engines", {})
-        _tv_score = int(_elite.get("finalScore", _elite.get("adjustedScore", 0)))
+        _tv_score = _safe_int(_elite.get("finalScore", _elite.get("adjustedScore", 0)))
         _elite_decision = _elite.get("decision", "")
         _elite_grade = _elite.get("grade", "D")
-        _pop = int(_elite.get("probSuccess", 50))
+        _pop = _safe_int(_elite.get("probSuccess", 50), 50)
         _tv_flags = _elite.get("allReasons", [])
         _tv_warnings = []
         
@@ -33260,7 +33426,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                 _gamma_risk = "EXTREME" if _dte_exp == 0 and _atm_iv_e > 18 else ("HIGH" if _dte_exp <= 1 else ("ELEVATED" if _dte_exp <= 2 else "NORMAL"))
                 
                 # Use REAL ATM strike from option chain
-                _gs = int(_real_atm_strike) if _real_atm_strike > 0 else (round(p / 50) * 50 if (not is_us and p > 500) else round(p))
+                _gs = _safe_int(_real_atm_strike) if _real_atm_strike > 0 else (_safe_int(round(_safe_float(p) / 50) * 50) if (not is_us and p > 500) else _safe_int(round(_safe_float(p))))
                 _step = 50 if p < 25000 else (100 if p < 50000 else 200)
                 _gblast = [_gs - round(p * 0.015, 0), _gs + round(p * 0.015, 0)]
                 
@@ -33268,12 +33434,12 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                 _gdir = "UPSIDE" if direction == "BULLISH" and pcr > 1.0 else ("DOWNSIDE" if direction == "BEARISH" and pcr < 0.8 else "BOTH SIDES")
                 
                 # Use REAL max pain from option chain
-                _mp = int(_real_max_pain) if _real_max_pain > 0 else (max_pain if max_pain > 0 else _gs)
+                _mp = _safe_int(_real_max_pain) if _real_max_pain > 0 else (max_pain if max_pain > 0 else _gs)
                 _mpd = round(abs(p - _mp) / p * 100, 2)
                 _mp_pull = "STRONG" if _mpd < 1.0 and _dte_exp <= 1 else ("MODERATE" if _mpd < 2.0 else "WEAK")
                 _mp_dir = "UP" if p < _mp else ("DOWN" if p > _mp else "AT")
                 
-                _nr = round(p / 100) * 100 if p > 1000 else round(p / 50) * 50
+                _nr = round(_safe_float(p) / 100) * 100 if p > 1000 else round(_safe_float(p) / 50) * 50
                 _pin_risk = "HIGH" if abs(p - _nr) / p * 100 < 0.3 and _dte_exp == 0 else ("MODERATE" if abs(p - _nr) / p * 100 < 0.8 else "LOW")
                 
                 # Use REAL OI support/resistance from DECIDE ENGINE (already OI-based)
@@ -33301,7 +33467,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                             _net = round(_ce_gex + _pe_gex, 2)
                             _total_gex += _net
                             if abs(_sk_f - p) < p * 0.05:  # Within 5% of spot
-                                _gex_by_strike.append({"strike": int(_sk_f), "ceGEX": round(_ce_gex, 2), "peGEX": round(_pe_gex, 2), "netGEX": _net})
+                                _gex_by_strike.append({"strike": _safe_int(_sk_f), "ceGEX": round(_ce_gex, 2), "peGEX": round(_pe_gex, 2), "netGEX": _net})
                         _gex_by_strike.sort(key=lambda x: abs(x["netGEX"]), reverse=True)
                         _gex_flip = 0  # Strike where GEX flips from positive to negative
                         for g in sorted(_gex_by_strike, key=lambda x: x["strike"]):
@@ -33460,8 +33626,8 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                         "name": "SELL STRANGLE (CE + PE)", "type": "SELL", "strike": _gs, "premium": round(_otm_prem * 2, 0),
                         "risk": "HIGH", "lotSize": _lot,
                         "spotEntry": f"Enter when {_sym_up} is near {S}{_gs} (ATM). Best when price is between {S}{_oi_fl} and {S}{_oi_cl}.",
-                        "why": f"Market is SIDEWAYS. Sell {_otm_ce} CE + {_otm_pe} PE. Collect {S}{round(_otm_prem*2)} total premium.",
-                        "layman": f"You're BETTING the market will STAY BETWEEN {S}{_otm_pe} and {S}{_otm_ce}. You collect {S}{round(_otm_prem*2)} upfront. If market stays in this range until expiry, you keep it ALL. Risk: sharp move in either direction = big loss.",
+                        "why": f"Market is SIDEWAYS. Sell {_otm_ce} CE + {_otm_pe} PE. Collect {S}{round(_safe_float(_otm_prem)*2)} total premium.",
+                        "layman": f"You're BETTING the market will STAY BETWEEN {S}{_otm_pe} and {S}{_otm_ce}. You collect {S}{round(_safe_float(_otm_prem)*2)} upfront. If market stays in this range until expiry, you keep it ALL. Risk: sharp move in either direction = big loss.",
                         "doNot": "⚠️ This is a NEUTRAL strategy. If market breaks out of range, exit immediately — do not hold hoping.",
                         "maxProfit": round(_otm_prem * 2, 0), "maxLoss": "Unlimited",
                         "breakeven": [_otm_pe - round(_otm_prem*2,0), _otm_ce + round(_otm_prem*2,0)], "conviction": "MODERATE",
@@ -33471,7 +33637,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                         "risk": "MODERATE", "lotSize": _lot,
                         "spotEntry": f"Enter when {_sym_up} is at {S}{_gs} (ATM). This is the ONLY strategy where buying both CE+PE makes sense.",
                         "why": f"Expect a BIG MOVE but don't know which direction. Buy {_gs} CE + {_gs} PE as ONE trade.",
-                        "layman": f"You're BETTING the market will MOVE A LOT — you don't care which direction. Costs {S}{round(_atm_prem*2)} but if {_sym_up} moves more than {S}{round(_atm_prem*2)} in either direction, you profit. Best before events (budget, RBI, earnings).",
+                        "layman": f"You're BETTING the market will MOVE A LOT — you don't care which direction. Costs {S}{round(_safe_float(_atm_prem)*2)} but if {_sym_up} moves more than {S}{round(_safe_float(_atm_prem)*2)} in either direction, you profit. Best before events (budget, RBI, earnings).",
                         "doNot": "✅ This is the ONLY time buying both CE+PE is correct — as a single straddle. Do NOT buy them separately at different times.",
                         "maxProfit": "Unlimited", "maxLoss": round(_atm_prem * 2, 0),
                         "breakeven": [_gs - round(_atm_prem*2,0), _gs + round(_atm_prem*2,0)], "conviction": "MODERATE",
@@ -33484,7 +33650,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                         "risk": "LOW", "lotSize": _lot,
                         "spotEntry": f"Enter when {_sym_up} is near {S}{_gs}. Sell {_gs} CE + {_gs} PE (ATM straddle), buy {_gs+_step} CE + {_gs-_step} PE (wings).",
                         "why": f"{'Expiry day' if _dte_exp==0 else 'Day before expiry'} — sell ATM straddle + buy wings at ±{_step}.",
-                        "layman": f"The SAFEST expiry play. You collect {S}{round(_atm_prem*0.6)} and your maximum loss is capped at {S}{max(0,round(_step-_atm_prem*0.6))}. Think of it as renting your money out with insurance — limited upside, limited downside.",
+                        "layman": f"The SAFEST expiry play. You collect {S}{round(_safe_float(_atm_prem)*0.6)} and your maximum loss is capped at {S}{max(0,round(_step-_safe_float(_atm_prem)*0.6))}. Think of it as renting your money out with insurance — limited upside, limited downside.",
                         "doNot": "✅ This is a defined-risk trade. No need to hedge further. Just wait for expiry.",
                         "maxProfit": round(_atm_prem * 0.6, 0), "maxLoss": max(0, round(_step - _atm_prem * 0.6, 0)),
                         "breakeven": [_gs - round(_atm_prem*0.6,0), _gs + round(_atm_prem*0.6,0)], "conviction": "HIGH",
@@ -33500,7 +33666,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                     _pr = float(_st.get("premium", 0))
                     _tp = _st.get("type", "BUY")
                     _nm = _st.get("name", "")
-                    for _px in range(int(p - _payoff_range), int(p + _payoff_range), int(_payoff_step)):
+                    for _px in range(_safe_int(p - _payoff_range), _safe_int(p + _payoff_range), max(1, _safe_int(_payoff_step))):
                         if "CALL" in _nm and "SELL" not in _nm:
                             _pl = max(_px - _sk, 0) - _pr  # Long call
                         elif "PUT" in _nm and "SELL" not in _nm:
@@ -33638,13 +33804,13 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                     "id": 3, "name": f"SELL {_sym_up} {_gs} CE+PE Straddle", "type": "SELL",
                     "strike": _gs, "optType": "CE+PE", "premium": round(_straddle_cost, 0),
                     "lotSize": _lot, "lotCost": _sell_straddle_credit,
-                    "breakeven": f"{_csym}{int(_straddle_be_dn)}-{_csym}{int(_straddle_be_up)}",
+                    "breakeven": f"{_csym}{_safe_int(_straddle_be_dn)}-{_csym}{_safe_int(_straddle_be_up)}",
                     "maxLoss": "Unlimited beyond breakevens", "maxProfit": _sell_straddle_credit,
                     "pop": 65 if _dte_exp == 0 else 55,
-                    "when": f"Market stays between {_csym}{int(_straddle_be_dn)}-{_csym}{int(_straddle_be_up)}", "risk": "UNLIMITED",
+                    "when": f"Market stays between {_csym}{_safe_int(_straddle_be_dn)}-{_csym}{_safe_int(_straddle_be_up)}", "risk": "UNLIMITED",
                     "emoji": "🟡", "color": "#f59e0b",
-                    "layman": f"You COLLECT {_csym}{_sell_straddle_credit:,} upfront. You keep it if {_sym_up} stays between {_csym}{int(_straddle_be_dn)}-{_csym}{int(_straddle_be_up)}. DANGER: losses are unlimited if market moves big.",
-                    "brokerSteps": f"1. SELL {_gs} CE (collect {_csym}{int(_ce_atm_prem)}×{_lot}) → 2. SELL {_gs} PE (collect {_csym}{int(_pe_atm_prem)}×{_lot}) → 3. Set SL at 1.5× premium"
+                    "layman": f"You COLLECT {_csym}{_sell_straddle_credit:,} upfront. You keep it if {_sym_up} stays between {_csym}{_safe_int(_straddle_be_dn)}-{_csym}{_safe_int(_straddle_be_up)}. DANGER: losses are unlimited if market moves big.",
+                    "brokerSteps": f"1. SELL {_gs} CE (collect {_csym}{_safe_int(_ce_atm_prem)}×{_lot}) → 2. SELL {_gs} PE (collect {_csym}{_safe_int(_pe_atm_prem)}×{_lot}) → 3. Set SL at 1.5× premium"
                 })
                 # Trade 4: Sell OTM Strangle (Wider range)
                 _strangle_credit = round(_otm_prem_est * 2 * _lot, 0)
@@ -33653,7 +33819,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                     "strike": f"{_otm_pe_strike}/{_otm_ce_strike}", "optType": "CE+PE OTM",
                     "premium": round(_otm_prem_est * 2, 0),
                     "lotSize": _lot, "lotCost": _strangle_credit,
-                    "breakeven": f"{_csym}{int(_otm_pe_strike - _otm_prem_est*2)}-{_csym}{int(_otm_ce_strike + _otm_prem_est*2)}",
+                    "breakeven": f"{_csym}{_safe_int(_otm_pe_strike - _otm_prem_est*2)}-{_csym}{_safe_int(_otm_ce_strike + _otm_prem_est*2)}",
                     "maxLoss": "Unlimited beyond breakevens", "maxProfit": _strangle_credit,
                     "pop": 72 if adx < 20 else 60,
                     "when": f"Market stays between {_csym}{_otm_pe_strike}-{_csym}{_otm_ce_strike}", "risk": "UNLIMITED",
@@ -33680,7 +33846,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                 
                 # 4. PREMIUM DECAY TIMELINE — Hour by hour
                 _decay_timeline = []
-                for _hr in range(1, min(int(_trade_hrs_left) + 2, 8)):
+                for _hr in range(1, min(_safe_int(_trade_hrs_left) + 2, 8)):
                     _rem = max(0, _trade_hrs_left - _hr)
                     _prem_then = round(_atm_prem * math.sqrt(max(_rem, 0.01) / max(_trade_hrs_left, 0.01)), 0) if _is_expiry_day else round(_atm_prem * (1 - _hr * _theta_pct / 100), 0)
                     _decay_timeline.append({"hour": _hr, "premium": max(0, _prem_then), "lost": round(_atm_prem - max(0, _prem_then), 0)})
@@ -33785,9 +33951,9 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
                     # ═══ REAL NSE OPTION CHAIN DATA ═══
                     "optionChain": {
                         "atmIV": round(_real_atm_iv, 1),
-                        "atmStrike": int(_real_atm_strike) if _real_atm_strike else 0,
+                        "atmStrike": _safe_int(_real_atm_strike) if _real_atm_strike else 0,
                         "pcr": round(_real_pcr, 2),
-                        "totalCeOI": int(_real_ce_oi), "totalPeOI": int(_real_pe_oi),
+                        "totalCeOI": _safe_int(_real_ce_oi), "totalPeOI": _safe_int(_real_pe_oi),
                         "spot": round(_real_spot, 2),
                     },
                     # ═══ DECIDE ENGINE REFERENCES (already computed above) ═══

@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.23";
-window.CELESYS_BUILD_TIME = 1780866000;
-window.CELESYS_BUILD_DATE = "2026-06-07 21:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.27";
+window.CELESYS_BUILD_TIME = 1780880400;
+window.CELESYS_BUILD_DATE = "2026-06-08 01:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -9077,13 +9077,13 @@ window._currentTheme=saved;
 })();
 
 function toggleTheme(){
-return; // PREMIUM: forced light
-const next=window._currentTheme==='dark'?'light':'dark';
+const cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
+const next=cur==='dark'?'light':'dark';
 document.documentElement.setAttribute('data-theme',next);
 window._currentTheme=next;
-localStorage.setItem('celesys-theme',next);
+try{localStorage.setItem('theme',next);}catch(e){}
 const btn=document.getElementById('themeToggleBtn');
-if(btn)btn.innerHTML=next==='dark'?'&#127763; Dark':'&#9728; Light';
+if(btn)btn.innerHTML=next==='dark'?'\u2600\uFE0F':'\u{1F303}';
 }
 
 // ═══ 2. PDF EXPORT ═══
@@ -14446,6 +14446,27 @@ window._renderDirectionalOptions = function(d) {
     h += '</div>';
   }
 
+  /* ═══ A+ MARKET REGIME — LAYER 1 (r63.110.26) ═════════════════════════ */
+  var rg = d.regime || null;
+  if (rg && rg.label) {
+    var rgBg = rg.label==='RISK-ON'?'linear-gradient(135deg,#f0fdf4,#dcfce7)':rg.label==='RISK-OFF'?'linear-gradient(135deg,#fef2f2,#fee2e2)':'linear-gradient(135deg,#fffbeb,#fef3c7)';
+    h += '<div style="background:' + rgBg + ';border:2px solid ' + (rg.color||'#d97706') + ';border-radius:14px;padding:14px 18px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">';
+    h += '<span style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#64748b">LAYER 1 \\u00B7 MARKET REGIME</span>';
+    h += '<span style="background:' + (rg.color||'#d97706') + ';color:#fff;border-radius:8px;padding:4px 13px;font-size:14px;font-weight:900">' + E(rg.label) + '</span>';
+    if (rg.favors && rg.favors!=='NONE') h += '<span style="font-size:11px;font-weight:800;color:' + (rg.color||'#d97706') + '">favors ' + E(rg.favors) + ' buyers</span>';
+    if (rg.breadth_bull_pct!=null) h += '<span style="font-size:12px;font-weight:700;color:#475569">Breadth: ' + rg.breadth_bull_pct + '% bullish</span>';
+    h += '</div>';
+    h += '<div style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.5;margin-bottom:8px">' + E(rg.headline||'') + '</div>';
+    if (rg.drivers && rg.drivers.length) {
+      h += '<div style="display:flex;flex-direction:column;gap:3px">';
+      rg.drivers.forEach(function(dr){ h += '<div style="font-size:12px;color:#475569;line-height:1.4">\\u2022 ' + E(dr) + '</div>'; });
+      h += '</div>';
+    }
+    if (rg.note) h += '<div style="margin-top:8px;font-size:11px;color:#94a3b8;font-style:italic">' + E(rg.note) + '</div>';
+    h += '</div>';
+  }
+
   /* ═══ PRICE+VIX SIGNAL ════════════════════════════════════════════════ */
   if (cs.signal) {
     h += '<div style="background:#fff;border:1px solid ' + (cs.color||'#e2e8f0') + '40;border-left:4px solid ' + (cs.color||'#64748b') + ';border-radius:10px;padding:11px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px">';
@@ -14612,6 +14633,36 @@ window._renderDirectionalOptions = function(d) {
       _badges += '<span style="font-size:10px;font-weight:800;color:#fff;background:#b45309;border-radius:20px;padding:3px 11px">\uD83D\uDCC9 LONG UNWINDING ' + c.oi_flow.chg_pct + '%</span>';
     }
     if (_badges) html += '<div style="margin:0 14px 10px;display:flex;flex-wrap:wrap;gap:6px">' + _badges + '</div>';
+
+    /* ═══ A+ FRAMEWORK CHECKLIST — LAYERS 2-5 + CASCADE (r63.110.26) ═══ */
+    var ap = c.aplus || null;
+    if (ap && ap.classification) {
+      var apC = ap.classification==='A+'?'#15803d':ap.classification==='A'?'#16a34a':ap.classification==='B'?'#d97706':'#94a3b8';
+      var apBg = (ap.classification==='A+'||ap.classification==='A')?'#f0fdf4':ap.classification==='B'?'#fffbeb':'#f8fafc';
+      var apId = cid + '_ap';
+      html += '<div style="margin:0 14px 10px;border:1.5px solid ' + apC + '55;border-radius:10px;overflow:hidden;background:' + apBg + '">';
+      html += '<div onclick="(function(){var x=document.getElementById(\'' + apId + '\');if(x)x.style.display=x.style.display===\'none\'?\'block\':\'none\';})()" style="padding:9px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer">';
+      html += '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">';
+      html += '<span style="font-size:10px;font-weight:800;letter-spacing:.4px;color:#64748b">A+ FRAMEWORK</span>';
+      html += '<span style="font-size:13px;font-weight:900;color:#fff;background:' + apC + ';border-radius:6px;padding:3px 11px">' + E(ap.classification) + '</span>';
+      html += ap.qualified ? '<span style="font-size:10px;font-weight:800;color:#fff;background:#16a34a;border-radius:20px;padding:3px 10px">\\u2713 QUALIFIED</span>' : '<span style="font-size:10px;font-weight:800;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:20px;padding:3px 10px">\\u23F8 WAIT</span>';
+      html += '</div>';
+      html += '<span style="font-size:11px;color:#64748b;font-weight:700">' + (ap.checks?ap.checks.length:0) + ' checks \\u25BE</span>';
+      html += '</div>';
+      html += '<div style="padding:0 12px 8px;font-size:12px;font-weight:600;color:#374151;line-height:1.5">' + E(ap.summary||'') + '</div>';
+      html += '<div id="' + apId + '" style="display:none;padding:4px 12px 12px;border-top:1px dashed ' + apC + '40">';
+      (ap.checks||[]).forEach(function(ck){
+        var st = ck.status;
+        var ic = st==='pass'?'\\u2705':st==='fail'?'\\u274C':st==='warn'?'\\u26A0\\uFE0F':'\\uD83D\\uDD0D';
+        var stC = st==='pass'?'#16a34a':st==='fail'?'#dc2626':st==='warn'?'#d97706':'#64748b';
+        html += '<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9">';
+        html += '<span style="font-size:13px;flex-shrink:0">' + ic + '</span>';
+        html += '<div style="flex:1"><div style="font-size:12px;font-weight:700;color:' + stC + '"><span style="font-size:9px;color:#94a3b8;font-weight:800;margin-right:5px">' + E(ck.layer||'') + '</span>' + E(ck.label||'') + '</div>';
+        html += '<div style="font-size:11px;color:#64748b;line-height:1.4">' + E(ck.detail||'') + '</div></div></div>';
+      });
+      if (ap.targets) html += '<div style="margin-top:8px;padding:7px 10px;background:rgba(255,255,255,.6);border-radius:7px;font-size:11px;color:#475569;font-weight:600">\\uD83C\\uDFAF Target structure: delta ' + E(ap.targets.delta||'') + ' \\u00B7 ' + E(ap.targets.dte||'') + ' \\u2014 verify on the live chain before entry</div>';
+      html += '</div></div>';
+    }
 
     /* Action bar — always visible */
     if (c.action) {
