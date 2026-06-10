@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.22";
-window.CELESYS_BUILD_TIME = 1780862400;
-window.CELESYS_BUILD_DATE = "2026-06-07 20:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.23";
+window.CELESYS_BUILD_TIME = 1780866000;
+window.CELESYS_BUILD_DATE = "2026-06-07 21:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -14486,7 +14486,19 @@ window._renderDirectionalOptions = function(d) {
       h += '<div style="font-size:10px;color:#475569;line-height:1.5;margin-top:2px">' + E(s[2]) + '</div></div>';
     });
     h += '<div style="font-size:9px;color:#94a3b8;line-height:1.5;margin-top:7px">Selling options needs the right broker approval and margin, and a sharp breakout can still hurt &mdash; defined-risk structures cap that, undefined-risk ones do not. Always set your max loss and an exit first. If you can\u2019t sell options or it feels unclear, <b>sitting out is also a valid trade</b>. Educational, not investment advice.</div>';
-    h += '</div></div>';
+    h += '</div>';
+    if (d.region === 'IN') {
+      h += '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;margin-top:8px;font-size:9.5px;color:#7c2d12;line-height:1.6">';
+      h += '<b>&#127470;&#127475; India specifics &mdash; these strategies work here, but the mechanics differ from the US:</b>';
+      h += '<ul style="margin:5px 0 0 0;padding-left:16px">';
+      h += '<li>Indian options are <b>European-style</b>: they can be exercised only <b>at expiry</b>, so there is <b>no early assignment</b>.</li>';
+      h += '<li><b>Index options (NIFTY, BANK NIFTY, SENSEX) are cash-settled</b> &mdash; no shares change hands, so there is no \u201cassignment.\u201d Condors, strangles and spreads on the indices just settle in cash.</li>';
+      h += '<li><b>Single-stock options are physically settled</b> &mdash; a covered call or short put left in-the-money at expiry delivers / takes <b>actual shares</b>. Most traders <b>square off before expiry</b> to avoid delivery and the high STT on exercised options.</li>';
+      h += '<li><b>Weekly premium-selling is now limited</b> to <b>NIFTY 50 (NSE)</b> and <b>SENSEX (BSE)</b>. BANK NIFTY, FINNIFTY and MIDCPNIFTY are <b>monthly-only</b> after SEBI\u2019s 2024 reforms &mdash; so weekly income plays run on NIFTY / SENSEX, monthly on the rest.</li>';
+      h += '<li>\u201cCash-secured\u201d here means <b>margin-secured</b>: you post SPAN + exposure margin, not the full cash. Defined-risk spreads get a margin benefit; naked selling needs large margin and got costlier after the 2024 lot-size / margin curbs.</li>';
+      h += '</ul></div>';
+    }
+    h += '</div>';
   } else if (d.conflict_warning) {
     h += '<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #f59e0b;border-radius:12px;padding:14px 18px;margin-bottom:12px">';
     h += '<div style="font-size:14px;font-weight:900;color:#92400e;margin-bottom:4px">&#9888;&#65039; Trade one direction only</div>';
