@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.27";
-window.CELESYS_BUILD_TIME = 1780880400;
-window.CELESYS_BUILD_DATE = "2026-06-08 01:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.28";
+window.CELESYS_BUILD_TIME = 1780884000;
+window.CELESYS_BUILD_DATE = "2026-06-08 02:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11744,6 +11744,7 @@ window._engShow = function(panel) {
     'market360': 'engMarket360Panel', 'momcoc': 'engMomCoCPanel',
     'forever': 'engForeverPanel', 'dec360': 'engDec360Panel',
     'runway': 'engRunwayPanel',
+    'mbdiscovery': 'engMBDiscPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11761,6 +11762,7 @@ window._engShow = function(panel) {
     'market360': 'engBtnMarket360', 'momcoc': 'engBtnMomCoC',
     'forever': 'engBtnForever', 'dec360': 'engBtnDec360',
     'runway': 'engBtnRunway',
+    'mbdiscovery': 'engBtnMBDisc',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12351,6 +12353,71 @@ window._engVerdictColor = function(v) {
 };
 
 // ═══════════════════ ENGINE 5: MULTIBAGGER PROBABILITY ═══════════════════
+// ═══ MULTIBAGGER DISCOVERY (r63.110.28) — 4-layer framework, Decide → Engines ═══
+window._mbDiscRegion = 'ALL';
+window._loadMultibaggerDiscovery = function(region){
+  region = region || 'ALL'; window._mbDiscRegion = region;
+  var resEl = document.getElementById('mbDiscResult'); var btn = document.getElementById('mbDiscBtn');
+  if(!resEl) return;
+  if(btn){btn.disabled=true;btn.style.opacity='0.6';btn.innerHTML='\u23F3 SCANNING\u2026';}
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#16a34a"><div style="display:inline-block;width:16px;height:16px;border:2px solid #16a34a;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Scoring the elite universe across 4 layers\u2026 (first run ~20-40s, cached after)</div>';
+  fetch('/api/multibagger-discovery?region='+encodeURIComponent(region), {cache:'no-store'})
+    .then(function(r){return r.json().catch(function(){return null;});})
+    .then(function(d){
+      if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83D\uDD2C DISCOVER MULTIBAGGERS';}
+      if(!d || !d.success){ var msg=(d&&(d.error||d.detail))||'unknown';
+        if(window._engRenderError) window._engRenderError('mbDiscResult','Discovery',msg,d&&d.trace);
+        else resEl.innerHTML='<div style="padding:14px;color:#dc2626;font-size:11px">Error: '+msg+'</div>'; return; }
+      resEl.innerHTML = window._renderMultibaggerDiscovery(d);
+    })
+    .catch(function(e){ if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83D\uDD2C DISCOVER MULTIBAGGERS';}
+      resEl.innerHTML='<div style="padding:14px;color:#dc2626;font-size:11px">Network error: '+e.message+'</div>'; });
+};
+window._renderMultibaggerDiscovery = function(d){
+  var E = window._esc||function(s){return String(s||'');};
+  var ic = function(st){return st==='pass'?'\u2705':st==='fail'?'\u274C':'\uD83D\uDD0D';};
+  var h='';
+  h+='<div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #16a34a;border-radius:12px;padding:14px 18px;margin-bottom:14px">';
+  h+='<div style="font-size:14px;font-weight:900;color:#15803d;font-family:Sora,sans-serif;margin-bottom:6px">\uD83C\uDFAF The Final Question</div>';
+  h+='<div style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.5;font-style:italic">"'+E(d.final_question)+'"</div>';
+  h+='<div style="font-size:11px;color:#475569;margin-top:8px">'+E(d.framework)+'</div>';
+  h+='<div style="font-size:11px;font-weight:800;color:#15803d;margin-top:8px">'+(d.elite_count||0)+' elite candidate(s) of '+(d.universe_size||0)+' screened</div></div>';
+  (d.results||[]).forEach(function(r,i){
+    var v=r.verdict||''; var vC=v.indexOf('ELITE')===0?'#16a34a':v.indexOf('STRONG')===0?'#d97706':'#94a3b8';
+    var vBg=v.indexOf('ELITE')===0?'#f0fdf4':v.indexOf('STRONG')===0?'#fffbeb':'#f8fafc'; var rid='mbd_'+i;
+    h+='<div style="background:#fff;border:2px solid '+vC+'55;border-radius:12px;margin-bottom:12px;overflow:hidden">';
+    h+='<div onclick="(function(){var x=document.getElementById(\''+rid+'\');if(x)x.style.display=x.style.display===\'none\'?\'block\':\'none\';})()" style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;background:'+vBg+'">';
+    h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:13px;font-weight:900;color:#64748b">#'+(i+1)+'</span>';
+    h+='<span style="font-size:17px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">'+E(r.symbol)+'</span>';
+    h+='<span style="font-size:11px;font-weight:700;color:#475569">'+E(r.name)+'</span>';
+    h+='<span style="font-size:9px;font-weight:800;color:#7c3aed;background:#f3e8ff;border-radius:4px;padding:2px 7px">'+E(r.region)+'</span>';
+    h+='<span style="font-size:9px;font-weight:800;color:#0e7490;background:#cffafe;border-radius:4px;padding:2px 7px">'+E(r.theme)+'</span></div>';
+    h+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:9px;font-weight:800;color:'+vC+';background:#fff;border:1px solid '+vC+';border-radius:20px;padding:3px 9px">'+E(v)+'</span>';
+    h+='<span style="font-size:22px;font-weight:900;color:'+vC+';font-family:JetBrains Mono,monospace">'+r.score+'</span></div></div>';
+    var L=r.layers||{},M=r.layer_max||{};
+    var bar=function(lab,val,max,col){var pct=max>0?Math.round((val||0)/max*100):0;return '<div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;color:#475569"><span>'+lab+'</span><span>'+(val||0)+'/'+max+'</span></div><div style="background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+col+'"></div></div></div>';};
+    h+='<div style="padding:10px 14px">';
+    h+=bar('Layer 1 \u00B7 Business Quality (30%)',L.business_quality,M.business_quality,'#16a34a');
+    h+=bar('Layer 2 \u00B7 Fundamentals (25%)',L.fundamentals,M.fundamentals,'#3b82f6');
+    h+=bar('Layer 3 \u00B7 Opportunity Size (25%)',L.opportunity_size,M.opportunity_size,'#7c3aed');
+    h+=bar('Layer 4 \u00B7 Valuation (20%)',L.valuation,M.valuation,'#f59e0b');
+    h+='<div style="margin-top:8px;font-size:11px;font-weight:700;color:#15803d">'+E(r.mcap_tier?String(r.mcap_tier).toUpperCase()+'-CAP':'')+' \u00B7 '+E(r.tier_objective||'')+'</div>';
+    h+='<div style="margin-top:6px;font-size:10px;color:#94a3b8">Tap row to expand the full \u2705/\u274C/\uD83D\uDD0D audit</div></div>';
+    h+='<div id="'+rid+'" style="display:none;padding:0 14px 14px;border-top:1px dashed '+vC+'40">';
+    var LN={L1:'Layer 1 \u00B7 Business Quality',L2:'Layer 2 \u00B7 Fundamentals',L3:'Layer 3 \u00B7 Opportunity Size',L4:'Layer 4 \u00B7 Valuation',entry:'Entry Triggers'};
+    ['L1','L2','L3','L4','entry'].forEach(function(lk){
+      var arr=(r.checks&&r.checks[lk])||[]; if(!arr.length) return;
+      h+='<div style="margin-top:10px;font-size:11px;font-weight:900;color:#334155;font-family:Sora,sans-serif">'+LN[lk]+'</div>';
+      arr.forEach(function(c){ var stC=c.status==='pass'?'#16a34a':c.status==='fail'?'#dc2626':'#94a3b8';
+        h+='<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #f1f5f9"><span style="flex-shrink:0">'+ic(c.status)+'</span><div style="flex:1"><span style="font-size:11px;font-weight:700;color:'+stC+'">'+E(c.label)+'</span>'+(c.detail?'<span style="font-size:11px;color:#64748b"> \u2014 '+E(c.detail)+'</span>':'')+(c.max?'<span style="font-size:10px;color:#94a3b8;font-weight:700"> ['+(c.pts||0)+'/'+c.max+']</span>':'')+'</div></div>'; });
+    });
+    h+='<div style="margin-top:10px;font-size:11px;font-weight:900;color:#334155;font-family:Sora,sans-serif">Elite Filter ('+r.elite_pass+'/'+r.elite_total+')</div>';
+    (r.elite_requirements||[]).forEach(function(q){ h+='<div style="display:flex;gap:8px;padding:3px 0"><span>'+(q.ok?'\u2705':'\u274C')+'</span><span style="font-size:11px;color:'+(q.ok?'#16a34a':'#dc2626')+';font-weight:600">'+E(q.label)+'</span></div>'; });
+    h+='</div></div>';
+  });
+  if(d.disclosure) h+='<div style="font-size:10px;color:#94a3b8;font-style:italic;padding:8px 4px;line-height:1.5">'+E(d.disclosure)+'</div>';
+  return h;
+};
 window._loadMultibaggerProb = function() {
   var inp = document.getElementById('mbSym');
   var sym = ((inp && inp.value) || '').trim().toUpperCase();

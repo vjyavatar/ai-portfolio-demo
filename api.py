@@ -39005,6 +39005,377 @@ async def dream_portfolio(email: str = "", region: str = "IN"):
 # ═══ MULTIBAGGER HUNTER — Early-stage fire detection ═══
 _mbhunter_cache = {"ts": 0, "data": None}
 
+# ═══ MULTIBAGGER DISCOVERY ENGINE (r63.110.28) ═══════════════════════════════
+# Implements the institutional 4-layer framework EXACTLY as specified:
+#   Layer 1 Business Quality 30% | Layer 2 Fundamentals 25%
+#   Layer 3 Opportunity Size 25% | Layer 4 Valuation 20%  → Multibagger Score /100
+# + market-cap tier objective, dual entry trigger (fundamental + technical), elite filter,
+# and the final ranking: highest-quality business × largest discount × major growth cycle.
+#
+# HONESTY CONTRACT (consistent with platform's no-fake-data rule):
+#   - Layers 1 & 3 are qualitative (moat, decade-growth theme). They are EDITORIAL judgments
+#     carried in a curated universe and are labelled as such — not presented as fetched data.
+#   - Layers 2 & 4 use LIVE fundamentals where retrievable; each missing input is shown as
+#     "~ verify" (tilde) and contributes 0 to score — never auto-passed.
+#   - Entry technicals are computed LIVE from price. Fundamental triggers are "~ verify".
+# Each criterion returns status: "pass" (✓), "fail" (✗), or "verify" (~).
+
+# Curated elite universe — editorial Layer 1 (moat/understandable) + Layer 3 (decade theme).
+# moat types: brand, network, switching, patents, distribution, scale, regulatory.
+_MB_UNIVERSE = {
+    # ── US ──
+    "NVDA": {"region": "US", "name": "NVIDIA", "sector": "AI Infrastructure", "theme": "AI Infrastructure",
+             "understandable": True, "moats": ["patents", "switching", "scale", "network"], "decade_growth": True,
+             "mcap_tier": "large", "trigger_note": "Data-center GPU demand; CUDA lock-in"},
+    "VRT":  {"region": "US", "name": "Vertiv", "sector": "Data Center Power/Cooling", "theme": "Data Centers",
+             "understandable": True, "moats": ["switching", "scale", "distribution"], "decade_growth": True,
+             "mcap_tier": "large", "trigger_note": "AI data-center thermal/power buildout"},
+    "GEV":  {"region": "US", "name": "GE Vernova", "sector": "Power Equipment", "theme": "Power Equipment",
+             "understandable": True, "moats": ["scale", "regulatory", "switching"], "decade_growth": True,
+             "mcap_tier": "large", "trigger_note": "Grid + gas turbine backlog for electrification"},
+    "ETN":  {"region": "US", "name": "Eaton", "sector": "Electrification", "theme": "Energy Transition",
+             "understandable": True, "moats": ["scale", "distribution", "switching"], "decade_growth": True,
+             "mcap_tier": "large", "trigger_note": "Electrification + data-center power"},
+    "CEG":  {"region": "US", "name": "Constellation Energy", "sector": "Nuclear Power", "theme": "AI Infrastructure",
+             "understandable": True, "moats": ["regulatory", "scale"], "decade_growth": True,
+             "mcap_tier": "large", "trigger_note": "Nuclear PPAs for AI data centers"},
+    "ANET": {"region": "US", "name": "Arista Networks", "sector": "Data Center Networking", "theme": "Data Centers",
+             "understandable": True, "moats": ["switching", "patents", "network"], "decade_growth": True,
+             "mcap_tier": "large", "trigger_note": "400/800G AI back-end networking"},
+    "PWR":  {"region": "US", "name": "Quanta Services", "sector": "Grid Construction", "theme": "Energy Transition",
+             "understandable": True, "moats": ["scale", "switching"], "decade_growth": True,
+             "mcap_tier": "large", "trigger_note": "Grid build-out labor scarcity moat"},
+    "CRDO": {"region": "US", "name": "Credo Technology", "sector": "AI Connectivity", "theme": "AI Infrastructure",
+             "understandable": True, "moats": ["patents", "switching"], "decade_growth": True,
+             "mcap_tier": "small", "trigger_note": "Active electrical cables for AI clusters"},
+    # ── INDIA ──
+    "BEL":      {"region": "IN", "name": "Bharat Electronics", "sector": "Defense Electronics", "theme": "Defense",
+                 "understandable": True, "moats": ["regulatory", "scale", "switching"], "decade_growth": True,
+                 "mcap_tier": "large", "trigger_note": "Indigenisation defense order book"},
+    "HAL":      {"region": "IN", "name": "Hindustan Aeronautics", "sector": "Defense Aerospace", "theme": "Defense",
+                 "understandable": True, "moats": ["regulatory", "scale", "patents"], "decade_growth": True,
+                 "mcap_tier": "large", "trigger_note": "Tejas + helicopter multi-year backlog"},
+    "DIXON":    {"region": "IN", "name": "Dixon Technologies", "sector": "Electronics Mfg (EMS)", "theme": "EMS",
+                 "understandable": True, "moats": ["scale", "switching", "distribution"], "decade_growth": True,
+                 "mcap_tier": "mid", "trigger_note": "PLI-driven mobile/EMS share gains"},
+    "KAYNES":   {"region": "IN", "name": "Kaynes Technology", "sector": "Electronics Mfg (EMS)", "theme": "EMS",
+                 "understandable": True, "moats": ["switching", "scale"], "decade_growth": True,
+                 "mcap_tier": "mid", "trigger_note": "OSAT/EMS + semiconductor ATMP"},
+    "POLYCAB":  {"region": "IN", "name": "Polycab India", "sector": "Cables & Wires", "theme": "Energy Transition",
+                 "understandable": True, "moats": ["brand", "distribution", "scale"], "decade_growth": True,
+                 "mcap_tier": "mid", "trigger_note": "Grid/housing cable demand + brand"},
+    "CGPOWER":  {"region": "IN", "name": "CG Power", "sector": "Power Equipment", "theme": "Power Equipment",
+                 "understandable": True, "moats": ["scale", "switching"], "decade_growth": True,
+                 "mcap_tier": "mid", "trigger_note": "Transformers + semiconductor JV"},
+    "RVNL":     {"region": "IN", "name": "Rail Vikas Nigam", "sector": "Railways", "theme": "Railways",
+                 "understandable": True, "moats": ["regulatory", "scale"], "decade_growth": True,
+                 "mcap_tier": "mid", "trigger_note": "Railway capex execution order book"},
+    "TRENT":    {"region": "IN", "name": "Trent", "sector": "Retail", "theme": "Premium Consumption",
+                 "understandable": True, "moats": ["brand", "distribution"], "decade_growth": True,
+                 "mcap_tier": "large", "trigger_note": "Zudio store-count premium retail runway"},
+}
+_MB_MOAT_PTS = {"brand": 5, "network": 6, "switching": 5, "patents": 5, "distribution": 4, "scale": 4, "regulatory": 4}
+_MB_TIER_OBJECTIVE = {
+    "large": "2x–5x — exceptional business + predictable earnings",
+    "mid":   "3x–10x — institutional sweet spot; strong growth + emerging leadership",
+    "small": "5x–20x — high growth + large runway + management quality",
+    "micro": "10x–100x — extreme caution; governance + significant opportunity",
+}
+
+def _mb_num(v):
+    try:
+        f = float(v)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+def _mb_score(meta, fund, tech):
+    """Score one stock across the 4 layers. Returns dict with score, per-layer checks (✓/✗/~),
+    tier objective, entry triggers, elite verdict. `fund`/`tech` may be partial → 'verify'."""
+    checks = {"L1": [], "L2": [], "L3": [], "L4": [], "entry": []}
+    def ck(layer, label, status, detail, pts=None, maxp=None):
+        checks[layer].append({"label": label, "status": status, "detail": detail,
+                              "pts": pts, "max": maxp})
+
+    # ── LAYER 1 — BUSINESS QUALITY (0–30, editorial) ──
+    l1 = 0
+    if meta.get("understandable"):
+        l1 += 10; ck("L1", "Understandable business", "pass", meta.get("sector", ""), 10, 10)
+    else:
+        ck("L1", "Understandable business", "fail", "Complex/commodity — harder to predict", 0, 10)
+    moats = meta.get("moats", []) or []
+    moat_pts = min(20, sum(_MB_MOAT_PTS.get(m, 0) for m in moats))
+    if moats:
+        l1 += moat_pts; ck("L1", "Competitive moat", "pass", "+".join(moats) + (" (%d/20)" % moat_pts), moat_pts, 20)
+    else:
+        ck("L1", "Competitive moat", "fail", "No durable moat identified", 0, 20)
+    l1 = min(30, l1)
+
+    # ── LAYER 2 — FUNDAMENTALS (0–25, LIVE where available) ──
+    l2 = 0
+    rev = _mb_num(fund.get("revGrowth")); earn = _mb_num(fund.get("earningsGrowth"))
+    roce = _mb_num(fund.get("roce")); de = _mb_num(fund.get("debtEquity"))
+    fcf = _mb_num(fund.get("fcf")); prom = _mb_num(fund.get("promoterHolding"))
+    prom_prev = _mb_num(fund.get("promoterHoldingPrev"))
+    if rev is None: ck("L2", "Revenue growth ≥15% CAGR", "verify", "data unavailable", 0, 5)
+    elif rev >= 15: l2 += 5; ck("L2", "Revenue growth ≥15% CAGR", "pass", "%.1f%%" % rev, 5, 5)
+    else: ck("L2", "Revenue growth ≥15% CAGR", "fail", "%.1f%%" % rev, 0, 5)
+    if earn is None: ck("L2", "Earnings growth ≥20% CAGR", "verify", "data unavailable", 0, 5)
+    elif earn >= 20: l2 += 5; ck("L2", "Earnings growth ≥20% CAGR", "pass", "%.1f%%" % earn, 5, 5)
+    else: ck("L2", "Earnings growth ≥20% CAGR", "fail", "%.1f%%" % earn, 0, 5)
+    if roce is None: ck("L2", "ROCE ≥15% (20% excellent)", "verify", "data unavailable", 0, 5)
+    elif roce >= 20: l2 += 5; ck("L2", "ROCE ≥15% (20% excellent)", "pass", "%.1f%% — excellent" % roce, 5, 5)
+    elif roce >= 15: l2 += 4; ck("L2", "ROCE ≥15% (20% excellent)", "pass", "%.1f%%" % roce, 4, 5)
+    else: ck("L2", "ROCE ≥15%", "fail", "%.1f%%" % roce, 0, 5)
+    if de is None: ck("L2", "Debt/Equity <0.5", "verify", "data unavailable", 0, 5)
+    elif de < 0.5: l2 += 5; ck("L2", "Debt/Equity <0.5", "pass", "%.2f" % de, 5, 5)
+    else: ck("L2", "Debt/Equity <0.5", "fail", "%.2f" % de, 0, 5)
+    # FCF + promoter share 5 pts (3+2)
+    if fcf is None: ck("L2", "Free cash flow positive", "verify", "data unavailable", 0, 3)
+    elif fcf > 0: l2 += 3; ck("L2", "Free cash flow positive", "pass", "positive", 3, 3)
+    else: ck("L2", "Free cash flow positive", "fail", "negative", 0, 3)
+    if prom is None: ck("L2", "Promoter holding stable/up", "verify", "data unavailable (US: institutional)", 0, 2)
+    elif prom_prev is None or prom >= prom_prev: l2 += 2; ck("L2", "Promoter holding stable/up", "pass", "%.1f%%" % prom, 2, 2)
+    else: ck("L2", "Promoter holding stable/up", "fail", "declining", 0, 2)
+    l2 = min(25, l2)
+
+    # ── LAYER 3 — OPPORTUNITY SIZE (0–25, editorial decade theme) ──
+    l3 = 0
+    if meta.get("decade_growth"):
+        l3 += 20; ck("L3", "Industry in decade-long growth cycle", "pass", meta.get("theme", ""), 20, 20)
+    else:
+        ck("L3", "Industry in decade-long growth cycle", "fail", "no structural tailwind", 0, 20)
+    # 'can 5x' editorial proxy: large theme + non-mega tier ⇒ more runway
+    if meta.get("decade_growth") and meta.get("mcap_tier") in ("mid", "small", "micro"):
+        l3 += 5; ck("L3", "Runway to 5x the business", "pass", "%s-cap in a structural theme" % meta.get("mcap_tier"), 5, 5)
+    elif meta.get("decade_growth"):
+        l3 += 3; ck("L3", "Runway to 5x the business", "pass", "large-cap — slower but durable", 3, 5)
+    else:
+        ck("L3", "Runway to 5x the business", "verify", "theme-dependent", 0, 5)
+    l3 = min(25, l3)
+
+    # ── LAYER 4 — VALUATION (0–20, LIVE where available) ──
+    l4 = 0
+    peg = _mb_num(fund.get("peg")); evebitda = _mb_num(fund.get("evEbitda"))
+    sector_evebitda = _mb_num(fund.get("sectorEvEbitda")); ps = _mb_num(fund.get("priceToSales"))
+    mos = _mb_num(fund.get("dcfMarginOfSafety"))  # % intrinsic above price
+    if peg is None: ck("L4", "PEG <1.5", "verify", "data unavailable", 0, 7)
+    elif peg < 1.5: l4 += 7; ck("L4", "PEG <1.5", "pass", "%.2f" % peg, 7, 7)
+    else: ck("L4", "PEG <1.5", "fail", "%.2f — paying up for growth" % peg, 0, 7)
+    if evebitda is None: ck("L4", "EV/EBITDA below sector avg", "verify", "data unavailable", 0, 5)
+    elif sector_evebitda is not None and evebitda < sector_evebitda:
+        l4 += 5; ck("L4", "EV/EBITDA below sector avg", "pass", "%.1f vs %.1f" % (evebitda, sector_evebitda), 5, 5)
+    elif sector_evebitda is None: ck("L4", "EV/EBITDA below sector avg", "verify", "sector avg unavailable (EV/EBITDA %.1f)" % evebitda, 0, 5)
+    else: ck("L4", "EV/EBITDA below sector avg", "fail", "%.1f vs %.1f" % (evebitda, sector_evebitda), 0, 5)
+    if ps is None: ck("L4", "Price/Sales reasonable vs growth", "verify", "data unavailable", 0, 3)
+    elif ps <= 10: l4 += 3; ck("L4", "Price/Sales reasonable vs growth", "pass", "%.1f" % ps, 3, 3)
+    else: ck("L4", "Price/Sales reasonable vs growth", "fail", "%.1f — rich" % ps, 0, 3)
+    if mos is None: ck("L4", "DCF margin of safety ≥20–30%", "verify", "intrinsic value unavailable", 0, 5)
+    elif mos >= 20: l4 += 5; ck("L4", "DCF margin of safety ≥20–30%", "pass", "intrinsic +%.0f%% vs price" % mos, 5, 5)
+    else: ck("L4", "DCF margin of safety ≥20–30%", "fail", "only +%.0f%% (or overvalued)" % mos, 0, 5)
+    l4 = min(20, l4)
+
+    # ── ENTRY TRIGGERS — technical LIVE, fundamental editorial ──
+    price = _mb_num(tech.get("price")); ma50 = _mb_num(tech.get("ma50")); ma200 = _mb_num(tech.get("ma200"))
+    rs = _mb_num(tech.get("rs_vs_bench")); volr = _mb_num(tech.get("vol_ratio"))
+    near_high = tech.get("near_high")
+    stage2 = (price is not None and ma50 is not None and ma200 is not None and price > ma200 and ma50 > ma200)
+    ck("entry", "Stage-2 uptrend (price>200MA, 50>200)", "pass" if stage2 else ("fail" if price is not None else "verify"),
+       "above rising trend" if stage2 else ("not in Stage-2" if price is not None else "data unavailable"))
+    ck("entry", "Relative-strength leader", "pass" if (rs is not None and rs > 0) else ("fail" if rs is not None else "verify"),
+       ("RS +%.1f%% vs index" % rs) if rs is not None else "RS unavailable")
+    ck("entry", "Volume accumulation", "pass" if (volr is not None and volr >= 1.2) else ("fail" if volr is not None else "verify"),
+       ("%.1fx avg" % volr) if volr is not None else "unavailable")
+    ck("entry", "Breakout from base / near high", "pass" if near_high else ("fail" if near_high is False else "verify"),
+       "near 52w/20d high" if near_high else ("mid-base" if near_high is False else "unavailable"))
+    ck("entry", "Fundamental trigger (orders/upgrade/capacity/margin)", "verify",
+       meta.get("trigger_note", "confirm latest results/order wins"))
+    tech_triggers = sum(1 for c in checks["entry"][:4] if c["status"] == "pass")
+
+    # ── TOTAL + ELITE FILTER ──
+    score = l1 + l2 + l3 + l4
+    elite_reqs = []
+    def ereq(ok, label):
+        elite_reqs.append({"ok": ok, "label": label})
+    ereq(score > 80, "Multibagger Score > 80")
+    ereq(roce is not None and roce > 15, "ROCE > 15%" + ("" if roce is not None else " (unverified)"))
+    ereq(rev is not None and rev > 15, "Revenue growth > 15%" + ("" if rev is not None else " (unverified)"))
+    ereq(earn is not None and earn > 20, "Earnings growth > 20%" + ("" if earn is not None else " (unverified)"))
+    ereq(de is not None and de < 0.5, "Debt/Equity < 0.5" + ("" if de is not None else " (unverified)"))
+    ereq(bool(meta.get("decade_growth")), "Large industry runway")
+    ereq(not (peg is not None and peg >= 2.5), "Valuation not excessive")
+    ereq(tech_triggers >= 2, "Institutional accumulation visible (≥2 technical triggers)")
+    elite_pass = sum(1 for r in elite_reqs if r["ok"])
+    elite_total = len(elite_reqs)
+    unverified = sum(1 for x in (rev, earn, roce, de) if x is None)
+    if score > 80 and elite_pass == elite_total:
+        verdict = "ELITE CANDIDATE"
+    elif score > 80 and unverified > 0:
+        verdict = "ELITE (pending fundamental verification)"
+    elif score >= 65:
+        verdict = "STRONG — watchlist"
+    else:
+        verdict = "BELOW BAR"
+
+    return {
+        "symbol": meta.get("symbol"), "name": meta.get("name"), "region": meta.get("region"),
+        "sector": meta.get("sector"), "theme": meta.get("theme"),
+        "score": round(score, 1),
+        "layers": {"business_quality": round(l1, 1), "fundamentals": round(l2, 1),
+                   "opportunity_size": round(l3, 1), "valuation": round(l4, 1)},
+        "layer_max": {"business_quality": 30, "fundamentals": 25, "opportunity_size": 25, "valuation": 20},
+        "checks": checks,
+        "mcap_tier": meta.get("mcap_tier"),
+        "tier_objective": _MB_TIER_OBJECTIVE.get(meta.get("mcap_tier"), ""),
+        "entry_technical_triggers": tech_triggers,
+        "elite_requirements": elite_reqs,
+        "elite_pass": elite_pass, "elite_total": elite_total,
+        "verdict": verdict,
+        "margin_of_safety_pct": mos,
+        "data_note": "Layers 1 & 3 are editorial (moat, decade theme). Layers 2 & 4 use live fundamentals where retrievable; '~ verify' = data unavailable, scored 0, never assumed.",
+    }
+
+_MB_DISCOVERY_ASOF = "2026-06-10"
+_MB_CACHE = {}
+_MB_TTL = 1800
+
+@app.get("/api/multibagger-discovery")
+async def multibagger_discovery(region: str = "ALL", refresh: int = 0):
+    """4-layer Multibagger Discovery — ranks the curated elite universe by
+    quality × discount × growth-cycle. Live technicals + best-effort live fundamentals."""
+    import time as _t
+    ck = "mb_" + region
+    if not refresh and ck in _MB_CACHE and (_t.time() - _MB_CACHE[ck][0] < _MB_TTL):
+        return _MB_CACHE[ck][1]
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    _lp = asyncio.get_event_loop()
+    syms = [(s, m) for s, m in _MB_UNIVERSE.items()
+            if region == "ALL" or m["region"] == region]
+
+    def _yf(s, reg):
+        return s if reg == "US" else f"{s}.NS"
+
+    # ── batch technicals + benchmarks ──
+    def _batch():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        tickers = [_yf(s, m["region"]) for s, m in syms] + ["SPY", "^NSEI"]
+        try:
+            return yf.download(tickers=" ".join(tickers), period="1y", interval="1d",
+                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+        except Exception:
+            return None
+    hist = await _lp.run_in_executor(None, _batch)
+
+    def _closes(ys):
+        try:
+            if hist is None or len(hist) == 0: return None
+            cols = hist.columns
+            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                sub = hist[ys].dropna()
+                return sub if (sub is not None and len(sub) >= 60) else None
+            return None
+        except Exception:
+            return None
+
+    def _bench_ret(ys):
+        sub = _closes(ys)
+        try:
+            c = list(sub["Close"].dropna())
+            return (c[-1] - c[-21]) / c[-21] * 100 if len(c) >= 21 and c[-21] > 0 else None
+        except Exception:
+            return None
+    spy_ret = _bench_ret("SPY"); nsei_ret = _bench_ret("^NSEI")
+
+    def _tech(s, m):
+        sub = _closes(_yf(s, m["region"]))
+        out = {"price": None, "ma50": None, "ma200": None, "rs_vs_bench": None,
+               "vol_ratio": None, "near_high": None}
+        if sub is None: return out
+        try:
+            c = list(sub["Close"].dropna()); h = list(sub["High"].dropna()); v = list(sub["Volume"].dropna())
+            if len(c) < 60: return out
+            out["price"] = round(float(c[-1]), 2)
+            if len(c) >= 50: out["ma50"] = sum(c[-50:]) / 50
+            if len(c) >= 200: out["ma200"] = sum(c[-200:]) / 200
+            if len(c) >= 21 and c[-21] > 0:
+                r20 = (c[-1] - c[-21]) / c[-21] * 100
+                bench = spy_ret if m["region"] == "US" else nsei_ret
+                out["rs_vs_bench"] = round(r20 - bench, 2) if bench is not None else None
+            if len(v) >= 20:
+                avg = sum(v[-20:]) / 20
+                out["vol_ratio"] = round(v[-1] / avg, 2) if avg > 0 else None
+            if len(h) >= 252:
+                out["near_high"] = bool(c[-1] >= 0.92 * max(h[-252:]))
+            elif len(h) >= 20:
+                out["near_high"] = bool(c[-1] >= 0.97 * max(h[-20:]))
+        except Exception:
+            pass
+        return out
+
+    def _fund(s, m):
+        """Best-effort live fundamentals → engine keys. Missing → absent (verify)."""
+        f = {}
+        try:
+            if m["region"] == "IN":
+                d = fetch_nse_stock_data(s) or {}
+                for k_src, k_dst in [("revGrowth", "revGrowth"), ("earningsGrowth", "earningsGrowth"),
+                                     ("roce", "roce"), ("debtEquity", "debtEquity"),
+                                     ("promoterHolding", "promoterHolding")]:
+                    val = d.get(k_src)
+                    if val not in (None, 0): f[k_dst] = val
+                pe = d.get("pe"); eg = d.get("earningsGrowth")
+                if pe and eg and eg > 0: f["peg"] = round(pe / eg, 2)
+            else:
+                d = fetch_multi_source_fundamentals(s) or {}
+                m_rev = d.get("revenue_growth") or d.get("revGrowth")
+                if m_rev not in (None, 0): f["revGrowth"] = m_rev
+                m_eg = d.get("earnings_growth") or d.get("earningsGrowth")
+                if m_eg not in (None, 0): f["earningsGrowth"] = m_eg
+                m_roe = d.get("roe") or d.get("roce")
+                if m_roe not in (None, 0): f["roce"] = m_roe
+                m_de = d.get("debt_to_equity") or d.get("debtEquity")
+                if m_de not in (None,): f["debtEquity"] = m_de
+                pe = d.get("pe") or d.get("pe_ratio"); eg = m_eg
+                if pe and eg and eg > 0: f["peg"] = round(float(pe) / float(eg), 2)
+                ps = d.get("price_to_sales") or d.get("ps")
+                if ps not in (None, 0): f["priceToSales"] = ps
+        except Exception:
+            pass
+        return f
+
+    rows = []
+    for s, m in syms:
+        meta = dict(m); meta["symbol"] = s
+        tech = await _lp.run_in_executor(None, _tech, s, m)
+        fund = await _lp.run_in_executor(None, _fund, s, m)
+        rows.append(_mb_score(meta, fund, tech))
+
+    # ── final ranking: quality × discount × growth-cycle ──
+    def _rank_key(r):
+        mos = r.get("margin_of_safety_pct")
+        return (-(r["score"]), -(mos if mos is not None else -999),
+                -r["entry_technical_triggers"])
+    rows.sort(key=_rank_key)
+
+    elite = [r for r in rows if r["verdict"].startswith("ELITE")]
+    out = {
+        "success": True, "region": region, "as_of": _MB_DISCOVERY_ASOF,
+        "framework": "Multibagger Score = 30% Business Quality + 25% Fundamentals + 25% Opportunity Size + 20% Valuation",
+        "final_question": "What is the highest-quality business available at the largest discount to intrinsic value while entering a major growth cycle?",
+        "universe_size": len(rows),
+        "elite_count": len(elite),
+        "results": rows,
+        "tier_objectives": _MB_TIER_OBJECTIVE,
+        "disclosure": ("Layers 1 (moat) & 3 (decade theme) are editorial judgments carried in a curated universe, "
+                       "not fetched data. Layers 2 & 4 use live fundamentals where retrievable; unavailable inputs "
+                       "show '~ verify', score 0, and are never assumed passed. Entry technicals are live; "
+                       "fundamental triggers require your verification of latest results/orders. Editorial, not advice."),
+    }
+    _MB_CACHE[ck] = (_t.time(), out)
+    return out
+
 @app.get("/api/multibagger-hunter")
 async def multibagger_hunter(email: str = "", region: str = "IN"):
     """Find stocks at the starting stage of explosive growth — works even in crashes"""

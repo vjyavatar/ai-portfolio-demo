@@ -2278,6 +2278,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <button onclick="window._foreverShow()" id="engBtnForever" style="padding:7px 14px;background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;border:1px solid #334155;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127963; Forever Holds</button>
   <button onclick="window._runwayShow()" id="engBtnRunway" style="padding:7px 14px;background:linear-gradient(135deg,#faf5ff,#f3e8ff);color:#7c3aed;border:1px solid #d8b4fe;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128640; Opportunity Runway</button>
   <button onclick="window._engShow('dec360')" id="engBtnDec360" style="padding:7px 14px;background:linear-gradient(135deg,#ecfeff,#cffafe);color:#0e7490;border:1px solid #67e8f9;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129517; 360 Decision</button>
+  <button onclick="window._engShow('mbdiscovery');window._loadMultibaggerDiscovery(window._mbDiscRegion||'ALL')" id="engBtnMBDisc" style="padding:7px 14px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);color:#15803d;border:1px solid #86efac;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128300; Multibagger Discovery</button>
 </div>
 
 <!-- MOMENTUM CoC ENGINE -->
@@ -2345,6 +2346,23 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
     </div>
     <div id="runwayScreenResult" style="margin-top:12px"></div>
     <div id="runwayResult" style="min-height:80px;margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- MULTIBAGGER DISCOVERY ENGINE (r63.110.28) -->
+<div id="engMBDiscPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#16a34a;font-family:Sora,sans-serif;margin-bottom:6px">&#128300; Multibagger Discovery &mdash; 4-Layer Institutional Framework</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Score = 30% Business Quality + 25% Fundamentals + 25% Opportunity Size + 20% Valuation. Ranks the curated elite universe by the final question: <em>highest-quality business &times; largest discount to intrinsic value &times; entering a major growth cycle</em>. Layers 1 (moat) &amp; 3 (decade theme) are editorial judgments; Layers 2 &amp; 4 use live fundamentals where retrievable (&#128269; verify = unavailable, scored 0, never assumed). Entry technicals are live. Editorial, not advice.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px">
+      <div style="display:flex;border:1px solid #86efac;border-radius:5px;overflow:hidden">
+        <button id="mbDiscRegALL" onclick="window._mbDiscRegion='ALL';window._loadMultibaggerDiscovery('ALL')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff">ALL</button>
+        <button id="mbDiscRegUS" onclick="window._mbDiscRegion='US';window._loadMultibaggerDiscovery('US')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #86efac;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#16a34a">US</button>
+        <button id="mbDiscRegIN" onclick="window._mbDiscRegion='IN';window._loadMultibaggerDiscovery('IN')" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #86efac;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#16a34a">IN</button>
+      </div>
+      <button onclick="window._loadMultibaggerDiscovery(window._mbDiscRegion||'ALL')" id="mbDiscBtn" style="padding:6px 16px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#128300; DISCOVER MULTIBAGGERS</button>
+    </div>
+    <div id="mbDiscResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Pick a region, then DISCOVER to rank the elite universe across all four layers.</div></div>
   </div>
 </div>
 
@@ -3155,7 +3173,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=63112701"></script>
+<script src="/static/app.min.js?v=63112801"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>
