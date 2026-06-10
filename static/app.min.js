@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.21";
-window.CELESYS_BUILD_TIME = 1780858800;
-window.CELESYS_BUILD_DATE = "2026-06-07 19:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.22";
+window.CELESYS_BUILD_TIME = 1780862400;
+window.CELESYS_BUILD_DATE = "2026-06-07 20:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -14454,10 +14454,43 @@ window._renderDirectionalOptions = function(d) {
   }
 
   /* ═══ CONFLICT WARNING ════════════════════════════════════════════════ */
-  if (d.conflict_warning) {
+  if (d.chop_mode) {
+    var ceS = (d.top_pick_ce && d.top_pick_ce.score != null) ? d.top_pick_ce.score : '?';
+    var peS = (d.top_pick_pe && d.top_pick_pe.score != null) ? d.top_pick_pe.score : '?';
     h += '<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #f59e0b;border-radius:12px;padding:14px 18px;margin-bottom:12px">';
-    h += '<div style="font-size:14px;font-weight:900;color:#92400e;margin-bottom:4px">⚠️ DIRECTION CONFLICT</div>';
-    h += '<div style="font-size:13px;font-weight:600;color:#78350f;line-height:1.6">' + E(d.conflict_warning) + '</div></div>';
+    h += '<div style="font-size:14px;font-weight:900;color:#92400e;margin-bottom:8px">&#9888;&#65039; DIRECTION CONFLICT &mdash; market is choppy / sideways</div>';
+    h += '<div style="font-size:12px;font-weight:800;color:#78350f;margin-bottom:3px">What\u2019s happening</div>';
+    h += '<ul style="margin:0 0 10px 0;padding-left:18px;font-size:12px;color:#78350f;line-height:1.65">';
+    h += '<li>Both a <b>CE (bullish)</b> and a <b>PE (bearish)</b> name passed, with <b>close scores (CE ' + ceS + ' vs PE ' + peS + ')</b>.</li>';
+    h += '<li>That means the market has <b>no clear direction right now</b> &mdash; it is moving sideways (\u201cchop\u201d).</li>';
+    h += '<li><b>Do not buy both a call and a put.</b> In plain terms: when you <i>buy</i> options, every day that price goes nowhere, both options <b>lose value</b> (this daily bleed is called <b>theta</b> / time decay). Buying both sides in a flat market is almost guaranteed to lose.</li>';
+    h += '</ul>';
+    h += '<div style="background:#fff;border:1px solid #fde68a;border-radius:9px;padding:10px 12px">';
+    h += '<div style="font-size:12px;font-weight:900;color:#15803d;margin-bottom:5px">&#128176; How to make money in a sideways market</div>';
+    h += '<div style="font-size:11px;color:#475569;line-height:1.6;margin-bottom:7px">The trick: when the market is flat, stop <b>buying</b> options and instead <b>sell</b> them. Then time decay (theta) works <b>for</b> you &mdash; you collect the premium that option buyers lose. The catch is selling carries bigger risk, so prefer the <b>defined-risk</b> structures below.</div>';
+    var strat = [
+      ['Iron Condor', 'defined', 'Sell a call-spread above price + a put-spread below it. You profit if price stays inside a range. Your maximum loss is capped &mdash; the safest sideways play. Great on NIFTY / BANKNIFTY / SPY / QQQ.'],
+      ['Credit spread (slight lean)', 'defined', 'If you lean mildly one way: sell a bull-put spread (mildly up) or bear-call spread (mildly down). Capped loss, collect premium while it drifts.'],
+      ['Calendar spread', 'defined', 'Sell a near-term option and buy a longer-dated one at the same strike. Profits from faster decay in the short option while the market chops.'],
+      ['Covered call', 'defined', 'If you already own the shares, sell a call against them for income while the stock goes nowhere. You give up upside above the strike.'],
+      ['Cash-secured put', 'defined', 'Sell a put on a name you would happily own lower. You keep the premium, or get assigned the stock at a discount.'],
+      ['Short straddle / strangle', 'undefined', 'Sell an at- or out-of-the-money call AND put. Highest premium, but the loss is large / undefined if price makes a big move. Advanced only, and size tiny.']
+    ];
+    strat.forEach(function(s){
+      var def = s[1]==='defined';
+      var tagC = def ? ['#16a34a','#dcfce7'] : ['#dc2626','#fef2f2'];
+      var tagT = def ? 'Defined risk' : 'Undefined risk \u2014 advanced';
+      h += '<div style="border-top:1px solid #f1f5f9;padding:6px 0">';
+      h += '<span style="font-size:11px;font-weight:800;color:#0f172a">' + E(s[0]) + '</span> ';
+      h += '<span style="font-size:8.5px;font-weight:800;color:' + tagC[0] + ';background:' + tagC[1] + ';border-radius:7px;padding:1px 7px">' + tagT + '</span>';
+      h += '<div style="font-size:10px;color:#475569;line-height:1.5;margin-top:2px">' + E(s[2]) + '</div></div>';
+    });
+    h += '<div style="font-size:9px;color:#94a3b8;line-height:1.5;margin-top:7px">Selling options needs the right broker approval and margin, and a sharp breakout can still hurt &mdash; defined-risk structures cap that, undefined-risk ones do not. Always set your max loss and an exit first. If you can\u2019t sell options or it feels unclear, <b>sitting out is also a valid trade</b>. Educational, not investment advice.</div>';
+    h += '</div></div>';
+  } else if (d.conflict_warning) {
+    h += '<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #f59e0b;border-radius:12px;padding:14px 18px;margin-bottom:12px">';
+    h += '<div style="font-size:14px;font-weight:900;color:#92400e;margin-bottom:4px">&#9888;&#65039; Trade one direction only</div>';
+    h += '<div style="font-size:13px;font-weight:600;color:#78350f;line-height:1.6">' + E(d.conflict_warning) + '<br><span style="font-size:11px;color:#92400e">Plain version: a call (CE) profits if price rises, a put (PE) if it falls &mdash; they cancel out, so back the stronger side only, never both.</span></div></div>';
   }
 
   /* ═══ SCANNER STATS ════════════════════════════════════════════════════ */

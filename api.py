@@ -10511,6 +10511,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh):
         "top_pick_pe":       top_pick_pe,
         "conflict_warning":  conflict_warning,
         "dominant_direction": dominant_direction,
+        "chop_mode":          bool(both_active and dominant_direction is None),
         "bubbles":           bubbles,
         # VIX context — the whole point of this algorithm
         "vix_context": {
