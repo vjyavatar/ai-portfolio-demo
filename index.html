@@ -2515,7 +2515,61 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
       </select>
       <button onclick="window._loadDirectionalOptions()" id="diroptsBtn" style="margin-left:auto;padding:6px 16px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127919; SCAN CE / PE</button>
     </div>
-    <div id="diroptsResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px"><strong>First scan takes ~30-60s</strong> while we score the universe. Cached 30 minutes per filter combo.</div></div>
+    <details style="margin-top:12px;background:#faf5ff;border:1px solid #ddd6fe;border-radius:10px;padding:10px 12px">
+      <summary style="font-size:11px;font-weight:900;color:#6d28d9;cursor:pointer;font-family:Sora,sans-serif">&#128203; Momentum-trading watchlist &amp; screening guide &mdash; US names (active trading, not long-term investing)</summary>
+      <div style="font-size:10px;color:#475569;line-height:1.6;margin-top:8px">
+        For <b>swing &amp; momentum trading</b>, institutional traders favour names with high liquidity, tight spreads, strong relative strength, large institutional ownership, consistent volume, clean technical patterns and frequent catalysts. The CANSLIM + Minervini + relative-strength + institutional-accumulation lens below maps each professional screen to what this scanner checks <b>live</b> versus what <b>you</b> should verify yourself.
+        <div style="font-weight:900;color:#6d28d9;margin:10px 0 4px">What top momentum traders screen for</div>
+        <table style="width:100%;border-collapse:collapse;font-size:9px">
+          <tr style="color:#6d28d9;text-align:left;border-bottom:1px solid #ddd6fe"><th style="padding:3px 5px">Factor</th><th style="padding:3px 5px">Institutional requirement</th><th style="padding:3px 5px">This scanner</th></tr>
+          <tr style="border-bottom:1px solid #f1f5f9"><td style="padding:3px 5px">Relative strength</td><td style="padding:3px 5px">Top 10&ndash;20% of market</td><td style="padding:3px 5px;color:#16a34a;font-weight:700">&#10003; checked (RS vs index)</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9"><td style="padding:3px 5px">Price vs 50 DMA</td><td style="padding:3px 5px">Above</td><td style="padding:3px 5px;color:#16a34a;font-weight:700">&#10003; trend / EMA gate</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9"><td style="padding:3px 5px">Price vs 200 DMA</td><td style="padding:3px 5px">Above</td><td style="padding:3px 5px;color:#b45309;font-weight:700">~ Stage-2 trend proxy</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9"><td style="padding:3px 5px">Volume</td><td style="padding:3px 5px">&gt;150% average</td><td style="padding:3px 5px;color:#16a34a;font-weight:700">&#10003; volume-surge check</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9"><td style="padding:3px 5px">Trend</td><td style="padding:3px 5px">Stage-2 uptrend</td><td style="padding:3px 5px;color:#16a34a;font-weight:700">&#10003; checked</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9"><td style="padding:3px 5px">Breakout</td><td style="padding:3px 5px">Near pivot point</td><td style="padding:3px 5px;color:#16a34a;font-weight:700">&#10003; near-high / breakout</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9"><td style="padding:3px 5px">Earnings growth</td><td style="padding:3px 5px">Strong</td><td style="padding:3px 5px;color:#dc2626;font-weight:700">&#10007; you verify (no feed)</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9"><td style="padding:3px 5px">Institutional ownership</td><td style="padding:3px 5px">Increasing</td><td style="padding:3px 5px;color:#dc2626;font-weight:700">&#10007; you verify (no feed)</td></tr>
+          <tr><td style="padding:3px 5px">Sector strength</td><td style="padding:3px 5px">Top-ranked sector</td><td style="padding:3px 5px;color:#b45309;font-weight:700">~ VIX / theme context</td></tr>
+        </table>
+        <div style="font-size:8.5px;color:#94a3b8;margin-top:3px">&#10003; computed live in the scan above &middot; ~ partial / proxy &middot; &#10007; not in the data feed &mdash; confirm these yourself before trading.</div>
+        <div style="font-weight:900;color:#6d28d9;margin:12px 0 4px">Trading watchlist (editorial tiers &mdash; all are scanned above)</div>
+        <div style="margin-bottom:4px"><span style="font-size:8.5px;font-weight:800;color:#16a34a">TIER 1 &middot; highest quality</span><br><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">NVDA &middot; AVGO &middot; META &middot; MRVL &middot; AMD &middot; MU</span></div>
+        <div style="margin-bottom:4px"><span style="font-size:8.5px;font-weight:800;color:#0891b2">TIER 2 &middot; aggressive growth</span><br><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">PLTR &middot; HOOD &middot; ARM &middot; ALAB</span></div>
+        <div style="margin-bottom:4px"><span style="font-size:8.5px;font-weight:800;color:#dc2626">TIER 3 &middot; speculative, high reward (thin options &mdash; rough premiums)</span><br><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">QUBT &middot; RGTI &middot; IONQ</span></div>
+        <div style="margin-bottom:4px"><span style="font-size:8.5px;font-weight:800;color:#475569">TIER 4 &middot; safest vehicles (ETFs)</span><br><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">QQQ &middot; SMH &middot; SPY &middot; XLK &nbsp;|&nbsp; leveraged: TQQQ &middot; SOXL (decay &mdash; short holds)</span></div>
+        <div style="background:#fff;border:1px solid #ddd6fe;border-radius:7px;padding:7px 9px;margin-top:8px"><span style="font-size:9px;font-weight:900;color:#6d28d9">Monitor most closely:</span><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a"> NVDA &middot; AVGO &middot; MRVL &middot; AMD &middot; MU &middot; PLTR &middot; HOOD &middot; QQQ &middot; SMH</span><div style="font-size:8.5px;color:#64748b;margin-top:2px">Best blend of liquidity, institutional sponsorship, trend quality and tradability for momentum trading.</div></div>
+        <div style="font-size:8px;color:#94a3b8;margin-top:8px;line-height:1.5">Educational watchlist for active trading, not investment advice. Tiers are an editorial view, not a prediction. Tier-3 speculative names can move violently and have thin options; leveraged ETFs decay and are for short holds only. Size for a drawdown and set an exit before entering.</div>
+      </div>
+    </details>
+    <details style="margin-top:8px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 12px">
+      <summary style="font-size:11px;font-weight:900;color:#c2410c;cursor:pointer;font-family:Sora,sans-serif">&#127470;&#127475; Momentum-trading watchlist &amp; screening guide &mdash; India names</summary>
+      <div style="font-size:10px;color:#475569;line-height:1.6;margin-top:8px">
+        Same CANSLIM + Minervini + relative-strength + accumulation lens, India edition. <b>Important:</b> in India, options (CE/PE) trade on the <b>indices</b> (NIFTY, BANK NIFTY, SENSEX) and on large <b>F&amp;O stocks</b> &mdash; the cash ETFs like NIFTYBEES have no liquid options, so they are cash-market vehicles, not CE/PE instruments. The stocks and indices below are scanned above; the ETFs and a few small-caps are listed for reference only.
+        <div style="font-weight:900;color:#c2410c;margin:10px 0 4px">Trading watchlist (editorial tiers)</div>
+        <div style="margin-bottom:4px"><span style="font-size:8.5px;font-weight:800;color:#16a34a">TIER 1 &middot; institutional leaders (deep liquidity, clean trends)</span><br><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">RELIANCE &middot; HDFCBANK &middot; ICICIBANK &middot; LT &middot; BHARTIARTL &middot; SBIN</span></div>
+        <div style="margin-bottom:4px"><span style="font-size:8.5px;font-weight:800;color:#0891b2">TIER 2 &middot; momentum leaders</span><br><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">TRENT &middot; BEL &middot; HAL &middot; PERSISTENT &middot; POLYCAB &middot; CUMMINSIND</span></div>
+        <div style="margin-bottom:4px"><span style="font-size:8.5px;font-weight:800;color:#dc2626">TIER 3 &middot; aggressive momentum (higher volatility)</span><br><span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">BSE &middot; ANGELONE &middot; DIXON &middot; KAYNES &middot; COCHINSHIP &middot; MAZDOCK</span></div>
+        <div style="font-weight:900;color:#c2410c;margin:10px 0 4px">Sector-leadership themes</div>
+        <div style="font-size:9px;color:#475569;line-height:1.7">
+          <b>Defense:</b> HAL &middot; BEL &middot; BDL &nbsp;|&nbsp; <b>Capital goods:</b> LT &middot; SIEMENS &middot; ABB<br>
+          <b>EMS / Mfg:</b> DIXON &middot; KAYNES &middot; <span style="color:#94a3b8">PGEL (cash-market)</span> &nbsp;|&nbsp; <b>Financials:</b> HDFCBANK &middot; ICICIBANK &middot; SBIN &middot; ANGELONE
+        </div>
+        <div style="font-weight:900;color:#c2410c;margin:10px 0 4px">Index options (the real CE/PE market in India)</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">NIFTY 50 (^NSEI) &middot; BANK NIFTY (^NSEBANK) &middot; SENSEX (^BSESN)</div>
+        <div style="font-size:8.5px;color:#94a3b8;margin-top:2px">Cash-market ETFs (no liquid options &mdash; reference only): NIFTYBEES &middot; BANKBEES &middot; JUNIORBEES (Next 50).</div>
+        <div style="background:#fff;border:1px solid #fed7aa;border-radius:7px;padding:7px 9px;margin-top:8px">
+          <div style="font-size:9px;font-weight:900;color:#c2410c">A+ daily watchlist</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">TRENT &middot; BEL &middot; HAL &middot; PERSISTENT &middot; POLYCAB &middot; BSE &middot; DIXON &middot; KAYNES</div>
+          <div style="font-size:9px;font-weight:900;color:#c2410c;margin-top:5px">Liquidity watchlist</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#0f172a">RELIANCE &middot; HDFCBANK &middot; ICICIBANK &middot; SBIN &middot; LT &middot; BHARTIARTL</div>
+        </div>
+        <div style="font-weight:900;color:#c2410c;margin:10px 0 4px">Practical institutional process</div>
+        <div style="font-size:9px;color:#475569;line-height:1.7">1. Start with the strongest sector &nbsp; 2. Find the sector leader &nbsp; 3. Wait for a VCP / tight consolidation / breakout &nbsp; 4. Enter only when volume confirms &nbsp; 5. Cut quickly if the breakout fails.</div>
+        <div style="font-size:8px;color:#94a3b8;margin-top:8px;line-height:1.5">Most Indian momentum returns come from a handful of leaders (Trent, HAL, BEL, Polycab, BSE, Dixon, Kaynes) during their leadership phases, not from trading hundreds of names. Educational watchlist for active trading, not investment advice. Tiers are an editorial view, not a prediction. Some small-cap / PSU names and the ETFs have thin or no options &mdash; treat those as cash-market ideas. Size for a drawdown and set an exit before entering.</div>
+      </div>
+    </details>
+    <div id="diroptsResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Scores the full momentum universe <strong>live on each scan</strong> (one batched fetch &mdash; usually a few seconds). Educational, not advice.</div></div>
   </div>
 </div>
 
@@ -3006,7 +3060,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=63111901"></script>
+<script src="/static/app.min.js?v=63112101"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>

@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.19";
-window.CELESYS_BUILD_TIME = 1780851600;
-window.CELESYS_BUILD_DATE = "2026-06-07 17:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.21";
+window.CELESYS_BUILD_TIME = 1780858800;
+window.CELESYS_BUILD_DATE = "2026-06-07 19:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -14539,7 +14539,7 @@ window._renderDirectionalOptions = function(d) {
     html += '<div style="display:flex;align-items:center;gap:10px">';
     html += '<span style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace">' + E(c.symbol) + '</span>';
     html += '<span style="font-size:11px;font-weight:900;color:' + grC + ';background:' + grBg + ';border:1px solid ' + grC + '40;border-radius:6px;padding:3px 9px">GRADE ' + grade + '</span>';
-    if (c.is_index) html += '<span style="font-size:9px;font-weight:700;color:#7c3aed;background:#f3e8ff;border-radius:4px;padding:2px 6px">INDEX</span>';
+    if (c.is_index) html += '<span style="font-size:9px;font-weight:700;color:#7c3aed;background:#f3e8ff;border-radius:4px;padding:2px 6px">INDEX</span>' + (c.index_name ? '<span style="font-size:10px;font-weight:700;color:#64748b;margin-left:6px">' + E(c.index_name) + '</span>' : '');
     html += '</div>';
     html += '<div style="display:flex;align-items:center;gap:10px">';
     html += '<span style="font-size:12px;font-weight:600;color:#64748b">' + E(c.sector||'?') + '</span>';

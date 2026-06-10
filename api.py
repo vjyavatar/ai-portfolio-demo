@@ -8612,10 +8612,14 @@ _INST_PICKS_UNIVERSE = {
         "GEV", "VRT", "CEG",
         # Industrials / materials momentum
         "STLD", "NUE", "GE", "BA", "RKLB",
+        # Active-trading additions — semis/AI, high-beta, speculative (QUBT/RGTI have thin options)
+        "TSM", "ALAB", "HOOD", "IONQ", "RGTI", "QUBT",
         # Indexes / ETF proxies — liquid CE/PE options, directional signals
         "SPY",   # S&P 500 — most liquid US options
         "QQQ",   # NASDAQ 100 — tech-heavy, high CE/PE activity
         "IWM",   # Russell 2000 — small-cap sentiment gauge
+        "SMH", "XLK",      # semiconductor + tech-sector momentum ETFs
+        "TQQQ", "SOXL",    # leveraged momentum ETFs (decay — short holds only)
     ],
     "IN": [
         "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY",
@@ -8627,9 +8631,13 @@ _INST_PICKS_UNIVERSE = {
         "ADANIENT", "ADANIPORTS", "TATASTEEL", "JSWSTEEL", "HINDALCO",
         "BEL", "HAL", "TATAPOWER", "COALINDIA", "ONGC",
         "DIXON", "TRENT", "DLF", "VEDL",
-        # Indexes — NIFTY F&O is the highest-volume CE/PE market in India
+        # F&O momentum leaders (active-trading watchlist)
+        "BSE", "PERSISTENT", "POLYCAB", "CUMMINSIND", "ANGELONE",
+        "SIEMENS", "ABB", "KAYNES", "MAZDOCK", "BDL", "COCHINSHIP",
+        # Indexes — NIFTY / BANK NIFTY / SENSEX F&O is the highest-volume CE/PE market in India
         "^NSEI",     # NIFTY 50 — most liquid F&O
         "^NSEBANK",  # BANK NIFTY — second-highest F&O volume
+        "^BSESN",    # SENSEX — BSE index options
     ],
 }
 
@@ -8637,8 +8645,19 @@ _INST_PICKS_UNIVERSE = {
 # (no .NS suffix for Indian indexes, no modification for US).
 _INDEX_SYMBOLS = {
     "SPY", "QQQ", "IWM", "DIA", "GLD", "SLV",
-    "^NSEI", "^NSEBANK", "^CNXNIFTY", "^CNXFIN",
+    "SMH", "XLK", "TQQQ", "SOXL",
+    "^NSEI", "^NSEBANK", "^CNXNIFTY", "^CNXFIN", "^BSESN",
     "^SPX", "^NDX", "^DJI", "^VIX", "^IXIC",
+}
+
+# Friendly display names for index / ETF proxies (shown in CE/PE scanner rows)
+_INDEX_NAMES = {
+    "SPY": "S&P 500", "QQQ": "Nasdaq 100", "IWM": "Russell 2000",
+    "DIA": "Dow 30", "GLD": "Gold", "SLV": "Silver",
+    "SMH": "Semiconductors ETF", "XLK": "Tech Sector ETF",
+    "TQQQ": "Nasdaq 100 3x (leveraged)", "SOXL": "Semis 3x (leveraged)",
+    "^NSEI": "NIFTY 50", "^NSEBANK": "BANK NIFTY", "^BSESN": "SENSEX",
+    "^CNXFIN": "NIFTY Financial", "^CNXIT": "NIFTY IT",
 }
 
 
@@ -9482,14 +9501,14 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
             # FAST PATH (r63.110.19): use batch-downloaded history; skip slow/unreliable .info + per-ticker .history
             hist = prefetched
             if _is_index:
-                out["index_name"] = symbol
+                out["index_name"] = _INDEX_NAMES.get(symbol, symbol)
                 out["sector"] = "Index"
         else:
             tk = yf.Ticker(yf_sym)
             try: info = tk.info or {}
             except Exception: info = {}
             if _is_index:
-                out["index_name"] = (info.get("longName") or info.get("shortName") or symbol)
+                out["index_name"] = (_INDEX_NAMES.get(symbol) or info.get("longName") or info.get("shortName") or symbol)
                 out["sector"] = "Index"
             else:
                 out["sector"] = (info.get("sector") or "Unknown")
