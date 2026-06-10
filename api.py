@@ -39083,6 +39083,43 @@ _MB_UNIVERSE = {
     "TRENT":    {"region": "IN", "name": "Trent", "sector": "Retail", "theme": "Premium Consumption",
                  "understandable": True, "moats": ["brand", "distribution"], "decade_growth": True,
                  "mcap_tier": "large", "trigger_note": "Zudio store-count premium retail runway"},
+    # ── theme-depth expansion (r63.110.32) — editorial moat/theme; >=3 names per theme ──
+    "AVGO": {"region": "US", "name": "Broadcom", "sector": "Semiconductors/AI", "theme": "AI Infrastructure",
+             "understandable": True, "moats": ["patents", "switching", "scale"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Custom AI silicon + networking"},
+    "AMD":  {"region": "US", "name": "AMD", "sector": "Semiconductors", "theme": "Semiconductors",
+             "understandable": True, "moats": ["patents", "scale"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "MI-series AI accelerators"},
+    "ASML": {"region": "US", "name": "ASML", "sector": "Semiconductors", "theme": "Semiconductors",
+             "understandable": True, "moats": ["patents", "switching", "scale", "regulatory"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "EUV lithography monopoly"},
+    "AMAT": {"region": "US", "name": "Applied Materials", "sector": "Semiconductors", "theme": "Semiconductors",
+             "understandable": True, "moats": ["patents", "scale"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "WFE leader, AI capex"},
+    "MSFT": {"region": "US", "name": "Microsoft", "sector": "Software/Cloud", "theme": "Cloud / Software",
+             "understandable": True, "moats": ["switching", "network", "scale", "brand"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Azure + Copilot monetization"},
+    "PLTR": {"region": "US", "name": "Palantir", "sector": "Software", "theme": "Cloud / Software",
+             "understandable": True, "moats": ["switching", "patents"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "AIP enterprise adoption"},
+    "CRWD": {"region": "US", "name": "CrowdStrike", "sector": "Cybersecurity", "theme": "Cloud / Software",
+             "understandable": True, "moats": ["switching", "network"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Platform consolidation in security"},
+    "EQIX": {"region": "US", "name": "Equinix", "sector": "Data Center REIT", "theme": "Data Centers",
+             "understandable": True, "moats": ["switching", "scale", "distribution"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Interconnection moat for AI"},
+    "LMT":  {"region": "US", "name": "Lockheed Martin", "sector": "Defense", "theme": "Defense",
+             "understandable": True, "moats": ["regulatory", "scale", "switching"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Global defense budgets rising"},
+    "FSLR": {"region": "US", "name": "First Solar", "sector": "Solar", "theme": "Energy Transition",
+             "understandable": True, "moats": ["scale", "patents"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "US-made thin-film, IRA tailwind"},
+    "SIEMENS":  {"region": "IN", "name": "Siemens India", "sector": "Power Equipment", "theme": "Power Equipment",
+                 "understandable": True, "moats": ["brand", "scale", "switching"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Grid + automation capex"},
+    "BDL":      {"region": "IN", "name": "Bharat Dynamics", "sector": "Defense", "theme": "Defense",
+                 "understandable": True, "moats": ["regulatory", "scale"], "decade_growth": True, "mcap_tier": "mid", "trigger_note": "Missiles indigenisation"},
+    "MAZDOCK":  {"region": "IN", "name": "Mazagon Dock", "sector": "Defense Shipbuilding", "theme": "Defense",
+                 "understandable": True, "moats": ["regulatory", "scale"], "decade_growth": True, "mcap_tier": "mid", "trigger_note": "Submarine/warship order book"},
+    "TITAGARH": {"region": "IN", "name": "Titagarh Rail", "sector": "Railways", "theme": "Railways",
+                 "understandable": True, "moats": ["scale", "switching"], "decade_growth": True, "mcap_tier": "mid", "trigger_note": "Vande Bharat + wagons"},
+    "IRFC":     {"region": "IN", "name": "IRFC", "sector": "Railway Finance", "theme": "Railways",
+                 "understandable": True, "moats": ["regulatory", "scale"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Railway capex financing arm"},
+    "AMBER":    {"region": "IN", "name": "Amber Enterprises", "sector": "Electronics Mfg (EMS)", "theme": "EMS",
+                 "understandable": True, "moats": ["scale", "switching"], "decade_growth": True, "mcap_tier": "mid", "trigger_note": "RAC + electronics EMS"},
+    "TITAN":    {"region": "IN", "name": "Titan", "sector": "Jewellery/Retail", "theme": "Premium Consumption",
+                 "understandable": True, "moats": ["brand", "distribution", "scale"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Jewellery formalisation"},
+    "VBL":      {"region": "IN", "name": "Varun Beverages", "sector": "Beverages", "theme": "Premium Consumption",
+                 "understandable": True, "moats": ["brand", "distribution", "scale"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "PepsiCo bottler footprint expansion"},
 }
 _MB_MOAT_PTS = {"brand": 5, "network": 6, "switching": 5, "patents": 5, "distribution": 4, "scale": 4, "regulatory": 4}
 _MB_TIER_OBJECTIVE = {
@@ -39559,6 +39596,115 @@ async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
     card = _imdf_score(meta, fund, tech)
     out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym, **card}
     _IMDF_CACHE[ck] = (_t.time(), out)
+    return out
+
+
+_IMDF_THEMES_CACHE = {}
+
+@app.get("/api/imdf-themes")
+async def imdf_themes(region: str = "ALL", refresh: int = 0):
+    """IMDF Score™ — Stage-1 theme discovery. Top 3 names per theme ranked by a live
+    momentum + curated quality/opportunity screen. Tap a name for the full fundamental decision."""
+    import time as _t
+    ck = "imdfth_" + region
+    if not refresh and ck in _IMDF_THEMES_CACHE and (_t.time() - _IMDF_THEMES_CACHE[ck][0] < 1800):
+        return _IMDF_THEMES_CACHE[ck][1]
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    _lp = asyncio.get_event_loop()
+    syms = [(s, m) for s, m in _MB_UNIVERSE.items() if region == "ALL" or m["region"] == region]
+
+    def _yf(s, reg): return s if reg == "US" else "%s.NS" % s
+
+    def _batch():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        tickers = [_yf(s, m["region"]) for s, m in syms] + ["SPY", "^NSEI"]
+        try:
+            return yf.download(tickers=" ".join(tickers), period="1y", interval="1d",
+                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+        except Exception:
+            return None
+    hist = await _lp.run_in_executor(None, _batch)
+
+    def _sub(ys):
+        try:
+            cols = hist.columns
+            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                d = hist[ys].dropna()
+                return d if (d is not None and len(d) >= 60) else None
+        except Exception:
+            pass
+        return None
+
+    def _bret(ys):
+        d = _sub(ys)
+        try:
+            c = list(d["Close"].dropna())
+            return (c[-1] - c[-21]) / c[-21] * 100 if len(c) >= 21 and c[-21] > 0 else None
+        except Exception:
+            return None
+    spy, nsei = _bret("SPY"), _bret("^NSEI")
+
+    def _tech(s, m):
+        d = _sub(_yf(s, m["region"]))
+        out = {"price": None, "ma50": None, "ma200": None, "atr": None,
+               "rs_vs_bench": None, "vol_ratio": None, "near_high": None}
+        if d is None: return out
+        try:
+            c = list(d["Close"].dropna()); h = list(d["High"].dropna())
+            lo = list(d["Low"].dropna()); v = list(d["Volume"].dropna())
+            out["price"] = round(float(c[-1]), 2)
+            if len(c) >= 50: out["ma50"] = sum(c[-50:]) / 50
+            if len(c) >= 200: out["ma200"] = sum(c[-200:]) / 200
+            if len(c) >= 15 and len(h) >= 15 and len(lo) >= 15:
+                trs = [max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1])) for i in range(-14, 0)]
+                out["atr"] = round(sum(trs) / len(trs), 2) if trs else None
+            if len(v) >= 20:
+                avg = sum(v[-20:]) / 20
+                out["vol_ratio"] = round(v[-1] / avg, 2) if avg > 0 else None
+            if len(h) >= 252: out["near_high"] = bool(c[-1] >= 0.92 * max(h[-252:]))
+            elif len(h) >= 20: out["near_high"] = bool(c[-1] >= 0.97 * max(h[-20:]))
+            if len(c) >= 21 and c[-21] > 0:
+                r20 = (c[-1] - c[-21]) / c[-21] * 100
+                b = spy if m["region"] == "US" else nsei
+                out["rs_vs_bench"] = round(r20 - b, 2) if b is not None else None
+        except Exception:
+            pass
+        return out
+
+    by_theme = {}
+    for s, m in syms:
+        meta = dict(m); meta["symbol"] = s
+        tech = await _lp.run_in_executor(None, _tech, s, m)
+        if tech.get("price") is None:
+            continue
+        card = _imdf_score(meta, {}, tech)   # Stage-1: fundamentals pending (live momentum + curated)
+        f = card["factors"]
+        screen = round(f["momentum"] * 0.45 + f["opportunity"] * 0.35 + f["business_quality"] * 0.20, 1)
+        row = {"symbol": s, "name": card["name"], "region": card["region"], "theme": card["theme"],
+               "screen_score": screen, "momentum": f["momentum"], "opportunity": f["opportunity"],
+               "business_quality": f["business_quality"], "grade": card["grade"],
+               "rs_vs_bench": tech.get("rs_vs_bench"), "near_high": tech.get("near_high"),
+               "price": tech.get("price"),
+               "best_entry": (card["entry"] or {}).get("best_entry_lo"),
+               "stop": (card["entry"] or {}).get("stop"),
+               "over_extended": ((card["entry"] or {}).get("atr_extension") or 0) > 2,
+               "mcap_tier": card["mcap_tier"]}
+        by_theme.setdefault(card["theme"], []).append(row)
+
+    themes = []
+    for th, rows in by_theme.items():
+        rows.sort(key=lambda r: (-r["screen_score"], -(r["momentum"] or 0)))
+        themes.append({"theme": th, "count": len(rows), "top": rows[:3]})
+    themes.sort(key=lambda t: -(t["top"][0]["screen_score"] if t["top"] else 0))
+
+    out = {"success": True, "region": region, "as_of": _MB_DISCOVERY_ASOF,
+           "themes": themes, "theme_count": len(themes),
+           "note": ("Stage-1 discovery: ranked by a LIVE Driehaus-momentum + curated business-quality/opportunity "
+                    "screen (fundamentals & valuation are pending here for speed). Tap any name to run the full "
+                    "6-factor IMDF decision with fundamentals, entry zone, action and Why-Not-Buy. Editorial, not advice.")}
+    _IMDF_THEMES_CACHE[ck] = (_t.time(), out)
     return out
 
 _MB_DISCOVERY_ASOF = "2026-06-10"

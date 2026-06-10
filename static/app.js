@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.31";
-window.CELESYS_BUILD_TIME = 1780894800;
-window.CELESYS_BUILD_DATE = "2026-06-08 05:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.32";
+window.CELESYS_BUILD_TIME = 1780898400;
+window.CELESYS_BUILD_DATE = "2026-06-08 06:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12375,6 +12375,61 @@ window._engVerdictColor = function(v) {
 // ═══════════════════ ENGINE 5: MULTIBAGGER PROBABILITY ═══════════════════
 // ═══ IMDF Score™ — Institutional Multibagger Discovery Framework (r63.110.31) ═══
 window._imdfRegion = 'US';
+window._imdfOpen = function(sym, region){
+  window._imdfRegion = region || 'US';
+  var i = document.getElementById('imdfSym'); if (i) i.value = sym;
+  var us = document.getElementById('imdfRegUS'), inb = document.getElementById('imdfRegIN');
+  if (us && inb){ var onB='linear-gradient(135deg,#4338ca,#3730a3)';
+    if ((region||'US')==='US'){ us.style.background=onB; us.style.color='#fff'; inb.style.background='#fff'; inb.style.color='#3730a3'; }
+    else { inb.style.background=onB; inb.style.color='#fff'; us.style.background='#fff'; us.style.color='#3730a3'; } }
+  window._loadIMDF();
+  var r = document.getElementById('imdfResult'); if (r && r.scrollIntoView) r.scrollIntoView({behavior:'smooth',block:'start'});
+};
+window._loadIMDFThemes = function(region){
+  region = region || window._imdfRegion || 'ALL';
+  var resEl = document.getElementById('imdfResult'); var btn = document.getElementById('imdfThemesBtn');
+  if (!resEl) return;
+  if (btn){ btn.disabled=true; btn.style.opacity='0.6'; btn.innerHTML='\u23F3\u2026'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#4338ca"><div style="display:inline-block;width:16px;height:16px;border:2px solid #4338ca;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Ranking the universe by theme (live momentum + quality screen)\u2026</div>';
+  fetch('/api/imdf-themes?region=' + encodeURIComponent(region) + '&refresh=1', {cache:'no-store'})
+    .then(function(r){ return r.json().catch(function(){return null;}); })
+    .then(function(d){
+      if (btn){ btn.disabled=false; btn.style.opacity='1'; btn.innerHTML='\uD83C\uDFC6 TOP 3 BY THEME'; }
+      if (!d || !d.success){ var m=(d&&(d.error||d.detail))||'unknown'; if(window._engRenderError) window._engRenderError('imdfResult','Themes',m,d&&d.trace); else resEl.innerHTML='<div style="padding:14px;color:#dc2626;font-size:11px">'+m+'</div>'; return; }
+      resEl.innerHTML = window._renderIMDFThemes(d);
+    })
+    .catch(function(e){ if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83C\uDFC6 TOP 3 BY THEME';} resEl.innerHTML='<div style="padding:14px;color:#dc2626;font-size:11px">Network error: '+e.message+'</div>'; });
+};
+window._renderIMDFThemes = function(d){
+  var E = window._esc || function(s){return String(s==null?'':s);};
+  var h = '';
+  h += '<div style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:2px solid #4338ca;border-radius:12px;padding:12px 16px;margin-bottom:12px">';
+  h += '<div style="font-size:13px;font-weight:900;color:#3730a3;font-family:Sora,sans-serif">\uD83C\uDFC6 IMDF Score\u2122 \u2014 Top 3 by Theme</div>';
+  h += '<div style="font-size:10px;color:#475569;margin-top:4px;line-height:1.5">' + E(d.note||'') + '</div></div>';
+  (d.themes||[]).forEach(function(t){
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:10px;overflow:hidden">';
+    h += '<div style="padding:9px 14px;background:#f5f3ff;display:flex;align-items:center;justify-content:space-between"><span style="font-size:12px;font-weight:900;color:#5b21b6;font-family:Sora,sans-serif">' + E(t.theme) + '</span><span style="font-size:10px;color:#94a3b8;font-weight:700">' + t.count + ' tracked</span></div>';
+    (t.top||[]).forEach(function(r,i){
+      var medal = i===0?'\uD83E\uDD47':i===1?'\uD83E\uDD48':'\uD83E\uDD49';
+      h += '<div onclick="window._imdfOpen(\'' + E(r.symbol) + '\',\'' + E(r.region) + '\')" style="padding:10px 14px;border-top:1px solid #f1f5f9;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap" onmouseover="this.style.background=\'#faf5ff\'" onmouseout="this.style.background=\'\'">';
+      h += '<span style="font-size:15px">' + medal + '</span>';
+      h += '<span style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono,monospace;min-width:74px">' + E(r.symbol) + '</span>';
+      h += '<span style="font-size:11px;color:#475569;font-weight:600;flex:1;min-width:90px">' + E(r.name) + ' <span style="font-size:9px;color:#7c3aed;background:#f3e8ff;border-radius:3px;padding:1px 5px">' + E(r.region) + '</span></span>';
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:9px;font-weight:800">';
+      h += '<span style="color:#db2777;background:#fce7f3;border-radius:4px;padding:2px 6px">MOM ' + Math.round(r.momentum||0) + '</span>';
+      h += '<span style="color:#7c3aed;background:#f3e8ff;border-radius:4px;padding:2px 6px">OPP ' + Math.round(r.opportunity||0) + '</span>';
+      if (r.rs_vs_bench!=null) h += '<span style="color:' + (r.rs_vs_bench>0?'#16a34a':'#dc2626') + ';background:#f8fafc;border-radius:4px;padding:2px 6px">RS ' + (r.rs_vs_bench>0?'+':'') + r.rs_vs_bench + '</span>';
+      if (r.near_high) h += '<span style="color:#16a34a;background:#f0fdf4;border-radius:4px;padding:2px 6px">\u2191 near high</span>';
+      if (r.over_extended) h += '<span style="color:#d97706;background:#fffbeb;border-radius:4px;padding:2px 6px">extended</span>';
+      h += '</div>';
+      h += '<span style="font-size:18px;font-weight:900;color:#4338ca;font-family:JetBrains Mono,monospace;min-width:42px;text-align:right">' + r.screen_score + '</span>';
+      h += '<span style="font-size:10px;color:#6366f1;font-weight:800">Open \u2192</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  });
+  return h;
+};
 window._loadIMDF = function(){
   var inp = document.getElementById('imdfSym');
   var sym = ((inp && inp.value) || '').trim().toUpperCase();
