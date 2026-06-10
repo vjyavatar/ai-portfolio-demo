@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.30";
-window.CELESYS_BUILD_TIME = 1780891200;
-window.CELESYS_BUILD_DATE = "2026-06-08 04:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.31";
+window.CELESYS_BUILD_TIME = 1780894800;
+window.CELESYS_BUILD_DATE = "2026-06-08 05:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11745,6 +11745,7 @@ window._engShow = function(panel) {
     'forever': 'engForeverPanel', 'dec360': 'engDec360Panel',
     'runway': 'engRunwayPanel',
     'mbdiscovery': 'engMBDiscPanel',
+    'imdf': 'engIMDFPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11763,6 +11764,7 @@ window._engShow = function(panel) {
     'forever': 'engBtnForever', 'dec360': 'engBtnDec360',
     'runway': 'engBtnRunway',
     'mbdiscovery': 'engBtnMBDisc',
+    'imdf': 'engBtnIMDF',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12371,6 +12373,99 @@ window._engVerdictColor = function(v) {
 };
 
 // ═══════════════════ ENGINE 5: MULTIBAGGER PROBABILITY ═══════════════════
+// ═══ IMDF Score™ — Institutional Multibagger Discovery Framework (r63.110.31) ═══
+window._imdfRegion = 'US';
+window._loadIMDF = function(){
+  var inp = document.getElementById('imdfSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  var resEl = document.getElementById('imdfResult'); var btn = document.getElementById('imdfBtn');
+  if (!resEl) return;
+  if (!sym) { resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Enter a symbol first (NVDA, RELIANCE, DIXON…).</div>'; return; }
+  var reg = window._imdfRegion || 'US';
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '\u23F3 DECIDING\u2026'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#4338ca"><div style="display:inline-block;width:16px;height:16px;border:2px solid #4338ca;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Running ' + sym + ' through the 6-factor institutional decision pipeline\u2026</div>';
+  fetch('/api/imdf-decision?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg) + '&refresh=1', {cache:'no-store'})
+    .then(function(r){ return r.json().catch(function(){return null;}); })
+    .then(function(d){
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDFAF GET DECISION'; }
+      if (!d || !d.success) { var m = (d && (d.error || d.detail)) || 'unknown'; if (window._engRenderError) window._engRenderError('imdfResult', sym, m, d && d.trace); else resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + sym + ': ' + m + '</div>'; return; }
+      resEl.innerHTML = window._renderIMDF(d);
+    })
+    .catch(function(e){ if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDFAF GET DECISION'; } resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Network error: ' + e.message + '</div>'; });
+};
+window._renderIMDF = function(d){
+  var E = window._esc || function(s){return String(s||'');};
+  var ic = function(st){return st==='pass'?'\u2705':st==='fail'?'\u274C':st==='warn'?'\u26A0\uFE0F':'\uD83D\uDD0D';};
+  var ac = d.action_color || '#4338ca';
+  var h = '';
+  // ── decision header ──
+  h += '<div style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:2px solid ' + ac + ';border-radius:14px;padding:16px 18px;margin-bottom:14px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+  h += '<div><div style="font-size:9px;font-weight:800;color:#6366f1;letter-spacing:1px">INSTITUTIONAL DECISION \u00B7 IMDF Score\u2122</div>';
+  h += '<div style="font-size:22px;font-weight:900;color:#1e1b4b;font-family:JetBrains Mono,monospace">' + E(d.symbol) + '</div>';
+  h += '<div style="font-size:11px;color:#475569;font-weight:600">' + E(d.name||'') + ' \u00B7 ' + E(d.theme||'') + '</div></div>';
+  h += '<div style="text-align:right"><div style="font-size:34px;font-weight:900;color:' + ac + ';font-family:JetBrains Mono,monospace;line-height:1">' + d.imdf_score + '<span style="font-size:14px;color:#94a3b8">/100</span></div>';
+  h += '<div style="font-size:11px;font-weight:800;color:#475569">Grade ' + E(d.grade) + ' \u00B7 Confidence ' + d.confidence + '%</div></div></div>';
+  h += '<div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+  h += '<div style="font-size:20px;font-weight:900;color:#fff;background:' + ac + ';border-radius:8px;padding:6px 18px;font-family:Sora,sans-serif">' + E(d.action) + '</div>';
+  h += '<div style="flex:1;min-width:200px;font-size:12px;color:#1f2937;font-weight:600">' + E(d.action_reason) + '</div></div>';
+  if (d.inferred) h += '<div style="margin-top:8px;font-size:10px;color:#b45309;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 10px">\u26A0\uFE0F Not in the curated universe \u2014 Business Quality & Opportunity are <strong>sector-inferred</strong>. Confirm the moat and theme manually.</div>';
+  h += '</div>';
+  // ── factor bars ──
+  var F = d.factors||{}, W = d.weights||{};
+  var fb = function(lab, val, wt, col){ var p=Math.max(0,Math.min(100,val||0)); return '<div style="margin-bottom:6px"><div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;color:#475569"><span>' + lab + ' <span style="color:#a5b4fc">(' + wt + '%)</span></span><span>' + (val||0) + '/100</span></div><div style="background:#eef2ff;border-radius:4px;height:7px;overflow:hidden"><div style="width:' + p + '%;height:100%;background:' + col + '"></div></div></div>'; };
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
+  h += '<div style="font-size:12px;font-weight:900;color:#3730a3;font-family:Sora,sans-serif;margin-bottom:10px">Six-Factor Breakdown</div>';
+  h += fb('Business Quality', F.business_quality, W.business_quality, '#16a34a');
+  h += fb('Fundamentals', F.fundamentals, W.fundamentals, '#2563eb');
+  h += fb('Opportunity Size', F.opportunity, W.opportunity, '#7c3aed');
+  h += fb('Valuation', F.valuation, W.valuation, '#f59e0b');
+  h += fb('Driehaus Momentum', F.momentum, W.momentum, '#db2777');
+  h += fb('Institutional Accumulation', F.institutional, W.institutional, '#0891b2');
+  h += '<div style="margin-top:8px;font-size:11px;font-weight:700;color:#4338ca">' + E(d.mcap_tier?String(d.mcap_tier).toUpperCase()+'-CAP':'') + ' \u00B7 ' + E(d.tier_objective||'') + '</div>';
+  h += '</div>';
+  // ── entry zone ──
+  var en = d.entry;
+  if (en) {
+    var cell = function(lab, val, col){ return '<div style="flex:1;min-width:90px;text-align:center;padding:8px;background:#f8fafc;border-radius:8px"><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:.5px">' + lab + '</div><div style="font-size:15px;font-weight:900;color:' + (col||'#1e293b') + ';font-family:JetBrains Mono,monospace">' + val + '</div></div>'; };
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:12px">';
+    h += '<div style="font-size:12px;font-weight:900;color:#3730a3;font-family:Sora,sans-serif;margin-bottom:10px">Entry Engine \u2014 prices, not "buy"</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+    h += cell('BEST ENTRY', en.best_entry_lo + '\u2013' + en.best_entry_hi, '#16a34a');
+    h += cell('CHASE ZONE', en.chase_lo + '\u2013' + en.chase_hi, '#d97706');
+    h += cell('AVOID ABOVE', en.avoid_above, '#dc2626');
+    h += cell('STOP', en.stop, '#dc2626');
+    h += cell('RISK', (en.risk_pct!=null?en.risk_pct+'%':'\u2014'), '#b45309');
+    h += cell('CURRENT', en.current_price, '#1e293b');
+    h += '</div>';
+    h += '<div style="margin-top:8px;font-size:11px;color:#475569">Position size: <strong>' + E(d.position_size) + '</strong>' + (en.atr_extension!=null?' \u00B7 extension ' + en.atr_extension + ' ATR' + (en.atr_extension>2?' (over-extended \u2014 wait)':''):'') + '</div>';
+    h += '</div>';
+  }
+  // ── Why buy / Why NOT buy ──
+  h += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">';
+  h += '<div style="flex:1;min-width:240px;background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:12px 14px"><div style="font-size:12px;font-weight:900;color:#15803d;font-family:Sora,sans-serif;margin-bottom:6px">3 Reasons To Buy</div>';
+  (d.why_buy||[]).forEach(function(r,i){ h += '<div style="font-size:11px;color:#166534;padding:3px 0;font-weight:600">' + (i+1) + '. ' + E(r) + '</div>'; });
+  h += '</div>';
+  h += '<div style="flex:1;min-width:240px;background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:12px 14px"><div style="font-size:12px;font-weight:900;color:#b91c1c;font-family:Sora,sans-serif;margin-bottom:6px">Why NOT Buy? (bias check)</div>';
+  (d.why_not_buy||[]).forEach(function(r,i){ h += '<div style="font-size:11px;color:#991b1b;padding:3px 0;font-weight:600">' + (i+1) + '. ' + E(r) + '</div>'; });
+  h += '</div></div>';
+  // ── collapsible audit ──
+  var rid = 'imdfAudit';
+  h += '<div onclick="(function(){var x=document.getElementById(\'' + rid + '\');if(x)x.style.display=x.style.display===\'none\'?\'block\':\'none\';})()" style="cursor:pointer;padding:9px 12px;background:#eef2ff;border-radius:8px;font-size:11px;font-weight:800;color:#3730a3;font-family:Sora,sans-serif;margin-bottom:8px">\uD83D\uDD0E Full factor audit (\u2705/\u274C/\uD83D\uDD0D) \u2014 tap to expand</div>';
+  h += '<div id="' + rid + '" style="display:none">';
+  var LN = {L1:'Business Quality', L2:'Fundamentals', L3:'Opportunity Size', L4:'Valuation', momentum:'Driehaus Momentum', institutional:'Institutional Accumulation'};
+  ['L1','L2','L3','L4','momentum','institutional'].forEach(function(lk){
+    var arr = (d.checks && d.checks[lk]) || []; if (!arr.length) return;
+    h += '<div style="margin-top:8px;font-size:11px;font-weight:900;color:#334155;font-family:Sora,sans-serif">' + LN[lk] + '</div>';
+    arr.forEach(function(c){ var stC = c.status==='pass'?'#16a34a':c.status==='fail'?'#dc2626':c.status==='warn'?'#d97706':'#94a3b8';
+      h += '<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #f1f5f9"><span style="flex-shrink:0">' + ic(c.status) + '</span><div style="flex:1"><span style="font-size:11px;font-weight:700;color:' + stC + '">' + E(c.label) + '</span>' + (c.detail?'<span style="font-size:11px;color:#64748b"> \u2014 ' + E(c.detail) + '</span>':'') + '</div></div>'; });
+  });
+  h += '</div>';
+  // ── PM question + disclosure ──
+  h += '<div style="margin-top:10px;background:#1e1b4b;border-radius:10px;padding:12px 14px"><div style="font-size:10px;font-weight:800;color:#a5b4fc;letter-spacing:.5px;margin-bottom:4px">THE $10B PM QUESTION</div><div style="font-size:11px;color:#e0e7ff;line-height:1.5;font-style:italic">' + E(d.pm_question) + '</div></div>';
+  if (d.disclosure) h += '<div style="font-size:10px;color:#94a3b8;font-style:italic;padding:8px 4px;line-height:1.5">' + E(d.disclosure) + '</div>';
+  return h;
+};
 // ═══ MULTIBAGGER DISCOVERY (r63.110.28) — 4-layer framework, Decide → Engines ═══
 window._mbDiscRegion = 'ALL';
 window._loadMultibaggerDiscovery = function(region){

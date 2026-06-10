@@ -39245,6 +39245,322 @@ def _mb_score(meta, fund, tech):
         "data_note": "Layers 1 & 3 are editorial (moat, decade theme). Layers 2 & 4 use live fundamentals where retrievable; '~ verify' = data unavailable, scored 0, never assumed.",
     }
 
+# ═══ IMDF Score™ — INSTITUTIONAL MULTIBAGGER DISCOVERY FRAMEWORK (r63.110.31) ═══
+# Single-symbol institutional DECISION card. Answers "what action should capital take now?"
+# Reuses _mb_score for Layers 1-4 (Business / Fundamentals / Opportunity / Valuation),
+# adds Layer 5a Driehaus Momentum + Layer 5b Institutional Accumulation, Layer 6 Entry Zones,
+# Layer 7 weighted Decision -> action (BUY/ADD/HOLD/REDUCE/EXIT/WAIT), plus a "Why Not Buy?" engine.
+#
+# IMDF weights (Driehaus Momentum is an explicit underlying factor):
+#   Business 15% · Fundamentals 20% · Opportunity 20% · Valuation 10% · Momentum 20% · Institutional 15%
+# HONESTY: live where retrievable; data-gated inputs (EPS surprise, earnings acceleration, fund-ownership
+# trend, delivery %) shown as "verify", contribute 0, never assumed. Qualitative Layers 1/3 for tickers
+# outside the curated universe are SECTOR-INFERRED and flagged. Editorial, not advice.
+
+_IMDF_WEIGHTS = {"business_quality": 0.15, "fundamentals": 0.20, "opportunity": 0.20,
+                 "valuation": 0.10, "momentum": 0.20, "institutional": 0.15}
+_IMDF_SECTOR_THEME = [
+    ("semiconduct", "Semiconductors", True), ("software", "Cloud / Software", True),
+    ("internet", "Cloud / Software", True), ("aerospace", "Defense", True),
+    ("defen", "Defense", True), ("electrical equip", "Power Equipment", True),
+    ("utilit", "Energy Transition", True), ("renewable", "Energy Transition", True),
+    ("rail", "Railways", True), ("power", "Power Equipment", True),
+    ("technolog", "AI Infrastructure", True), ("hardware", "AI Infrastructure", True),
+    ("retail", "Premium Consumption", True), ("consumer disc", "Premium Consumption", True),
+    ("industrial", "Manufacturing", True), ("machinery", "Manufacturing", True),
+    ("electronic", "EMS", True),
+]
+
+def _imdf_infer_meta(symbol, region, fund):
+    """Build editorial-equivalent meta for an arbitrary ticker from its sector (flagged inferred)."""
+    if symbol in _MB_UNIVERSE:
+        m = dict(_MB_UNIVERSE[symbol]); m["symbol"] = symbol; m["_inferred"] = False
+        return m
+    sector = (str(fund.get("sector") or "") + " " + str(fund.get("industry") or "")).lower()
+    theme, decade = "", False
+    for kw, th, dg in _IMDF_SECTOR_THEME:
+        if kw in sector:
+            theme, decade = th, dg; break
+    mc = _mb_num(fund.get("marketCap"))
+    tier = "mid"
+    if mc:
+        tier = "large" if mc > 5e10 else ("mid" if mc > 1e10 else ("small" if mc > 1e9 else "micro"))
+    return {"symbol": symbol, "name": fund.get("name") or symbol, "region": region,
+            "sector": fund.get("sector") or "\u2014", "theme": theme or "\u2014",
+            "understandable": True, "moats": [], "decade_growth": decade, "mcap_tier": tier,
+            "trigger_note": "inferred from sector \u2014 verify moat & theme", "_inferred": True}
+
+def _imdf_factor(label_pts):
+    """helper: list of (label,status,detail,pts,max) -> (score0_100, checks, pass_count)."""
+    checks = []; pts = 0; maxp = 0; passes = 0
+    for label, status, detail, p, m in label_pts:
+        checks.append({"label": label, "status": status, "detail": detail})
+        maxp += m
+        if status == "pass":
+            pts += p; passes += 1
+        elif status == "warn":
+            pts += p
+    return (round(100.0 * pts / maxp, 1) if maxp > 0 else 0.0), checks, passes
+
+def _imdf_momentum(tech, fund):
+    rs = _mb_num(tech.get("rs_vs_bench")); price = _mb_num(tech.get("price"))
+    ma50 = _mb_num(tech.get("ma50")); ma200 = _mb_num(tech.get("ma200"))
+    volr = _mb_num(tech.get("vol_ratio")); near_high = tech.get("near_high")
+    eps_sup = _mb_num(fund.get("epsSurprise")); earn_acc = _mb_num(fund.get("earningsGrowth"))
+    rows = []
+    if rs is None: rows.append(("Relative-strength leadership (Driehaus)", "verify", "RS unavailable", 0, 25))
+    elif rs >= 5: rows.append(("Relative-strength leadership (Driehaus)", "pass", "RS +%.1f%% vs index \u2014 leader" % rs, 25, 25))
+    elif rs > 0: rows.append(("Relative-strength leadership", "warn", "RS +%.1f%% \u2014 mild, not a leader yet" % rs, 12, 25))
+    else: rows.append(("Relative-strength leadership", "fail", "RS %.1f%% \u2014 laggard, avoid" % rs, 0, 25))
+    if price and ma50: rows.append(("Above 50-DMA (trend intact)", "pass" if price > ma50 else "fail", "price vs 50DMA", 15 if price > ma50 else 0, 15))
+    else: rows.append(("Above 50-DMA", "verify", "MA unavailable", 0, 15))
+    if price and ma200: rows.append(("Above 200-DMA (Stage-2)", "pass" if price > ma200 else "fail", "price vs 200DMA", 15 if price > ma200 else 0, 15))
+    else: rows.append(("Above 200-DMA", "verify", "MA unavailable", 0, 15))
+    if near_high: rows.append(("Breakout / near high", "pass", "near 52w/20d high", 15, 15))
+    elif near_high is False: rows.append(("Breakout / near high", "warn", "mid-base \u2014 no breakout", 0, 15))
+    else: rows.append(("Breakout / near high", "verify", "unavailable", 0, 15))
+    if volr is None: rows.append(("Volume accumulation (>1.5x)", "verify", "unavailable", 0, 15))
+    elif volr >= 1.5: rows.append(("Volume accumulation (>1.5x)", "pass", "%.1fx avg \u2014 institutional sponsorship" % volr, 15, 15))
+    elif volr >= 1.0: rows.append(("Volume accumulation", "warn", "%.1fx avg \u2014 light" % volr, 7, 15))
+    else: rows.append(("Volume accumulation", "fail", "%.1fx \u2014 distribution" % volr, 0, 15))
+    if eps_sup is None: rows.append(("EPS surprise >5% (Driehaus)", "verify", "not in feed \u2014 verify last earnings", 0, 15))
+    elif eps_sup > 5: rows.append(("EPS surprise >5%", "pass", "+%.1f%%" % eps_sup, 15, 15))
+    else: rows.append(("EPS surprise >5%", "fail", "%.1f%%" % eps_sup, 0, 15))
+    return _imdf_factor(rows)
+
+def _imdf_institutional(tech, fund):
+    volr = _mb_num(tech.get("vol_ratio")); rs = _mb_num(tech.get("rs_vs_bench"))
+    fo = _mb_num(fund.get("fundOwnershipChange")); deliv = _mb_num(fund.get("deliveryPct"))
+    rows = []
+    if volr is None: rows.append(("Volume surge (sponsorship)", "verify", "unavailable", 0, 35))
+    elif volr >= 1.5: rows.append(("Volume surge (sponsorship)", "pass", "%.1fx avg" % volr, 35, 35))
+    elif volr >= 1.0: rows.append(("Volume surge", "warn", "%.1fx avg" % volr, 17, 35))
+    else: rows.append(("Volume surge", "fail", "%.1fx \u2014 no sponsorship" % volr, 0, 35))
+    acc = (volr is not None and volr >= 1.2 and rs is not None and rs > 0)
+    rows.append(("Accumulation (rising price + volume)", "pass" if acc else ("fail" if (volr is not None and rs is not None) else "verify"),
+                 "price up on rising volume" if acc else ("no confirmed accumulation" if (volr is not None and rs is not None) else "unavailable"),
+                 30 if acc else 0, 30))
+    if fo is None: rows.append(("Fund-ownership trend rising", "verify", "13F/ownership not in feed", 0, 20))
+    elif fo > 0: rows.append(("Fund-ownership trend rising", "pass", "+%.1f%%" % fo, 20, 20))
+    else: rows.append(("Fund-ownership trend", "fail", "declining", 0, 20))
+    if deliv is None: rows.append(("Delivery volume (IN conviction)", "verify", "not in feed", 0, 15))
+    elif deliv >= 50: rows.append(("Delivery volume (IN conviction)", "pass", "%.0f%% delivery" % deliv, 15, 15))
+    else: rows.append(("Delivery volume", "warn", "%.0f%%" % deliv, 0, 15))
+    return _imdf_factor(rows)
+
+def _imdf_entry(tech):
+    price = _mb_num(tech.get("price")); atr = _mb_num(tech.get("atr")); ema = _mb_num(tech.get("ma50"))
+    if not price or price <= 0:
+        return None
+    a = atr if (atr and atr > 0) else price * 0.03
+    anchor = ema if (ema and abs(price - ema) < 3 * a) else price
+    best_lo = round(min(anchor, price) - 0.5 * a, 2)
+    best_hi = round(price, 2)
+    chase_lo = round(price, 2)
+    chase_hi = round(price + 1.0 * a, 2)
+    avoid_above = round(price + 1.5 * a, 2)
+    stop = round(price - 2.0 * a, 2)
+    risk_pct = round((price - stop) / price * 100, 1) if price > 0 else None
+    ext = round((price - ema) / a, 1) if (ema and a > 0) else None
+    return {"best_entry_lo": best_lo, "best_entry_hi": best_hi, "chase_lo": chase_lo,
+            "chase_hi": chase_hi, "avoid_above": avoid_above, "stop": stop,
+            "risk_pct": risk_pct, "atr_extension": ext, "current_price": round(price, 2)}
+
+def _imdf_score(meta, fund, tech):
+    """Full IMDF Score™ decision card for one symbol."""
+    base = _mb_score(meta, fund, tech)               # Layers 1-4 (reuse)
+    L = base["layers"]; M = base["layer_max"]
+    def pct(v, mx): return round(100.0 * (v or 0) / mx, 1) if mx else 0.0
+    bq = pct(L["business_quality"], M["business_quality"])
+    fu = pct(L["fundamentals"], M["fundamentals"])
+    op = pct(L["opportunity_size"], M["opportunity_size"])
+    va = pct(L["valuation"], M["valuation"])
+    mom, mom_checks, _ = _imdf_momentum(tech, fund)
+    inst, inst_checks, _ = _imdf_institutional(tech, fund)
+    entry = _imdf_entry(tech)
+
+    w = _IMDF_WEIGHTS
+    imdf = round(bq * w["business_quality"] + fu * w["fundamentals"] + op * w["opportunity"]
+                 + va * w["valuation"] + mom * w["momentum"] + inst * w["institutional"], 1)
+
+    # ── Layer 7: action verdict (capital decision, not "buy") ──
+    ext = (entry or {}).get("atr_extension")
+    over_extended = (ext is not None and ext > 2.0)
+    if over_extended and imdf >= 55:
+        action, action_color = "WAIT", "#d97706"
+        action_reason = "Thesis qualifies but price is >2 ATR extended \u2014 wait for a pullback into the entry zone."
+    elif imdf >= 80 and mom >= 60:
+        action, action_color = "BUY", "#15803d"
+        action_reason = "High composite score with confirmed momentum \u2014 initiate a full position in the entry zone."
+    elif imdf >= 70:
+        action, action_color = "ADD", "#16a34a"
+        action_reason = "Strong score \u2014 accumulate on strength or pullbacks; scale in."
+    elif imdf >= 55:
+        action, action_color = "HOLD", "#0e7490"
+        action_reason = "Decent quality but not a fresh buy \u2014 hold existing, wait for a better setup to add."
+    elif imdf >= 40:
+        action, action_color = "REDUCE", "#d97706"
+        action_reason = "Deteriorating profile \u2014 trim into strength, tighten risk."
+    else:
+        action, action_color = "EXIT", "#dc2626"
+        action_reason = "Fails the institutional bar \u2014 capital is better deployed elsewhere."
+
+    grade = "A+" if imdf >= 85 else "A" if imdf >= 75 else "B" if imdf >= 60 else "C" if imdf >= 45 else "D"
+    # confidence: how much of the score rests on live (not verify) evidence
+    verify_ct = sum(1 for c in (mom_checks + inst_checks) if c["status"] == "verify")
+    for lk in ("L2", "L4"):
+        verify_ct += sum(1 for c in base["checks"].get(lk, []) if c["status"] == "verify")
+    confidence = max(35, min(95, int(90 - verify_ct * 6)))
+
+    # ── "Why Not Buy?" engine ──
+    buy_reasons, avoid_reasons = [], []
+    if op >= 70: buy_reasons.append("Large structural opportunity (%s)" % (meta.get("theme") or "growth theme"))
+    if fu >= 70: buy_reasons.append("Strong fundamentals (growth/ROCE/balance sheet)")
+    if mom >= 60: buy_reasons.append("Momentum + institutional accumulation confirmed")
+    if bq >= 70: buy_reasons.append("High business quality / durable moat")
+    if va >= 70: buy_reasons.append("Valuation offers margin of safety")
+    for c in (mom_checks + inst_checks):
+        if c["status"] == "pass" and len(buy_reasons) < 3:
+            buy_reasons.append(c["label"])
+    if va < 50: avoid_reasons.append("Rich valuation \u2014 limited margin of safety")
+    if mom < 50: avoid_reasons.append("Momentum/accumulation not confirmed (RS, volume)")
+    if fu < 50: avoid_reasons.append("Fundamentals weak or unverified (revenue/EPS/ROCE)")
+    if over_extended: avoid_reasons.append("Price over-extended (>2 ATR) \u2014 poor entry now")
+    if meta.get("_inferred"): avoid_reasons.append("Moat & theme are sector-inferred \u2014 confirm the business")
+    if not meta.get("decade_growth"): avoid_reasons.append("No clear decade-long industry tailwind")
+    buy_reasons = buy_reasons[:3] or ["No standout strengths at current data"]
+    avoid_reasons = avoid_reasons[:3] or ["No major red flags detected (still verify execution)"]
+
+    # position size guidance from grade + confidence
+    psize = {"A+": "4-5% (full conviction)", "A": "3-4%", "B": "2-3%", "C": "1-2% (starter)", "D": "0% \u2014 pass"}[grade]
+
+    return {
+        "symbol": meta.get("symbol"), "name": meta.get("name"), "region": meta.get("region"),
+        "sector": meta.get("sector"), "theme": meta.get("theme"), "inferred": bool(meta.get("_inferred")),
+        "imdf_score": imdf, "grade": grade, "action": action, "action_color": action_color,
+        "action_reason": action_reason, "confidence": confidence,
+        "mcap_tier": meta.get("mcap_tier"), "tier_objective": _MB_TIER_OBJECTIVE.get(meta.get("mcap_tier"), ""),
+        "position_size": psize,
+        "factors": {"business_quality": bq, "fundamentals": fu, "opportunity": op,
+                    "valuation": va, "momentum": mom, "institutional": inst},
+        "weights": {k: int(v * 100) for k, v in w.items()},
+        "entry": entry,
+        "checks": {"L1": base["checks"]["L1"], "L2": base["checks"]["L2"], "L3": base["checks"]["L3"],
+                   "L4": base["checks"]["L4"], "momentum": mom_checks, "institutional": inst_checks},
+        "why_buy": buy_reasons, "why_not_buy": avoid_reasons,
+        "pm_question": ("If responsible for $10B and limited to BUY / ADD / HOLD / REDUCE / EXIT / WAIT, "
+                        "which maximizes risk-adjusted return over 6-24 months? Evidence over narrative."),
+        "disclosure": ("IMDF Score\u2122 blends Business 15% \u00b7 Fundamentals 20% \u00b7 Opportunity 20% \u00b7 "
+                       "Valuation 10% \u00b7 Driehaus Momentum 20% \u00b7 Institutional 15%. Layers 1/3 are "
+                       "editorial (curated) or sector-inferred (flagged); Layers 2/4 + momentum/institutional use "
+                       "live data where retrievable, '~ verify' where not (scored 0, never assumed). Educational, not advice."),
+    }
+
+_IMDF_CACHE = {}
+_IMDF_TTL = 900
+
+@app.get("/api/imdf-decision")
+async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
+    """IMDF Score™ — single-symbol Institutional Decision card."""
+    import time as _t
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE, DIXON)."}
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    ck = "imdf_%s_%s" % (region, sym)
+    if not refresh and ck in _IMDF_CACHE and (_t.time() - _IMDF_CACHE[ck][0] < _IMDF_TTL):
+        return _IMDF_CACHE[ck][1]
+    _lp = asyncio.get_event_loop()
+    _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "SPX": "^GSPC", "NDX": "^NDX"}
+    yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
+    bench = "SPY" if region == "US" else "^NSEI"
+
+    def _fetch():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        try:
+            return yf.download(tickers="%s %s" % (yf_sym, bench), period="1y", interval="1d",
+                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+        except Exception:
+            return None
+    hist = await _lp.run_in_executor(None, _fetch)
+
+    def _sub(ys):
+        try:
+            cols = hist.columns
+            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                s = hist[ys].dropna()
+                return s if (s is not None and len(s) >= 60) else None
+        except Exception:
+            pass
+        return None
+
+    tech = {"price": None, "ma50": None, "ma200": None, "atr": None, "rs_vs_bench": None,
+            "vol_ratio": None, "near_high": None}
+    sub = _sub(yf_sym)
+    if sub is None:
+        return {"success": False, "error": "No price history for %s (%s). Check symbol/region." % (sym, yf_sym)}
+    try:
+        c = list(sub["Close"].dropna()); h = list(sub["High"].dropna())
+        lo = list(sub["Low"].dropna()); v = list(sub["Volume"].dropna())
+        tech["price"] = round(float(c[-1]), 2)
+        if len(c) >= 50: tech["ma50"] = sum(c[-50:]) / 50
+        if len(c) >= 200: tech["ma200"] = sum(c[-200:]) / 200
+        if len(c) >= 15 and len(h) >= 15 and len(lo) >= 15:
+            trs = []
+            for i in range(-14, 0):
+                tr = max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1]))
+                trs.append(tr)
+            tech["atr"] = round(sum(trs) / len(trs), 2) if trs else None
+        if len(v) >= 20:
+            avg = sum(v[-20:]) / 20
+            tech["vol_ratio"] = round(v[-1] / avg, 2) if avg > 0 else None
+        if len(h) >= 252: tech["near_high"] = bool(c[-1] >= 0.92 * max(h[-252:]))
+        elif len(h) >= 20: tech["near_high"] = bool(c[-1] >= 0.97 * max(h[-20:]))
+        bs = _sub(bench)
+        if len(c) >= 21 and c[-21] > 0:
+            r20 = (c[-1] - c[-21]) / c[-21] * 100
+            if bs is not None:
+                bc = list(bs["Close"].dropna())
+                if len(bc) >= 21 and bc[-21] > 0:
+                    tech["rs_vs_bench"] = round(r20 - (bc[-1] - bc[-21]) / bc[-21] * 100, 2)
+    except Exception as _e:
+        return {"success": False, "error": "technical computation failed: %s" % str(_e)[:120]}
+
+    def _fund():
+        f = {}
+        try:
+            if region == "IN":
+                d = fetch_nse_stock_data(sym) or {}
+                for k in ("revGrowth", "earningsGrowth", "roce", "debtEquity", "promoterHolding", "deliveryPct"):
+                    if d.get(k) not in (None, 0): f[k] = d.get(k)
+                f["sector"] = d.get("sector") or ""; f["name"] = d.get("companyName") or sym
+                pe = d.get("pe"); eg = d.get("earningsGrowth")
+                if pe and eg and eg > 0: f["peg"] = round(pe / eg, 2)
+                if d.get("mcap"): f["marketCap"] = d.get("mcap")
+            else:
+                d = fetch_multi_source_fundamentals(sym) or {}
+                if (d.get("revenue_growth") or d.get("revGrowth")) not in (None, 0): f["revGrowth"] = d.get("revenue_growth") or d.get("revGrowth")
+                if (d.get("earnings_growth") or d.get("earningsGrowth")) not in (None, 0): f["earningsGrowth"] = d.get("earnings_growth") or d.get("earningsGrowth")
+                if (d.get("roe") or d.get("roce")) not in (None, 0): f["roce"] = d.get("roe") or d.get("roce")
+                if d.get("debt_to_equity") is not None: f["debtEquity"] = d.get("debt_to_equity")
+                f["sector"] = d.get("sector") or ""; f["industry"] = d.get("industry") or ""
+                f["name"] = d.get("name") or d.get("companyName") or sym
+                pe = d.get("pe") or d.get("pe_ratio"); eg = f.get("earningsGrowth")
+                if pe and eg and eg > 0: f["peg"] = round(float(pe) / float(eg), 2)
+                if d.get("market_cap") or d.get("marketCap"): f["marketCap"] = d.get("market_cap") or d.get("marketCap")
+        except Exception:
+            pass
+        return f
+    fund = await _lp.run_in_executor(None, _fund)
+
+    meta = _imdf_infer_meta(sym, region, fund)
+    card = _imdf_score(meta, fund, tech)
+    out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym, **card}
+    _IMDF_CACHE[ck] = (_t.time(), out)
+    return out
+
 _MB_DISCOVERY_ASOF = "2026-06-10"
 _MB_CACHE = {}
 _MB_TTL = 1800

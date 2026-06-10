@@ -2279,6 +2279,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
   <button onclick="window._runwayShow()" id="engBtnRunway" style="padding:7px 14px;background:linear-gradient(135deg,#faf5ff,#f3e8ff);color:#7c3aed;border:1px solid #d8b4fe;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128640; Opportunity Runway</button>
   <button onclick="window._engShow('dec360')" id="engBtnDec360" style="padding:7px 14px;background:linear-gradient(135deg,#ecfeff,#cffafe);color:#0e7490;border:1px solid #67e8f9;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#129517; 360 Decision</button>
   <button onclick="window._engShow('mbdiscovery');window._loadMultibaggerDiscovery(window._mbDiscRegion||'ALL')" id="engBtnMBDisc" style="padding:7px 14px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);color:#15803d;border:1px solid #86efac;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#128300; Multibagger Discovery</button>
+  <button onclick="window._engShow('imdf')" id="engBtnIMDF" style="padding:7px 14px;background:linear-gradient(135deg,#eef2ff,#e0e7ff);color:#3730a3;border:1px solid #a5b4fc;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">&#127919; IMDF Score&trade;</button>
 </div>
 
 <!-- MOMENTUM CoC ENGINE -->
@@ -2346,6 +2347,23 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
     </div>
     <div id="runwayScreenResult" style="margin-top:12px"></div>
     <div id="runwayResult" style="min-height:80px;margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- IMDF SCORE ENGINE (r63.110.31) -->
+<div id="engIMDFPanel" style="display:none">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:900;color:#3730a3;font-family:Sora,sans-serif;margin-bottom:6px">&#127919; IMDF Score&trade; &mdash; Institutional Multibagger Discovery Framework</div>
+    <div style="font-size:10px;color:#64748b;line-height:1.5;margin-bottom:10px">Single-symbol institutional <strong>decision</strong> &mdash; not "is this stock good?" but "what action should capital take now?". Six weighted factors: Business 15% &middot; Fundamentals 20% &middot; Opportunity 20% &middot; Valuation 10% &middot; <strong>Driehaus Momentum 20%</strong> &middot; Institutional 15% &rarr; action (BUY / ADD / HOLD / REDUCE / EXIT / WAIT), entry zone, position size, confidence, and a "Why Not Buy?" bias-check. Live where retrievable; &#128269; verify where the feed is silent. Editorial, not advice.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;background:#eef2ff;border:1px solid #a5b4fc;border-radius:8px">
+      <input id="imdfSym" type="text" placeholder="NVDA &middot; DIXON &middot; RELIANCE &middot; PLTR" onkeydown="if(event.key==='Enter')window._loadIMDF()" style="padding:6px 10px;border:1px solid #a5b4fc;border-radius:5px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#3730a3;width:220px">
+      <div style="display:flex;border:1px solid #a5b4fc;border-radius:5px;overflow:hidden">
+        <button id="imdfRegIN" onclick="window._imdfRegion='IN';document.getElementById('imdfRegIN').style.background='linear-gradient(135deg,#4338ca,#3730a3)';document.getElementById('imdfRegIN').style.color='#fff';document.getElementById('imdfRegUS').style.background='#fff';document.getElementById('imdfRegUS').style.color='#3730a3'" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#3730a3">IN</button>
+        <button id="imdfRegUS" onclick="window._imdfRegion='US';document.getElementById('imdfRegUS').style.background='linear-gradient(135deg,#4338ca,#3730a3)';document.getElementById('imdfRegUS').style.color='#fff';document.getElementById('imdfRegIN').style.background='#fff';document.getElementById('imdfRegIN').style.color='#3730a3'" style="padding:5px 11px;font-size:10px;font-weight:700;border:none;border-left:1px solid #a5b4fc;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#4338ca,#3730a3);color:#fff">US</button>
+      </div>
+      <button onclick="window._loadIMDF()" id="imdfBtn" style="padding:6px 16px;background:linear-gradient(135deg,#4338ca,#3730a3);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">&#127919; GET DECISION</button>
+    </div>
+    <div id="imdfResult" style="min-height:80px;margin-top:12px"><div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">Enter a symbol, pick region, then GET DECISION for the full institutional decision card.</div></div>
   </div>
 </div>
 
@@ -3186,7 +3204,7 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
-<script src="/static/app.min.js?v=63113001"></script>
+<script src="/static/app.min.js?v=63113101"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>
