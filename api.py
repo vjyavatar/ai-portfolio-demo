@@ -12968,8 +12968,8 @@ async def ads_txt():
 # All access checks downstream go through has_tier() or the
 # backwards-compat aliases (TRADES_ALLOWED_EMAILS / DREAM_ALLOWED_EMAILS).
 PREMIUM_TIERS = {
-    "trades": ["yrk@eml.com", "vj@vnky.com"],          # Trades + Picks tab access
-    "dream":  ["yrk@eml.com", "vj@vnky.com"],          # Ultra-premium: Dream Portfolio + Multibagger Hunter
+    "trades": ["ark@ht.com", "vj@vnky.com"],          # Trades + Picks tab access
+    "dream":  ["ark@ht.com", "vj@vnky.com"],          # Ultra-premium: Dream Portfolio + Multibagger Hunter
 }
 
 # Pre-computed lowercased lookup sets (built once at module load — used in
@@ -39092,6 +39092,12 @@ _MB_UNIVERSE = {
              "understandable": True, "moats": ["patents", "switching", "scale", "regulatory"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "EUV lithography monopoly"},
     "AMAT": {"region": "US", "name": "Applied Materials", "sector": "Semiconductors", "theme": "Semiconductors",
              "understandable": True, "moats": ["patents", "scale"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "WFE leader, AI capex"},
+    "MU":   {"region": "US", "name": "Micron Technology", "sector": "Semiconductors/Memory", "theme": "Semiconductors",
+             "understandable": True, "moats": ["scale", "switching", "patents"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "HBM memory for AI accelerators"},
+    "TSM":  {"region": "US", "name": "TSMC", "sector": "Semiconductors/Foundry", "theme": "Semiconductors",
+             "understandable": True, "moats": ["scale", "switching", "patents", "regulatory"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Leading-edge foundry monopoly"},
+    "MRVL": {"region": "US", "name": "Marvell", "sector": "Semiconductors", "theme": "AI Infrastructure",
+             "understandable": True, "moats": ["patents", "switching"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Custom AI silicon + optical DSP"},
     "MSFT": {"region": "US", "name": "Microsoft", "sector": "Software/Cloud", "theme": "Cloud / Software",
              "understandable": True, "moats": ["switching", "network", "scale", "brand"], "decade_growth": True, "mcap_tier": "large", "trigger_note": "Azure + Copilot monetization"},
     "PLTR": {"region": "US", "name": "Palantir", "sector": "Software", "theme": "Cloud / Software",
@@ -39319,7 +39325,7 @@ def _imdf_infer_meta(symbol, region, fund):
         if kw in sector:
             theme, decade = th, dg; break
     mc = _mb_num(fund.get("marketCap"))
-    tier = "mid"
+    tier = None
     if mc:
         tier = "large" if mc > 5e10 else ("mid" if mc > 1e10 else ("small" if mc > 1e9 else "micro"))
     return {"symbol": symbol, "name": fund.get("name") or symbol, "region": region,
@@ -39423,7 +39429,32 @@ def _imdf_score(meta, fund, tech):
     # ── Layer 7: action verdict (capital decision, not "buy") ──
     ext = (entry or {}).get("atr_extension")
     over_extended = (ext is not None and ext > 2.0)
-    if over_extended and imdf >= 55:
+
+    # ── data availability: did we actually retrieve the fundamental/valuation inputs? ──
+    def _layer_has_real(lk):
+        return any(c["status"] in ("pass", "fail") for c in base["checks"].get(lk, []))
+    fund_available = _layer_has_real("L2") or _layer_has_real("L4")
+    verify_ct = sum(1 for c in (mom_checks + inst_checks) if c["status"] == "verify")
+    for lk in ("L2", "L4"):
+        verify_ct += sum(1 for c in base["checks"].get(lk, []) if c["status"] == "verify")
+    confidence = max(20, min(95, int(90 - verify_ct * 6)))
+    # opportunity is unverified when the theme is sector-inferred and nothing matched
+    opp_unverified = bool(meta.get("_inferred")) and op == 0
+    provisional = (not fund_available) or opp_unverified
+
+    grade = "A+" if imdf >= 85 else "A" if imdf >= 75 else "B" if imdf >= 60 else "C" if imdf >= 45 else "D"
+
+    # ── Layer 7: action — never issue a bearish verdict on missing data ──
+    if provisional:
+        action, action_color = "VERIFY", "#6366f1"
+        _miss = []
+        if not fund_available: _miss.append("fundamentals & valuation")
+        if opp_unverified: _miss.append("opportunity/theme")
+        action_reason = ("Decision withheld \u2014 " + " and ".join(_miss) + " could not be retrieved on this feed, "
+                         "so a buy/sell verdict would be guessing. The score below reflects only what is live "
+                         "(momentum/price). Verify the missing inputs, then re-run for a real verdict.")
+        grade = grade + "?"
+    elif over_extended and imdf >= 55:
         action, action_color = "WAIT", "#d97706"
         action_reason = "Thesis qualifies but price is >2 ATR extended \u2014 wait for a pullback into the entry zone."
     elif imdf >= 80 and mom >= 60:
@@ -39440,14 +39471,7 @@ def _imdf_score(meta, fund, tech):
         action_reason = "Deteriorating profile \u2014 trim into strength, tighten risk."
     else:
         action, action_color = "EXIT", "#dc2626"
-        action_reason = "Fails the institutional bar \u2014 capital is better deployed elsewhere."
-
-    grade = "A+" if imdf >= 85 else "A" if imdf >= 75 else "B" if imdf >= 60 else "C" if imdf >= 45 else "D"
-    # confidence: how much of the score rests on live (not verify) evidence
-    verify_ct = sum(1 for c in (mom_checks + inst_checks) if c["status"] == "verify")
-    for lk in ("L2", "L4"):
-        verify_ct += sum(1 for c in base["checks"].get(lk, []) if c["status"] == "verify")
-    confidence = max(35, min(95, int(90 - verify_ct * 6)))
+        action_reason = "Fails the institutional bar on the data available \u2014 capital is better deployed elsewhere."
 
     # ── "Why Not Buy?" engine ──
     buy_reasons, avoid_reasons = [], []
@@ -39469,14 +39493,17 @@ def _imdf_score(meta, fund, tech):
     avoid_reasons = avoid_reasons[:3] or ["No major red flags detected (still verify execution)"]
 
     # position size guidance from grade + confidence
-    psize = {"A+": "4-5% (full conviction)", "A": "3-4%", "B": "2-3%", "C": "1-2% (starter)", "D": "0% \u2014 pass"}[grade]
+    psize = {"A+": "4-5% (full conviction)", "A": "3-4%", "B": "2-3%", "C": "1-2% (starter)", "D": "0% \u2014 pass"}.get(grade.rstrip("?"), "verify first")
+    if provisional:
+        psize = "verify data first"
 
     return {
         "symbol": meta.get("symbol"), "name": meta.get("name"), "region": meta.get("region"),
         "sector": meta.get("sector"), "theme": meta.get("theme"), "inferred": bool(meta.get("_inferred")),
         "imdf_score": imdf, "grade": grade, "action": action, "action_color": action_color,
-        "action_reason": action_reason, "confidence": confidence,
-        "mcap_tier": meta.get("mcap_tier"), "tier_objective": _MB_TIER_OBJECTIVE.get(meta.get("mcap_tier"), ""),
+        "action_reason": action_reason, "confidence": confidence, "provisional": provisional,
+        "mcap_tier": meta.get("mcap_tier"),
+        "tier_objective": _MB_TIER_OBJECTIVE.get(meta.get("mcap_tier"), "Cap unverified \u2014 market-cap data unavailable"),
         "position_size": psize,
         "factors": {"business_quality": bq, "fundamentals": fu, "opportunity": op,
                     "valuation": va, "momentum": mom, "institutional": inst},
@@ -39712,7 +39739,7 @@ _MB_CACHE = {}
 _MB_TTL = 1800
 
 @app.get("/api/multibagger-discovery")
-async def multibagger_discovery(region: str = "ALL", refresh: int = 0):
+async def multibagger_discovery(region: str = "US", refresh: int = 0):
     """4-layer Multibagger Discovery — ranks the curated elite universe by
     quality × discount × growth-cycle. Live technicals + best-effort live fundamentals."""
     import time as _t
@@ -55306,7 +55333,7 @@ def _r6369_classify_tier(sm_score, insider_net_usd, inst_pct):
 async def conviction_stack(symbol: str = "", region: str = "US", email: str = ""):
     """r63.69: Conviction Stack — Smart Money + Insider + Institutional.
     
-    Premium gated to dream tier (yrk@eml.com + vj@vnky.com).
+    Premium gated to dream tier (ark@ht.com + vj@vnky.com).
     """
     email = (email or "").strip().lower()
     _ok, email = check_premium_gate(email, "dream")
@@ -56581,7 +56608,7 @@ async def diag_fairvalue(symbol: str = "", region: str = "US", email: str = ""):
     """r63.36: Diagnostic endpoint — shows the full fair value pipeline.
     Lets us validate exactly what investor_decide returns for any ticker.
     
-    Use: curl 'https://celesys.ai/api/diag-fairvalue?symbol=MU&email=yrk@eml.com'
+    Use: curl 'https://celesys.ai/api/diag-fairvalue?symbol=MU&email=ark@ht.com'
     """
     email = (email or "").strip().lower()
     _ok, email = check_premium_gate(email, "dream")

@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.32";
-window.CELESYS_BUILD_TIME = 1780898400;
-window.CELESYS_BUILD_DATE = "2026-06-08 06:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.35";
+window.CELESYS_BUILD_TIME = 1780909200;
+window.CELESYS_BUILD_DATE = "2026-06-08 09:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -1062,11 +1062,11 @@ TI.addEventListener('input',function(){var v=this.value.trim().toUpperCase();if(
 // Backend has matching PREMIUM_TIERS in api.py — keep both in sync when
 // granting/revoking access.
 window.CELESYS_TIERS = {
-  trades:       ['yrk@eml.com', 'tmp@cls.com', 'vj@vnky.com'],
+  trades:       ['ark@ht.com', 'tmp@cls.com', 'vj@vnky.com'],
   trading_only: ['tmp@cls.com'],                          // Overview + Trading tab only
-  picks:        ['yrk@eml.com', 'vj@vnky.com'],
-  dream:        ['yrk@eml.com', 'vj@vnky.com'],
-  full_access:  ['yrk@eml.com'],                          // Everything except PDF
+  picks:        ['ark@ht.com', 'vj@vnky.com'],
+  dream:        ['ark@ht.com', 'vj@vnky.com'],
+  full_access:  ['ark@ht.com'],                          // Everything except PDF
 };
 window.hasTier = function(email, tier) {
   if (!email || !tier) return false;
@@ -12464,6 +12464,7 @@ window._renderIMDF = function(d){
   h += '<div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
   h += '<div style="font-size:20px;font-weight:900;color:#fff;background:' + ac + ';border-radius:8px;padding:6px 18px;font-family:Sora,sans-serif">' + E(d.action) + '</div>';
   h += '<div style="flex:1;min-width:200px;font-size:12px;color:#1f2937;font-weight:600">' + E(d.action_reason) + '</div></div>';
+  if (d.provisional) h += '<div style="margin-top:8px;font-size:11px;color:#3730a3;background:#eef2ff;border:1px solid #a5b4fc;border-radius:8px;padding:8px 10px"><strong>\u26A0\uFE0F Provisional \u2014 not a sell signal.</strong> One or more factors (fundamentals / valuation / opportunity) could not be retrieved on this feed and scored 0, so the headline number is dragged down by <em>missing data</em>, not weakness. The verdict is held at VERIFY \u2014 confirm the missing inputs and re-run.</div>';
   if (d.inferred) h += '<div style="margin-top:8px;font-size:10px;color:#b45309;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 10px">\u26A0\uFE0F Not in the curated universe \u2014 Business Quality & Opportunity are <strong>sector-inferred</strong>. Confirm the moat and theme manually.</div>';
   h += '</div>';
   // ── factor bars ──
@@ -12522,9 +12523,9 @@ window._renderIMDF = function(d){
   return h;
 };
 // ═══ MULTIBAGGER DISCOVERY (r63.110.28) — 4-layer framework, Decide → Engines ═══
-window._mbDiscRegion = 'ALL';
+window._mbDiscRegion = 'US';
 window._loadMultibaggerDiscovery = function(region){
-  region = region || 'ALL'; window._mbDiscRegion = region;
+  region = region || 'US'; window._mbDiscRegion = region;
   var resEl = document.getElementById('mbDiscResult'); var btn = document.getElementById('mbDiscBtn');
   if(!resEl) return;
   if(btn){btn.disabled=true;btn.style.opacity='0.6';btn.innerHTML='\u23F3 SCANNING\u2026';}
@@ -12550,7 +12551,7 @@ window._renderMultibaggerDiscovery = function(d){
   h+='<div style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.5;font-style:italic">"'+E(d.final_question)+'"</div>';
   h+='<div style="font-size:11px;color:#475569;margin-top:8px">'+E(d.framework)+'</div>';
   h+='<div style="font-size:11px;font-weight:800;color:#15803d;margin-top:8px">'+(d.elite_count||0)+' elite candidate(s) of '+(d.universe_size||0)+' screened</div></div>';
-  (d.results||[]).forEach(function(r,i){
+  var _mbRow = function(r,i){
     var v=r.verdict||''; var vC=v.indexOf('ELITE')===0?'#16a34a':v.indexOf('STRONG')===0?'#d97706':'#94a3b8';
     var vBg=v.indexOf('ELITE')===0?'#f0fdf4':v.indexOf('STRONG')===0?'#fffbeb':'#f8fafc'; var rid='mbd_'+i;
     h+='<div style="background:#fff;border:2px solid '+vC+'55;border-radius:12px;margin-bottom:12px;overflow:hidden">';
@@ -12582,6 +12583,14 @@ window._renderMultibaggerDiscovery = function(d){
     h+='<div style="margin-top:10px;font-size:11px;font-weight:900;color:#334155;font-family:Sora,sans-serif">Elite Filter ('+r.elite_pass+'/'+r.elite_total+')</div>';
     (r.elite_requirements||[]).forEach(function(q){ h+='<div style="display:flex;gap:8px;padding:3px 0"><span>'+(q.ok?'\u2705':'\u274C')+'</span><span style="font-size:11px;color:'+(q.ok?'#16a34a':'#dc2626')+';font-weight:600">'+E(q.label)+'</span></div>'; });
     h+='</div></div>';
+  };
+  var _tiers=[['large','\uD83C\uDFDB\uFE0F LARGE-CAP \u2014 objective 2\u20135\u00D7'],['mid','\uD83D\uDCC8 MID-CAP \u2014 objective 3\u201310\u00D7'],['small','\uD83D\uDE80 SMALL-CAP \u2014 objective 5\u201320\u00D7'],['micro','\uD83D\uDC8E MICRO-CAP \u2014 objective 10\u2013100\u00D7'],[null,'\u2014 Cap unverified']];
+  var _res=d.results||[]; var _gid=0;
+  _tiers.forEach(function(t){
+    var grp=_res.filter(function(r){ return (r.mcap_tier||null)===t[0]; });
+    if(!grp.length) return;
+    h+='<div style="margin:16px 0 8px;padding:8px 12px;background:linear-gradient(135deg,#ecfdf5,#d1fae5);border-left:4px solid #16a34a;border-radius:6px;font-size:12px;font-weight:900;color:#065f46;font-family:Sora,sans-serif">'+t[1]+' <span style="color:#10b981;font-weight:800">('+grp.length+')</span></div>';
+    grp.forEach(function(r){ _mbRow(r,_gid); _gid++; });
   });
   if(d.disclosure) h+='<div style="font-size:10px;color:#94a3b8;font-style:italic;padding:8px 4px;line-height:1.5">'+E(d.disclosure)+'</div>';
   return h;
