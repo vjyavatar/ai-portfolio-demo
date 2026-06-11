@@ -10271,13 +10271,12 @@ def _enrich_oi_flow(ce_rows, pe_rows, region, budget_sec=6):
     return bubbles
 
 
-@app.get("/api/directional-options-scanner")
 # ═══ A+ TRADE FRAMEWORK (r63.110.26) — institutional 5-layer grading cascade ═══
 # Implements the expert option-buyer workflow: regime → stock quality → entry quality →
 # option structure → risk. Honest by construction: layers backed by LIVE indicators are graded
 # pass/warn/fail; layers needing data unavailable on this deployment (live option delta/liquidity,
 # confirmed event dates, sector-participation breadth) are surfaced as "verify" — never auto-passed.
-def _aplus_regime(vix_zone, vix_trend_pct, bench_ret_20d, bench_today_chg, bull_pct):
+def _aplus_regime(vix_zone=None, vix_trend_pct=None, bench_ret_20d=None, bench_today_chg=None, bull_pct=None):
     """LAYER 1 — market regime (shared by the whole scan).
     Risk-On favors CE buyers, Risk-Off favors PE buyers, Neutral favors neither."""
     def _n(v):
@@ -10429,6 +10428,7 @@ def _aplus_checklist(row, direction, regime, region):
         "targets": {"delta": "0.55-0.70", "dte": "30-60 DTE"},
     }
 
+@app.get("/api/directional-options-scanner")
 async def directional_options_scanner(region: str = "US",
                                        top_n: int = 10,
                                        min_score: int = 50,
