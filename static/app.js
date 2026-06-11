@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.35";
-window.CELESYS_BUILD_TIME = 1780909200;
-window.CELESYS_BUILD_DATE = "2026-06-08 09:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.36";
+window.CELESYS_BUILD_TIME = 1780912800;
+window.CELESYS_BUILD_DATE = "2026-06-08 10:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12524,6 +12524,13 @@ window._renderIMDF = function(d){
 };
 // ═══ MULTIBAGGER DISCOVERY (r63.110.28) — 4-layer framework, Decide → Engines ═══
 window._mbDiscRegion = 'US';
+window._mbDiscCap = 'ALL';
+window._mbDiscLast = null;
+window._mbDiscFilterCap = function(cap){
+  window._mbDiscCap = cap;
+  ['ALL','large','mid','small','micro'].forEach(function(c){ var b=document.getElementById('mbCap_'+c); if(b){ var on=(c===cap); b.style.background=on?'linear-gradient(135deg,#16a34a,#15803d)':'#fff'; b.style.color=on?'#fff':'#16a34a'; } });
+  if(window._mbDiscLast){ var el=document.getElementById('mbDiscResult'); if(el) el.innerHTML=window._renderMultibaggerDiscovery(window._mbDiscLast); }
+};
 window._loadMultibaggerDiscovery = function(region){
   region = region || 'US'; window._mbDiscRegion = region;
   var resEl = document.getElementById('mbDiscResult'); var btn = document.getElementById('mbDiscBtn');
@@ -12537,6 +12544,7 @@ window._loadMultibaggerDiscovery = function(region){
       if(!d || !d.success){ var msg=(d&&(d.error||d.detail))||'unknown';
         if(window._engRenderError) window._engRenderError('mbDiscResult','Discovery',msg,d&&d.trace);
         else resEl.innerHTML='<div style="padding:14px;color:#dc2626;font-size:11px">Error: '+msg+'</div>'; return; }
+      window._mbDiscLast = d;
       resEl.innerHTML = window._renderMultibaggerDiscovery(d);
     })
     .catch(function(e){ if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83D\uDD2C DISCOVER MULTIBAGGERS';}
@@ -12552,8 +12560,8 @@ window._renderMultibaggerDiscovery = function(d){
   h+='<div style="font-size:11px;color:#475569;margin-top:8px">'+E(d.framework)+'</div>';
   h+='<div style="font-size:11px;font-weight:800;color:#15803d;margin-top:8px">'+(d.elite_count||0)+' elite candidate(s) of '+(d.universe_size||0)+' screened</div></div>';
   var _mbRow = function(r,i){
-    var v=r.verdict||''; var vC=v.indexOf('ELITE')===0?'#16a34a':v.indexOf('STRONG')===0?'#d97706':'#94a3b8';
-    var vBg=v.indexOf('ELITE')===0?'#f0fdf4':v.indexOf('STRONG')===0?'#fffbeb':'#f8fafc'; var rid='mbd_'+i;
+    var v=r.verdict||''; var vC=v.indexOf('ELITE')===0?'#16a34a':v.indexOf('STRONG')===0?'#d97706':v.indexOf('DATA PENDING')===0?'#6366f1':'#94a3b8';
+    var vBg=v.indexOf('ELITE')===0?'#f0fdf4':v.indexOf('STRONG')===0?'#fffbeb':v.indexOf('DATA PENDING')===0?'#eef2ff':'#f8fafc'; var rid='mbd_'+i;
     h+='<div style="background:#fff;border:2px solid '+vC+'55;border-radius:12px;margin-bottom:12px;overflow:hidden">';
     h+='<div onclick="(function(){var x=document.getElementById(\''+rid+'\');if(x)x.style.display=x.style.display===\'none\'?\'block\':\'none\';})()" style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;background:'+vBg+'">';
     h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:13px;font-weight:900;color:#64748b">#'+(i+1)+'</span>';
@@ -12587,6 +12595,7 @@ window._renderMultibaggerDiscovery = function(d){
   var _tiers=[['large','\uD83C\uDFDB\uFE0F LARGE-CAP \u2014 objective 2\u20135\u00D7'],['mid','\uD83D\uDCC8 MID-CAP \u2014 objective 3\u201310\u00D7'],['small','\uD83D\uDE80 SMALL-CAP \u2014 objective 5\u201320\u00D7'],['micro','\uD83D\uDC8E MICRO-CAP \u2014 objective 10\u2013100\u00D7'],[null,'\u2014 Cap unverified']];
   var _res=d.results||[]; var _gid=0;
   _tiers.forEach(function(t){
+    if(window._mbDiscCap && window._mbDiscCap!=='ALL' && t[0]!==window._mbDiscCap) return;
     var grp=_res.filter(function(r){ return (r.mcap_tier||null)===t[0]; });
     if(!grp.length) return;
     h+='<div style="margin:16px 0 8px;padding:8px 12px;background:linear-gradient(135deg,#ecfdf5,#d1fae5);border-left:4px solid #16a34a;border-radius:6px;font-size:12px;font-weight:900;color:#065f46;font-family:Sora,sans-serif">'+t[1]+' <span style="color:#10b981;font-weight:800">('+grp.length+')</span></div>';

@@ -39261,12 +39261,15 @@ def _mb_score(meta, fund, tech):
     elite_pass = sum(1 for r in elite_reqs if r["ok"])
     elite_total = len(elite_reqs)
     unverified = sum(1 for x in (rev, earn, roce, de) if x is None)
+    fund_missing = all(x is None for x in (rev, earn, roce, de)) and mos is None
     if score > 80 and elite_pass == elite_total:
         verdict = "ELITE CANDIDATE"
     elif score > 80 and unverified > 0:
         verdict = "ELITE (pending fundamental verification)"
     elif score >= 65:
         verdict = "STRONG — watchlist"
+    elif fund_missing:
+        verdict = "DATA PENDING — fundamentals not retrieved"
     else:
         verdict = "BELOW BAR"
 
