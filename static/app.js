@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.39";
-window.CELESYS_BUILD_TIME = 1780923600;
-window.CELESYS_BUILD_DATE = "2026-06-08 13:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.40";
+window.CELESYS_BUILD_TIME = 1780927200;
+window.CELESYS_BUILD_DATE = "2026-06-08 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -1403,7 +1403,13 @@ if(showPicks){try{renderPicks('lc')}catch(e){}try{renderFunds('etf_in')}catch(e)
 // Only re-render tab group sub-nav if report is already visible (not during email typing)
 var _rptVis=document.getElementById('report');
 if(_rptVis&&_rptVis.classList.contains('show')){
-try{if(window._activeGroup&&typeof switchTabGroup==='function'){switchTabGroup(window._activeGroup)}}catch(e){}
+// r63.110.40: never re-route non-premium (public) users to a gated group after analyze —
+// that caused the "bounces back to home" symptom. Public users are clamped to Overview/Tools.
+var _hasAccess=showTrades||TRADING_ONLY_EMAILS.includes(email);
+var _ag=window._activeGroup||'overview';
+if(!_hasAccess&&['overview','tools'].indexOf(_ag)<0){_ag='overview';}
+window._activeGroup=_ag;
+try{if(typeof switchTabGroup==='function'){switchTabGroup(_ag)}}catch(e){}
 }
 }
 function _applyDreamGating(show){
