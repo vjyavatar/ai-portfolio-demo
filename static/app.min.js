@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.38";
-window.CELESYS_BUILD_TIME = 1780920000;
-window.CELESYS_BUILD_DATE = "2026-06-08 12:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.39";
+window.CELESYS_BUILD_TIME = 1780923600;
+window.CELESYS_BUILD_DATE = "2026-06-08 13:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -773,6 +773,8 @@ document.addEventListener('DOMContentLoaded', function() {
           btn.style.boxShadow = 'inset 0 0 0 1px #f59e0b';
           _navRow.insertBefore(btn, _toolsBtn);
         });
+        // r63.110.39: re-apply access gating so self-healed buttons aren't shown to public users
+        try { var _ae = window._verifiedEmail || (window.localStorage && localStorage.getItem('celesys_email')) || ''; if (window.applyTabAccess) window.applyTabAccess(_ae); } catch(e){}
         console.warn('[CELESYS] Self-healed: injected ' + _missing.length + ' button(s) at runtime. ' +
                      'These have amber borders to indicate stale HTML. Do a hard refresh (Ctrl+Shift+R) ' +
                      'and clear Render build cache to load the current index.html.');
@@ -36099,6 +36101,7 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
   
   // ═══ 3. TAB ACCESS CONTROL ═══
   function applyTabAccess(email){
+    try { window.applyTabAccess = applyTabAccess; } catch(e){}
     email=(email||'').toLowerCase();
     
     // Define roles
@@ -36124,6 +36127,12 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
       {sel:'#tabBtnDecide', roles:['admin','full']},             // Decide tab
       {sel:'#tabBtnDream', roles:['admin','full']},              // Dream tab
       {sel:'#tabBtnTrading', roles:['admin','full','trading']},  // Trader tab
+      // r63.110.39: these were never gated → leaked to public. Public = Overview + Tools ONLY.
+      {sel:'#tabBtnMovers', roles:['admin','full']},             // Movers tab
+      {sel:'#tabBtnMoat', roles:['admin','full']},               // Moat tab
+      {sel:'#tabBtnStructural', roles:['admin','full']},         // Structural tab
+      {sel:'#tabBtnScanner360', roles:['admin','full']},         // 360° scanner tab
+      {sel:'#tabBtnIntradayopt', roles:['admin','full','trading']}, // Intraday (trading-oriented)
       // tabBtnOverview → everyone
       // tabBtnTools → everyone
       
