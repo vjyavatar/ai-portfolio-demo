@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.40";
-window.CELESYS_BUILD_TIME = 1780927200;
-window.CELESYS_BUILD_DATE = "2026-06-08 14:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.43";
+window.CELESYS_BUILD_TIME = 1780938000;
+window.CELESYS_BUILD_DATE = "2026-06-08 17:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11754,6 +11754,7 @@ window._engShow = function(panel) {
     'runway': 'engRunwayPanel',
     'mbdiscovery': 'engMBDiscPanel',
     'imdf': 'engIMDFPanel',
+    'redflag': 'engRedFlagPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11773,6 +11774,7 @@ window._engShow = function(panel) {
     'runway': 'engBtnRunway',
     'mbdiscovery': 'engBtnMBDisc',
     'imdf': 'engBtnIMDF',
+    'redflag': 'engBtnRedFlag',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12438,6 +12440,149 @@ window._renderIMDFThemes = function(d){
   });
   return h;
 };
+window._rfRegion = 'US';
+window._loadRedFlag = function(){
+  var inp = document.getElementById('rfSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  var resEl = document.getElementById('rfResult'); var btn = document.getElementById('rfBtn');
+  if (!resEl) return;
+  if (!sym) { resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Enter a symbol first (NVDA, RELIANCE, DIXON\u2026).</div>'; return; }
+  var reg = window._rfRegion || 'US';
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '\u23F3 SCANNING\u2026'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#b91c1c"><div style="display:inline-block;width:16px;height:16px;border:2px solid #b91c1c;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Scanning ' + sym + ' for red flags across six forensic categories\u2026</div>';
+  fetch('/api/red-flag-scan?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg) + '&refresh=1', {cache:'no-store'})
+    .then(function(r){ return r.json().catch(function(){return null;}); })
+    .then(function(d){
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83D\uDEA9 RUN SCAN'; }
+      if (!d || !d.success) { var m = (d && (d.error || d.detail)) || 'unknown'; if (window._engRenderError) window._engRenderError('rfResult', sym, m, d && d.trace); else resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + sym + ': ' + m + '</div>'; return; }
+      resEl.innerHTML = window._renderRedFlag(d);
+    })
+    .catch(function(e){ if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83D\uDEA9 RUN SCAN'; } resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Network error: ' + e.message + '</div>'; });
+};
+
+window._renderRedFlag = function(d){
+  var E = window._esc || function(s){return String(s||'');};
+  var SEV = {
+    critical:{c:'#ef4444',dot:'\u25CF'}, warning:{c:'#f97316',dot:'\u25CF'},
+    watch:{c:'#eab308',dot:'\u25CF'}, clear:{c:'#10b981',dot:'\u25CF'}, unchecked:{c:'#6b7280',dot:'\u25CB'}
+  };
+  var bg='#0a0e17', panel='#0d1322', bd='#1f2a3a', txt='#e5e7eb', dim='#94a3b8',
+      mono="'JetBrains Mono','IBM Plex Mono',ui-monospace,monospace";
+  var lvlC = d.level_color || '#10b981';
+  var cov = (d.data_coverage_pct != null) ? d.data_coverage_pct : 0;
+  var covC = cov >= 75 ? '#10b981' : (cov >= 50 ? '#eab308' : '#f97316');
+  var h = '';
+  h += '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:10px;overflow:hidden;font-family:'+mono+';color:'+txt+'">';
+  // terminal header bar
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#070b12;border-bottom:1px solid '+bd+'">';
+  h += '<div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#fca5a5">\uD83D\uDEA9 RED FLAG SCANNER</div>';
+  h += '<div style="font-size:9px;color:'+dim+'">'+E(d.symbol)+' \u00B7 '+E(d.region)+' \u00B7 '+E(d.as_of||'')+'</div></div>';
+  // body
+  h += '<div style="padding:14px 14px 6px">';
+  // name
+  h += '<div style="font-size:13px;font-weight:800;color:'+txt+';margin-bottom:10px">'+E(d.name||d.symbol)+'</div>';
+  // score + level row
+  h += '<div style="display:flex;gap:12px;align-items:stretch;flex-wrap:wrap;margin-bottom:12px">';
+  h += '<div style="flex:0 0 auto;background:'+panel+';border:1px solid '+bd+';border-radius:8px;padding:10px 16px;text-align:center;min-width:120px">';
+  h += '<div style="font-size:9px;color:'+dim+';letter-spacing:1px">RED FLAG SCORE</div>';
+  h += '<div style="font-size:34px;font-weight:900;color:'+lvlC+';line-height:1.1">'+E(d.red_flag_score)+'<span style="font-size:13px;color:'+dim+'">/100</span></div>';
+  h += '<div style="display:inline-block;margin-top:4px;padding:3px 10px;border-radius:4px;background:'+lvlC+';color:#0a0e17;font-size:10px;font-weight:900;letter-spacing:.5px">'+E(d.risk_level)+'</div></div>';
+  // counts
+  h += '<div style="flex:1 1 200px;background:'+panel+';border:1px solid '+bd+';border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:6px">';
+  h += '<div style="display:flex;gap:14px;font-size:11px">';
+  h += '<span style="color:'+SEV.critical.c+';font-weight:800">\u25CF '+E(d.critical)+' critical</span>';
+  h += '<span style="color:'+SEV.warning.c+';font-weight:800">\u25CF '+E(d.warning)+' warning</span>';
+  h += '<span style="color:'+SEV.watch.c+';font-weight:800">\u25CF '+E(d.watch)+' watch</span></div>';
+  // coverage meter
+  h += '<div style="margin-top:4px"><div style="display:flex;justify-content:space-between;font-size:9px;color:'+dim+';margin-bottom:3px"><span>DATA COVERAGE</span><span style="color:'+covC+';font-weight:800">'+E(cov)+'% \u00B7 '+E(d.checks_run)+' run / '+E(d.checks_unavailable)+' unchecked</span></div>';
+  h += '<div style="height:6px;background:#1f2937;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+cov+'%;background:'+covC+'"></div></div></div>';
+  h += '</div></div>';
+  // verdict note
+  if (d.verdict_note) {
+    h += '<div style="background:'+panel+';border-left:3px solid '+lvlC+';border-radius:4px;padding:8px 12px;margin-bottom:12px;font-size:11px;line-height:1.5;color:'+txt+'">'+E(d.verdict_note)+'</div>';
+  }
+  // categories
+  (d.categories||[]).forEach(function(cat){
+    var w = SEV[cat.worst] || SEV.clear;
+    h += '<div style="margin-bottom:10px;border:1px solid '+bd+';border-radius:8px;overflow:hidden">';
+    h += '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:#070b12;border-bottom:1px solid '+bd+'">';
+    h += '<span style="color:'+w.c+';font-size:12px">'+w.dot+'</span>';
+    h += '<span style="font-size:10px;font-weight:800;letter-spacing:1px;color:'+txt+'">'+E(cat.cat)+'</span>';
+    h += '<span style="font-size:8px;color:'+dim+';margin-left:auto;text-transform:uppercase">'+E(cat.worst)+'</span></div>';
+    h += '<div style="padding:4px 0">';
+    (cat.flags||[]).forEach(function(f){
+      var s = SEV[f.severity] || SEV.clear;
+      h += '<div style="display:flex;gap:9px;padding:5px 12px;align-items:flex-start">';
+      h += '<span style="color:'+s.c+';font-size:11px;line-height:1.4;flex:0 0 auto">'+s.dot+'</span>';
+      h += '<div style="flex:1 1 auto"><span style="font-size:11px;font-weight:700;color:'+(f.severity==='unchecked'?dim:txt)+'">'+E(f.label)+'</span>';
+      if (f.detail) h += '<span style="font-size:10px;color:'+dim+'"> \u2014 '+E(f.detail)+'</span>';
+      h += '</div></div>';
+    });
+    h += '</div></div>';
+  });
+  // disclosure
+  if (d.disclosure) {
+    h += '<div style="font-size:9px;color:'+dim+';line-height:1.5;padding:8px 4px 10px;border-top:1px solid '+bd+';margin-top:4px">'+E(d.disclosure)+'</div>';
+  }
+  h += '</div></div>';
+  return h;
+};
+
+window._rfScreenLast = null;
+window._loadRedFlagScreen = function(){
+  var reg = window._rfRegion || 'US';
+  var resEl = document.getElementById('rfResult'); var btn = document.getElementById('rfScreenBtn');
+  if (!resEl) return;
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '\u23F3 SCANNING\u2026'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#b91c1c"><div style="display:inline-block;width:16px;height:16px;border:2px solid #b91c1c;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Scanning the ' + reg + ' universe for red flags\u2026 (batched, ~5\u201315s)</div>';
+  fetch('/api/red-flag-screen?region=' + encodeURIComponent(reg) + '&refresh=1', {cache:'no-store'})
+    .then(function(r){ return r.json().catch(function(){return null;}); })
+    .then(function(d){
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83D\uDCCA SCAN UNIVERSE'; }
+      if (!d || !d.success) { var m = (d && (d.error || d.detail)) || 'unknown'; if (window._engRenderError) window._engRenderError('rfResult', reg + ' universe', m, d && d.trace); else resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">' + m + '</div>'; return; }
+      window._rfScreenLast = d;
+      resEl.innerHTML = window._renderRedFlagScreen(d);
+    })
+    .catch(function(e){ if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83D\uDCCA SCAN UNIVERSE'; } resEl.innerHTML = '<div style="padding:14px;color:#dc2626;font-size:11px">Network error: ' + e.message + '</div>'; });
+};
+
+window._rfDrill = function(sym){
+  var inp = document.getElementById('rfSym'); if (inp) inp.value = sym;
+  window._loadRedFlag();
+  try { document.getElementById('rfResult').scrollIntoView({behavior:'smooth',block:'start'}); } catch(e){}
+};
+
+window._renderRedFlagScreen = function(d){
+  var E = window._esc || function(s){return String(s||'');};
+  var SEV = {critical:'#ef4444',warning:'#f97316',watch:'#eab308',clear:'#10b981',unchecked:'#6b7280'};
+  var bg='#0a0e17', bd='#1f2a3a', txt='#e5e7eb', dim='#94a3b8', mono="'JetBrains Mono','IBM Plex Mono',ui-monospace,monospace";
+  var rows = d.results || [];
+  var h = '';
+  h += '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:10px;overflow:hidden;font-family:'+mono+';color:'+txt+'">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#070b12;border-bottom:1px solid '+bd+'">';
+  h += '<div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#fca5a5">\uD83D\uDCCA RED FLAG SCREEN \u00B7 '+E(d.region)+'</div>';
+  h += '<div style="font-size:9px;color:'+dim+'">'+E(d.scanned)+'/'+E(d.universe_size)+' scanned \u00B7 '+E(d.as_of||'')+'</div></div>';
+  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+  h += '<thead><tr style="color:'+dim+';font-size:9px;letter-spacing:.5px;text-align:left">';
+  h += '<th style="padding:6px 8px;font-weight:700">#</th><th style="padding:6px 8px;font-weight:700">SYMBOL</th><th style="padding:6px 8px;font-weight:700;text-align:center">SCORE</th><th style="padding:6px 8px;font-weight:700">RISK</th><th style="padding:6px 8px;font-weight:700;text-align:center">C/W</th><th style="padding:6px 8px;font-weight:700">TOP RED FLAGS</th></tr></thead><tbody>';
+  rows.forEach(function(r,i){
+    var lc = r.level_color || '#10b981';
+    h += '<tr onclick="window._rfDrill(\''+E(r.symbol)+'\')" style="border-top:1px solid '+bd+';cursor:pointer" onmouseover="this.style.background=\'#0d1322\'" onmouseout="this.style.background=\'transparent\'">';
+    h += '<td style="padding:6px 8px;color:'+dim+'">'+(i+1)+'</td>';
+    h += '<td style="padding:6px 8px;font-weight:800;color:'+txt+';border-left:3px solid '+lc+'">'+E(r.symbol)+'</td>';
+    h += '<td style="padding:6px 8px;text-align:center;font-weight:900;color:'+lc+'">'+E(r.red_flag_score)+'</td>';
+    h += '<td style="padding:6px 8px"><span style="padding:2px 7px;border-radius:3px;background:'+lc+';color:#0a0e17;font-size:9px;font-weight:900">'+E(r.risk_level)+'</span></td>';
+    h += '<td style="padding:6px 8px;text-align:center"><span style="color:'+SEV.critical+';font-weight:800">'+E(r.critical)+'</span><span style="color:'+dim+'">/</span><span style="color:'+SEV.warning+';font-weight:800">'+E(r.warning)+'</span></td>';
+    var tf = (r.top_flags||[]).map(function(f){ return '<span style="color:'+(SEV[f.severity]||dim)+'">\u25CF</span> '+E(f.label); }).join('<span style="color:'+dim+'"> \u00B7 </span>');
+    h += '<td style="padding:6px 8px;color:'+dim+';font-size:10px">'+(tf||'<span style="color:'+SEV.clear+'">\u25CF no structural flags</span>')+'</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+  if (d.note) h += '<div style="font-size:9px;color:'+dim+';line-height:1.5;padding:8px 12px 10px;border-top:1px solid '+bd+'">'+E(d.note)+' <span style="color:'+txt+'">Tap any row for the full single-symbol forensic card.</span></div>';
+  h += '</div>';
+  return h;
+};
+
 window._loadIMDF = function(){
   var inp = document.getElementById('imdfSym');
   var sym = ((inp && inp.value) || '').trim().toUpperCase();
@@ -14746,7 +14891,7 @@ window._renderDirectionalOptions = function(d) {
     var rgBg = rg.label==='RISK-ON'?'linear-gradient(135deg,#f0fdf4,#dcfce7)':rg.label==='RISK-OFF'?'linear-gradient(135deg,#fef2f2,#fee2e2)':'linear-gradient(135deg,#fffbeb,#fef3c7)';
     h += '<div style="background:' + rgBg + ';border:2px solid ' + (rg.color||'#d97706') + ';border-radius:14px;padding:14px 18px;margin-bottom:14px">';
     h += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">';
-    h += '<span style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#64748b">LAYER 1 \\u00B7 MARKET REGIME</span>';
+    h += '<span style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#64748b">LAYER 1 \u00B7 MARKET REGIME</span>';
     h += '<span style="background:' + (rg.color||'#d97706') + ';color:#fff;border-radius:8px;padding:4px 13px;font-size:14px;font-weight:900">' + E(rg.label) + '</span>';
     if (rg.favors && rg.favors!=='NONE') h += '<span style="font-size:11px;font-weight:800;color:' + (rg.color||'#d97706') + '">favors ' + E(rg.favors) + ' buyers</span>';
     if (rg.breadth_bull_pct!=null) h += '<span style="font-size:12px;font-weight:700;color:#475569">Breadth: ' + rg.breadth_bull_pct + '% bullish</span>';
@@ -14754,7 +14899,7 @@ window._renderDirectionalOptions = function(d) {
     h += '<div style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.5;margin-bottom:8px">' + E(rg.headline||'') + '</div>';
     if (rg.drivers && rg.drivers.length) {
       h += '<div style="display:flex;flex-direction:column;gap:3px">';
-      rg.drivers.forEach(function(dr){ h += '<div style="font-size:12px;color:#475569;line-height:1.4">\\u2022 ' + E(dr) + '</div>'; });
+      rg.drivers.forEach(function(dr){ h += '<div style="font-size:12px;color:#475569;line-height:1.4">\u2022 ' + E(dr) + '</div>'; });
       h += '</div>';
     }
     if (rg.note) h += '<div style="margin-top:8px;font-size:11px;color:#94a3b8;font-style:italic">' + E(rg.note) + '</div>';
@@ -14939,22 +15084,22 @@ window._renderDirectionalOptions = function(d) {
       html += '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">';
       html += '<span style="font-size:10px;font-weight:800;letter-spacing:.4px;color:#64748b">A+ FRAMEWORK</span>';
       html += '<span style="font-size:13px;font-weight:900;color:#fff;background:' + apC + ';border-radius:6px;padding:3px 11px">' + E(ap.classification) + '</span>';
-      html += ap.qualified ? '<span style="font-size:10px;font-weight:800;color:#fff;background:#16a34a;border-radius:20px;padding:3px 10px">\\u2713 QUALIFIED</span>' : '<span style="font-size:10px;font-weight:800;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:20px;padding:3px 10px">\\u23F8 WAIT</span>';
+      html += ap.qualified ? '<span style="font-size:10px;font-weight:800;color:#fff;background:#16a34a;border-radius:20px;padding:3px 10px">\u2713 QUALIFIED</span>' : '<span style="font-size:10px;font-weight:800;color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:20px;padding:3px 10px">\u23F8 WAIT</span>';
       html += '</div>';
-      html += '<span style="font-size:11px;color:#64748b;font-weight:700">' + (ap.checks?ap.checks.length:0) + ' checks \\u25BE</span>';
+      html += '<span style="font-size:11px;color:#64748b;font-weight:700">' + (ap.checks?ap.checks.length:0) + ' checks \u25BE</span>';
       html += '</div>';
       html += '<div style="padding:0 12px 8px;font-size:12px;font-weight:600;color:#374151;line-height:1.5">' + E(ap.summary||'') + '</div>';
       html += '<div id="' + apId + '" style="display:none;padding:4px 12px 12px;border-top:1px dashed ' + apC + '40">';
       (ap.checks||[]).forEach(function(ck){
         var st = ck.status;
-        var ic = st==='pass'?'\\u2705':st==='fail'?'\\u274C':st==='warn'?'\\u26A0\\uFE0F':'\\uD83D\\uDD0D';
+        var ic = st==='pass'?'\u2705':st==='fail'?'\u274C':st==='warn'?'\u26A0\uFE0F':'\uD83D\uDD0D';
         var stC = st==='pass'?'#16a34a':st==='fail'?'#dc2626':st==='warn'?'#d97706':'#64748b';
         html += '<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9">';
         html += '<span style="font-size:13px;flex-shrink:0">' + ic + '</span>';
         html += '<div style="flex:1"><div style="font-size:12px;font-weight:700;color:' + stC + '"><span style="font-size:9px;color:#94a3b8;font-weight:800;margin-right:5px">' + E(ck.layer||'') + '</span>' + E(ck.label||'') + '</div>';
         html += '<div style="font-size:11px;color:#64748b;line-height:1.4">' + E(ck.detail||'') + '</div></div></div>';
       });
-      if (ap.targets) html += '<div style="margin-top:8px;padding:7px 10px;background:rgba(255,255,255,.6);border-radius:7px;font-size:11px;color:#475569;font-weight:600">\\uD83C\\uDFAF Target structure: delta ' + E(ap.targets.delta||'') + ' \\u00B7 ' + E(ap.targets.dte||'') + ' \\u2014 verify on the live chain before entry</div>';
+      if (ap.targets) html += '<div style="margin-top:8px;padding:7px 10px;background:rgba(255,255,255,.6);border-radius:7px;font-size:11px;color:#475569;font-weight:600">\uD83C\uDFAF Target structure: delta ' + E(ap.targets.delta||'') + ' \u00B7 ' + E(ap.targets.dte||'') + ' \u2014 verify on the live chain before entry</div>';
       html += '</div></div>';
     }
 
@@ -18051,7 +18196,7 @@ var _hp=document.querySelector('[data-price-live]');
 if(_hp){_hp.style.transition='color .3s';_hp.textContent=pt.csym+pt.price.toLocaleString('en-IN');_hp.style.color=pt.isUp?'#34d399':'#f87171';setTimeout(function(){_hp.style.color='#fff'},1500);}
 var _ts=document.querySelector('[data-timestamp-live]');if(_ts)_ts.textContent=pt.timestamp;
 var _ch=document.querySelector('[data-change-live]');
-if(_ch){_ch.textContent=(pt.isUp?'\\u2191 +':'\\u2193 ')+pt.changePct+'%';_ch.style.color=pt.isUp?'#34d399':'#f87171';}
+if(_ch){_ch.textContent=(pt.isUp?'\u2191 +':'\u2193 ')+pt.changePct+'%';_ch.style.color=pt.isUp?'#34d399':'#f87171';}
 }).catch(function(){});
 },30000);
 // TIER 2: Full engine every 60s

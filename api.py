@@ -39878,6 +39878,443 @@ async def multibagger_discovery(region: str = "US", refresh: int = 0):
     _MB_CACHE[ck] = (_t.time(), out)
     return out
 
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ═══ RED FLAG SCANNER (r63.110.41) — institutional forensic risk scan ════════════
+# Bloomberg-terminal-style single-symbol risk scan. Surfaces warning signs across six
+# categories. HONESTY CONTRACT: a risk tool must never imply "all clear" on data it
+# could not read. Every check is one of:
+#   critical (🔴) | warning (🟠) | watch (🟡) | clear (🟢) | unchecked (⚪ data unavailable)
+# "clear" means we checked and found nothing; "unchecked" means we could NOT verify — never
+# conflated. Trend/volatility checks are live (price-derived, reliable). Valuation/solvency/
+# earnings-quality/governance are best-effort on the available fundamentals feed.
+
+def _rf_num(v):
+    try:
+        f = float(v)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+_RF_SEV_PTS = {"critical": 16, "warning": 9, "watch": 4, "clear": 0, "unchecked": 0}
+_RF_CATS = ["TREND", "VOLATILITY", "VALUATION", "SOLVENCY", "EARNINGS QUALITY", "GOVERNANCE"]
+
+def _redflag_scan(meta, tech, fund):
+    flags = []
+    def add(cat, label, sev, detail):
+        flags.append({"cat": cat, "label": label, "severity": sev, "detail": detail,
+                      "pts": _RF_SEV_PTS[sev]})
+
+    # ─────────── TREND & STRUCTURE (live) ───────────
+    price = _rf_num(tech.get("price")); ma50 = _rf_num(tech.get("ma50")); ma200 = _rf_num(tech.get("ma200"))
+    ma200_prev = _rf_num(tech.get("ma200_prev")); rs = _rf_num(tech.get("rs_vs_bench"))
+    dd = _rf_num(tech.get("drawdown_pct")); near_low = tech.get("near_52w_low")
+    ret20 = _rf_num(tech.get("ret_20d")); dist = tech.get("distribution")
+    if price is not None and ma200 is not None:
+        below200 = price < ma200
+        decl200 = (ma200_prev is not None and ma200 < ma200_prev)
+        if below200 and decl200:
+            add("TREND", "Stage-4 downtrend", "critical", "price below a falling 200-DMA — primary downtrend")
+        elif below200:
+            add("TREND", "Below 200-DMA", "warning", "trading under the 200-day — buyers not in control")
+        else:
+            add("TREND", "Primary trend", "clear", "above the 200-DMA")
+    else:
+        add("TREND", "200-DMA trend", "unchecked", "insufficient price history")
+    if price is not None and ma50 is not None and ma200 is not None:
+        if ma50 < ma200:
+            add("TREND", "Death cross", "warning", "50-DMA below 200-DMA")
+        else:
+            add("TREND", "Moving-average alignment", "clear", "50-DMA above 200-DMA")
+    if rs is not None:
+        if rs <= -10: add("TREND", "Relative-strength collapse", "critical", "RS %.1f%% vs index — heavy laggard" % rs)
+        elif rs < -3: add("TREND", "Relative-strength laggard", "warning", "RS %.1f%% vs index" % rs)
+        else: add("TREND", "Relative strength", "clear", "RS %.1f%% vs index" % rs)
+    else:
+        add("TREND", "Relative strength", "unchecked", "benchmark unavailable")
+    if dd is not None:
+        if dd <= -50: add("TREND", "Severe drawdown", "critical", "%.0f%% off 52-week high" % dd)
+        elif dd <= -30: add("TREND", "Deep drawdown", "warning", "%.0f%% off 52-week high" % dd)
+    if near_low: add("TREND", "Near 52-week low", "warning", "within 10% of the annual low")
+    if dist: add("TREND", "Institutional distribution", "watch", "recent down days on heavy volume")
+
+    # ─────────── VOLATILITY & EVENT RISK (live) ───────────
+    if ret20 is not None:
+        if ret20 <= -25: add("VOLATILITY", "Recent crash", "critical", "%.0f%% in ~1 month" % ret20)
+        elif ret20 <= -15: add("VOLATILITY", "Sharp decline", "warning", "%.0f%% in ~1 month" % ret20)
+    atr_pct = _rf_num(tech.get("atr_pct"))
+    if atr_pct is not None and atr_pct >= 6:
+        add("VOLATILITY", "Elevated volatility", "watch", "ATR ~%.1f%% of price" % atr_pct)
+    beta = _rf_num(fund.get("beta"))
+    if beta is not None and beta >= 1.8:
+        add("VOLATILITY", "High beta", "watch", "beta %.2f — amplifies market moves" % beta)
+
+    # ─────────── VALUATION (best-effort) ───────────
+    pe = _rf_num(fund.get("pe")); ps = _rf_num(fund.get("priceToSales")); peg = _rf_num(fund.get("peg"))
+    eps = _rf_num(fund.get("eps"))
+    val_checked = False
+    if pe is not None:
+        val_checked = True
+        if pe < 0: add("VALUATION", "Negative earnings", "warning", "P/E negative — unprofitable")
+        elif pe > 80: add("VALUATION", "Extreme P/E", "warning", "P/E %.0f — priced for perfection" % pe)
+        elif pe > 50: add("VALUATION", "Rich P/E", "watch", "P/E %.0f" % pe)
+    if ps is not None:
+        val_checked = True
+        if ps > 25: add("VALUATION", "Extreme Price/Sales", "warning", "P/S %.1f" % ps)
+        elif ps > 12: add("VALUATION", "High Price/Sales", "watch", "P/S %.1f" % ps)
+    if peg is not None and peg > 3:
+        val_checked = True
+        add("VALUATION", "Growth richly priced", "watch", "PEG %.1f" % peg)
+    if not val_checked:
+        add("VALUATION", "Valuation multiples", "unchecked", "P/E, P/S not retrievable on this feed")
+
+    # ─────────── SOLVENCY & BANKRUPTCY (best-effort) ───────────
+    de = _rf_num(fund.get("debtEquity")); cr = _rf_num(fund.get("currentRatio"))
+    icov = _rf_num(fund.get("interestCoverage")); fcf = _rf_num(fund.get("fcf"))
+    altman = _rf_num(fund.get("altmanZ"))
+    solv_checked = False
+    if de is not None:
+        solv_checked = True
+        if de >= 3: add("SOLVENCY", "Excessive leverage", "critical", "Debt/Equity %.2f" % de)
+        elif de >= 1.5: add("SOLVENCY", "High leverage", "warning", "Debt/Equity %.2f" % de)
+        else: add("SOLVENCY", "Leverage", "clear", "Debt/Equity %.2f" % de)
+    if cr is not None:
+        solv_checked = True
+        if cr < 1: add("SOLVENCY", "Liquidity strain", "warning", "current ratio %.2f (<1)" % cr)
+    if icov is not None:
+        solv_checked = True
+        if icov < 1.5: add("SOLVENCY", "Interest-coverage risk", "critical", "covers interest only %.1fx" % icov)
+    if altman is not None:
+        solv_checked = True
+        if altman < 1.8: add("SOLVENCY", "Altman Z — distress zone", "critical", "Z %.2f (<1.8)" % altman)
+        elif altman < 3.0: add("SOLVENCY", "Altman Z — grey zone", "warning", "Z %.2f (1.8–3.0)" % altman)
+        else: add("SOLVENCY", "Altman Z — safe", "clear", "Z %.2f" % altman)
+    if fcf is not None and fcf < 0:
+        solv_checked = True
+        add("SOLVENCY", "Negative free cash flow", "warning", "burning cash")
+    if not solv_checked:
+        add("SOLVENCY", "Balance-sheet health", "unchecked", "debt/coverage/Altman-Z not retrievable")
+
+    # ─────────── EARNINGS QUALITY / FORENSIC (best-effort) ───────────
+    ni = _rf_num(fund.get("netIncome")); cfo = _rf_num(fund.get("operatingCashFlow"))
+    margin = _rf_num(fund.get("profitMargin")); margin_prev = _rf_num(fund.get("profitMarginPrev"))
+    eq_checked = False
+    if ni is not None and cfo is not None and ni > 0:
+        eq_checked = True
+        if cfo < 0: add("EARNINGS QUALITY", "Profit without cash", "critical", "positive net income but negative operating cash flow")
+        elif cfo < 0.6 * ni: add("EARNINGS QUALITY", "Low cash conversion", "warning", "operating cash flow well below reported profit (accruals)")
+        else: add("EARNINGS QUALITY", "Cash backing of earnings", "clear", "operating cash flow supports profit")
+    if margin is not None and margin_prev is not None:
+        eq_checked = True
+        if margin < margin_prev - 5: add("EARNINGS QUALITY", "Margin erosion", "warning", "net margin fell %.1f→%.1f%%" % (margin_prev, margin))
+    if not eq_checked:
+        add("EARNINGS QUALITY", "Accrual / forensic checks", "unchecked", "net income & operating cash flow not retrievable; M-Score needs multi-year statements")
+
+    # ─────────── GOVERNANCE (gated; mostly IN) ───────────
+    prom = _rf_num(fund.get("promoterHolding")); prom_prev = _rf_num(fund.get("promoterHoldingPrev"))
+    pledge = _rf_num(fund.get("pledgedPct")); insider_sell = _rf_num(fund.get("insiderSellPct"))
+    gov_checked = False
+    if pledge is not None:
+        gov_checked = True
+        if pledge >= 25: add("GOVERNANCE", "High promoter pledging", "critical", "%.0f%% of promoter holding pledged" % pledge)
+        elif pledge > 0: add("GOVERNANCE", "Promoter pledging", "warning", "%.0f%% pledged" % pledge)
+        else: add("GOVERNANCE", "Promoter pledging", "clear", "no pledging")
+    if prom is not None and prom_prev is not None:
+        gov_checked = True
+        if prom < prom_prev - 2: add("GOVERNANCE", "Promoter holding decline", "warning", "%.1f→%.1f%%" % (prom_prev, prom))
+    if insider_sell is not None and insider_sell > 0:
+        gov_checked = True
+        add("GOVERNANCE", "Insider selling", "warning", "net insider selling detected")
+    if not gov_checked:
+        add("GOVERNANCE", "Ownership / pledging / insiders", "unchecked", "13F / pledge / insider feed unavailable here — verify externally")
+
+    # ─────────── SCORE + VERDICT ───────────
+    score = min(100, sum(f["pts"] for f in flags))
+    crit = sum(1 for f in flags if f["severity"] == "critical")
+    warn = sum(1 for f in flags if f["severity"] == "warning")
+    watch = sum(1 for f in flags if f["severity"] == "watch")
+    checked = sum(1 for f in flags if f["severity"] != "unchecked")
+    unchecked = sum(1 for f in flags if f["severity"] == "unchecked")
+    coverage = round(100.0 * checked / (checked + unchecked), 0) if (checked + unchecked) else 0
+
+    if crit >= 2 or score >= 65: level, level_color = "CRITICAL RISK", "#ef4444"
+    elif crit >= 1 or score >= 45: level, level_color = "HIGH RISK", "#f97316"
+    elif warn >= 2 or score >= 25: level, level_color = "ELEVATED RISK", "#f59e0b"
+    elif warn >= 1 or watch >= 2 or score >= 12: level, level_color = "MODERATE RISK", "#eab308"
+    else: level, level_color = "LOW RISK", "#10b981"
+
+    if unchecked >= 4 and level == "LOW RISK":
+        verdict_note = ("LOW visible risk, but coverage is thin — most fundamental/forensic checks "
+                        "could not be run on this feed. This is NOT a clean bill of health.")
+    elif level == "CRITICAL RISK":
+        verdict_note = "Multiple serious red flags. Capital preservation first — avoid or exit pending deeper diligence."
+    elif level in ("HIGH RISK", "ELEVATED RISK"):
+        verdict_note = "Real warning signs present. Size down, demand a margin of safety, and verify the unchecked items."
+    else:
+        verdict_note = "Few visible red flags on the data available. Still verify the unchecked categories."
+
+    cats = []
+    for c in _RF_CATS:
+        cf = [f for f in flags if f["cat"] == c]
+        worst = "clear"
+        for sv in ("critical", "warning", "watch", "unchecked", "clear"):
+            if any(f["severity"] == sv for f in cf):
+                worst = sv; break
+        cats.append({"cat": c, "worst": worst, "flags": cf})
+
+    return {
+        "symbol": meta.get("symbol"), "name": meta.get("name"), "region": meta.get("region"),
+        "red_flag_score": score, "risk_level": level, "level_color": level_color,
+        "critical": crit, "warning": warn, "watch": watch,
+        "checks_run": checked, "checks_unavailable": unchecked, "data_coverage_pct": coverage,
+        "verdict_note": verdict_note, "categories": cats,
+        "disclosure": ("Red Flag Score is additive risk (higher = riskier). Trend/volatility are live price-derived. "
+                       "Valuation/solvency/earnings-quality/governance are best-effort on the available feed; '\u26AA unchecked' "
+                       "means the data could not be read — never assume clear. Forensic, not advice."),
+    }
+
+
+_REDFLAG_CACHE = {}
+_REDFLAG_TTL = 900
+
+@app.get("/api/red-flag-scan")
+async def red_flag_scan(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Red Flag Scanner — single-symbol institutional forensic risk scan."""
+    import time as _t
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE, DIXON)."}
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    ck = "rf_%s_%s" % (region, sym)
+    if not refresh and ck in _REDFLAG_CACHE and (_t.time() - _REDFLAG_CACHE[ck][0] < _REDFLAG_TTL):
+        return _REDFLAG_CACHE[ck][1]
+    _lp = asyncio.get_event_loop()
+    _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "SPX": "^GSPC", "NDX": "^NDX"}
+    yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
+    bench = "SPY" if region == "US" else "^NSEI"
+
+    def _fetch():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        try:
+            return yf.download(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
+                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+        except Exception:
+            return None
+    hist = await _lp.run_in_executor(None, _fetch)
+
+    def _sub(ys):
+        try:
+            cols = hist.columns
+            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                s = hist[ys].dropna()
+                return s if (s is not None and len(s) >= 60) else None
+        except Exception:
+            pass
+        return None
+
+    sub = _sub(yf_sym)
+    if sub is None:
+        return {"success": False, "error": "No price history for %s (%s). Check symbol/region." % (sym, yf_sym)}
+    tech = {}
+    try:
+        c = list(sub["Close"].dropna()); h = list(sub["High"].dropna())
+        lo = list(sub["Low"].dropna()); v = list(sub["Volume"].dropna())
+        tech["price"] = round(float(c[-1]), 2)
+        if len(c) >= 50: tech["ma50"] = sum(c[-50:]) / 50
+        if len(c) >= 200:
+            tech["ma200"] = sum(c[-200:]) / 200
+            if len(c) >= 221:
+                tech["ma200_prev"] = sum(c[-221:-21]) / 200
+        if len(c) >= 15 and len(h) >= 15 and len(lo) >= 15:
+            trs = []
+            for i in range(-14, 0):
+                tr = max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1]))
+                trs.append(tr)
+            atr = sum(trs) / len(trs) if trs else None
+            if atr and tech.get("price"): tech["atr_pct"] = round(atr / tech["price"] * 100, 2)
+        if len(c) >= 21 and c[-21] > 0:
+            tech["ret_20d"] = round((c[-1] - c[-21]) / c[-21] * 100, 2)
+        win = c[-252:] if len(c) >= 252 else c
+        hi = max(win); low = min(win)
+        if hi > 0: tech["drawdown_pct"] = round((c[-1] - hi) / hi * 100, 2)
+        if low > 0: tech["near_52w_low"] = bool(c[-1] <= 1.10 * low)
+        if len(c) >= 30 and len(v) >= 30:
+            avgv = sum(v[-30:]) / 30
+            dist_days = 0
+            for i in range(-10, 0):
+                if c[i] < c[i - 1] and v[i] > 1.25 * avgv: dist_days += 1
+            tech["distribution"] = bool(dist_days >= 3)
+        bs = _sub(bench)
+        if tech.get("ret_20d") is not None and bs is not None:
+            bc = list(bs["Close"].dropna())
+            if len(bc) >= 21 and bc[-21] > 0:
+                tech["rs_vs_bench"] = round(tech["ret_20d"] - (bc[-1] - bc[-21]) / bc[-21] * 100, 2)
+    except Exception as _e:
+        return {"success": False, "error": "technical computation failed: %s" % str(_e)[:120]}
+
+    def _fund():
+        f = {}
+        try:
+            if region == "IN":
+                d = fetch_nse_stock_data(sym) or {}
+                for k in ("debtEquity", "promoterHolding", "currentRatio", "roce"):
+                    if d.get(k) not in (None, 0): f[k] = d.get(k)
+                f["name"] = d.get("companyName") or sym; f["sector"] = d.get("sector") or ""
+                if d.get("pe"): f["pe"] = d.get("pe")
+                if d.get("pledgedPct") is not None: f["pledgedPct"] = d.get("pledgedPct")
+            else:
+                d = fetch_multi_source_fundamentals(sym) or {}
+                if d.get("debt_to_equity") is not None: f["debtEquity"] = d.get("debt_to_equity")
+                pe = d.get("pe") or d.get("pe_ratio")
+                if pe:
+                    try: f["pe"] = float(pe)
+                    except Exception: pass
+                ps = d.get("price_to_sales") or d.get("priceToSales")
+                if ps: f["priceToSales"] = ps
+                if d.get("current_ratio"): f["currentRatio"] = d.get("current_ratio")
+                if d.get("beta"): f["beta"] = d.get("beta")
+                f["name"] = d.get("name") or d.get("companyName") or sym; f["sector"] = d.get("sector") or ""
+        except Exception:
+            pass
+        return f
+    fund = await _lp.run_in_executor(None, _fund)
+
+    meta = {"symbol": sym, "name": fund.get("name") or sym, "region": region}
+    out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym, **_redflag_scan(meta, tech, fund)}
+    _REDFLAG_CACHE[ck] = (_t.time(), out)
+    return out
+
+
+
+_REDFLAG_SCREEN_CACHE = {}
+_REDFLAG_SCREEN_TTL = 1800
+
+@app.get("/api/red-flag-screen")
+async def red_flag_screen(region: str = "US", refresh: int = 0):
+    """Red Flag Screen — region-wise Bloomberg-style universe scan.
+    Runs the red-flag engine across a region's liquid universe using live (batched)
+    technicals and ranks names by structural/technical risk. Fundamental forensics are
+    NOT fetched in batch (too slow / mostly N/A) — run the single-symbol scan for those.
+    """
+    import time as _t
+    region = (region or "US").upper()
+    if region not in ("US", "IN"):
+        region = "US"
+    ck = "rfscreen_" + region
+    if not refresh and ck in _REDFLAG_SCREEN_CACHE and (_t.time() - _REDFLAG_SCREEN_CACHE[ck][0] < _REDFLAG_SCREEN_TTL):
+        return _REDFLAG_SCREEN_CACHE[ck][1]
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    _lp = asyncio.get_event_loop()
+    uni = list(_INST_PICKS_UNIVERSE.get(region, []))
+    if not uni:
+        return {"success": False, "error": "no universe for region %s" % region}
+    bench = "SPY" if region == "US" else "^NSEI"
+    def _yf(s): return s if region == "US" else "%s.NS" % s
+
+    def _batch():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        tickers = [_yf(s) for s in uni] + [bench]
+        try:
+            return yf.download(tickers=" ".join(tickers), period="2y", interval="1d",
+                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+        except Exception:
+            return None
+    hist = await _lp.run_in_executor(None, _batch)
+    if hist is None:
+        return {"success": False, "error": "batch fetch failed"}
+
+    def _sub(ys):
+        try:
+            cols = hist.columns
+            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                d = hist[ys].dropna()
+                return d if (d is not None and len(d) >= 60) else None
+        except Exception:
+            pass
+        return None
+
+    bench_ret = None
+    bs = _sub(bench)
+    if bs is not None:
+        try:
+            bc = list(bs["Close"].dropna())
+            if len(bc) >= 21 and bc[-21] > 0:
+                bench_ret = (bc[-1] - bc[-21]) / bc[-21] * 100
+        except Exception:
+            pass
+
+    def _tech_for(s):
+        d = _sub(_yf(s))
+        if d is None: return None
+        t = {}
+        try:
+            c = list(d["Close"].dropna()); h = list(d["High"].dropna())
+            lo = list(d["Low"].dropna()); v = list(d["Volume"].dropna())
+            if len(c) < 60: return None
+            t["price"] = float(c[-1])
+            if len(c) >= 50: t["ma50"] = sum(c[-50:]) / 50
+            if len(c) >= 200:
+                t["ma200"] = sum(c[-200:]) / 200
+                if len(c) >= 221: t["ma200_prev"] = sum(c[-221:-21]) / 200
+            if len(c) >= 15 and len(h) >= 15 and len(lo) >= 15:
+                trs = []
+                for i in range(-14, 0):
+                    trs.append(max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1])))
+                atr = sum(trs) / len(trs) if trs else None
+                if atr and t["price"]: t["atr_pct"] = round(atr / t["price"] * 100, 2)
+            if len(c) >= 21 and c[-21] > 0:
+                t["ret_20d"] = round((c[-1] - c[-21]) / c[-21] * 100, 2)
+                if bench_ret is not None: t["rs_vs_bench"] = round(t["ret_20d"] - bench_ret, 2)
+            win = c[-252:] if len(c) >= 252 else c
+            hi = max(win); low = min(win)
+            if hi > 0: t["drawdown_pct"] = round((c[-1] - hi) / hi * 100, 2)
+            if low > 0: t["near_52w_low"] = bool(c[-1] <= 1.10 * low)
+            if len(c) >= 30 and len(v) >= 30:
+                avgv = sum(v[-30:]) / 30; dd = 0
+                for i in range(-10, 0):
+                    if c[i] < c[i - 1] and v[i] > 1.25 * avgv: dd += 1
+                t["distribution"] = bool(dd >= 3)
+        except Exception:
+            return None
+        return t
+
+    def _scan_all():
+        rows = []
+        for s in uni:
+            t = _tech_for(s)
+            if t is None: continue
+            scan = _redflag_scan({"symbol": s, "name": s, "region": region}, t, {})
+            top = sorted([f for cat in scan["categories"] for f in cat["flags"]
+                          if f["severity"] in ("critical", "warning", "watch")],
+                         key=lambda f: -f["pts"])[:3]
+            rows.append({
+                "symbol": s, "red_flag_score": scan["red_flag_score"],
+                "risk_level": scan["risk_level"], "level_color": scan["level_color"],
+                "critical": scan["critical"], "warning": scan["warning"], "watch": scan["watch"],
+                "top_flags": [{"label": f["label"], "severity": f["severity"]} for f in top],
+            })
+        return rows
+    rows = await _lp.run_in_executor(None, _scan_all)
+    rows.sort(key=lambda r: (-r["red_flag_score"], -r["critical"], -r["warning"]))
+
+    out = {
+        "success": True, "region": region, "as_of": _MB_DISCOVERY_ASOF,
+        "universe_size": len(uni), "scanned": len(rows),
+        "results": rows,
+        "note": ("Region-wise structural/technical red-flag screen on live (batched) prices, ranked by "
+                 "additive risk (higher = riskier). Fundamental forensics (valuation, solvency, earnings "
+                 "quality, governance) are NOT run in batch mode \u2014 open any name in the single-symbol "
+                 "scan for those. Forensic, not advice."),
+    }
+    _REDFLAG_SCREEN_CACHE[ck] = (_t.time(), out)
+    return out
+
+
+
 @app.get("/api/multibagger-hunter")
 async def multibagger_hunter(email: str = "", region: str = "IN"):
     """Find stocks at the starting stage of explosive growth — works even in crashes"""
