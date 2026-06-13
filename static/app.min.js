@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.43";
-window.CELESYS_BUILD_TIME = 1780938000;
-window.CELESYS_BUILD_DATE = "2026-06-08 17:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.44";
+window.CELESYS_BUILD_TIME = 1780941600;
+window.CELESYS_BUILD_DATE = "2026-06-08 18:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11755,6 +11755,7 @@ window._engShow = function(panel) {
     'mbdiscovery': 'engMBDiscPanel',
     'imdf': 'engIMDFPanel',
     'redflag': 'engRedFlagPanel',
+    'instterm': 'engInstTermPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11775,6 +11776,7 @@ window._engShow = function(panel) {
     'mbdiscovery': 'engBtnMBDisc',
     'imdf': 'engBtnIMDF',
     'redflag': 'engBtnRedFlag',
+    'instterm': 'engBtnInstTerm',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12580,6 +12582,83 @@ window._renderRedFlagScreen = function(d){
   h += '</tbody></table></div>';
   if (d.note) h += '<div style="font-size:9px;color:'+dim+';line-height:1.5;padding:8px 12px 10px;border-top:1px solid '+bd+'">'+E(d.note)+' <span style="color:'+txt+'">Tap any row for the full single-symbol forensic card.</span></div>';
   h += '</div>';
+  return h;
+};
+
+window._itRegion = 'US';
+window._loadInstTerm = function(){
+  var inp = document.getElementById('itSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  var resEl = document.getElementById('itResult'); var btn = document.getElementById('itBtn');
+  if (!resEl) return;
+  if (!sym) { resEl.innerHTML = '<div style="padding:14px;color:#0f766e;font-size:11px">Enter a symbol first (NVDA, RELIANCE, DIXON\u2026).</div>'; return; }
+  var reg = window._itRegion || 'US';
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '\u23F3 OPENING\u2026'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#0f766e"><div style="display:inline-block;width:16px;height:16px;border:2px solid #0f766e;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Building the institutional terminal for ' + sym + '\u2026</div>';
+  fetch('/api/institutional-terminal?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg) + '&refresh=1', {cache:'no-store'})
+    .then(function(r){ return r.json().catch(function(){return null;}); })
+    .then(function(d){
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDFE6\uFE0F OPEN TERMINAL'; }
+      if (!d || !d.success) { var m = (d && (d.error || d.detail)) || 'unknown'; if (window._engRenderError) window._engRenderError('itResult', sym, m, d && d.trace); else resEl.innerHTML = '<div style="padding:14px;color:#0f766e;font-size:11px">' + sym + ': ' + m + '</div>'; return; }
+      resEl.innerHTML = window._renderInstTerm(d);
+    })
+    .catch(function(e){ if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDFE6\uFE0F OPEN TERMINAL'; } resEl.innerHTML = '<div style="padding:14px;color:#0f766e;font-size:11px">Network error: ' + e.message + '</div>'; });
+};
+
+window._renderInstTerm = function(d){
+  var E = window._esc || function(s){return String(s||'');};
+  var bg='#0a0e17', bd='#1f2a3a', txt='#e5e7eb', dim='#94a3b8', mono="'JetBrains Mono','IBM Plex Mono',ui-monospace,monospace";
+  var STAT = {
+    live:    {ic:'\u2713', c:'#10b981', tag:'LIVE'},
+    curated: {ic:'\u2713', c:'#818cf8', tag:'EDITORIAL'},
+    inferred:{ic:'\u2713', c:'#f59e0b', tag:'INFERRED'},
+    verify:  {ic:'\u2717', c:'#9ca3af', tag:'VERIFY'},
+    portfolio:{ic:'\u2717', c:'#9ca3af', tag:'NEEDS PORTFOLIO'}
+  };
+  var GRADEC = function(g){ if(!g) return dim; if(g[0]==='A') return '#10b981'; if(g[0]==='B') return '#34d399'; if(g[0]==='C') return '#eab308'; if(g[0]==='D') return '#f97316'; return '#ef4444'; };
+  function rows(list){
+    var h='';
+    (list||[]).forEach(function(m){
+      var s = STAT[m.status] || STAT.verify;
+      h += '<div style="display:flex;gap:9px;padding:6px 12px;align-items:flex-start;border-top:1px solid '+bd+'">';
+      h += '<span style="color:'+s.c+';font-size:12px;line-height:1.4;flex:0 0 auto;width:12px">'+s.ic+'</span>';
+      h += '<div style="flex:1 1 auto;min-width:0">';
+      h += '<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">';
+      h += '<span style="font-size:11px;font-weight:700;color:'+(m.status==='verify'||m.status==='portfolio'?dim:txt)+'">'+E(m.label)+'</span>';
+      h += '<span style="font-size:11px;color:'+(m.status==='verify'||m.status==='portfolio'?dim:'#cbd5e1')+'">'+E(m.value)+'</span>';
+      if (m.grade) h += '<span style="font-size:9px;font-weight:900;color:'+GRADEC(m.grade)+';border:1px solid '+GRADEC(m.grade)+';border-radius:3px;padding:0 4px">'+E(m.grade)+'</span>';
+      h += '<span style="font-size:8px;color:'+s.c+';margin-left:auto;letter-spacing:.5px">'+s.tag+'</span>';
+      h += '</div>';
+      if (m.note) h += '<div style="font-size:9px;color:'+dim+';line-height:1.4;margin-top:1px">'+E(m.note)+'</div>';
+      h += '</div></div>';
+    });
+    return h;
+  }
+  function modeBlock(title, icon, list){
+    var h = '<div style="margin-bottom:10px;border:1px solid '+bd+';border-radius:8px;overflow:hidden">';
+    h += '<div style="padding:6px 12px;background:#070b12;border-bottom:1px solid '+bd+';font-size:10px;font-weight:800;letter-spacing:1px;color:#5eead4">'+icon+' '+title+'</div>';
+    h += rows(list) + '</div>';
+    return h;
+  }
+  var cov = d.coverage || {};
+  var h = '';
+  h += '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:10px;overflow:hidden;font-family:'+mono+';color:'+txt+'">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#070b12;border-bottom:1px solid '+bd+'">';
+  h += '<div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#5eead4">\uD83C\uDFE6\uFE0F INSTITUTIONAL TERMINAL</div>';
+  h += '<div style="font-size:9px;color:'+dim+'">'+E(d.symbol)+' \u00b7 '+E(d.region)+' \u00b7 '+E(d.as_of||'')+'</div></div>';
+  h += '<div style="padding:12px 12px 6px">';
+  h += '<div style="font-size:13px;font-weight:800;color:'+txt+';margin-bottom:2px">'+E(d.name||d.symbol)+(d.inferred_meta?' <span style="font-size:9px;color:#f59e0b">\u00b7 meta sector-inferred</span>':'')+'</div>';
+  // coverage strip
+  h += '<div style="display:flex;gap:14px;font-size:9px;margin:6px 0 10px;color:'+dim+'">';
+  h += '<span style="color:#10b981;font-weight:800">\u2713 '+E(cov.live)+' live</span>';
+  h += '<span style="color:#818cf8;font-weight:800">\u2713 '+E(cov.editorial)+' editorial</span>';
+  h += '<span style="color:#9ca3af;font-weight:800">\u2717 '+E(cov.gated)+' verify/needs-portfolio</span>';
+  h += '<span style="margin-left:auto">'+E(cov.total)+' metrics</span></div>';
+  h += modeBlock('INVESTOR MODE', '\uD83D\uDCC8', d.investor);
+  h += modeBlock('TRADER MODE', '\u26A1', d.trader);
+  h += modeBlock('PORTFOLIO MANAGER MODE', '\uD83C\uDFAF', d.pm);
+  if (d.disclosure) h += '<div style="font-size:9px;color:'+dim+';line-height:1.5;padding:8px 4px 10px;border-top:1px solid '+bd+'">'+E(d.disclosure)+'</div>';
+  h += '</div></div>';
   return h;
 };
 

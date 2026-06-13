@@ -40314,6 +40314,340 @@ async def red_flag_screen(region: str = "US", refresh: int = 0):
     return out
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# ═══ INSTITUTIONAL TERMINAL (r63.110.44) — Bloomberg-style 3-mode decision engine ═══
+# Single-symbol terminal presenting Investor / Trader / Portfolio-Manager modes.
+# HONESTY CONTRACT — every metric carries a status:
+#   live     = computed from real price/volume history (reliable)
+#   curated  = editorial value from the curated _MB_UNIVERSE
+#   inferred = sector-inferred editorial (flagged, verify)
+#   verify   = data-gated — NOT available on this feed (estimates / 13F / options flow / dark-pool)
+#   portfolio= requires a holdings list (not derivable from one symbol)
+# Gated institutional data is NEVER fabricated; it is surfaced as 'verify'.
+
+def _it_num(v):
+    try:
+        f = float(v); return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+def _it_grade(s):
+    if s is None: return None
+    if s >= 85: return "A+"
+    if s >= 75: return "A"
+    if s >= 65: return "B+"
+    if s >= 55: return "B"
+    if s >= 45: return "C+"
+    if s >= 35: return "C"
+    if s >= 25: return "D"
+    return "F"
+
+def _it_metric(label, value, score, status, note):
+    return {"label": label, "value": value, "score": (round(score) if score is not None else None),
+            "grade": _it_grade(score), "status": status, "note": note}
+
+def _it_stage(price, ma200, ma200_prev):
+    if price is None or ma200 is None:
+        return ("Stage ? — unverified", "200-DMA unavailable", None)
+    rising = (ma200_prev is not None and ma200 > ma200_prev)
+    falling = (ma200_prev is not None and ma200 < ma200_prev)
+    above = price > ma200
+    if above and rising:   return ("Stage 2 — Advancing", "uptrend: above a rising 200-DMA", 85)
+    if above and not rising:return ("Stage 3 — Top/Distribution", "above 200-DMA but flat/rolling — late-cycle", 50)
+    if (not above) and falling: return ("Stage 4 — Declining", "downtrend: below a falling 200-DMA", 12)
+    return ("Stage 1 — Basing", "below/at a flattening 200-DMA — possible base", 40)
+
+def _inst_terminal(meta, tech, fund):
+    g = _it_num
+    price = g(tech.get("price"))
+
+    # ───────────────── INVESTOR MODE ─────────────────
+    inferred = bool(meta.get("_inferred"))
+    ed_status = "inferred" if inferred else "curated"
+    # Opportunity Score — from market-cap tier (smaller = larger multibagger runway) + decade theme
+    tier = meta.get("mcap_tier")
+    tier_pts = {"micro": 90, "small": 80, "mid": 62, "large": 46}.get(tier)
+    if tier_pts is None:
+        opp = _it_metric("Opportunity Score", "cap unverified", None, "verify", "market-cap not retrieved — tier/runway unknown")
+    else:
+        if meta.get("decade_growth"): tier_pts = min(100, tier_pts + 6)
+        opp = _it_metric("Opportunity Score", "%s-cap runway" % tier, tier_pts, ed_status,
+                         "tier objective: %s; decade theme %s" % (tier, "yes" if meta.get("decade_growth") else "no"))
+    # Industry Transformation — editorial theme + (live) sector relative strength tilt
+    theme = meta.get("theme") or "\u2014"
+    rs20 = g(tech.get("rs_20d"))
+    if theme and theme != "\u2014":
+        it_score = 74 + (6 if meta.get("decade_growth") else 0)
+        if rs20 is not None: it_score = max(10, min(100, it_score + (rs20 * 0.6)))
+        itr = _it_metric("Industry Transformation", theme, it_score, ed_status,
+                         "secular theme (editorial) tilted by live relative strength")
+    else:
+        itr = _it_metric("Industry Transformation", "theme unmapped", None, "verify", "sector did not map to a tracked theme")
+    # Moat Score — curated moats list
+    moats = meta.get("moats") or []
+    if moats:
+        moat_score = min(100, 55 + 12 * len(moats))
+        moat = _it_metric("Moat Score", ", ".join(moats[:3]), moat_score, ed_status, "editorial moat sources")
+    elif inferred:
+        moat = _it_metric("Moat Score", "not assessed", None, "verify", "not in curated universe — moat not editorially assessed")
+    else:
+        moat = _it_metric("Moat Score", "no durable moat noted", 40, "curated", "curated as no wide moat")
+    # Institutional Ownership Trend — GATED (13F / fund-count delta not on this feed)
+    iot = _it_metric("Institutional Ownership Trend", "N/A", None, "verify",
+                     "fund-count delta / 13F flow not available on this feed")
+    # Forward Earnings Revision — GATED (analyst estimate revisions not on this feed)
+    fer = _it_metric("Fwd Earnings Revision", "N/A", None, "verify",
+                     "consensus EPS/target revisions not available on this feed")
+    # Smart Money Score — PRICE PROXY (RVOL + accumulation + RS); not true dark-pool/13F
+    rvol = g(tech.get("rvol")); ud = g(tech.get("up_down_vol_ratio")); acc = g(tech.get("accum_score"))
+    if acc is not None:
+        smc = _it_metric("Smart Money (proxy)", "accum %d/100" % round(acc), acc, "live",
+                         "price/volume accumulation proxy — NOT dark-pool/13F flow")
+    else:
+        smc = _it_metric("Smart Money (proxy)", "N/A", None, "verify", "insufficient volume history for proxy")
+
+    # ───────────────── TRADER MODE ─────────────────
+    rs63 = g(tech.get("rs_63d"))
+    if rs20 is not None:
+        rs_score = max(5, min(100, 50 + rs20 * 1.4))
+        rs_val = "%+.1f%% 20d" % rs20 + ((" / %+.1f%% 3m" % rs63) if rs63 is not None else "")
+        relstr = _it_metric("Relative Strength", rs_val, rs_score, "live", "return vs index")
+    else:
+        relstr = _it_metric("Relative Strength", "N/A", None, "verify", "benchmark unavailable")
+    st_label, st_note, st_score = _it_stage(price, g(tech.get("ma200")), g(tech.get("ma200_prev")))
+    stage = _it_metric("Stage Analysis", st_label, st_score, "live" if st_score is not None else "verify", st_note)
+    if ud is not None or rvol is not None:
+        va_score = 50
+        if ud is not None: va_score = max(5, min(100, 50 + (ud - 1) * 40))
+        if rvol is not None and rvol > 1.5: va_score = min(100, va_score + 10)
+        va_val = (("U/D vol %.2f" % ud) if ud is not None else "") + ((" \u00b7 RVOL %.1f" % rvol) if rvol is not None else "")
+        volacc = _it_metric("Volume Accumulation", va_val.strip(" \u00b7"), va_score, "live", "up-volume vs down-volume, relative volume")
+    else:
+        volacc = _it_metric("Volume Accumulation", "N/A", None, "verify", "volume history insufficient")
+    # Options Flow — GATED (options chain unreliable on Render)
+    ofl = _it_metric("Options Flow", "N/A", None, "verify", "options chain / unusual-activity not reliable on this feed")
+    # Breakout Probability — heuristic: proximity to 52w high + volatility contraction + above MAs
+    dh = g(tech.get("dist_to_high_pct")); contr = tech.get("atr_contracting"); ma50 = g(tech.get("ma50")); ma200 = g(tech.get("ma200"))
+    if dh is not None:
+        bp = 50.0
+        bp += max(-30, (10 + dh) * 2.2)          # closer to high (dh near 0) scores higher; dh is negative
+        if contr: bp += 12
+        if price is not None and ma50 is not None and price > ma50: bp += 8
+        if price is not None and ma200 is not None and price > ma200: bp += 6
+        bp = max(5, min(95, bp))
+        brk = _it_metric("Breakout Probability", "%d%% \u00b7 %.0f%% from 52w high" % (round(bp), dh), bp, "live",
+                         "heuristic: distance to high, volatility contraction, MA posture")
+    else:
+        brk = _it_metric("Breakout Probability", "N/A", None, "verify", "52-week range unavailable")
+    # Risk/Reward — ATR stop (1.5x) + measured target (recent high or 3x risk)
+    atr = g(tech.get("atr"))
+    if price is not None and atr is not None and atr > 0:
+        stop = price - 1.5 * atr
+        risk = price - stop
+        tgt = price + 3.0 * risk
+        rr = (tgt - price) / risk if risk > 0 else None
+        rr_val = "R:R %.1f:1 \u00b7 stop %.2f / tgt %.2f" % (rr, stop, tgt) if rr else "N/A"
+        rr_score = 70 if (rr and rr >= 2.5) else (55 if (rr and rr >= 2) else 40)
+        rrm = _it_metric("Risk / Reward", rr_val, rr_score, "live", "ATR(14) 1.5x stop, 3R measured target")
+    else:
+        rrm = _it_metric("Risk / Reward", "N/A", None, "verify", "ATR/price unavailable")
+
+    # ───────────────── PORTFOLIO MANAGER MODE ─────────────────
+    # Position Sizing — volatility-based (1% account risk, 1.5 ATR stop)
+    if price is not None and atr is not None and atr > 0:
+        stop_dist_pct = (1.5 * atr) / price * 100.0
+        pos_pct = min(25.0, 1.0 / (stop_dist_pct / 100.0)) if stop_dist_pct > 0 else None
+        if pos_pct is not None:
+            ps = _it_metric("Position Sizing", "%.1f%% of capital" % pos_pct, min(100, pos_pct * 4), "live",
+                            "1%% account risk, 1.5-ATR stop (%.1f%% stop distance)" % stop_dist_pct)
+        else:
+            ps = _it_metric("Position Sizing", "N/A", None, "verify", "stop distance undefined")
+    else:
+        ps = _it_metric("Position Sizing", "N/A", None, "verify", "ATR/price unavailable")
+    # Portfolio Risk — beta, annualized vol, 1-day 95% VaR (single-name)
+    beta = g(tech.get("beta")); volann = g(tech.get("vol_annual_pct")); var95 = g(tech.get("var95_pct"))
+    if beta is not None or volann is not None:
+        parts = []
+        if beta is not None: parts.append("\u03b2 %.2f" % beta)
+        if volann is not None: parts.append("vol %.0f%%/yr" % volann)
+        if var95 is not None: parts.append("1d VaR\u2089\u2085 %.1f%%" % var95)
+        risk_score = 70
+        if volann is not None: risk_score = max(10, min(100, 100 - (volann - 20)))  # lower vol = safer
+        pr = _it_metric("Portfolio Risk (single-name)", " \u00b7 ".join(parts), risk_score, "live",
+                        "beta/vol/VaR vs index from daily returns")
+    else:
+        pr = _it_metric("Portfolio Risk (single-name)", "N/A", None, "verify", "return series unavailable")
+    # Correlation — to benchmark (live); full holdings correlation needs a portfolio
+    corr = g(tech.get("corr_bench"))
+    if corr is not None:
+        cr = _it_metric("Correlation (vs index)", "\u03c1 %.2f" % corr, None, "live",
+                        "daily-return correlation to index; full holdings correlation needs your portfolio")
+    else:
+        cr = _it_metric("Correlation", "N/A", None, "portfolio", "needs a holdings list / benchmark series")
+    # Exposure — single-name sector/theme; portfolio-level exposure needs holdings
+    exp = _it_metric("Exposure Management", "%s \u00b7 %s" % (meta.get("sector") or "\u2014", theme), None, "portfolio",
+                     "single-name sector/theme shown; portfolio exposure roll-up needs your holdings")
+
+    investor = [opp, itr, moat, iot, fer, smc]
+    trader = [relstr, stage, volacc, ofl, brk, rrm]
+    pm = [ps, pr, cr, exp]
+    allm = investor + trader + pm
+    live = sum(1 for m in allm if m["status"] == "live")
+    editorial = sum(1 for m in allm if m["status"] in ("curated", "inferred"))
+    gated = sum(1 for m in allm if m["status"] in ("verify", "portfolio"))
+
+    return {
+        "symbol": meta.get("symbol"), "name": meta.get("name"), "region": meta.get("region"),
+        "inferred_meta": inferred,
+        "investor": investor, "trader": trader, "pm": pm,
+        "coverage": {"live": live, "editorial": editorial, "gated": gated, "total": len(allm)},
+        "disclosure": ("Bloomberg-style triage, not Bloomberg's data. Live = real price/volume math. "
+                       "Editorial = curated/sector-inferred moat & theme. 'verify' = institutional data "
+                       "(estimate revisions, 13F ownership, options flow, dark-pool) NOT on this feed — never faked. "
+                       "Smart Money here is a price/volume proxy. Forensic & informational, not advice."),
+    }
+
+
+_INST_TERM_CACHE = {}
+_INST_TERM_TTL = 900
+
+@app.get("/api/institutional-terminal")
+async def institutional_terminal(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Institutional Terminal — single-symbol Bloomberg-style 3-mode decision card."""
+    import time as _t, math as _m
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE, DIXON)."}
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    region = (region or "US").upper()
+    ck = "it_%s_%s" % (region, sym)
+    if not refresh and ck in _INST_TERM_CACHE and (_t.time() - _INST_TERM_CACHE[ck][0] < _INST_TERM_TTL):
+        return _INST_TERM_CACHE[ck][1]
+    _lp = asyncio.get_event_loop()
+    _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN"}
+    yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
+    bench = "SPY" if region == "US" else "^NSEI"
+
+    def _fetch():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        try:
+            return yf.download(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
+                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+        except Exception:
+            return None
+    hist = await _lp.run_in_executor(None, _fetch)
+
+    def _sub(ys):
+        try:
+            cols = hist.columns
+            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                d = hist[ys].dropna()
+                return d if (d is not None and len(d) >= 60) else None
+        except Exception:
+            pass
+        return None
+
+    sub = _sub(yf_sym)
+    if sub is None:
+        return {"success": False, "error": "No price history for %s (%s)." % (sym, yf_sym)}
+    tech = {}
+    try:
+        c = list(sub["Close"].dropna()); h = list(sub["High"].dropna())
+        lo = list(sub["Low"].dropna()); v = list(sub["Volume"].dropna())
+        tech["price"] = round(float(c[-1]), 2)
+        if len(c) >= 50: tech["ma50"] = sum(c[-50:]) / 50
+        if len(c) >= 200:
+            tech["ma200"] = sum(c[-200:]) / 200
+            if len(c) >= 221: tech["ma200_prev"] = sum(c[-221:-21]) / 200
+        # ATR14 + contraction (ATR14 < ATR over prior 50)
+        def _atr(n, off=0):
+            if len(c) < n + 1 + off: return None
+            trs = []
+            for i in range(-(n + off), -off if off else 0):
+                trs.append(max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1])))
+            return sum(trs) / len(trs) if trs else None
+        atr14 = _atr(14)
+        if atr14: tech["atr"] = round(atr14, 4)
+        atr50 = _atr(50)
+        if atr14 and atr50: tech["atr_contracting"] = bool(atr14 < atr50)
+        # returns series (pct change)
+        def _rets(series):
+            r = []
+            for i in range(1, len(series)):
+                if series[i - 1] > 0: r.append((series[i] - series[i - 1]) / series[i - 1])
+            return r
+        rets = _rets(c)
+        # RS vs bench
+        bs = _sub(bench); bc = list(bs["Close"].dropna()) if bs is not None else None
+        if len(c) >= 21 and c[-21] > 0:
+            r20 = (c[-1] - c[-21]) / c[-21] * 100
+            if bc and len(bc) >= 21 and bc[-21] > 0:
+                tech["rs_20d"] = round(r20 - (bc[-1] - bc[-21]) / bc[-21] * 100, 2)
+        if len(c) >= 64 and c[-64] > 0 and bc and len(bc) >= 64 and bc[-64] > 0:
+            tech["rs_63d"] = round((c[-1] - c[-64]) / c[-64] * 100 - (bc[-1] - bc[-64]) / bc[-64] * 100, 2)
+        # volume accumulation
+        if len(c) >= 31 and len(v) >= 31:
+            up = sum(v[i] for i in range(-30, 0) if c[i] >= c[i - 1])
+            dn = sum(v[i] for i in range(-30, 0) if c[i] < c[i - 1])
+            if dn > 0: tech["up_down_vol_ratio"] = round(up / dn, 2)
+            avgv = sum(v[-30:]) / 30
+            if avgv > 0: tech["rvol"] = round(v[-1] / avgv, 2)
+            base = 50.0
+            if "up_down_vol_ratio" in tech: base += (tech["up_down_vol_ratio"] - 1) * 30
+            if tech.get("rvol", 0) > 1.3: base += 8
+            if tech.get("rs_20d") is not None: base += tech["rs_20d"] * 0.5
+            tech["accum_score"] = round(max(0, min(100, base)))
+        # 52w high distance
+        win = c[-252:] if len(c) >= 252 else c
+        hi = max(win)
+        if hi > 0: tech["dist_to_high_pct"] = round((c[-1] - hi) / hi * 100, 2)
+        # beta, vol, VaR, correlation vs bench (aligned daily returns)
+        if bc:
+            brets = _rets(bc)
+            n = min(len(rets), len(brets), 252)
+            if n >= 60:
+                xs = rets[-n:]; ys = brets[-n:]
+                mx = sum(xs) / n; my = sum(ys) / n
+                cov = sum((xs[i] - mx) * (ys[i] - my) for i in range(n)) / n
+                vary = sum((ys[i] - my) ** 2 for i in range(n)) / n
+                varx = sum((xs[i] - mx) ** 2 for i in range(n)) / n
+                if vary > 0: tech["beta"] = round(cov / vary, 2)
+                sx = _m.sqrt(varx) if varx > 0 else 0
+                if sx > 0:
+                    tech["vol_annual_pct"] = round(sx * _m.sqrt(252) * 100, 1)
+                    tech["var95_pct"] = round(1.645 * sx * 100, 2)
+                    sy = _m.sqrt(vary) if vary > 0 else 0
+                    if sy > 0: tech["corr_bench"] = round(cov / (sx * sy), 2)
+    except Exception as _e:
+        return {"success": False, "error": "technical computation failed: %s" % str(_e)[:140]}
+
+    def _fund():
+        f = {}
+        try:
+            if region == "IN":
+                d = fetch_nse_stock_data(sym) or {}
+                f["name"] = d.get("companyName") or sym; f["sector"] = d.get("sector") or ""
+                if d.get("marketCap"): f["marketCap"] = d.get("marketCap")
+            else:
+                d = fetch_multi_source_fundamentals(sym) or {}
+                f["name"] = d.get("name") or d.get("companyName") or sym
+                f["sector"] = d.get("sector") or ""; f["industry"] = d.get("industry") or ""
+                if d.get("market_cap") or d.get("marketCap"): f["marketCap"] = d.get("market_cap") or d.get("marketCap")
+        except Exception:
+            pass
+        return f
+    fund = await _lp.run_in_executor(None, _fund)
+    meta = _imdf_infer_meta(sym, region, fund)
+    meta["name"] = fund.get("name") or meta.get("name") or sym
+
+    out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym, **_inst_terminal(meta, tech, fund)}
+    _INST_TERM_CACHE[ck] = (_t.time(), out)
+    return out
+
+
+
 
 @app.get("/api/multibagger-hunter")
 async def multibagger_hunter(email: str = "", region: str = "IN"):
