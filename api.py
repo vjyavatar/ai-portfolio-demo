@@ -40428,6 +40428,73 @@ def _it_verdict(investor, trader, pm, tech, meta):
             "bull": bull[:6], "bear": bear[:6], "unverified": unverified,
             "time_horizon": th, "expected_risk": risk, "expected_reward": reward, "headline": headline}
 
+def _it_plain(v, investor, trader, pm, tech, meta):
+    """Translate the verdict into layman language with a clear stance and why-buy / why-hold /
+    why-sell reasons. Built from the same computed signals; gated data is flagged, not assumed."""
+    g = _it_num
+    M = {m["label"]: m for m in (investor + trader + pm)}
+    stagev = str(M.get("Stage Analysis", {}).get("value", ""))
+    s2 = "Stage 2" in stagev; s4 = "Stage 4" in stagev; s1 = "Stage 1" in stagev; s3 = "Stage 3" in stagev
+    bull_n = len([b for b in v.get("bull", []) if not b.startswith("No ")])
+    bear_n = len([b for b in v.get("bear", []) if not b.startswith("No ")])
+    conf = v.get("confidence", 0)
+    rs = g(tech.get("rs_20d")); acc = g(tech.get("accum_score")); dh = g(tech.get("dist_to_high_pct"))
+    vol = g(tech.get("vol_annual_pct")); beta = g(tech.get("beta")); ud = g(tech.get("up_down_vol_ratio"))
+    moats = meta.get("moats") or []; theme = meta.get("theme") or ""
+
+    # ── stance ──
+    if s4 or (bear_n >= 3 and bear_n > bull_n):
+        action, color = "AVOID / REDUCE", "#dc2626"
+        line = "This stock is in a downtrend and lagging the market. The safer move is to stay away (or trim if you own it) until it stops falling and rebuilds a base."
+    elif s2 and conf >= 65 and bull_n > bear_n:
+        action, color = "ACCUMULATE", "#16a34a"
+        line = "This is a healthy uptrend leading the market. A reasonable approach is to buy in stages (on pullbacks to support), not all at once."
+    elif s1:
+        action, color = "WATCHLIST / WAIT", "#d97706"
+        line = "This stock is basing — not falling hard, not yet rising. Put it on a watchlist and wait for a clean breakout on strong volume before committing."
+    elif s3:
+        action, color = "HOLD / TIGHTEN STOPS", "#d97706"
+        line = "This stock is late in its run — still up but losing momentum. If you own it, protect profits with tighter stops rather than adding."
+    elif bull_n > bear_n:
+        action, color = "HOLD / BUY DIPS", "#16a34a"
+        line = "More is working than not. If you own it, hold; if you want in, wait for a dip rather than chasing."
+    else:
+        action, color = "HOLD / NEUTRAL", "#d97706"
+        line = "Signals are mixed — nothing decisive either way. No rush to buy or sell; let the chart tell you next."
+
+    why_buy, why_hold, why_sell = [], [], []
+    if s2: why_buy.append("It's in a healthy uptrend — the price sits above its rising long-term (200-day) average, which is exactly what winning stocks do.")
+    if rs is not None and rs >= 5: why_buy.append("It's beating the overall market lately — big money tends to crowd into leaders like this.")
+    if acc is not None and acc >= 65: why_buy.append("More trading volume shows up on up-days than down-days — a sign buyers, not sellers, are in control.")
+    if dh is not None and dh > -8: why_buy.append("It's pressing right up against its 52-week high and could break out to brand-new highs.")
+    if moats: why_buy.append("The company has real competitive advantages (%s) that protect its profits from rivals." % ", ".join(moats[:2]))
+    if theme and theme != "\u2014": why_buy.append("It rides a long-term growth wave (%s), so the tide is pushing in its favor for years, not weeks." % theme)
+    if meta.get("mcap_tier") in ("small", "micro", "mid") and meta.get("decade_growth"):
+        why_buy.append("It's still small enough that it could grow several times over if management executes.")
+
+    why_hold.append("If you already own it, the trend and structure don't demand an exit — let a winner work rather than selling early.")
+    rr = M.get("Risk / Reward", {})
+    if rr.get("status") == "live": why_hold.append("From here the setup offers more potential upside than downside (see the Risk/Reward line), which favors patience over panic.")
+    why_hold.append("Add only on strength or a controlled pullback — never average down into weakness just because it's 'cheaper'.")
+
+    if s4: why_sell.append("It's in a downtrend, sliding below its long-term average — trying to catch a falling stock is how people get hurt.")
+    if rs is not None and rs <= -5: why_sell.append("It's lagging the market — money is flowing to other names, not this one.")
+    if dh is not None and dh < -35: why_sell.append("It's already fallen a long way from its high; it may be genuinely broken rather than a bargain.")
+    if ud is not None and ud < 0.8: why_sell.append("Heavier volume on down-days hints that larger holders may quietly be selling.")
+    if (vol is not None and vol > 45) or (beta is not None and beta >= 1.6):
+        why_sell.append("It swings hard — one bad week can sting, so keep any position smaller than usual.")
+    # honesty caveat — always present
+    why_sell.append("Heads-up: the institutional pieces (analyst earnings revisions, fund-ownership changes, options flow) couldn't be verified on this data feed — confirm those before betting big either way.")
+
+    if action.startswith("ACCUMULATE"): bottom = "Bottom line: a leader in an uptrend worth owning — buy in pieces, manage risk, and confirm the unverified institutional data."
+    elif action.startswith("AVOID"): bottom = "Bottom line: the trend is against you here — protect capital and wait for it to prove itself before getting involved."
+    elif action.startswith("WATCH"): bottom = "Bottom line: promising but not ready — watch for a breakout before risking money."
+    else: bottom = "Bottom line: no clear edge today — hold what you have, stay patient, and let the next move decide."
+
+    return {"action": action, "action_color": color, "action_line": line,
+            "why_buy": why_buy[:6], "why_hold": why_hold[:4], "why_sell": why_sell[:6],
+            "bottom_line": bottom}
+
 def _inst_terminal(meta, tech, fund):
     g = _it_num
     price = g(tech.get("price"))
@@ -40567,10 +40634,12 @@ def _inst_terminal(meta, tech, fund):
     editorial = sum(1 for m in allm if m["status"] in ("curated", "inferred"))
     gated = sum(1 for m in allm if m["status"] in ("verify", "portfolio"))
 
+    _verdict = _it_verdict(investor, trader, pm, tech, meta)
     return {
         "symbol": meta.get("symbol"), "name": meta.get("name"), "region": meta.get("region"),
         "inferred_meta": inferred,
-        "verdict": _it_verdict(investor, trader, pm, tech, meta),
+        "verdict": _verdict,
+        "plain": _it_plain(_verdict, investor, trader, pm, tech, meta),
         "investor": investor, "trader": trader, "pm": pm,
         "coverage": {"live": live, "editorial": editorial, "gated": gated, "total": len(allm)},
         "disclosure": ("Bloomberg-style triage, not Bloomberg's data. Live = real price/volume math. "

@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.45";
-window.CELESYS_BUILD_TIME = 1780945200;
-window.CELESYS_BUILD_DATE = "2026-06-08 19:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.46";
+window.CELESYS_BUILD_TIME = 1780948800;
+window.CELESYS_BUILD_DATE = "2026-06-08 20:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12620,16 +12620,17 @@ window._renderInstTerm = function(d){
     var h='';
     (list||[]).forEach(function(m){
       var s = STAT[m.status] || STAT.verify;
-      h += '<div style="display:flex;gap:9px;padding:6px 12px;align-items:flex-start;border-top:1px solid '+bd+'">';
-      h += '<span style="color:'+s.c+';font-size:12px;line-height:1.4;flex:0 0 auto;width:12px">'+s.ic+'</span>';
+      var gated = (m.status==='verify'||m.status==='portfolio');
+      h += '<div style="display:flex;gap:10px;padding:8px 12px;align-items:flex-start;border-top:1px solid '+bd+'">';
+      h += '<span style="color:'+s.c+';font-size:14px;line-height:1.4;flex:0 0 auto;width:14px;font-weight:800">'+s.ic+'</span>';
       h += '<div style="flex:1 1 auto;min-width:0">';
       h += '<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">';
-      h += '<span style="font-size:11px;font-weight:700;color:'+(m.status==='verify'||m.status==='portfolio'?dim:txt)+'">'+E(m.label)+'</span>';
-      h += '<span style="font-size:11px;color:'+(m.status==='verify'||m.status==='portfolio'?dim:'#cbd5e1')+'">'+E(m.value)+'</span>';
-      if (m.grade) h += '<span style="font-size:9px;font-weight:900;color:'+GRADEC(m.grade)+';border:1px solid '+GRADEC(m.grade)+';border-radius:3px;padding:0 4px">'+E(m.grade)+'</span>';
-      h += '<span style="font-size:8px;color:'+s.c+';margin-left:auto;letter-spacing:.5px">'+s.tag+'</span>';
+      h += '<span style="font-size:13px;font-weight:800;color:'+(gated?'#9aa6b6':'#ffffff')+'">'+E(m.label)+'</span>';
+      h += '<span style="font-size:13px;font-weight:600;color:'+(gated?'#8b97a8':'#7dd3fc')+'">'+E(m.value)+'</span>';
+      if (m.grade) h += '<span style="font-size:10px;font-weight:900;color:'+GRADEC(m.grade)+';border:1px solid '+GRADEC(m.grade)+';border-radius:3px;padding:0 5px">'+E(m.grade)+'</span>';
+      h += '<span style="font-size:9px;font-weight:700;color:'+s.c+';margin-left:auto;letter-spacing:.5px">'+s.tag+'</span>';
       h += '</div>';
-      if (m.note) h += '<div style="font-size:9px;color:'+dim+';line-height:1.4;margin-top:1px">'+E(m.note)+'</div>';
+      if (m.note) h += '<div style="font-size:11px;color:#9fb0c4;line-height:1.45;margin-top:2px">'+E(m.note)+'</div>';
       h += '</div></div>';
     });
     return h;
@@ -12642,6 +12643,33 @@ window._renderInstTerm = function(d){
   }
   var cov = d.coverage || {};
   var h = '';
+  // ── PLAIN-ENGLISH CARD (light, high-contrast, large font) ──
+  var p = d.plain;
+  if (p) {
+    var sans = "'Inter',-apple-system,Segoe UI,sans-serif";
+    h += '<div style="background:#ffffff;border:2px solid '+p.action_color+';border-radius:12px;padding:16px 18px;margin-bottom:14px;font-family:'+sans+'">';
+    h += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">';
+    h += '<span style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#475569">PLAIN-ENGLISH READ</span>';
+    h += '<span style="padding:5px 14px;border-radius:6px;background:'+p.action_color+';color:#fff;font-size:15px;font-weight:900;letter-spacing:.3px">'+E(p.action)+'</span>';
+    h += '</div>';
+    h += '<div style="font-size:15px;line-height:1.55;color:#1e293b;font-weight:600;margin-bottom:14px">'+E(p.action_line)+'</div>';
+    h += '<div style="display:flex;gap:16px;flex-wrap:wrap">';
+    function plainCol(title, icon, items, col){
+      if (!items || !items.length) return '';
+      var b = '<div style="flex:1 1 260px;min-width:220px">';
+      b += '<div style="font-size:13px;font-weight:900;color:'+col+';margin-bottom:6px">'+icon+' '+title+'</div>';
+      items.forEach(function(x){ b += '<div style="font-size:13px;line-height:1.55;color:#334155;margin-bottom:7px;padding-left:2px">'+E(x)+'</div>'; });
+      b += '</div>';
+      return b;
+    }
+    h += plainCol('Why you might BUY', '\u2705', p.why_buy, '#15803d');
+    h += plainCol('Why you might HOLD', '\u270B', p.why_hold, '#b45309');
+    h += plainCol('Why you might SELL / AVOID', '\u26D4', p.why_sell, '#b91c1c');
+    h += '</div>';
+    if (p.bottom_line) h += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:14px;font-weight:800;color:#0f172a;line-height:1.5">'+E(p.bottom_line)+'</div>';
+    h += '<div style="margin-top:8px;font-size:11px;color:#94a3b8;line-height:1.45">Educational read of the data below \u2014 not financial advice. The detailed institutional metrics follow.</div>';
+    h += '</div>';
+  }
   h += '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:10px;overflow:hidden;font-family:'+mono+';color:'+txt+'">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#070b12;border-bottom:1px solid '+bd+'">';
   h += '<div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#5eead4">\uD83C\uDFE6\uFE0F INSTITUTIONAL TERMINAL</div>';
