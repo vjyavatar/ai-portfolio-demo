@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.46";
-window.CELESYS_BUILD_TIME = 1780948800;
-window.CELESYS_BUILD_DATE = "2026-06-08 20:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.47";
+window.CELESYS_BUILD_TIME = 1780952400;
+window.CELESYS_BUILD_DATE = "2026-06-08 21:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12607,37 +12607,38 @@ window._loadInstTerm = function(){
 
 window._renderInstTerm = function(d){
   var E = window._esc || function(s){return String(s||'');};
-  var bg='#0a0e17', bd='#1f2a3a', txt='#e5e7eb', dim='#94a3b8', mono="'JetBrains Mono','IBM Plex Mono',ui-monospace,monospace";
+  var sans = "'Inter',-apple-system,Segoe UI,sans-serif";
+  var ink='#1e293b', ink2='#334155', note='#64748b', bd='#e2e8f0', teal='#0d9488';
   var STAT = {
-    live:    {ic:'\u2713', c:'#10b981', tag:'LIVE'},
-    curated: {ic:'\u2713', c:'#818cf8', tag:'EDITORIAL'},
-    inferred:{ic:'\u2713', c:'#f59e0b', tag:'INFERRED'},
-    verify:  {ic:'\u2717', c:'#9ca3af', tag:'VERIFY'},
-    portfolio:{ic:'\u2717', c:'#9ca3af', tag:'NEEDS PORTFOLIO'}
+    live:    {ic:'\u2713', c:'#16a34a', tag:'LIVE'},
+    curated: {ic:'\u2713', c:'#6366f1', tag:'EDITORIAL'},
+    inferred:{ic:'\u2713', c:'#d97706', tag:'INFERRED'},
+    verify:  {ic:'\u2717', c:'#94a3b8', tag:'VERIFY'},
+    portfolio:{ic:'\u2717', c:'#94a3b8', tag:'NEEDS PORTFOLIO'}
   };
-  var GRADEC = function(g){ if(!g) return dim; if(g[0]==='A') return '#10b981'; if(g[0]==='B') return '#34d399'; if(g[0]==='C') return '#eab308'; if(g[0]==='D') return '#f97316'; return '#ef4444'; };
+  var GRADEC = function(g){ if(!g) return note; if(g[0]==='A') return '#15803d'; if(g[0]==='B') return '#16a34a'; if(g[0]==='C') return '#ca8a04'; if(g[0]==='D') return '#ea580c'; return '#dc2626'; };
   function rows(list){
     var h='';
     (list||[]).forEach(function(m){
       var s = STAT[m.status] || STAT.verify;
       var gated = (m.status==='verify'||m.status==='portfolio');
-      h += '<div style="display:flex;gap:10px;padding:8px 12px;align-items:flex-start;border-top:1px solid '+bd+'">';
-      h += '<span style="color:'+s.c+';font-size:14px;line-height:1.4;flex:0 0 auto;width:14px;font-weight:800">'+s.ic+'</span>';
+      h += '<div style="display:flex;gap:10px;padding:11px 14px;align-items:flex-start;border-top:1px solid '+bd+'">';
+      h += '<span style="color:'+s.c+';font-size:16px;line-height:1.35;flex:0 0 auto;width:16px;font-weight:900">'+s.ic+'</span>';
       h += '<div style="flex:1 1 auto;min-width:0">';
       h += '<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">';
-      h += '<span style="font-size:13px;font-weight:800;color:'+(gated?'#9aa6b6':'#ffffff')+'">'+E(m.label)+'</span>';
-      h += '<span style="font-size:13px;font-weight:600;color:'+(gated?'#8b97a8':'#7dd3fc')+'">'+E(m.value)+'</span>';
-      if (m.grade) h += '<span style="font-size:10px;font-weight:900;color:'+GRADEC(m.grade)+';border:1px solid '+GRADEC(m.grade)+';border-radius:3px;padding:0 5px">'+E(m.grade)+'</span>';
-      h += '<span style="font-size:9px;font-weight:700;color:'+s.c+';margin-left:auto;letter-spacing:.5px">'+s.tag+'</span>';
+      h += '<span style="font-size:14px;font-weight:800;color:'+(gated?'#94a3b8':ink)+'">'+E(m.label)+'</span>';
+      h += '<span style="font-size:14px;font-weight:600;color:'+(gated?'#a3adba':ink2)+'">'+E(m.value)+'</span>';
+      if (m.grade) h += '<span style="font-size:11px;font-weight:900;color:#fff;background:'+GRADEC(m.grade)+';border-radius:4px;padding:1px 7px">'+E(m.grade)+'</span>';
+      h += '<span style="font-size:10px;font-weight:800;color:'+s.c+';margin-left:auto;letter-spacing:.5px">'+s.tag+'</span>';
       h += '</div>';
-      if (m.note) h += '<div style="font-size:11px;color:#9fb0c4;line-height:1.45;margin-top:2px">'+E(m.note)+'</div>';
+      if (m.note) h += '<div style="font-size:12.5px;color:'+note+';line-height:1.5;margin-top:3px">'+E(m.note)+'</div>';
       h += '</div></div>';
     });
     return h;
   }
   function modeBlock(title, icon, list){
-    var h = '<div style="margin-bottom:10px;border:1px solid '+bd+';border-radius:8px;overflow:hidden">';
-    h += '<div style="padding:6px 12px;background:#070b12;border-bottom:1px solid '+bd+';font-size:10px;font-weight:800;letter-spacing:1px;color:#5eead4">'+icon+' '+title+'</div>';
+    var h = '<div style="margin-bottom:12px;border:1px solid '+bd+';border-radius:10px;overflow:hidden;background:#fff">';
+    h += '<div style="padding:9px 14px;background:#f1f5f9;border-bottom:1px solid '+bd+';font-size:13px;font-weight:900;letter-spacing:.5px;color:'+teal+'">'+icon+' '+title+'</div>';
     h += rows(list) + '</div>';
     return h;
   }
@@ -12646,19 +12647,18 @@ window._renderInstTerm = function(d){
   // ── PLAIN-ENGLISH CARD (light, high-contrast, large font) ──
   var p = d.plain;
   if (p) {
-    var sans = "'Inter',-apple-system,Segoe UI,sans-serif";
     h += '<div style="background:#ffffff;border:2px solid '+p.action_color+';border-radius:12px;padding:16px 18px;margin-bottom:14px;font-family:'+sans+'">';
     h += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">';
-    h += '<span style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#475569">PLAIN-ENGLISH READ</span>';
-    h += '<span style="padding:5px 14px;border-radius:6px;background:'+p.action_color+';color:#fff;font-size:15px;font-weight:900;letter-spacing:.3px">'+E(p.action)+'</span>';
+    h += '<span style="font-size:12px;font-weight:800;letter-spacing:.5px;color:#475569">PLAIN-ENGLISH READ</span>';
+    h += '<span style="padding:6px 16px;border-radius:6px;background:'+p.action_color+';color:#fff;font-size:16px;font-weight:900;letter-spacing:.3px">'+E(p.action)+'</span>';
     h += '</div>';
-    h += '<div style="font-size:15px;line-height:1.55;color:#1e293b;font-weight:600;margin-bottom:14px">'+E(p.action_line)+'</div>';
-    h += '<div style="display:flex;gap:16px;flex-wrap:wrap">';
+    h += '<div style="font-size:15.5px;line-height:1.6;color:#1e293b;font-weight:600;margin-bottom:14px">'+E(p.action_line)+'</div>';
+    h += '<div style="display:flex;gap:18px;flex-wrap:wrap">';
     function plainCol(title, icon, items, col){
       if (!items || !items.length) return '';
-      var b = '<div style="flex:1 1 260px;min-width:220px">';
-      b += '<div style="font-size:13px;font-weight:900;color:'+col+';margin-bottom:6px">'+icon+' '+title+'</div>';
-      items.forEach(function(x){ b += '<div style="font-size:13px;line-height:1.55;color:#334155;margin-bottom:7px;padding-left:2px">'+E(x)+'</div>'; });
+      var b = '<div style="flex:1 1 260px;min-width:230px">';
+      b += '<div style="font-size:13.5px;font-weight:900;color:'+col+';margin-bottom:7px">'+icon+' '+title+'</div>';
+      items.forEach(function(x){ b += '<div style="font-size:13.5px;line-height:1.6;color:#334155;margin-bottom:8px">'+E(x)+'</div>'; });
       b += '</div>';
       return b;
     }
@@ -12666,61 +12666,59 @@ window._renderInstTerm = function(d){
     h += plainCol('Why you might HOLD', '\u270B', p.why_hold, '#b45309');
     h += plainCol('Why you might SELL / AVOID', '\u26D4', p.why_sell, '#b91c1c');
     h += '</div>';
-    if (p.bottom_line) h += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:14px;font-weight:800;color:#0f172a;line-height:1.5">'+E(p.bottom_line)+'</div>';
-    h += '<div style="margin-top:8px;font-size:11px;color:#94a3b8;line-height:1.45">Educational read of the data below \u2014 not financial advice. The detailed institutional metrics follow.</div>';
+    if (p.bottom_line) h += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:14.5px;font-weight:800;color:#0f172a;line-height:1.55">'+E(p.bottom_line)+'</div>';
+    h += '<div style="margin-top:8px;font-size:11.5px;color:#94a3b8;line-height:1.5">Educational read of the data below \u2014 not financial advice. The detailed institutional metrics follow.</div>';
     h += '</div>';
   }
-  h += '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:10px;overflow:hidden;font-family:'+mono+';color:'+txt+'">';
-  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#070b12;border-bottom:1px solid '+bd+'">';
-  h += '<div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#5eead4">\uD83C\uDFE6\uFE0F INSTITUTIONAL TERMINAL</div>';
-  h += '<div style="font-size:9px;color:'+dim+'">'+E(d.symbol)+' \u00b7 '+E(d.region)+' \u00b7 '+E(d.as_of||'')+'</div></div>';
-  h += '<div style="padding:12px 12px 6px">';
-  h += '<div style="font-size:13px;font-weight:800;color:'+txt+';margin-bottom:2px">'+E(d.name||d.symbol)+(d.inferred_meta?' <span style="font-size:9px;color:#f59e0b">\u00b7 meta sector-inferred</span>':'')+'</div>';
+  // ── LIGHT TERMINAL ──
+  h += '<div style="background:#fff;border:1px solid '+bd+';border-radius:12px;overflow:hidden;font-family:'+sans+';color:'+ink+'">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-bottom:1px solid '+bd+'">';
+  h += '<div style="font-size:13px;font-weight:900;letter-spacing:.5px;color:'+teal+'">\uD83C\uDFE6\uFE0F INSTITUTIONAL TERMINAL</div>';
+  h += '<div style="font-size:11px;color:'+note+'">'+E(d.symbol)+' \u00b7 '+E(d.region)+' \u00b7 '+E(d.as_of||'')+'</div></div>';
+  h += '<div style="padding:14px">';
+  h += '<div style="font-size:16px;font-weight:800;color:'+ink+';margin-bottom:4px">'+E(d.name||d.symbol)+(d.inferred_meta?' <span style="font-size:11px;font-weight:700;color:#d97706">\u00b7 sector-inferred</span>':'')+'</div>';
   // coverage strip
-  h += '<div style="display:flex;gap:14px;font-size:9px;margin:6px 0 10px;color:'+dim+'">';
-  h += '<span style="color:#10b981;font-weight:800">\u2713 '+E(cov.live)+' live</span>';
-  h += '<span style="color:#818cf8;font-weight:800">\u2713 '+E(cov.editorial)+' editorial</span>';
-  h += '<span style="color:#9ca3af;font-weight:800">\u2717 '+E(cov.gated)+' verify/needs-portfolio</span>';
+  h += '<div style="display:flex;gap:16px;font-size:12px;margin:6px 0 12px;color:'+note+';flex-wrap:wrap">';
+  h += '<span style="color:#16a34a;font-weight:800">\u2713 '+E(cov.live)+' live</span>';
+  h += '<span style="color:#6366f1;font-weight:800">\u2713 '+E(cov.editorial)+' editorial</span>';
+  h += '<span style="color:#94a3b8;font-weight:800">\u2717 '+E(cov.gated)+' verify / needs-portfolio</span>';
   h += '<span style="margin-left:auto">'+E(cov.total)+' metrics</span></div>';
-  // ── INSTITUTIONAL VERDICT ──
+  // ── INSTITUTIONAL VERDICT (light) ──
   var v = d.verdict;
   if (v) {
-    var riskC = v.expected_risk==='High'?'#ef4444':v.expected_risk==='Low'?'#10b981':'#eab308';
-    var rwdC = v.expected_reward==='High'?'#10b981':v.expected_reward==='Low'?'#9ca3af':'#eab308';
-    var stars = ''; for (var i=0;i<(v.stars_max||5);i++){ stars += '<span style="color:'+(i<v.stars?'#fbbf24':'#374151')+'">\u2605</span>'; }
-    h += '<div style="border:1px solid #0d9488;border-radius:10px;overflow:hidden;margin-bottom:12px;background:#0b1220">';
-    h += '<div style="padding:6px 12px;background:linear-gradient(135deg,#0f766e,#0d9488);font-size:10px;font-weight:900;letter-spacing:1px;color:#ecfeff">\u2696\uFE0F INSTITUTIONAL VERDICT</div>';
-    h += '<div style="padding:12px">';
-    h += '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px">';
-    h += '<div style="font-size:22px;letter-spacing:2px;line-height:1">'+stars+'</div>';
-    h += '<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:9px;color:'+dim+';letter-spacing:.5px">CONFIDENCE</span><span style="font-size:24px;font-weight:900;color:#5eead4">'+E(v.confidence)+'</span><span style="font-size:12px;color:'+dim+'">/100</span></div>';
+    var riskC = v.expected_risk==='High'?'#dc2626':v.expected_risk==='Low'?'#16a34a':'#ca8a04';
+    var rwdC = v.expected_reward==='High'?'#16a34a':v.expected_reward==='Low'?'#94a3b8':'#ca8a04';
+    var stars = ''; for (var i=0;i<(v.stars_max||5);i++){ stars += '<span style="color:'+(i<v.stars?'#f59e0b':'#cbd5e1')+'">\u2605</span>'; }
+    h += '<div style="border:1px solid '+teal+';border-radius:10px;overflow:hidden;margin-bottom:14px">';
+    h += '<div style="padding:8px 14px;background:#f0fdfa;font-size:13px;font-weight:900;letter-spacing:.5px;color:#0f766e;border-bottom:1px solid #ccfbf1">\u2696\uFE0F INSTITUTIONAL VERDICT</div>';
+    h += '<div style="padding:14px;background:#fff">';
+    h += '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">';
+    h += '<div style="font-size:24px;letter-spacing:3px;line-height:1">'+stars+'</div>';
+    h += '<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:11px;color:'+note+';font-weight:700;letter-spacing:.5px">CONFIDENCE</span><span style="font-size:28px;font-weight:900;color:'+teal+'">'+E(v.confidence)+'</span><span style="font-size:13px;color:'+note+'">/100</span></div>';
     h += '</div>';
-    if (v.headline) h += '<div style="font-size:11px;color:'+txt+';line-height:1.5;margin-bottom:10px">'+E(v.headline)+'</div>';
-    // bull / bear columns
-    h += '<div style="display:flex;gap:12px;flex-wrap:wrap">';
-    h += '<div style="flex:1 1 200px;min-width:160px"><div style="font-size:9px;font-weight:800;letter-spacing:.5px;color:#10b981;margin-bottom:4px">BULL CASE</div>';
-    (v.bull||[]).forEach(function(b){ h += '<div style="font-size:11px;color:#d1fae5;line-height:1.6"><span style="color:#10b981">\u2713</span> '+E(b)+'</div>'; });
+    if (v.headline) h += '<div style="font-size:14px;color:'+ink+';line-height:1.6;margin-bottom:12px;font-weight:600">'+E(v.headline)+'</div>';
+    h += '<div style="display:flex;gap:16px;flex-wrap:wrap">';
+    h += '<div style="flex:1 1 240px;min-width:200px"><div style="font-size:12px;font-weight:900;letter-spacing:.5px;color:#15803d;margin-bottom:5px">BULL CASE</div>';
+    (v.bull||[]).forEach(function(b){ h += '<div style="font-size:13.5px;color:#166534;line-height:1.7"><span style="color:#16a34a;font-weight:900">\u2713</span> '+E(b)+'</div>'; });
     h += '</div>';
-    h += '<div style="flex:1 1 200px;min-width:160px"><div style="font-size:9px;font-weight:800;letter-spacing:.5px;color:#f59e0b;margin-bottom:4px">BEAR CASE</div>';
-    (v.bear||[]).forEach(function(b){ h += '<div style="font-size:11px;color:#fde68a;line-height:1.6"><span style="color:#f59e0b">\u26A0</span> '+E(b)+'</div>'; });
+    h += '<div style="flex:1 1 240px;min-width:200px"><div style="font-size:12px;font-weight:900;letter-spacing:.5px;color:#b45309;margin-bottom:5px">BEAR CASE</div>';
+    (v.bear||[]).forEach(function(b){ h += '<div style="font-size:13.5px;color:#92400e;line-height:1.7"><span style="color:#d97706;font-weight:900">\u26A0</span> '+E(b)+'</div>'; });
     h += '</div></div>';
-    // unverified
     if (v.unverified && v.unverified.length) {
-      h += '<div style="margin-top:8px;font-size:10px;color:'+dim+';line-height:1.5"><span style="color:#9ca3af;font-weight:800">\u25CB PENDING VERIFICATION:</span> '+v.unverified.map(function(u){return E(u);}).join(' \u00b7 ')+' \u2014 not on this feed, excluded from the case above.</div>';
+      h += '<div style="margin-top:10px;padding:8px 10px;background:#f8fafc;border-radius:6px;font-size:12px;color:'+note+';line-height:1.55"><span style="color:#64748b;font-weight:900">\u25CB PENDING VERIFICATION:</span> '+v.unverified.map(function(u){return E(u);}).join(' \u00b7 ')+' \u2014 not on this feed, excluded from the case above.</div>';
     }
-    // chips
-    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">';
-    h += '<div style="flex:1 1 110px;background:#0a0e17;border:1px solid '+bd+';border-radius:6px;padding:6px 10px"><div style="font-size:8px;color:'+dim+';letter-spacing:.5px">TIME HORIZON</div><div style="font-size:12px;font-weight:800;color:'+txt+'">'+E(v.time_horizon)+'</div></div>';
-    h += '<div style="flex:1 1 90px;background:#0a0e17;border:1px solid '+bd+';border-radius:6px;padding:6px 10px"><div style="font-size:8px;color:'+dim+';letter-spacing:.5px">EXPECTED RISK</div><div style="font-size:12px;font-weight:800;color:'+riskC+'">'+E(v.expected_risk)+'</div></div>';
-    h += '<div style="flex:1 1 90px;background:#0a0e17;border:1px solid '+bd+';border-radius:6px;padding:6px 10px"><div style="font-size:8px;color:'+dim+';letter-spacing:.5px">EXPECTED REWARD</div><div style="font-size:12px;font-weight:800;color:'+rwdC+'">'+E(v.expected_reward)+'</div></div>';
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">';
+    h += '<div style="flex:1 1 120px;background:#f8fafc;border:1px solid '+bd+';border-radius:8px;padding:8px 12px"><div style="font-size:10px;color:'+note+';font-weight:700;letter-spacing:.5px">TIME HORIZON</div><div style="font-size:14px;font-weight:800;color:'+ink+'">'+E(v.time_horizon)+'</div></div>';
+    h += '<div style="flex:1 1 100px;background:#f8fafc;border:1px solid '+bd+';border-radius:8px;padding:8px 12px"><div style="font-size:10px;color:'+note+';font-weight:700;letter-spacing:.5px">EXPECTED RISK</div><div style="font-size:14px;font-weight:800;color:'+riskC+'">'+E(v.expected_risk)+'</div></div>';
+    h += '<div style="flex:1 1 100px;background:#f8fafc;border:1px solid '+bd+';border-radius:8px;padding:8px 12px"><div style="font-size:10px;color:'+note+';font-weight:700;letter-spacing:.5px">EXPECTED REWARD</div><div style="font-size:14px;font-weight:800;color:'+rwdC+'">'+E(v.expected_reward)+'</div></div>';
     h += '</div>';
-    if (v.confidence_note) h += '<div style="margin-top:8px;font-size:9px;color:#fca5a5;line-height:1.4">\u26A0 '+E(v.confidence_note)+'</div>';
+    if (v.confidence_note) h += '<div style="margin-top:10px;font-size:12px;color:#b45309;line-height:1.5;font-weight:600">\u26A0 '+E(v.confidence_note)+'</div>';
     h += '</div></div>';
   }
   h += modeBlock('INVESTOR MODE', '\uD83D\uDCC8', d.investor);
   h += modeBlock('TRADER MODE', '\u26A1', d.trader);
   h += modeBlock('PORTFOLIO MANAGER MODE', '\uD83C\uDFAF', d.pm);
-  if (d.disclosure) h += '<div style="font-size:9px;color:'+dim+';line-height:1.5;padding:8px 4px 10px;border-top:1px solid '+bd+'">'+E(d.disclosure)+'</div>';
+  if (d.disclosure) h += '<div style="font-size:11.5px;color:'+note+';line-height:1.6;padding:10px 2px 4px;border-top:1px solid '+bd+'">'+E(d.disclosure)+'</div>';
   h += '</div></div>';
   return h;
 };
