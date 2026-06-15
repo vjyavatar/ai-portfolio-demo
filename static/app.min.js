@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.48";
-window.CELESYS_BUILD_TIME = 1780956000;
-window.CELESYS_BUILD_DATE = "2026-06-08 22:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.49";
+window.CELESYS_BUILD_TIME = 1780959600;
+window.CELESYS_BUILD_DATE = "2026-06-08 23:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15434,6 +15434,37 @@ window._renderDirectionalOptions = function(d) {
         });
         html += '</div>';
       }
+    }
+
+    /* Momentum Option-Buy Gate (Minervini/O'Neil framework) */
+    if (c.momentum_trader) {
+      var mtr = c.momentum_trader;
+      var alC = mtr.aligned ? '#16a34a' : '#94a3b8';
+      var alBg = mtr.aligned ? '#f0fdf4' : '#f8fafc';
+      html += '<div style="background:' + alBg + ';border:1px solid #e2e8f0;border-left:3px solid ' + alC + ';border-radius:8px;padding:11px 13px;margin-bottom:8px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px">';
+      html += '<span style="font-size:11px;font-weight:900;color:#0f172a;letter-spacing:.3px">\u26A1 MOMENTUM OPTION-BUY GATE</span>';
+      html += '<span style="padding:3px 10px;border-radius:5px;background:' + alC + ';color:#fff;font-size:11px;font-weight:900">' + (mtr.aligned ? 'ALIGNED' : 'NOT ALIGNED') + '</span>';
+      if (mtr.momentum_score != null) html += '<span style="font-size:12px;color:#334155;font-weight:700">Momentum ' + E(mtr.momentum_score) + '/100</span>';
+      html += '</div>';
+      var ac = mtr.align_checks || {};
+      function chk(ok, lbl){ return '<span style="font-size:11.5px;color:' + (ok ? '#16a34a' : '#dc2626') + ';font-weight:700">' + (ok ? '\u2713' : '\u2717') + ' ' + lbl + '</span>'; }
+      html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px">' + chk(ac.trend, 'Trend') + chk(ac.volume, 'Volume') + chk(ac.momentum, 'Momentum') + '</div>';
+      var rows2 = [];
+      if (mtr.trend_template) rows2.push('\u2713 Minervini 50/150/200-DMA template');
+      var ia = mtr.inst_accum || {};
+      if (ia.rating) rows2.push('Institutional accumulation: <b>' + E(ia.rating) + '</b> (' + E(ia.score) + '/100)');
+      var vc = mtr.vcp || {};
+      if (vc.note) rows2.push((vc.contracting ? '\u2705 ' : '') + E(vc.note));
+      rows2.forEach(function(x){ html += '<div style="font-size:12px;color:#475569;line-height:1.55">' + x + '</div>'; });
+      html += '<div style="font-size:12.5px;color:#0f172a;font-weight:700;line-height:1.55;margin-top:6px">' + E(mtr.verdict) + '</div>';
+      var tk2 = c.trade_ticket || {};
+      if (tk2.position_size_reco) html += '<div style="margin-top:7px;padding-top:7px;border-top:1px solid #e2e8f0;font-size:12px;color:#334155;line-height:1.55"><b>Position size:</b> ' + E(tk2.position_size_reco) + '</div>';
+      if (tk2.key_risks && tk2.key_risks.length) {
+        html += '<div style="margin-top:6px;font-size:11px;font-weight:800;color:#92400e">KEY RISKS</div>';
+        tk2.key_risks.forEach(function(k){ html += '<div style="font-size:11.5px;color:#92400e;line-height:1.5">\u26A0 ' + E(k) + '</div>'; });
+      }
+      html += '</div>';
     }
 
     /* Professional Momentum Buyer checklist (US only) */

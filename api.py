@@ -9354,6 +9354,22 @@ def _build_trade_ticket(candidate, direction, vix_zone, region):
         exit_rules.append(
             "⚠️ IV CRUSH ACTIVE: VIX falling = take 50% profit early, trail the rest")
 
+    ref_acct = 500000 if region == "IN" else 25000
+    lots_1 = int(ref_acct * 0.01 // max_risk_lot) if max_risk_lot > 0 else 0
+    lots_2 = int(ref_acct * 0.02 // max_risk_lot) if max_risk_lot > 0 else 0
+    position_size_reco = (
+        f"Risk 1\u20132% per trade. On a {sym_disp}{ref_acct:,.0f} account: "
+        f"1% \u2192 {max(lots_1, 0)} lot(s), 2% \u2192 {max(lots_2, 0)} lot(s) "
+        f"(max risk {sym_disp}{max_risk_lot:,.0f}/lot). Never exceed 2%; concentrate only in A-grade aligned setups."
+    )
+    key_risks = [f"Theta / time decay \u2014 long options lose value daily; exit by {expiry}."]
+    if iv_crush_risk:
+        key_risks.append("IV crush \u2014 VIX falling; premium can fall even if direction is right.")
+    if region == "IN":
+        key_risks.append("Liquidity \u2014 trade ATM / near-ATM only; far-OTM spreads are wide.")
+    key_risks.append("Event / catalyst risk \u2014 earnings/news can gap the underlying (no catalyst feed here; check the calendar manually).")
+    catalyst = "N/A \u2014 no earnings/news/catalyst feed on this build; verify upcoming events manually before entry."
+
     return {
         "entry_strike":       entry_strike,
         "premium_est":        premium_est,
@@ -9375,6 +9391,9 @@ def _build_trade_ticket(candidate, direction, vix_zone, region):
         "expiry":             expiry,
         "entry_guidance":     entry_guidance,
         "exit_rules":         exit_rules,
+        "position_size_reco": position_size_reco,
+        "key_risks":          key_risks,
+        "catalyst":           catalyst,
     }
 
 
@@ -9470,6 +9489,48 @@ def _suggest_expiry(candidate, vix_zone, direction):
     }
 
 
+def _mtrader_block(closes, highs, lows, volumes, ind, rs_vs_bench):
+    """Momentum-trader (Minervini/O'Neil) metrics for option-buy gating."""
+    n = len(closes); px = closes[-1] if closes else None
+    def sma(k): return (sum(closes[-k:]) / k) if n >= k else None
+    s50, s150, s200 = sma(50), sma(150), sma(200)
+    hi52 = max(closes) if closes else None; lo52 = min(closes) if closes else None
+    tt_bull = bool(px and s50 and s150 and s200 and px > s50 > s150 > s200 and hi52 and px >= hi52 * 0.75 and lo52 and px >= lo52 * 1.30)
+    tt_bear = bool(px and s50 and s150 and s200 and px < s50 < s150 < s200)
+    adx = ind.get("adx14") or 0; rsi = ind.get("rsi14") or 50
+    vr = ind.get("vol_ratio") or 1.0; ret20 = ind.get("ret_20d_pct") or 0
+    rs = rs_vs_bench if rs_vs_bench is not None else 0
+    def cl(x, a, b): return max(a, min(b, x))
+    bull = cl(rs, 0, 15) / 15 * 30 + cl(adx, 0, 40) / 40 * 25 + cl(ret20, 0, 15) / 15 * 20 + cl(rsi - 50, 0, 25) / 25 * 15 + cl(vr - 1, 0, 1.5) / 1.5 * 10
+    bear = cl(-rs, 0, 15) / 15 * 30 + cl(adx, 0, 40) / 40 * 25 + cl(-ret20, 0, 15) / 15 * 20 + cl(50 - rsi, 0, 25) / 25 * 15 + cl(vr - 1, 0, 1.5) / 1.5 * 10
+    mom_bull = round(cl(bull, 0, 100)); mom_bear = round(cl(bear, 0, 100))
+    accum = 50.0
+    if len(closes) >= 26 and len(volumes) >= 26:
+        up = sum(volumes[-i] for i in range(1, 26) if closes[-i] >= closes[-i - 1])
+        dn = sum(volumes[-i] for i in range(1, 26) if closes[-i] < closes[-i - 1])
+        if dn > 0: accum = cl(50 + (up / dn - 1) * 40, 0, 100)
+    if vr >= 1.5: accum = cl(accum + 8, 0, 100)
+    accum = round(accum)
+    ar = "Strong" if accum >= 70 else ("Moderate" if accum >= 45 else "Weak")
+    atr14 = ind.get("atr14"); atr50 = None
+    try:
+        if len(highs) >= 51 and len(lows) >= 51 and len(closes) >= 51:
+            trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])) for i in range(1, len(highs))]
+            atr50 = sum(trs[-50:]) / 50.0
+    except Exception:
+        atr50 = None
+    contracting = bool(atr14 and atr50 and atr14 < atr50 * 0.85)
+    hv = ind.get("hv_rank")
+    if hv is not None and hv < 30: contracting = True
+    vcp_note = ("Volatility contracting \u2014 coiled for an explosive move (good option-buy setup)." if contracting
+                else "No volatility contraction \u2014 choppy; long options can bleed theta.")
+    return {"sma50": round(s50, 2) if s50 else None, "sma150": round(s150, 2) if s150 else None,
+            "sma200": round(s200, 2) if s200 else None,
+            "trend_template": {"bull": tt_bull, "bear": tt_bear},
+            "momentum_bull": mom_bull, "momentum_bear": mom_bear,
+            "inst_accum": {"score": accum, "rating": ar},
+            "vcp": {"contracting": contracting, "note": vcp_note}}
+
 def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None):
     """Compute CE/PE directional score for one ticker. Sync — runs in executor.
 
@@ -9513,7 +9574,7 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
             else:
                 out["sector"] = (info.get("sector") or "Unknown")
             out["price"] = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
-            hist = tk.history(period="6mo", interval="1d", auto_adjust=True)
+            hist = tk.history(period="1y", interval="1d", auto_adjust=True)
         if hist is None or hist.empty or len(hist) < 30:
             out["data_quality"] = "insufficient_history"
             out["_excluded_reason"] = "< 30 daily bars available"
@@ -9580,6 +9641,10 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
             "pre_high_15": round(pre_high_15, 2) if pre_high_15 else None,
             "pre_low_15": round(pre_low_15, 2) if pre_low_15 else None,
         }
+        try:
+            out["mtrader"] = _mtrader_block(closes, highs, lows, volumes, out["indicators"], rs_vs_bench)
+        except Exception:
+            out["mtrader"] = {}
 
         # ───────── CE BUY scoring — strict checklist ─────────
         ce = 0
@@ -10517,7 +10582,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         try: _yahoo_rate_wait()
         except Exception: pass
         try:
-            return yf.download(tickers=" ".join(yf_syms), period="6mo", interval="1d",
+            return yf.download(tickers=" ".join(yf_syms), period="1y", interval="1d",
                                group_by="ticker", auto_adjust=True, threads=True, progress=False)
         except Exception:
             return None
@@ -10610,6 +10675,29 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
             if _mb:
                 row["momentum"] = _mb
         row["aplus"] = _aplus_checklist(row, direction, regime, region)
+        mt = r.get("mtrader") or {}
+        if mt:
+            tt_d = mt.get("trend_template") or {}
+            mom = mt.get("momentum_bull") if direction == "CE" else mt.get("momentum_bear")
+            tt = tt_d.get("bull") if direction == "CE" else tt_d.get("bear")
+            ind2 = r.get("indicators") or {}
+            ema20 = ind2.get("ema20"); px2 = r.get("price")
+            trend_ok = bool(tt) or bool(ema20 and px2 and ((px2 > ema20) if direction == "CE" else (px2 < ema20)))
+            vol_ok = bool((ind2.get("vol_ratio") or 0) >= 1.5)
+            mom_ok = bool((mom or 0) >= 60)
+            aligned = bool(trend_ok and vol_ok and mom_ok)
+            row["momentum_trader"] = {
+                "momentum_score": mom, "trend_template": bool(tt),
+                "inst_accum": mt.get("inst_accum") or {}, "vcp": mt.get("vcp") or {},
+                "sma50": mt.get("sma50"), "sma150": mt.get("sma150"), "sma200": mt.get("sma200"),
+                "aligned": aligned,
+                "align_checks": {"trend": bool(trend_ok), "volume": vol_ok, "momentum": mom_ok},
+                "verdict": ("ALIGNED \u2014 trend + volume + momentum confirm. Valid option-buy window."
+                            if aligned else
+                            "NOT ALIGNED \u2014 trend/volume/momentum not all confirming. Avoid buying options here (low-volume/low-momentum bleeds premium)."),
+            }
+            if isinstance(row.get("trade_ticket"), dict):
+                row["trade_ticket"]["aligned"] = aligned
         return row
 
     # Sort by conviction: Grade A first, then B, then C, then by score desc within each grade
