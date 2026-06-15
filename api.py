@@ -40495,6 +40495,111 @@ def _it_plain(v, investor, trader, pm, tech, meta):
             "why_buy": why_buy[:6], "why_hold": why_hold[:4], "why_sell": why_sell[:6],
             "bottom_line": bottom}
 
+_IT_INFO = {
+ "Opportunity Score": {"horizon": "3Y+", "why": "Smaller, theme-aligned companies have the most room to compound over years."},
+ "Industry Transformation": {"horizon": "3Y+", "why": "Secular demand (e.g. AI datacenter spend) lifts well-run names across the theme."},
+ "Moat Score": {"horizon": "3Y+", "why": "Switching costs, patents and scale protect margins from competitors."},
+ "Institutional Ownership Trend": {"horizon": "Quarterly", "why": "Rising fund ownership is real demand that can drive multi-quarter trends."},
+ "Fwd Earnings Revision": {"horizon": "1-2 qtrs", "why": "Estimate revisions, not today's EPS, are what move stocks next."},
+ "Smart Money (proxy)": {"horizon": "2-8 wks", "why": "Where large capital accumulates often precedes the move."},
+ "Relative Strength": {"horizon": "1-3M", "why": "Leaders keep leading; money crowds into the strongest names."},
+ "Stage Analysis": {"horizon": "3-12M", "why": "Institutions accumulate in Stage-2 uptrends and avoid Stage-4 declines."},
+ "Volume Accumulation": {"horizon": "2-6 wks", "why": "Up-day vs down-day volume reveals whether big players are buying."},
+ "Options Flow": {"horizon": "days-wks", "why": "Unusual options activity can front-run news and large positioning."},
+ "Breakout Probability": {"horizon": "1-8 wks", "why": "Tight bases near highs precede the biggest breakouts."},
+ "Risk / Reward": {"horizon": "per trade", "why": "Professionals only take trades where reward dwarfs risk."},
+ "Position Sizing": {"horizon": "per trade", "why": "Sizing by volatility caps the damage when wrong."},
+ "Portfolio Risk (single-name)": {"horizon": "ongoing", "why": "Beta/vol/VaR show how much this name can swing the book."},
+ "Correlation (vs index)": {"horizon": "ongoing", "why": "Low correlation adds diversification; high means it moves with the market."},
+ "Correlation": {"horizon": "ongoing", "why": "Diversification depends on how holdings move together."},
+ "Exposure Management": {"horizon": "ongoing", "why": "Concentration in one sector/theme is the hidden risk in most books."},
+}
+
+def _it_enrich(allm, tech, meta):
+    g = _it_num
+    rs = g(tech.get("rs_20d")); ud = g(tech.get("up_down_vol_ratio"))
+    for m in allm:
+        info = _IT_INFO.get(m["label"], {})
+        m["horizon"] = info.get("horizon"); m["why"] = info.get("why")
+        lab = m["label"]; val = str(m.get("value", "")); lay = None
+        if lab == "Relative Strength":
+            lay = "Outperforming the broad market \u2014 among the stronger names." if (rs is not None and rs > 0) else "Lagging the broad market right now."
+        elif lab == "Stage Analysis":
+            if "Stage 2" in val: lay = "Healthy uptrend \u2014 the phase institutions accumulate in."
+            elif "Stage 4" in val: lay = "Downtrend \u2014 the phase to avoid until it bottoms."
+            elif "Stage 1" in val: lay = "Basing \u2014 building a launchpad; wait for the breakout."
+            elif "Stage 3" in val: lay = "Topping \u2014 momentum fading; protect gains."
+        elif lab == "Volume Accumulation":
+            lay = "Buyers more active than sellers \u2014 accumulation." if (ud is not None and ud >= 1) else "Sellers more active than buyers \u2014 distribution."
+        elif lab == "Breakout Probability": lay = "Odds it breaks to fresh highs over the next few weeks."
+        elif lab == "Moat Score": lay = "Durable advantages that keep rivals from eroding profits."
+        elif lab == "Opportunity Score": lay = "How much room it has to grow over years."
+        elif lab == "Industry Transformation": lay = "Whether a long-term demand wave is at its back."
+        elif lab == "Smart Money (proxy)": lay = "Large-buyer footprint inferred from price/volume (not confirmed flow)."
+        elif lab == "Risk / Reward": lay = "Potential reward vs risk if you took the trade now."
+        elif lab == "Position Sizing": lay = "How much capital this name warrants, given its swings."
+        elif lab.startswith("Portfolio Risk"): lay = "How violently this name can move your account."
+        elif lab.startswith("Correlation"): lay = "How closely it tracks the overall market."
+        elif lab == "Exposure Management": lay = "Which sector/theme bucket this adds to in your book."
+        elif lab == "Institutional Ownership Trend": lay = "Whether big funds are adding or trimming (needs 13F data)."
+        elif lab == "Fwd Earnings Revision": lay = "Whether analysts are raising or cutting estimates (needs estimate feed)."
+        elif lab == "Options Flow": lay = "Unusual options positioning (needs options feed)."
+        m["layman"] = lay
+    return allm
+
+def _it_rs_rank(tech):
+    import math as _m
+    rs = _it_num(tech.get("rs_20d"))
+    if rs is None: return None
+    return max(1, min(99, round(50 + 50 * _m.tanh(rs / 25.0))))
+
+def _it_factor_profile(tech, meta):
+    g = _it_num; rs = g(tech.get("rs_20d"))
+    mom = max(5, min(100, 50 + rs * 1.4)) if rs is not None else None
+    return [
+        {"factor": "Growth", "score": None, "grade": None, "status": "verify"},
+        {"factor": "Quality", "score": None, "grade": None, "status": "verify"},
+        {"factor": "Momentum", "score": (round(mom) if mom is not None else None), "grade": _it_grade(mom), "status": "live" if mom is not None else "verify"},
+        {"factor": "Value", "score": None, "grade": None, "status": "verify"},
+    ]
+
+def _it_position_plan(tech):
+    g = _it_num; price = g(tech.get("price")); atr = g(tech.get("atr"))
+    if price is None or atr is None or atr <= 0: return None
+    stop = price - 1.5 * atr; risk = price - stop
+    t1 = price + 2 * risk; t2 = price + 3 * risk
+    return {"entry": round(price, 2), "stop": round(stop, 2), "t1": round(t1, 2), "t2": round(t2, 2),
+            "risk_pct": round(risk / price * 100, 1), "reward_pct": round((t2 - price) / price * 100, 1),
+            "rr": (round((t2 - price) / risk, 1) if risk > 0 else None),
+            "note": "ATR(14) 1.5x stop; targets at 2R and 3R. Mechanical levels, not advice."}
+
+def _it_outlook12(tech):
+    g = _it_num; price = g(tech.get("price")); vol = g(tech.get("vol_annual_pct")); rs = g(tech.get("rs_20d")) or 0
+    if price is None or vol is None: return None
+    sd = vol / 100.0
+    bull = price * (1 + sd); bear = price * (1 - sd * 0.9); base = price * (1 + (0.05 if rs > 0 else -0.02))
+    if rs > 5: pb, pbase, pbear = 32, 48, 20
+    elif rs < -5: pb, pbase, pbear = 20, 48, 32
+    else: pb, pbase, pbear = 26, 50, 24
+    return {"bull": {"price": round(bull, 2), "prob": pb}, "base": {"price": round(base, 2), "prob": pbase},
+            "bear": {"price": round(bear, 2), "prob": pbear},
+            "note": "12-month range from annualized volatility (\u00b11\u03c3), probabilities tilted by trend. Statistical estimate, not a forecast."}
+
+def _it_conf_breakdown(allm):
+    M = {m["label"]: m for m in allm}
+    spec = [("Relative Strength", "Relative Strength", 20), ("Volume", "Volume Accumulation", 15),
+            ("Stage", "Stage Analysis", 15), ("Opportunity", "Opportunity Score", 15),
+            ("Smart Money", "Smart Money (proxy)", 15), ("Breakout", "Breakout Probability", 20)]
+    return [{"factor": disp, "weight": w, "score": M.get(label, {}).get("score"),
+             "included": M.get(label, {}).get("score") is not None} for disp, label, w in spec]
+
+def _it_conf_band(conf):
+    if conf >= 90: return ("Elite institutional setup", "#15803d")
+    if conf >= 80: return ("Strong candidate", "#16a34a")
+    if conf >= 70: return ("Watchlist", "#ca8a04")
+    if conf >= 60: return ("Neutral", "#d97706")
+    return ("Weak", "#dc2626")
+
 def _inst_terminal(meta, tech, fund):
     g = _it_num
     price = g(tech.get("price"))
@@ -40635,11 +40740,19 @@ def _inst_terminal(meta, tech, fund):
     gated = sum(1 for m in allm if m["status"] in ("verify", "portfolio"))
 
     _verdict = _it_verdict(investor, trader, pm, tech, meta)
+    _it_enrich(investor + trader + pm, tech, meta)
+    _band, _band_c = _it_conf_band(_verdict["confidence"])
     return {
         "symbol": meta.get("symbol"), "name": meta.get("name"), "region": meta.get("region"),
         "inferred_meta": inferred,
         "verdict": _verdict,
         "plain": _it_plain(_verdict, investor, trader, pm, tech, meta),
+        "rs_rank": _it_rs_rank(tech),
+        "factor_profile": _it_factor_profile(tech, meta),
+        "position_plan": _it_position_plan(tech),
+        "outlook_12m": _it_outlook12(tech),
+        "confidence_breakdown": _it_conf_breakdown(investor + trader + pm),
+        "confidence_band": _band, "confidence_band_color": _band_c,
         "investor": investor, "trader": trader, "pm": pm,
         "coverage": {"live": live, "editorial": editorial, "gated": gated, "total": len(allm)},
         "disclosure": ("Bloomberg-style triage, not Bloomberg's data. Live = real price/volume math. "
@@ -40783,7 +40896,77 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
     meta = _imdf_infer_meta(sym, region, fund)
     meta["name"] = fund.get("name") or meta.get("name") or sym
 
-    out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym, **_inst_terminal(meta, tech, fund)}
+    # ── Market Regime + Sector Rotation (extra batched fetch; degrade gracefully) ──
+    regime = None; rotation = None
+    try:
+        if region == "US":
+            idx = ["SPY", "QQQ"]; sects = ["XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC"]
+            sect_name = {"XLK": "Technology", "XLF": "Financials", "XLE": "Energy", "XLV": "Healthcare",
+                         "XLI": "Industrials", "XLY": "Cons. Disc.", "XLP": "Cons. Staples", "XLU": "Utilities",
+                         "XLB": "Materials", "XLRE": "Real Estate", "XLC": "Communications"}
+        else:
+            idx = ["^NSEI", "^NSEBANK"]; sects = ["^CNXIT", "^CNXAUTO", "^CNXPHARMA", "^CNXFMCG", "^CNXMETAL", "^CNXENERGY"]
+            sect_name = {"^CNXIT": "IT", "^CNXAUTO": "Auto", "^CNXPHARMA": "Pharma", "^CNXFMCG": "FMCG",
+                         "^CNXMETAL": "Metals", "^CNXENERGY": "Energy"}
+        idx_name = {"SPY": "S&P 500", "QQQ": "Nasdaq 100", "^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty"}
+
+        def _fetch2():
+            try: _yahoo_rate_wait()
+            except Exception: pass
+            try:
+                return yf.download(tickers=" ".join(idx + sects), period="1y", interval="1d",
+                                   group_by="ticker", auto_adjust=True, threads=True, progress=False)
+            except Exception:
+                return None
+        h2 = await _lp.run_in_executor(None, _fetch2)
+
+        def _closes(ys):
+            try:
+                cols = h2.columns
+                if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                    s = list(h2[ys]["Close"].dropna())
+                    return s if len(s) >= 60 else None
+            except Exception:
+                pass
+            return None
+
+        if h2 is not None:
+            idxr = []; score_acc = []
+            for sy in idx:
+                c = _closes(sy)
+                if not c: continue
+                ma50 = sum(c[-50:]) / 50 if len(c) >= 50 else None
+                ma200 = sum(c[-200:]) / 200 if len(c) >= 200 else (sum(c) / len(c))
+                px = c[-1]
+                if ma200 and px > ma200 and ma50 and ma50 > ma200: lbl, sc = "Strong Uptrend", 90
+                elif ma200 and px > ma200: lbl, sc = "Uptrend", 70
+                elif ma200 and px < ma200 and ma50 and ma50 < ma200: lbl, sc = "Downtrend", 20
+                else: lbl, sc = "Choppy", 45
+                idxr.append({"name": idx_name.get(sy, sy), "trend": lbl}); score_acc.append(sc)
+            if idxr:
+                rscore = round(sum(score_acc) / len(score_acc))
+                rlabel = "Tailwind" if rscore >= 70 else ("Headwind" if rscore <= 35 else "Neutral")
+                regime = {"indices": idxr, "regime_score": rscore, "label": rlabel,
+                          "note": ("Broad market is supportive \u2014 a rising tide." if rscore >= 70 else
+                                   "Broad market is hostile \u2014 swim against the current carefully." if rscore <= 35 else
+                                   "Mixed market \u2014 stock selection matters more than direction.")}
+            rot = []
+            for sy in sects:
+                c = _closes(sy)
+                if not c or len(c) < 64 or c[-64] <= 0: continue
+                ret3m = (c[-1] - c[-64]) / c[-64] * 100
+                rot.append({"sector": sect_name.get(sy, sy), "ret_3m": round(ret3m, 1)})
+            if rot:
+                rot.sort(key=lambda r: -r["ret_3m"])
+                for i, r in enumerate(rot):
+                    r["arrow"] = "\u2191" if r["ret_3m"] > 3 else ("\u2193" if r["ret_3m"] < -3 else "\u2192")
+                rotation = {"ranked": rot, "leader": rot[0]["sector"], "laggard": rot[-1]["sector"],
+                            "note": "Sectors ranked by 3-month return \u2014 where institutional money is rotating."}
+    except Exception:
+        regime = regime or None; rotation = rotation or None
+
+    out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym,
+           "market_regime": regime, "sector_rotation": rotation, **_inst_terminal(meta, tech, fund)}
     _INST_TERM_CACHE[ck] = (_t.time(), out)
     return out
 

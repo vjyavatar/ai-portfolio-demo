@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.47";
-window.CELESYS_BUILD_TIME = 1780952400;
-window.CELESYS_BUILD_DATE = "2026-06-08 21:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.48";
+window.CELESYS_BUILD_TIME = 1780956000;
+window.CELESYS_BUILD_DATE = "2026-06-08 22:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12629,9 +12629,12 @@ window._renderInstTerm = function(d){
       h += '<span style="font-size:14px;font-weight:800;color:'+(gated?'#94a3b8':ink)+'">'+E(m.label)+'</span>';
       h += '<span style="font-size:14px;font-weight:600;color:'+(gated?'#a3adba':ink2)+'">'+E(m.value)+'</span>';
       if (m.grade) h += '<span style="font-size:11px;font-weight:900;color:#fff;background:'+GRADEC(m.grade)+';border-radius:4px;padding:1px 7px">'+E(m.grade)+'</span>';
+      if (m.horizon) h += '<span style="font-size:10px;font-weight:800;color:#0369a1;background:#e0f2fe;border-radius:4px;padding:1px 6px">'+E(m.horizon)+'</span>';
       h += '<span style="font-size:10px;font-weight:800;color:'+s.c+';margin-left:auto;letter-spacing:.5px">'+s.tag+'</span>';
       h += '</div>';
-      if (m.note) h += '<div style="font-size:12.5px;color:'+note+';line-height:1.5;margin-top:3px">'+E(m.note)+'</div>';
+      if (m.layman) h += '<div style="font-size:13px;color:#0f172a;line-height:1.5;margin-top:4px"><span style="color:#0d9488;font-weight:800">What this means:</span> '+E(m.layman)+'</div>';
+      if (m.why) h += '<div style="font-size:12px;color:'+note+';line-height:1.5;margin-top:2px;font-style:italic">Why it matters: '+E(m.why)+'</div>';
+      if (m.note) h += '<div style="font-size:11.5px;color:#94a3b8;line-height:1.45;margin-top:2px">'+E(m.note)+'</div>';
       h += '</div></div>';
     });
     return h;
@@ -12683,6 +12686,20 @@ window._renderInstTerm = function(d){
   h += '<span style="color:#6366f1;font-weight:800">\u2713 '+E(cov.editorial)+' editorial</span>';
   h += '<span style="color:#94a3b8;font-weight:800">\u2717 '+E(cov.gated)+' verify / needs-portfolio</span>';
   h += '<span style="margin-left:auto">'+E(cov.total)+' metrics</span></div>';
+  // ── MARKET REGIME (context) ──
+  var mr = d.market_regime;
+  if (mr) {
+    var mrC = mr.regime_score>=70?'#16a34a':mr.regime_score<=35?'#dc2626':'#ca8a04';
+    h += '<div style="border:1px solid '+bd+';border-radius:10px;overflow:hidden;margin-bottom:14px">';
+    h += '<div style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid '+bd+';font-size:13px;font-weight:900;letter-spacing:.5px;color:'+teal+'">\uD83C\uDF0D MARKET REGIME</div>';
+    h += '<div style="padding:12px 14px">';
+    h += '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px">';
+    (mr.indices||[]).forEach(function(ix){ h += '<span style="font-size:13.5px;color:'+ink+'"><b>'+E(ix.name)+':</b> '+E(ix.trend)+'</span>'; });
+    h += '<span style="margin-left:auto;display:flex;align-items:baseline;gap:5px"><span style="font-size:11px;color:'+note+';font-weight:700">REGIME</span><span style="font-size:20px;font-weight:900;color:'+mrC+'">'+E(mr.regime_score)+'</span><span style="font-size:11px;color:'+note+'">/100</span><span style="font-size:13px;font-weight:800;color:'+mrC+';margin-left:4px">'+E(mr.label)+'</span></span>';
+    h += '</div>';
+    if (mr.note) h += '<div style="font-size:13px;color:#334155;line-height:1.5">'+E(mr.note)+'</div>';
+    h += '</div></div>';
+  }
   // ── INSTITUTIONAL VERDICT (light) ──
   var v = d.verdict;
   if (v) {
@@ -12695,7 +12712,23 @@ window._renderInstTerm = function(d){
     h += '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px">';
     h += '<div style="font-size:24px;letter-spacing:3px;line-height:1">'+stars+'</div>';
     h += '<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:11px;color:'+note+';font-weight:700;letter-spacing:.5px">CONFIDENCE</span><span style="font-size:28px;font-weight:900;color:'+teal+'">'+E(v.confidence)+'</span><span style="font-size:13px;color:'+note+'">/100</span></div>';
+    if (d.confidence_band) h += '<span style="padding:3px 10px;border-radius:5px;background:'+(d.confidence_band_color||teal)+';color:#fff;font-size:12px;font-weight:800">'+E(d.confidence_band)+'</span>';
     h += '</div>';
+    // weighted breakdown
+    if (d.confidence_breakdown && d.confidence_breakdown.length) {
+      h += '<div style="margin-bottom:12px">';
+      d.confidence_breakdown.forEach(function(b){
+        var sc = (b.score==null) ? null : b.score;
+        var barc = sc==null?'#cbd5e1':(sc>=70?'#16a34a':sc>=50?'#ca8a04':'#ea580c');
+        h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+        h += '<span style="font-size:11.5px;color:'+ink2+';width:120px;flex:0 0 auto">'+E(b.factor)+' <span style="color:'+note+'">'+E(b.weight)+'%</span></span>';
+        h += '<div style="flex:1 1 auto;height:8px;background:#eef2f6;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+(sc==null?0:sc)+'%;background:'+barc+'"></div></div>';
+        h += '<span style="font-size:11px;font-weight:800;color:'+(sc==null?'#94a3b8':ink)+';width:34px;text-align:right">'+(sc==null?'n/a':sc)+'</span>';
+        h += '</div>';
+      });
+      h += '<div style="font-size:11px;color:'+note+';margin-top:2px;font-style:italic">Earnings-revision weight excluded \u2014 estimate feed unavailable here.</div>';
+      h += '</div>';
+    }
     if (v.headline) h += '<div style="font-size:14px;color:'+ink+';line-height:1.6;margin-bottom:12px;font-weight:600">'+E(v.headline)+'</div>';
     h += '<div style="display:flex;gap:16px;flex-wrap:wrap">';
     h += '<div style="flex:1 1 240px;min-width:200px"><div style="font-size:12px;font-weight:900;letter-spacing:.5px;color:#15803d;margin-bottom:5px">BULL CASE</div>';
@@ -12715,9 +12748,73 @@ window._renderInstTerm = function(d){
     if (v.confidence_note) h += '<div style="margin-top:10px;font-size:12px;color:#b45309;line-height:1.5;font-weight:600">\u26A0 '+E(v.confidence_note)+'</div>';
     h += '</div></div>';
   }
+  // ── POSITION PLAN + 12-MONTH OUTLOOK ──
+  var pp = d.position_plan, ol = d.outlook_12m;
+  if (pp || ol) {
+    h += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">';
+    if (pp) {
+      h += '<div style="flex:1 1 280px;min-width:240px;border:1px solid '+bd+';border-radius:10px;overflow:hidden">';
+      h += '<div style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid '+bd+';font-size:13px;font-weight:900;color:'+teal+'">\uD83C\uDFAF POSITION PLAN</div>';
+      h += '<div style="padding:12px 14px">';
+      function ppRow(k,val,c){ return '<div style="display:flex;justify-content:space-between;font-size:13.5px;padding:3px 0"><span style="color:'+note+'">'+k+'</span><span style="font-weight:800;color:'+(c||ink)+'">'+val+'</span></div>'; }
+      h += ppRow('Entry', pp.entry, ink);
+      h += ppRow('Stop', pp.stop, '#dc2626');
+      h += ppRow('Target 1', pp.t1, '#16a34a');
+      h += ppRow('Target 2', pp.t2, '#15803d');
+      h += '<div style="border-top:1px solid '+bd+';margin-top:6px;padding-top:6px">';
+      h += ppRow('Risk', pp.risk_pct+'%', '#dc2626') + ppRow('Reward', pp.reward_pct+'%', '#16a34a') + ppRow('R : R', (pp.rr!=null?pp.rr+' : 1':'\u2014'), teal);
+      h += '</div>';
+      h += '<div style="font-size:11px;color:#94a3b8;margin-top:6px;line-height:1.45">'+E(pp.note)+'</div>';
+      h += '</div></div>';
+    }
+    if (ol) {
+      h += '<div style="flex:1 1 280px;min-width:240px;border:1px solid '+bd+';border-radius:10px;overflow:hidden">';
+      h += '<div style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid '+bd+';font-size:13px;font-weight:900;color:'+teal+'">\uD83D\uDD2E 12-MONTH OUTLOOK</div>';
+      h += '<div style="padding:12px 14px">';
+      function olRow(lbl,o,c){ return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:13.5px;padding:4px 0"><span style="font-weight:800;color:'+c+'">'+lbl+'</span><span style="color:'+ink+'"><b>'+o.price+'</b> <span style="color:'+note+';font-size:12px">('+o.prob+'%)</span></span></div>'; }
+      h += olRow('Bull', ol.bull, '#16a34a');
+      h += olRow('Base', ol.base, '#0369a1');
+      h += olRow('Bear', ol.bear, '#dc2626');
+      h += '<div style="font-size:11px;color:#94a3b8;margin-top:6px;line-height:1.45">'+E(ol.note)+'</div>';
+      h += '</div></div>';
+    }
+    h += '</div>';
+  }
   h += modeBlock('INVESTOR MODE', '\uD83D\uDCC8', d.investor);
   h += modeBlock('TRADER MODE', '\u26A1', d.trader);
   h += modeBlock('PORTFOLIO MANAGER MODE', '\uD83C\uDFAF', d.pm);
+  // ── FACTOR PROFILE + SECTOR ROTATION ──
+  var fp = d.factor_profile, sr = d.sector_rotation;
+  if (fp || sr) {
+    h += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">';
+    if (fp) {
+      h += '<div style="flex:1 1 240px;min-width:200px;border:1px solid '+bd+';border-radius:10px;overflow:hidden">';
+      h += '<div style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid '+bd+';font-size:13px;font-weight:900;color:'+teal+'">\uD83E\uDDEC FACTOR PROFILE</div>';
+      h += '<div style="padding:10px 14px">';
+      fp.forEach(function(f){
+        var gated = f.status!=='live';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:13.5px;padding:4px 0">';
+        h += '<span style="color:'+(gated?'#94a3b8':ink)+';font-weight:700">'+E(f.factor)+'</span>';
+        if (f.grade) h += '<span style="font-size:11px;font-weight:900;color:#fff;background:'+GRADEC(f.grade)+';border-radius:4px;padding:1px 7px">'+E(f.grade)+'</span>';
+        else h += '<span style="font-size:11px;color:#94a3b8;font-weight:700">verify</span>';
+        h += '</div>';
+      });
+      h += '<div style="font-size:11px;color:#94a3b8;margin-top:5px;line-height:1.45">Momentum is live; Growth/Quality/Value need a fundamentals feed.</div>';
+      h += '</div></div>';
+    }
+    if (sr) {
+      h += '<div style="flex:1 1 260px;min-width:220px;border:1px solid '+bd+';border-radius:10px;overflow:hidden">';
+      h += '<div style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid '+bd+';font-size:13px;font-weight:900;color:'+teal+'">\uD83D\uDD01 SECTOR ROTATION</div>';
+      h += '<div style="padding:10px 14px">';
+      (sr.ranked||[]).slice(0,6).forEach(function(r,i){
+        var rc = r.ret_3m>3?'#16a34a':r.ret_3m<-3?'#dc2626':'#ca8a04';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;font-size:13.5px;padding:3px 0"><span style="color:'+ink+'">'+(i+1)+'. '+E(r.sector)+' <span style="color:'+rc+'">'+E(r.arrow)+'</span></span><span style="font-weight:800;color:'+rc+'">'+(r.ret_3m>0?'+':'')+E(r.ret_3m)+'%</span></div>';
+      });
+      if (sr.note) h += '<div style="font-size:11px;color:#94a3b8;margin-top:5px;line-height:1.45">'+E(sr.note)+'</div>';
+      h += '</div></div>';
+    }
+    h += '</div>';
+  }
   if (d.disclosure) h += '<div style="font-size:11.5px;color:'+note+';line-height:1.6;padding:10px 2px 4px;border-top:1px solid '+bd+'">'+E(d.disclosure)+'</div>';
   h += '</div></div>';
   return h;
