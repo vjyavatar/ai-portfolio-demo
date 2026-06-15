@@ -40357,6 +40357,77 @@ def _it_stage(price, ma200, ma200_prev):
     if (not above) and falling: return ("Stage 4 — Declining", "downtrend: below a falling 200-DMA", 12)
     return ("Stage 1 — Basing", "below/at a flattening 200-DMA — possible base", 40)
 
+def _it_verdict(investor, trader, pm, tech, meta):
+    """Roll the 16 metrics into a single institutional verdict. Bull/bear are built ONLY
+    from metrics that have a real computed value; gated metrics are listed separately as
+    'pending verification' and confidence is discounted by data coverage — never inflated."""
+    g = _it_num
+    allm = investor + trader + pm
+    M = {m["label"]: m for m in allm}
+    bull, bear, unverified = [], [], []
+    stage = M.get("Stage Analysis", {}); sv = str(stage.get("value", ""))
+    if "Stage 2" in sv: bull.append("Stage 2 advancing uptrend")
+    elif "Stage 4" in sv: bear.append("Stage 4 downtrend")
+    elif "Stage 3" in sv: bear.append("Late-cycle / distribution stage")
+    rs = g(tech.get("rs_20d"))
+    if rs is not None:
+        if rs >= 5: bull.append("Relative-strength leadership (%+.0f%% vs index)" % rs)
+        elif rs <= -5: bear.append("Relative-strength laggard (%+.0f%% vs index)" % rs)
+    acc = g(tech.get("accum_score"))
+    if acc is not None and acc >= 65: bull.append("Volume accumulation footprint")
+    ud = g(tech.get("up_down_vol_ratio"))
+    if ud is not None and ud < 0.8: bear.append("Distribution (down-volume heavy)")
+    dh = g(tech.get("dist_to_high_pct"))
+    if dh is not None and dh > -8: bull.append("Coiled near 52-week high")
+    if dh is not None and dh < -35: bear.append("Deep drawdown (%.0f%% off high)" % dh)
+    if (meta.get("moats") or []): bull.append("Durable moat: " + ", ".join(meta["moats"][:2]))
+    if meta.get("theme") and meta.get("theme") != "\u2014": bull.append("Secular theme: " + meta["theme"])
+    if meta.get("mcap_tier") in ("small", "micro", "mid") and meta.get("decade_growth"):
+        bull.append("Large multibagger runway (%s-cap)" % meta["mcap_tier"])
+    vol = g(tech.get("vol_annual_pct")); beta = g(tech.get("beta")); var = g(tech.get("var95_pct"))
+    if vol is not None and vol > 45: bear.append("Elevated volatility (%.0f%%/yr)" % vol)
+    if beta is not None and beta >= 1.6: bear.append("High beta (%.1f)" % beta)
+    if var is not None and var >= 5: bear.append("Large daily VaR (%.1f%%)" % var)
+    for m in allm:
+        if m["status"] in ("verify", "portfolio"):
+            unverified.append(m["label"])
+    scored = [m["score"] for m in allm if m.get("score") is not None]
+    raw = sum(scored) / len(scored) if scored else 0
+    total = len(allm)
+    live_ed = sum(1 for m in allm if m["status"] in ("live", "curated", "inferred"))
+    cov = (live_ed / total) if total else 0
+    conf = raw * (0.65 + 0.35 * cov)
+    note = None
+    if cov < 0.55:
+        conf = min(conf, 66)
+        note = "Confidence capped \u2014 institutional fundamentals / ownership / flow unverified on this feed."
+    conf = int(round(max(5, min(99, conf))))
+    stars = 5 if conf >= 85 else 4 if conf >= 70 else 3 if conf >= 55 else 2 if conf >= 40 else 1
+    if "Stage 2" in sv: th = "3\u201312 months"
+    elif "Stage 1" in sv: th = "6\u201318 months (accumulate)"
+    elif "Stage 3" in sv: th = "0\u20133 months (late-cycle)"
+    elif "Stage 4" in sv: th = "not a long-horizon hold"
+    else: th = "6\u201312 months"
+    risk = "Medium"
+    if (vol is not None and vol > 50) or (beta is not None and beta > 1.7): risk = "High"
+    elif (vol is not None and vol < 28) and (beta is None or beta < 1.1): risk = "Low"
+    opp = M.get("Opportunity Score", {}).get("score") or 0
+    brk = M.get("Breakout Probability", {}).get("score") or 0
+    rsc = M.get("Relative Strength", {}).get("score") or 0
+    rwd_raw = opp * 0.4 + brk * 0.3 + rsc * 0.3
+    reward = "High" if rwd_raw >= 65 else "Medium" if rwd_raw >= 45 else "Low"
+    if conf >= 70 and len(bull) > len(bear):
+        headline = "Constructive \u2014 verifiable signals lead, but confirm the pending institutional data."
+    elif len(bear) > len(bull):
+        headline = "Cautious \u2014 risk signals outweigh the confirmed positives."
+    else:
+        headline = "Mixed \u2014 no decisive edge on the data that can be verified here."
+    if not bull: bull.append("No confirmed bullish signals on available data")
+    if not bear: bear.append("No major risk flags on available data")
+    return {"stars": stars, "stars_max": 5, "confidence": conf, "confidence_note": note,
+            "bull": bull[:6], "bear": bear[:6], "unverified": unverified,
+            "time_horizon": th, "expected_risk": risk, "expected_reward": reward, "headline": headline}
+
 def _inst_terminal(meta, tech, fund):
     g = _it_num
     price = g(tech.get("price"))
@@ -40499,6 +40570,7 @@ def _inst_terminal(meta, tech, fund):
     return {
         "symbol": meta.get("symbol"), "name": meta.get("name"), "region": meta.get("region"),
         "inferred_meta": inferred,
+        "verdict": _it_verdict(investor, trader, pm, tech, meta),
         "investor": investor, "trader": trader, "pm": pm,
         "coverage": {"live": live, "editorial": editorial, "gated": gated, "total": len(allm)},
         "disclosure": ("Bloomberg-style triage, not Bloomberg's data. Live = real price/volume math. "

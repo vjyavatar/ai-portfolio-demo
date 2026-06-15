@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.44";
-window.CELESYS_BUILD_TIME = 1780941600;
-window.CELESYS_BUILD_DATE = "2026-06-08 18:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.45";
+window.CELESYS_BUILD_TIME = 1780945200;
+window.CELESYS_BUILD_DATE = "2026-06-08 19:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12654,6 +12654,41 @@ window._renderInstTerm = function(d){
   h += '<span style="color:#818cf8;font-weight:800">\u2713 '+E(cov.editorial)+' editorial</span>';
   h += '<span style="color:#9ca3af;font-weight:800">\u2717 '+E(cov.gated)+' verify/needs-portfolio</span>';
   h += '<span style="margin-left:auto">'+E(cov.total)+' metrics</span></div>';
+  // ── INSTITUTIONAL VERDICT ──
+  var v = d.verdict;
+  if (v) {
+    var riskC = v.expected_risk==='High'?'#ef4444':v.expected_risk==='Low'?'#10b981':'#eab308';
+    var rwdC = v.expected_reward==='High'?'#10b981':v.expected_reward==='Low'?'#9ca3af':'#eab308';
+    var stars = ''; for (var i=0;i<(v.stars_max||5);i++){ stars += '<span style="color:'+(i<v.stars?'#fbbf24':'#374151')+'">\u2605</span>'; }
+    h += '<div style="border:1px solid #0d9488;border-radius:10px;overflow:hidden;margin-bottom:12px;background:#0b1220">';
+    h += '<div style="padding:6px 12px;background:linear-gradient(135deg,#0f766e,#0d9488);font-size:10px;font-weight:900;letter-spacing:1px;color:#ecfeff">\u2696\uFE0F INSTITUTIONAL VERDICT</div>';
+    h += '<div style="padding:12px">';
+    h += '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px">';
+    h += '<div style="font-size:22px;letter-spacing:2px;line-height:1">'+stars+'</div>';
+    h += '<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:9px;color:'+dim+';letter-spacing:.5px">CONFIDENCE</span><span style="font-size:24px;font-weight:900;color:#5eead4">'+E(v.confidence)+'</span><span style="font-size:12px;color:'+dim+'">/100</span></div>';
+    h += '</div>';
+    if (v.headline) h += '<div style="font-size:11px;color:'+txt+';line-height:1.5;margin-bottom:10px">'+E(v.headline)+'</div>';
+    // bull / bear columns
+    h += '<div style="display:flex;gap:12px;flex-wrap:wrap">';
+    h += '<div style="flex:1 1 200px;min-width:160px"><div style="font-size:9px;font-weight:800;letter-spacing:.5px;color:#10b981;margin-bottom:4px">BULL CASE</div>';
+    (v.bull||[]).forEach(function(b){ h += '<div style="font-size:11px;color:#d1fae5;line-height:1.6"><span style="color:#10b981">\u2713</span> '+E(b)+'</div>'; });
+    h += '</div>';
+    h += '<div style="flex:1 1 200px;min-width:160px"><div style="font-size:9px;font-weight:800;letter-spacing:.5px;color:#f59e0b;margin-bottom:4px">BEAR CASE</div>';
+    (v.bear||[]).forEach(function(b){ h += '<div style="font-size:11px;color:#fde68a;line-height:1.6"><span style="color:#f59e0b">\u26A0</span> '+E(b)+'</div>'; });
+    h += '</div></div>';
+    // unverified
+    if (v.unverified && v.unverified.length) {
+      h += '<div style="margin-top:8px;font-size:10px;color:'+dim+';line-height:1.5"><span style="color:#9ca3af;font-weight:800">\u25CB PENDING VERIFICATION:</span> '+v.unverified.map(function(u){return E(u);}).join(' \u00b7 ')+' \u2014 not on this feed, excluded from the case above.</div>';
+    }
+    // chips
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">';
+    h += '<div style="flex:1 1 110px;background:#0a0e17;border:1px solid '+bd+';border-radius:6px;padding:6px 10px"><div style="font-size:8px;color:'+dim+';letter-spacing:.5px">TIME HORIZON</div><div style="font-size:12px;font-weight:800;color:'+txt+'">'+E(v.time_horizon)+'</div></div>';
+    h += '<div style="flex:1 1 90px;background:#0a0e17;border:1px solid '+bd+';border-radius:6px;padding:6px 10px"><div style="font-size:8px;color:'+dim+';letter-spacing:.5px">EXPECTED RISK</div><div style="font-size:12px;font-weight:800;color:'+riskC+'">'+E(v.expected_risk)+'</div></div>';
+    h += '<div style="flex:1 1 90px;background:#0a0e17;border:1px solid '+bd+';border-radius:6px;padding:6px 10px"><div style="font-size:8px;color:'+dim+';letter-spacing:.5px">EXPECTED REWARD</div><div style="font-size:12px;font-weight:800;color:'+rwdC+'">'+E(v.expected_reward)+'</div></div>';
+    h += '</div>';
+    if (v.confidence_note) h += '<div style="margin-top:8px;font-size:9px;color:#fca5a5;line-height:1.4">\u26A0 '+E(v.confidence_note)+'</div>';
+    h += '</div></div>';
+  }
   h += modeBlock('INVESTOR MODE', '\uD83D\uDCC8', d.investor);
   h += modeBlock('TRADER MODE', '\u26A1', d.trader);
   h += modeBlock('PORTFOLIO MANAGER MODE', '\uD83C\uDFAF', d.pm);
