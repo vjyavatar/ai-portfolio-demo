@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.49";
-window.CELESYS_BUILD_TIME = 1780959600;
-window.CELESYS_BUILD_DATE = "2026-06-08 23:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.51";
+window.CELESYS_BUILD_TIME = 1780966800;
+window.CELESYS_BUILD_DATE = "2026-06-09 01:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -9094,6 +9094,50 @@ const btn=document.getElementById('themeToggleBtn');
 if(btn)btn.innerHTML=next==='dark'?'\u2600\uFE0F':'\u{1F303}';
 }
 
+// ═══ 1b. DARK-MODE DARKIFIER for JS-rendered reports (inline-styled light cards) ═══
+// Class-based dark CSS can't reach inline styles in dynamically-rendered reports
+// (Institutional Terminal, Deep DD, "In plain English" boxes, engines, etc.).
+// Rewrites light inline backgrounds/text -> dark equivalents when dark mode is on,
+// stores the original so toggling back to light restores exactly. Two observers:
+// childList (new renders) + data-theme attribute (theme flips).
+(function(){
+  var BG={
+    '#ffffff':'#152238','#fff':'#152238','#f8fafc':'#0f1a2e','#f9fafb':'#0f1a2e',
+    '#f1f5f9':'#1a2742','#f3f4f6':'#1a2742','#e2e8f0':'#243352','#eef2ff':'#1c2440',
+    '#eff6ff':'#13233b','#f0f9ff':'#13233b','#e0f2fe':'#13233b','#ecfeff':'#0e2a30',
+    '#f0fdfa':'#0c2a26','#f0fdf4':'#0e2a1e','#dcfce7':'#0e2a1e','#fef2f2':'#2a1414',
+    '#fee2e2':'#2a1414','#fffbeb':'#2a2410','#fefce8':'#26240f','#fff7ed':'#2a1d10',
+    '#faf5ff':'#1e1430','#fdf4ff':'#241433'
+  };
+  var TX={
+    '#0f172a':'#f1f5f9','#1e293b':'#e2e8f0','#0f766e':'#5eead4','#334155':'#cbd5e1',
+    '#475569':'#94a3b8','#64748b':'#94a3b8','#1e40af':'#93c5fd','#0369a1':'#7dd3fc',
+    '#166534':'#6ee7b7','#15803d':'#6ee7b7','#92400e':'#fcd34d','#b45309':'#fbbf24',
+    '#991b1b':'#fca5a5','#b91c1c':'#fca5a5'
+  };
+  function isDark(){ try{ return (document.documentElement.getAttribute('data-theme')==='dark')||(document.body&&document.body.getAttribute('data-theme')==='dark'); }catch(e){ return false; } }
+  function darkifyEl(el){
+    if(!el||!el.getAttribute||el.getAttribute('data-lstyle')!=null) return;
+    var st=el.getAttribute('style'); if(!st) return;
+    var out=st, k;
+    for(k in BG){ out=out.replace(new RegExp('(^|[;\\s])(background(?:-color)?\\s*:\\s*)'+k+'\\b','gi'),'$1$2'+BG[k]); }
+    for(k in TX){ out=out.replace(new RegExp('(^|[;\\s])(color\\s*:\\s*)'+k+'\\b','gi'),'$1$2'+TX[k]); }
+    if(out!==st){ el.setAttribute('data-lstyle',st); el.setAttribute('style',out); }
+  }
+  function undarkifyEl(el){ if(!el||!el.getAttribute) return; var o=el.getAttribute('data-lstyle'); if(o!=null){ el.setAttribute('style',o); el.removeAttribute('data-lstyle'); } }
+  function walk(root,fn){ if(!root) return; if(root.getAttribute&&root.getAttribute('style'))fn(root); if(root.querySelectorAll){ var els=root.querySelectorAll('[style]'); for(var i=0;i<els.length;i++)fn(els[i]); } }
+  window._applyReportDark=function(){ var d=isDark(); try{ var sc=document.querySelectorAll(d?'[style]':'[data-lstyle]'); for(var i=0;i<sc.length;i++){ d?darkifyEl(sc[i]):undarkifyEl(sc[i]); } }catch(e){} };
+  window._darkifyTree=function(r){ if(isDark()) walk(r,darkifyEl); };
+  try{
+    var obs=new MutationObserver(function(muts){ if(!isDark())return; for(var j=0;j<muts.length;j++){ var an=muts[j].addedNodes; for(var i=0;i<an.length;i++){ if(an[i].nodeType===1) walk(an[i],darkifyEl); } } });
+    obs.observe(document.documentElement,{childList:true,subtree:true});
+    var obs2=new MutationObserver(function(){ if(window._applyReportDark) window._applyReportDark(); });
+    obs2.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+    if(document.body) obs2.observe(document.body,{attributes:true,attributeFilter:['data-theme']});
+  }catch(e){}
+  try{ if(isDark() && window._applyReportDark) window._applyReportDark(); }catch(e){}
+})();
+
 // ═══ 2. PDF EXPORT ═══
 async function exportPDF(){
 if(!window._isPdfUser)return;
@@ -15434,6 +15478,39 @@ window._renderDirectionalOptions = function(d) {
         });
         html += '</div>';
       }
+    }
+
+    /* Strike Intelligence Engine (SIE) */
+    if (c.strike_intel && c.strike_intel.best) {
+      var si = c.strike_intel, sb = si.best;
+      var liveBadge = si.data_source === 'live' ? '<span style="font-size:9px;font-weight:800;color:#16a34a;background:#dcfce7;border-radius:4px;padding:1px 6px">LIVE CHAIN</span>' : '<span style="font-size:9px;font-weight:800;color:#b45309;background:#fef3c7;border-radius:4px;padding:1px 6px">MODELED</span>';
+      var tierC = function(t){ return t==='Elite'?'#16a34a':t==='Good'?'#ca8a04':'#94a3b8'; };
+      html += '<div style="background:#fff;border:1px solid #e2e8f0;border-left:3px solid #7c3aed;border-radius:8px;padding:11px 13px;margin-bottom:8px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+      html += '<span style="font-size:11px;font-weight:900;color:#0f172a;letter-spacing:.3px">\uD83C\uDFAF STRIKE INTELLIGENCE</span>' + liveBadge;
+      if (sb.label) html += '<span style="font-size:9px;font-weight:900;color:#fff;background:#7c3aed;border-radius:4px;padding:2px 7px">' + E(sb.label) + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:13px;color:#0f172a;font-weight:800;margin-bottom:2px">Best: ' + E(sb.strike) + ' ' + E(si.direction) + ' \u2014 score ' + E(sb.adj_score) + '/100 <span style="color:' + tierC(sb.tier) + '">(' + E(sb.tier) + ')</span> \u00b7 #' + E(sb.rank) + ' of ' + E(si.count) + '</div>';
+      html += '<div style="font-size:12px;color:#475569;margin-bottom:8px">\u0394 ' + E(sb.delta) + ' \u00b7 POP ' + E(sb.pop) + '% \u00b7 IV ' + E(sb.iv) + '% \u00b7 Gamma ' + E(sb.gamma_score) + '/100' + (sb.spread_pct != null ? ' \u00b7 Spread ' + E(sb.spread_pct) + '%' : '') + ' \u00b7 EM target ' + E(si.target) + '</div>';
+      html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">';
+      html += '<thead><tr style="color:#64748b;text-align:left"><th style="padding:3px 6px">#</th><th style="padding:3px 6px">Strike</th><th style="padding:3px 6px;text-align:right">Score</th><th style="padding:3px 6px;text-align:right">\u0394</th><th style="padding:3px 6px;text-align:right">POP</th><th style="padding:3px 6px;text-align:right">Liq</th><th style="padding:3px 6px;text-align:right">OIflow</th><th style="padding:3px 6px">Tier</th></tr></thead><tbody>';
+      (si.candidates || []).forEach(function(k){
+        var hl = (k.rank === 1);
+        html += '<tr style="border-top:1px solid #f1f5f9;' + (hl ? 'background:#faf5ff;font-weight:700' : '') + '">';
+        html += '<td style="padding:3px 6px;color:#94a3b8">' + E(k.rank) + '</td>';
+        html += '<td style="padding:3px 6px;color:#0f172a;font-weight:700">' + E(k.strike) + '</td>';
+        html += '<td style="padding:3px 6px;text-align:right;font-weight:800;color:' + tierC(k.tier) + '">' + E(k.adj_score) + '</td>';
+        html += '<td style="padding:3px 6px;text-align:right;color:#475569">' + E(k.delta) + '</td>';
+        html += '<td style="padding:3px 6px;text-align:right;color:#475569">' + E(k.pop) + '%</td>';
+        html += '<td style="padding:3px 6px;text-align:right;color:#475569">' + E(k.liquidity) + '</td>';
+        html += '<td style="padding:3px 6px;text-align:right;color:#475569">' + E(k.oi_flow) + (k.oi_src === 'verify' ? '*' : '') + '</td>';
+        html += '<td style="padding:3px 6px;color:' + tierC(k.tier) + '">' + E(k.tier) + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      var comp = si.components || {};
+      html += '<div style="font-size:10.5px;color:#94a3b8;margin-top:7px;line-height:1.5">Sources \u2014 Delta/Gamma/POP/EM: model \u00b7 IV: ' + E(comp.iv_eff) + ' \u00b7 Liquidity: ' + E(comp.liquidity) + ' \u00b7 OI-flow: ' + E(comp.oi_flow) + '. ' + E(si.disclosure) + '</div>';
+      html += '</div>';
     }
 
     /* Momentum Option-Buy Gate (Minervini/O'Neil framework) */

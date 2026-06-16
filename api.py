@@ -9091,6 +9091,219 @@ def _price_vix_combined_signal(price_change_pct, vix_trend_pct):
             "desc": "No clear combined signal. Price and VIX moving in alignment."}
 
 
+# ═══ STRIKE INTELLIGENCE ENGINE (SIE, r63.110.51) ═══════════════════════════════
+# Scores every candidate strike and picks the best contract. Greeks (Delta/Gamma) and
+# POP are Black-Scholes; IV/OI/liquidity are read LIVE from the option chain when reachable
+# (US: yfinance; IN: Upstox/NSE) — flagged source="live" — and MODELED (IV proxy = VIX,
+# liquidity by moneyness, OI-flow neutral) when the chain is unavailable, flagged
+# source="model". Per-strike OI direction is NEVER invented; absent a live chain it is "verify".
+
+def _sie_chain_map(symbol, yf_sym, region, dte, direction):
+    """Best-effort single-fetch chain map -> {strike: {oi, volume, bid, ask, iv}}.
+    Returns ({}, source_note). Network call; returns {} on any failure (caller models)."""
+    out = {}; src = "model"
+    try:
+        from datetime import datetime
+        if region == "US":
+            import yfinance as yf
+            tk = yf.Ticker(yf_sym)
+            exps = list(getattr(tk, "options", []) or [])
+            if not exps:
+                return {}, "model"
+            today = datetime.utcnow().date(); tgt = max(int(dte or 14), 1)
+            def _fit(e):
+                try:
+                    d = (datetime.strptime(e, "%Y-%m-%d").date() - today).days
+                    return (d <= 0, abs(d - tgt))
+                except Exception:
+                    return (True, 9999)
+            chain = tk.option_chain(sorted(exps, key=_fit)[0])
+            df = chain.calls if direction == "CE" else chain.puts
+            if df is None or df.empty:
+                return {}, "model"
+            for _, row in df.iterrows():
+                k = _eng_ds_num(row.get("strike"))
+                if k is None:
+                    continue
+                bid = _eng_ds_num(row.get("bid")); ask = _eng_ds_num(row.get("ask"))
+                out[round(k, 2)] = {
+                    "oi": _eng_ds_num(row.get("openInterest")),
+                    "volume": _eng_ds_num(row.get("volume")),
+                    "bid": bid, "ask": ask,
+                    "iv": (_eng_ds_num(row.get("impliedVolatility")) or 0) * 100 or None,
+                }
+            if out:
+                src = "live"
+        else:
+            # IN: indices via Upstox/NSE fallback; equities usually N/A on this host.
+            rows = None
+            try:
+                rows = _fetch_index_chain_with_fallback(symbol)
+            except Exception:
+                rows = None
+            if isinstance(rows, dict):
+                rows = rows.get("rows") or rows.get("data") or rows.get("records") or None
+            if rows:
+                for rr in rows:
+                    k = _eng_ds_num(rr.get("strikePrice") or rr.get("strike"))
+                    if k is None:
+                        continue
+                    leg = (rr.get("CE") if direction == "CE" else rr.get("PE")) or rr
+                    out[round(k, 2)] = {
+                        "oi": _eng_ds_num(leg.get("openInterest") or leg.get("oi")),
+                        "volume": _eng_ds_num(leg.get("totalTradedVolume") or leg.get("volume")),
+                        "bid": _eng_ds_num(leg.get("bidprice") or leg.get("bid")),
+                        "ask": _eng_ds_num(leg.get("askPrice") or leg.get("ask")),
+                        "iv": _eng_ds_num(leg.get("impliedVolatility") or leg.get("iv")),
+                    }
+                if out:
+                    src = "live"
+    except Exception:
+        return {}, "model"
+    return out, src
+
+
+def _strike_intelligence(spot, direction, region, hint, ind, vix_val, sm_signals=None, chain_map=None):
+    """Institutional Strike Intelligence — score candidate strikes, rank, pick best contract."""
+    import math
+    if not spot or spot <= 0 or direction not in ("CE", "PE"):
+        return None
+    hint = hint or {}; ind = ind or {}; chain_map = chain_map or {}
+    gap = hint.get("strike_gap") or (1 if region == "US" else 50)
+    dte = hint.get("dte") or (7 if region == "IN" else 14)
+    r = _GREEK_THRESHOLDS["risk_free"]
+    base_sigma = (vix_val / 100.0) if vix_val else 0.20
+    tau = max(dte, 1) / 365.0
+    atm = (round(spot / gap) * gap) if gap > 0 else round(spot)
+    strikes = [atm + k * gap for k in (-3, -2, -1, 0, 1, 2, 3)]
+    strikes = [s for s in strikes if s > 0]
+
+    atr = _eng_ds_num(ind.get("atr14"))
+    em = (atr * math.sqrt(max(min(dte, 5), 1))) if atr else (spot * base_sigma * math.sqrt(tau) if vix_val else spot * 0.01)
+    target = spot + em if direction == "CE" else spot - em
+
+    def _delta_score(ad):
+        pts = [(0.25, 20), (0.40, 60), (0.55, 90), (0.65, 100), (0.80, 80)]
+        if ad <= pts[0][0]:
+            return 15
+        for i in range(1, len(pts)):
+            if ad <= pts[i][0]:
+                (x0, y0), (x1, y1) = pts[i - 1], pts[i]
+                return round(y0 + (y1 - y0) * (ad - x0) / (x1 - x0))
+        return 70
+
+    # IV efficiency from VIX proxy (true IV-rank needs IV history -> not on feed)
+    if vix_val is None: iv_eff = 55
+    elif vix_val < 15: iv_eff = 90
+    elif vix_val < 18: iv_eff = 78
+    elif vix_val < 22: iv_eff = 62
+    elif vix_val < 30: iv_eff = 42
+    else: iv_eff = 30
+
+    raw = []
+    for K in strikes:
+        live = chain_map.get(round(K, 2)) if chain_map else None
+        iv_live = (live or {}).get("iv") if live else None
+        sigma = (iv_live / 100.0) if (iv_live and iv_live > 0) else base_sigma
+        g = _bs_greeks_full(spot, K, tau, r, sigma, direction)
+        if not g:
+            continue
+        ad = abs(g["delta"])
+        try:
+            d1 = (math.log(spot / K) + (r + sigma * sigma / 2) * tau) / (sigma * math.sqrt(tau))
+            d2 = d1 - sigma * math.sqrt(tau)
+            pop = _norm_cdf(d2) if direction == "CE" else _norm_cdf(-d2)
+        except Exception:
+            pop = ad
+        raw.append({"K": K, "g": g, "ad": ad, "pop": pop, "live": live, "sigma": sigma})
+    if not raw:
+        return None
+    gmax = max(x["g"]["gamma"] for x in raw) or 1
+    oi_vals = [(_eng_ds_num((x["live"] or {}).get("oi")) or 0) for x in raw]
+    oi_total = sum(oi_vals) or 0
+
+    cand = []
+    for x in raw:
+        K = x["K"]; ad = x["ad"]; g = x["g"]; live = x["live"]
+        moneyness = abs(K - atm) / gap if gap > 0 else 0
+        src = "live" if live else "model"
+        # Liquidity
+        if live and (live.get("oi") or live.get("volume")):
+            oi = _eng_ds_num(live.get("oi")) or 0; vol = _eng_ds_num(live.get("volume")) or 0
+            bid = _eng_ds_num(live.get("bid")); ask = _eng_ds_num(live.get("ask"))
+            spread_pct = (((ask - bid) / ((ask + bid) / 2) * 100) if (bid and ask and (ask + bid) > 0) else None)
+            ls = 40
+            if oi >= 50000: ls += 25
+            elif oi >= 10000: ls += 18
+            elif oi >= 2000: ls += 10
+            if vol >= 1000: ls += 20
+            elif vol >= 200: ls += 12
+            if spread_pct is not None:
+                if spread_pct < 1: ls += 15
+                elif spread_pct < 3: ls += 8
+                elif spread_pct > 8: ls -= 15
+            liq = max(5, min(100, ls)); liq_src = "live"
+        else:
+            liq = {0: 96, 1: 86, 2: 66, 3: 42}.get(int(round(moneyness)), 35); liq_src = "model"
+            spread_pct = None
+        # OI flow
+        if live and oi_total > 0:
+            share = (_eng_ds_num(live.get("oi")) or 0) / oi_total * 100
+            oi_flow = max(10, min(100, 40 + share * 1.2)); oi_src = "live"
+        else:
+            oi_flow = 50; oi_src = "verify"
+        dsc = _delta_score(ad)
+        gam = round(min(100, g["gamma"] / gmax * 100))
+        if direction == "CE":
+            reach = (target - K) / max(em or 1, 1)
+        else:
+            reach = (K - target) / max(em or 1, 1)
+        if reach >= 0.6: emf = 95
+        elif reach >= 0.2: emf = 85
+        elif reach >= -0.1: emf = 70
+        elif reach >= -0.4: emf = 45
+        else: emf = 20
+        score = liq * 0.25 + dsc * 0.20 + oi_flow * 0.20 + iv_eff * 0.15 + gam * 0.10 + emf * 0.10
+        cand.append({
+            "strike": round(K, 2), "score": round(score), "source": src,
+            "delta": round(g["delta"], 3), "gamma": round(g["gamma"], 5), "pop": round(x["pop"] * 100),
+            "iv": round(x["sigma"] * 100, 1),
+            "liquidity": round(liq), "liq_src": liq_src, "delta_score": dsc,
+            "oi_flow": round(oi_flow), "oi_src": oi_src, "iv_eff": iv_eff,
+            "gamma_score": gam, "em_fit": emf, "spread_pct": (round(spread_pct, 1) if spread_pct is not None else None),
+        })
+
+    sm = sm_signals or {}
+    sm_all = bool(sm.get("oi_pulse") and sm.get("volume") and sm.get("poc") and sm.get("ib") and sm.get("breadth"))
+    for c in cand:
+        c["base_score"] = c["score"]
+        c["adj_score"] = round(c["score"] * 1.15) if sm_all else c["score"]
+        c["sm_strike"] = sm_all
+        s = c["adj_score"]
+        c["tier"] = "Elite" if s > 85 else ("Good" if s >= 75 else "Avoid")
+        c["label"] = "INSTITUTIONAL FLOW STRIKE" if (sm_all and s > 85) else ""
+    cand.sort(key=lambda c: -c["adj_score"])
+    for i, c in enumerate(cand):
+        c["rank"] = i + 1
+    best = cand[0] if cand else None
+    any_live = any(c["source"] == "live" for c in cand)
+    return {
+        "spot": round(spot, 2), "atm": atm, "direction": direction,
+        "expected_move": round(em, 2) if em else None, "target": round(target, 2), "dte": dte,
+        "candidates": cand, "best": best, "count": len(cand),
+        "sm_multiplier": 1.15 if sm_all else 1.0, "sm_applied": sm_all,
+        "data_source": "live" if any_live else "model",
+        "components": {"delta": "model", "gamma": "model", "pop": "model", "em_fit": "model",
+                       "iv_eff": "proxy(VIX)",
+                       "liquidity": ("live" if any_live else "estimate(moneyness)"),
+                       "oi_flow": ("live" if any_live else "verify(no live OI)")},
+        "disclosure": ("Strike scores: Delta/Gamma/POP/Expected-Move are Black-Scholes. IV/OI/Liquidity are "
+                       "read live from the option chain when reachable (flagged 'live'); otherwise IV=VIX proxy, "
+                       "liquidity=moneyness estimate, OI-flow=neutral (flagged 'model'/'verify'). "
+                       "A strike shortlist, not a fill guarantee."),
+    }
+
+
 def _build_trade_ticket(candidate, direction, vix_zone, region):
     """Build a complete actionable trade ticket for a CE or PE candidate.
 
@@ -10698,6 +10911,32 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
             }
             if isinstance(row.get("trade_ticket"), dict):
                 row["trade_ticket"]["aligned"] = aligned
+        # ── Strike Intelligence Engine (SIE) ──
+        try:
+            ind3 = r.get("indicators") or {}
+            _vr = ind3.get("vol_ratio") or 0
+            _bo = any(s.get("passed") and "Breakout" in str(s.get("check", "")) for s in (relevant_signals or []))
+            _apchecks = (row.get("aplus") or {}).get("checks") or (row.get("aplus") or {}).get("items") or []
+            def _apok(name):
+                try:
+                    return any(c.get("passed") and name.lower() in str(str(c.get("label", "")) + str(c.get("check", ""))).lower() for c in _apchecks)
+                except Exception:
+                    return False
+            sm_sig = {"volume": bool(_vr >= 2.0), "ib": bool(_bo),
+                      "oi_pulse": _apok("oi"), "poc": _apok("poc"), "breadth": _apok("breadth")}
+            _cm = None
+            if single_symbol:
+                try:
+                    _hint = r.get("options_hint") or {}
+                    _cm, _ = _sie_chain_map(r.get("symbol"), r.get("yf_sym"), region, _hint.get("dte"), direction)
+                except Exception:
+                    _cm = None
+            sie = _strike_intelligence(row.get("price"), direction, region,
+                                       r.get("options_hint") or {}, ind3, vix_val, sm_sig, _cm)
+            if sie:
+                row["strike_intel"] = sie
+        except Exception:
+            pass
         return row
 
     # Sort by conviction: Grade A first, then B, then C, then by score desc within each grade
