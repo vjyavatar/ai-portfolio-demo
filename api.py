@@ -10888,6 +10888,31 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
             if _mb:
                 row["momentum"] = _mb
         row["aplus"] = _aplus_checklist(row, direction, regime, region)
+        # ── Actionability tier (TAKE NOW / WATCHLIST / SKIP) from entry timing + grade ──
+        _g = (row.get("grade") or "C").upper()
+        _eg = ((row.get("trade_ticket") or {}).get("entry_guidance") or "").upper()
+        _ready = any(k in _eg for k in ("BUY NOW", "BUY PUT NOW", "ENTER ON STRENGTH", "ENTER ON WEAKNESS", "GOOD ENTRY", "GOOD PE ENTRY", "BREAKOUT", "BREAKDOWN"))
+        _starter = "STARTER" in _eg
+        _wait = "WAIT FOR" in _eg
+        _nochase = "DO NOT CHASE" in _eg
+        if _nochase:   _es = 0
+        elif _ready:   _es = 3
+        elif _starter: _es = 2
+        else:          _es = 1   # WAIT or unclear
+        _gs = 3 if _g == "A" else 2 if _g == "B" else 1
+        if _es == 3 and _g in ("A", "B"):
+            _tier, _lbl = "TAKE_NOW", "TAKE NOW"
+        elif _es == 0 or (_g == "C" and _es <= 1):
+            _tier, _lbl = "SKIP", "SKIP"
+        else:
+            _tier, _lbl = "WATCHLIST", "WATCHLIST"
+        _tr = 2 if _tier == "TAKE_NOW" else 1 if _tier == "WATCHLIST" else 0
+        row["action_tier"] = _tier
+        row["action_label"] = _lbl
+        row["action_rank"] = _tr * 1000 + _es * 100 + _gs * 10 + min(int(row.get("score") or 0), 99) // 10
+        row["action_reason"] = ("Grade " + _g + " + entry confirmed \u2014 enter per the ticket." if _tier == "TAKE_NOW"
+                                else "Grade " + _g + ", but price is away from the entry \u2014 set an alert at the named level." if _tier == "WATCHLIST"
+                                else "Over-extended or low conviction \u2014 don't chase.")
         mt = r.get("mtrader") or {}
         if mt:
             tt_d = mt.get("trend_template") or {}
@@ -10941,6 +10966,9 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
 
     # Sort by conviction: Grade A first, then B, then C, then by score desc within each grade
     def _grade_key(r):
+        # Primary sort = actionability (TAKE NOW > WATCHLIST > SKIP), then grade/score.
+        if r.get("action_rank") is not None:
+            return (-(r.get("action_rank") or 0), -r.get("score", 0))
         g = r.get("grade", "B")
         return (0 if g == "A" else 1 if g == "B" else 2, -r.get("score", 0))
 
