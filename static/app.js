@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.56";
-window.CELESYS_BUILD_TIME = 1780984800;
-window.CELESYS_BUILD_DATE = "2026-06-09 06:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.58";
+window.CELESYS_BUILD_TIME = 1780992000;
+window.CELESYS_BUILD_DATE = "2026-06-09 08:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11800,6 +11800,7 @@ window._engShow = function(panel) {
     'imdf': 'engIMDFPanel',
     'redflag': 'engRedFlagPanel',
     'instterm': 'engInstTermPanel',
+    'undervalued': 'engUVCPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11821,6 +11822,7 @@ window._engShow = function(panel) {
     'imdf': 'engBtnIMDF',
     'redflag': 'engBtnRedFlag',
     'instterm': 'engBtnInstTerm',
+    'undervalued': 'engBtnUVC',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12647,6 +12649,91 @@ window._loadInstTerm = function(){
       resEl.innerHTML = window._renderInstTerm(d);
     })
     .catch(function(e){ if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83C\uDFE6\uFE0F OPEN TERMINAL'; } resEl.innerHTML = '<div style="padding:14px;color:#0f766e;font-size:11px">Network error: ' + e.message + '</div>'; });
+};
+
+window._uvcRegion = window._uvcRegion || 'US';
+window._uvcInit = function(){ /* placeholder for focus; region defaults US */ };
+window._loadUVC = function(){
+  var inp = document.getElementById('uvcSym');
+  var sym = ((inp && inp.value) || '').trim().toUpperCase();
+  var resEl = document.getElementById('uvcResult'); var btn = document.getElementById('uvcBtn');
+  if (!resEl) return;
+  if (!sym) { resEl.innerHTML = '<div style="padding:14px;color:#1d4ed8;font-size:11px">Enter a symbol first (NVDA, MU, RELIANCE\u2026).</div>'; return; }
+  var reg = window._uvcRegion || 'US';
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '\u23F3 SCREENING\u2026'; }
+  resEl.innerHTML = '<div style="padding:24px;text-align:center;font-size:11px;color:#1d4ed8"><div style="display:inline-block;width:16px;height:16px;border:2px solid #1d4ed8;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Screening ' + sym + '\u2026</div>';
+  fetch('/api/undervalued-screen?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg) + '&refresh=1', {cache:'no-store'})
+    .then(function(r){ return r.json().catch(function(){return null;}); })
+    .then(function(d){
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83D\uDC8E RUN SCREEN'; }
+      if (!d || !d.success) { var m = (d && (d.error || d.detail)) || 'unknown'; resEl.innerHTML = '<div style="padding:14px;color:#1d4ed8;font-size:11px">' + sym + ': ' + m + '</div>'; return; }
+      resEl.innerHTML = window._renderUVC(d);
+    })
+    .catch(function(e){ if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83D\uDC8E RUN SCREEN'; } resEl.innerHTML = '<div style="padding:14px;color:#1d4ed8;font-size:11px">Network error: ' + e.message + '</div>'; });
+};
+window._renderUVC = function(d){
+  var E = window._esc || function(s){return String(s||'');};
+  var ICON = {pass:'\u2705', fail:'\u274C', unknown:'\u26AA'};
+  var ICC  = {pass:'#16a34a', fail:'#dc2626', unknown:'#94a3b8'};
+  var h = '';
+  // Verdict header
+  h += '<div style="border:2px solid '+E(d.verdict_color)+';border-radius:14px;overflow:hidden;margin-bottom:14px">';
+  h += '<div style="background:'+E(d.verdict_color)+';color:#fff;padding:11px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+  h += '<span style="font-size:15px;font-weight:900">\uD83D\uDC8E '+E(d.name)+'</span>';
+  h += '<span style="font-size:13px;font-weight:900;letter-spacing:.3px">'+E(d.verdict)+'</span>';
+  h += '<span style="margin-left:auto;font-size:11px;font-weight:700;opacity:.95">Coverage '+E(d.coverage_pct)+'% \u00b7 Passed '+E(d.passes)+'/'+E(d.scoreable)+' measurable ('+E(d.pass_rate)+'%)</span>';
+  h += '</div>';
+  h += '<div style="padding:11px 16px;background:#fff">';
+  h += '<div style="font-size:12.5px;color:#334155;line-height:1.6;margin-bottom:6px">'+E(d.verdict_note)+'</div>';
+  if (d.stock_cagr_5y!=null || d.stock_cagr_1y!=null) {
+    h += '<div style="font-size:12px;color:#475569">Stock CAGR \u2014 '+(d.stock_cagr_5y!=null?('~5y: <b>'+E(d.stock_cagr_5y)+'%</b>'):'')+(d.stock_cagr_1y!=null?('  \u00b7  1y: <b>'+E(d.stock_cagr_1y)+'%</b>'):'')+'</div>';
+  }
+  h += '</div></div>';
+  // Checks grouped by layer
+  var layers = [];
+  (d.checks||[]).forEach(function(c){ if(layers.indexOf(c.layer)<0) layers.push(c.layer); });
+  layers.forEach(function(L){
+    h += '<div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:10px">';
+    h += '<div style="padding:7px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:900;letter-spacing:.4px;color:#1d4ed8">'+E(L).toUpperCase()+'</div>';
+    h += '<div style="padding:4px 14px">';
+    (d.checks||[]).filter(function(c){return c.layer===L;}).forEach(function(c){
+      h += '<div style="border-top:1px solid #f1f5f9;padding:8px 0">';
+      h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+      h += '<span style="font-size:13px">'+ICON[c.status]+'</span>';
+      h += '<span style="font-size:12.5px;font-weight:700;color:#0f172a">'+E(c.name)+'</span>';
+      h += '<span style="font-size:10.5px;color:#94a3b8">target '+E(c.target)+'</span>';
+      if (c.value!=null) h += '<span style="margin-left:auto;font-size:12px;font-weight:800;color:'+ICC[c.status]+'">'+E(c.value)+'</span>';
+      else h += '<span style="margin-left:auto;font-size:10px;font-weight:800;color:'+ICC[c.status]+'">'+E(c.status).toUpperCase()+'</span>';
+      h += '</div>';
+      if (c.note) h += '<div style="font-size:10.5px;color:#94a3b8;line-height:1.5;margin-top:2px;padding-left:21px">'+E(c.note)+'</div>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+  });
+  // Re-rating / multibagger composite filter
+  if (d.rerating) {
+    var rr = d.rerating;
+    h += '<div style="border:2px solid '+E(rr.color)+';border-radius:10px;overflow:hidden;margin-bottom:10px">';
+    h += '<div style="padding:8px 14px;background:'+E(rr.color)+';color:#fff;font-size:11px;font-weight:900;letter-spacing:.4px">\uD83D\uDE80 RE-RATING / MULTIBAGGER FILTER</div>';
+    h += '<div style="padding:11px 14px;background:#fff">';
+    h += '<div style="font-size:12.5px;font-weight:800;color:'+E(rr.color)+';line-height:1.5;margin-bottom:8px">'+E(rr.verdict)+'</div>';
+    (rr.legs||[]).forEach(function(l){
+      var mk = (l.ok===true)?'\u2705':(l.known?'\u274C':'\u26AA');
+      var lc = (l.ok===true)?'#16a34a':(l.known?'#dc2626':'#94a3b8');
+      h += '<div style="font-size:12px;color:#334155;line-height:1.7"><span style="color:'+lc+'">'+mk+'</span> '+E(l.leg)+'</div>';
+    });
+    if (rr.note) h += '<div style="font-size:10.5px;color:#94a3b8;line-height:1.5;margin-top:7px">'+E(rr.note)+'</div>';
+    h += '</div></div>';
+  }
+  // Reflective questions
+  if (d.reflective_questions && d.reflective_questions.length) {
+    h += '<div style="border:1px solid #c4b5fd;background:linear-gradient(135deg,#faf5ff,#f5f3ff);border-radius:10px;padding:12px 16px;margin-bottom:10px">';
+    h += '<div style="font-size:11px;font-weight:900;color:#6d28d9;margin-bottom:7px">\uD83E\uDDED THE 5-YEAR TEST \u2014 ask before buying</div>';
+    d.reflective_questions.forEach(function(q){ h += '<div style="font-size:12.5px;color:#4c1d95;line-height:1.6;margin-bottom:3px">\u2022 '+E(q)+'</div>'; });
+    h += '</div>';
+  }
+  if (d.disclosure) h += '<div style="font-size:10px;color:#94a3b8;line-height:1.5;font-style:italic">'+E(d.disclosure)+'</div>';
+  return h;
 };
 
 window._renderInstTerm = function(d){

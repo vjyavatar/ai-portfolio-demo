@@ -41242,6 +41242,285 @@ def _inst_terminal(meta, tech, fund):
 _INST_TERM_CACHE = {}
 _INST_TERM_TTL = 900
 
+# ═══ UNDERVALUED COMPOUNDER SCREEN (UVC, r63.110.57) ════════════════════════════
+# Institutional value/quality screen. Tri-state per check: pass / fail / unknown.
+# UNKNOWN is NEVER counted as a pass. Metrics needing data we don't have on this host
+# (industry PE, 5-yr-avg PE, FCF history, interest coverage) are surfaced as ⚪ verify,
+# not fabricated. A verdict is withheld below a data-coverage floor.
+
+def _uvc_num(v):
+    try:
+        f = float(v)
+        return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+def _uvc_pct(v):
+    """Normalize a ratio that may arrive as decimal (0.18) or percent (18)."""
+    n = _uvc_num(v)
+    if n is None:
+        return None
+    return n * 100.0 if abs(n) <= 2.0 else n
+
+def _undervalued_compounder(symbol, region, fund, closes, meta):
+    fund = fund or {}; meta = meta or {}
+    checks = []   # each: {layer, name, target, status: pass/fail/unknown, value, note}
+
+    def add(layer, name, target, status, value=None, note=""):
+        checks.append({"layer": layer, "name": name, "target": target,
+                       "status": status, "value": value, "note": note})
+
+    pe = _uvc_num(fund.get("trailingPE"))
+    if pe is not None and pe <= 0:
+        pe = None
+    roe = _uvc_pct(fund.get("returnOnEquity"))
+    roa = _uvc_pct(fund.get("returnOnAssets"))
+    de_raw = _uvc_num(fund.get("debtToEquity"))
+    de = (de_raw / 100.0 if (de_raw is not None and de_raw > 5) else de_raw)  # yfinance gives % (150 = 1.5x)
+    rev_g = _uvc_pct(fund.get("revenueGrowth"))
+    eps_g = _uvc_pct(fund.get("earningsGrowth"))
+    mcap = _uvc_num(fund.get("marketCap"))
+    fcf = _uvc_num(fund.get("freeCashflow") or fund.get("freeCashFlow"))
+
+    # stock CAGR from price history (reliable, live)
+    cagr_5y = cagr_1y = None
+    if closes and len(closes) >= 30:
+        first = closes[0]; last = closes[-1]
+        yrs = max(len(closes) / 252.0, 0.1)
+        if first and first > 0 and last > 0:
+            try:
+                cagr_5y = ((last / first) ** (1.0 / yrs) - 1.0) * 100.0
+            except Exception:
+                cagr_5y = None
+        if len(closes) >= 252 and closes[-252] > 0:
+            cagr_1y = (last - closes[-252]) / closes[-252] * 100.0
+
+    # ── Layer 1: Cheapness ──
+    add("Cheapness", "PE < Industry average", "PE < sector avg", "unknown", None,
+        "No industry-PE dataset on this host \u2014 compare manually vs sector.")
+    add("Cheapness", "PE < 5-year average PE", "PE < own 5y avg", "unknown", None,
+        "Needs 5y EPS history (not on feed) \u2014 verify on a fundamentals source.")
+    if pe is not None:
+        ey = 100.0 / pe
+        add("Cheapness", "Earnings yield \u2265 8%", "\u2265 8% (PE \u2264 12.5)",
+            "pass" if ey >= 8 else "fail", round(ey, 1), "Earnings yield = 1 / PE (PE %.1f)." % pe)
+    else:
+        add("Cheapness", "Earnings yield \u2265 8%", "\u2265 8%", "unknown", None, "PE unavailable.")
+    if fcf is not None and mcap and mcap > 0:
+        fcy = fcf / mcap * 100.0
+        add("Cheapness", "FCF yield > 6%", "> 6%", "pass" if fcy > 6 else "fail", round(fcy, 1),
+            "Cash is harder to fake than earnings.")
+    else:
+        add("Cheapness", "FCF yield > 6%", "> 6%", "unknown", None, "Free-cash-flow not on feed \u2014 verify.")
+    add("Cheapness", "Positive FCF \u2014 5 straight years", "FCF > 0 each of 5y", "unknown", None,
+        "Needs 5y cash-flow history (not on feed) \u2014 confirm the business has self-funded, not borrowed, its growth.")
+
+    # ── Layer 2: Financial strength ──
+    if de is not None:
+        st = "pass" if de < 1 else "fail"
+        nt = "Excellent (<0.5)." if de < 0.5 else ("Healthy (<1)." if de < 1 else "Elevated leverage.")
+        add("Strength", "Debt / Equity < 1", "< 1 (excellent < 0.5)", st, round(de, 2), nt)
+    else:
+        add("Strength", "Debt / Equity < 1", "< 1", "unknown", None, "Leverage data unavailable.")
+    add("Strength", "Interest coverage > 5", "EBIT / Interest > 5", "unknown", None,
+        "Income-statement detail not on feed \u2014 verify ability to service debt.")
+
+    # ── Layer 3: Growth mismatch (where re-ratings hide) ──
+    if rev_g is not None:
+        add("Growth", "Revenue growth > 10%", "> 10%", "pass" if rev_g > 10 else "fail", round(rev_g, 1))
+    else:
+        add("Growth", "Revenue growth > 10%", "> 10%", "unknown", None, "Revenue-growth unavailable.")
+    if eps_g is not None:
+        add("Growth", "EPS growth > 15%", "> 15%", "pass" if eps_g > 15 else "fail", round(eps_g, 1),
+            "Note: latest-period YoY proxy, not a clean 5y CAGR.")
+    else:
+        add("Growth", "EPS growth > 15%", "> 15%", "unknown", None, "EPS-growth unavailable.")
+    if eps_g is not None and cagr_1y is not None:
+        st = "pass" if eps_g > cagr_1y else "fail"
+        add("Growth", "Stock lagging earnings", "Stock CAGR < EPS growth", st,
+            "EPS %.0f%% vs Stock %.0f%%" % (eps_g, cagr_1y),
+            "If earnings outrun the stock, the market may not have re-rated it yet (1y proxy).")
+    else:
+        add("Growth", "Stock lagging earnings", "Stock CAGR < EPS growth", "unknown", None,
+            "Needs EPS growth + price history.")
+
+    # ── Layer 4: Quality ──
+    if roa is not None:
+        add("Quality", "ROIC > 15%", "> 15%", "pass" if roa > 15 else "fail", round(roa, 1),
+            "Using ROA/ROCE as a proxy \u2014 true ROIC needs invested-capital detail.")
+    else:
+        add("Quality", "ROIC > 15%", "> 15%", "unknown", None, "Invested-capital return unavailable.")
+    if roe is not None:
+        add("Quality", "ROE > 15%", "> 15%", "pass" if roe > 15 else "fail", round(roe, 1))
+    else:
+        add("Quality", "ROE > 15%", "> 15%", "unknown", None, "ROE unavailable.")
+
+    # ── Layer 5: PEG ──
+    if pe is not None and eps_g is not None and eps_g > 0:
+        peg = pe / eps_g
+        add("Valuation vs growth", "PEG < 1", "< 1", "pass" if peg < 1 else "fail", round(peg, 2),
+            "PEG = PE / growth (using latest YoY EPS growth as the rate).")
+    else:
+        add("Valuation vs growth", "PEG < 1", "< 1", "unknown", None,
+            "Needs PE and a positive growth rate.")
+
+    # ── Layer 7: Moat (curated/inferred — never live) — mapped to the 5 named dimensions ──
+    moats = meta.get("moats") or meta.get("moat") or []
+    if isinstance(moats, str):
+        moats = [moats]
+    DIMS = [("network", "Network effects"), ("switch", "Switching costs"), ("brand", "Brand"),
+            ("cost", "Cost advantage"), ("regulat", "Regulatory advantage")]
+    blob = " ".join(moats).lower()
+    dim_hits = [label for key, label in DIMS if key in blob]
+    if moats:
+        add("Moat", "Durable competitive moat", "network / switching / brand / cost / regulatory",
+            "pass", ", ".join(moats[:4]),
+            ("Maps to: " + (", ".join(dim_hits) if dim_hits else "general moat") + ". " +
+             ("Curated view." if not meta.get("_inferred") else "Sector-inferred \u2014 verify the specific edge.")))
+    else:
+        add("Moat", "Durable competitive moat", "network / switching / brand / cost / regulatory", "unknown", None,
+            "No curated moat on file \u2014 assess these 5 yourself: network effects, switching costs, brand, cost advantage, regulatory advantage.")
+
+    # ── Layer 8: Management (qualitative) — sub-points + red-flag scan ──
+    add("Management", "Insider ownership & capital allocation", "aligned owners, disciplined M&A",
+        "unknown", None, "Insider ownership, buyback cadence and acquisition discipline not on feed \u2014 review filings / proxy.")
+    add("Management", "Dilution / red-flag scan", "no constant issuance, no value-destroying M&A, no rising-debt-while-flat-earnings",
+        "unknown", None, "Share-count history and debt-vs-earnings trend not on feed \u2014 check for the 3 red flags manually.")
+
+    # ── Scoring (UNKNOWN never counts as pass) ──
+    scoreable = [c for c in checks if c["status"] in ("pass", "fail")]
+    passes = [c for c in scoreable if c["status"] == "pass"]
+    total = len(checks)
+    coverage = round(len(scoreable) / total * 100) if total else 0
+    pass_rate = round(len(passes) / len(scoreable) * 100) if scoreable else 0
+
+    if coverage < 40:
+        verdict, vcolor = "INSUFFICIENT DATA \u2014 cannot validate", "#94a3b8"
+        verdict_note = ("Too few fundamentals are reachable on this host to judge value (%d%% coverage). "
+                        "This is NOT a pass or a fail \u2014 the screen simply can't see enough. "
+                        "Pull the missing metrics from a fundamentals source before deciding." % coverage)
+    elif pass_rate >= 70:
+        verdict, vcolor = "UNDERVALUED COMPOUNDER \u2014 candidate", "#16a34a"
+        verdict_note = ("Clears %d%% of the checks it could measure. Confirm the \u26AA items (industry/5y PE, FCF, "
+                        "interest coverage, management) before committing \u2014 a cheap stock without a moat is just cheap." % pass_rate)
+    elif pass_rate >= 45:
+        verdict, vcolor = "MIXED \u2014 partial pass", "#ca8a04"
+        verdict_note = ("Passes %d%% of measurable checks \u2014 some value signals, some misses. "
+                        "Resolve the unknowns and the failed checks before treating it as a compounder." % pass_rate)
+    else:
+        verdict, vcolor = "SCREEN FAILS \u2014 likely fairly valued or a value trap", "#dc2626"
+        verdict_note = ("Only %d%% of measurable checks pass. Cheap on one metric is not enough \u2014 "
+                        "this profile looks fairly valued or carries trap risk." % pass_rate)
+
+    # ── Final composite: Re-rating / multibagger filter ──
+    # Revenue growth + EPS growth + valuation discount + industry tailwind.
+    rr_legs = []
+    rr_rev = (rev_g is not None and rev_g > 10)
+    rr_eps = (eps_g is not None and eps_g > 15)
+    _ey = (100.0 / pe) if pe else None
+    _peg = (pe / eps_g) if (pe and eps_g and eps_g > 0) else None
+    rr_disc = bool((_peg is not None and _peg < 1) or (_ey is not None and _ey >= 8))
+    rr_legs.append({"leg": "Revenue growth > 10%", "ok": rr_rev, "known": rev_g is not None})
+    rr_legs.append({"leg": "EPS growth > 15%", "ok": rr_eps, "known": eps_g is not None})
+    rr_legs.append({"leg": "Valuation discount (PEG<1 or EY\u22658%)", "ok": rr_disc, "known": (pe is not None)})
+    rr_legs.append({"leg": "Industry tailwind", "ok": None, "known": False})  # no feed — qualitative
+    _known = [l for l in rr_legs if l["known"]]
+    _ok = [l for l in _known if l["ok"]]
+    if not _known:
+        rr_verdict, rr_c = "Can't assess \u2014 growth/valuation data not reachable", "#94a3b8"
+    elif len(_ok) == len(_known) and rr_rev and rr_eps and rr_disc:
+        rr_verdict, rr_c = "RE-RATING CANDIDATE \u2014 growth not yet in the price (confirm industry tailwind)", "#16a34a"
+    elif len(_ok) >= 2:
+        rr_verdict, rr_c = "Partial \u2014 some re-rating ingredients present; not the full setup", "#ca8a04"
+    else:
+        rr_verdict, rr_c = "No re-rating setup \u2014 growth/discount combination not met", "#dc2626"
+    rerating = {"legs": rr_legs, "verdict": rr_verdict, "color": rr_c,
+                "note": "Where re-ratings like NVDA / MU / MNST started: real growth the market hasn't paid up for yet. "
+                        "Industry tailwind needs your judgement \u2014 no sector-momentum feed wired here."}
+
+    reflective = [
+        "If earnings double in 5 years, would today's price still look cheap?",
+        "If this company keeps growing for 5 years, would I regret not buying today?",
+        "If the market closed for 5 years, would I still be happy owning this business?",
+    ]
+
+    return {
+        "symbol": symbol, "region": region, "name": meta.get("name") or symbol,
+        "checks": checks, "coverage_pct": coverage, "pass_rate": pass_rate,
+        "passes": len(passes), "scoreable": len(scoreable), "total": total,
+        "verdict": verdict, "verdict_color": vcolor, "verdict_note": verdict_note,
+        "stock_cagr_5y": round(cagr_5y, 1) if cagr_5y is not None else None,
+        "stock_cagr_1y": round(cagr_1y, 1) if cagr_1y is not None else None,
+        "reflective_questions": reflective,
+        "rerating": rerating,
+        "disclosure": ("Fundamental screen. \u2705 pass / \u274C fail are computed from best-effort multi-source "
+                       "fundamentals; \u26AA unknown means the data isn't reachable on this host and is NOT treated "
+                       "as a pass. Growth checks use the latest YoY figure as a proxy for multi-year CAGR. "
+                       "Educational, not investment advice."),
+    }
+
+
+@app.get("/api/undervalued-screen")
+async def undervalued_screen(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Institutional Undervalued Compounder screen (tri-state, honest coverage gate)."""
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE)."}
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    region = (region or "US").upper()
+    _lp = asyncio.get_event_loop()
+    _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN"}
+    yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
+
+    def _hist():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        try:
+            return yf.Ticker(yf_sym).history(period="5y", interval="1d", auto_adjust=True)
+        except Exception:
+            return None
+    h = await _lp.run_in_executor(None, _hist)
+    closes = []
+    try:
+        if h is not None and not h.empty:
+            closes = [float(x) for x in list(h["Close"].dropna())]
+    except Exception:
+        closes = []
+
+    def _fund():
+        f = {}
+        try:
+            if region == "IN":
+                d = fetch_nse_stock_data(sym) or {}
+                # map NSE keys -> engine keys (honest pass-through; missing -> unknown)
+                f["name"] = d.get("companyName") or sym
+                f["sector"] = d.get("sector") or ""
+                if d.get("marketCap"): f["marketCap"] = d.get("marketCap")
+                if d.get("pe"): f["trailingPE"] = d.get("pe")
+                if d.get("roe"): f["returnOnEquity"] = d.get("roe")
+                if d.get("roce"): f["returnOnAssets"] = d.get("roce")
+                if d.get("debtEquity"): f["debtToEquity"] = d.get("debtEquity")
+                if d.get("revGrowth"): f["revenueGrowth"] = d.get("revGrowth")
+                if d.get("earningsGrowth"): f["earningsGrowth"] = d.get("earningsGrowth")
+            else:
+                d = fetch_multi_source_fundamentals(sym) or {}
+                f = dict(d)
+                f["name"] = d.get("name") or d.get("companyName") or sym
+                if d.get("market_cap") and not f.get("marketCap"):
+                    f["marketCap"] = d.get("market_cap")
+        except Exception:
+            pass
+        return f
+    fund = await _lp.run_in_executor(None, _fund)
+    meta = _imdf_infer_meta(sym, region, fund)
+    meta["name"] = fund.get("name") or meta.get("name") or sym
+    try:
+        out = _undervalued_compounder(sym, region, fund, closes, meta)
+        return {"success": True, **out}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/event-radar")
 async def event_radar_endpoint(region: str = "US"):
     """Scheduled macro-catalyst radar (FOMC/NFP/OPEX/expiry). Deterministic dates; no feed."""
