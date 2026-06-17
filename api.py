@@ -41460,66 +41460,125 @@ def _undervalued_compounder(symbol, region, fund, closes, meta):
     }
 
 
+_UVC_UNIVERSE = {
+    # Curated cap-tier pools (membership/tier APPROXIMATE — verify; the valuation verdict is computed live).
+    "US": {
+        "large": ["AAPL", "MSFT", "GOOGL", "NVDA", "META", "JPM", "UNH", "V", "JNJ", "PG", "HD", "MA"],
+        "mid":   ["DECK", "WSM", "TPR", "CROX", "TXRH", "WING", "CASY", "BLDR", "DKS", "MEDP", "EME", "CMC"],
+        "small": ["PLAB", "SKYW", "CALM", "HCI", "AMR", "CRGY", "PRDO", "SCVL", "MLI", "PATK", "GES", "UNFI"],
+        "micro": ["DAKT", "BELFB", "RGR", "CCRN", "VHC", "EZPW", "FLWS", "CTRN", "BSET", "HZO", "DLHC", "OSUR"],
+    },
+    "IN": {
+        "large": ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "BHARTIARTL", "ITC", "LT", "HINDUNILVR", "SBIN", "BAJFINANCE", "KOTAKBANK"],
+        "mid":   ["DIXON", "POLYCAB", "PERSISTENT", "COFORGE", "CUMMINSIND", "ASTRAL", "SUPREMEIND", "BALKRISIND", "MPHASIS", "PAGEIND", "OBEROIRLTY", "AUBANK"],
+        "small": ["KPITTECH", "TANLA", "CAMS", "RADICO", "FINEORG", "NEWGEN", "CMSINFO", "MAPMYINDIA", "JYOTHYLAB", "BIRLACORPN", "TRIVENI", "GPIL"],
+        "micro": ["DCXINDIA", "RATEGAIN", "ZAGGLE", "SENCO", "KFINTECH", "EPACK", "UNIMECH", "AZAD", "PARKHOTELS", "KAYNES", "JUPITER", "SHAILY"],
+    },
+}
+
+def _uvc_screen_one(sym, region):
+    """Sync: fetch 5y history + best-effort fundamentals + meta and run the UVC engine. Thread-safe."""
+    region = (region or "US").upper()
+    _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN"}
+    yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
+    closes = []
+    try:
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        h = yf.Ticker(yf_sym).history(period="5y", interval="1d", auto_adjust=True)
+        if h is not None and not h.empty:
+            closes = [float(x) for x in list(h["Close"].dropna())]
+    except Exception:
+        closes = []
+    fund = {}
+    try:
+        if region == "IN":
+            d = fetch_nse_stock_data(sym) or {}
+            fund["name"] = d.get("companyName") or sym
+            fund["sector"] = d.get("sector") or ""
+            if d.get("marketCap"): fund["marketCap"] = d.get("marketCap")
+            if d.get("pe"): fund["trailingPE"] = d.get("pe")
+            if d.get("roe"): fund["returnOnEquity"] = d.get("roe")
+            if d.get("roce"): fund["returnOnAssets"] = d.get("roce")
+            if d.get("debtEquity"): fund["debtToEquity"] = d.get("debtEquity")
+            if d.get("revGrowth"): fund["revenueGrowth"] = d.get("revGrowth")
+            if d.get("earningsGrowth"): fund["earningsGrowth"] = d.get("earningsGrowth")
+        else:
+            d = fetch_multi_source_fundamentals(sym) or {}
+            fund = dict(d)
+            fund["name"] = d.get("name") or d.get("companyName") or sym
+            if d.get("market_cap") and not fund.get("marketCap"):
+                fund["marketCap"] = d.get("market_cap")
+    except Exception:
+        pass
+    meta = _imdf_infer_meta(sym, region, fund)
+    meta["name"] = fund.get("name") or meta.get("name") or sym
+    return _undervalued_compounder(sym, region, fund, closes, meta)
+
 @app.get("/api/undervalued-screen")
 async def undervalued_screen(symbol: str = "", region: str = "US", refresh: int = 0):
-    """Institutional Undervalued Compounder screen (tri-state, honest coverage gate)."""
+    """Institutional Undervalued Compounder screen (single symbol, tri-state, honest coverage gate)."""
     sym = (symbol or "").strip().upper()
     if not sym:
         return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE)."}
     if yf is None:
         return {"success": False, "error": "yfinance unavailable"}
-    region = (region or "US").upper()
-    _lp = asyncio.get_event_loop()
-    _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN"}
-    yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
-
-    def _hist():
-        try: _yahoo_rate_wait()
-        except Exception: pass
-        try:
-            return yf.Ticker(yf_sym).history(period="5y", interval="1d", auto_adjust=True)
-        except Exception:
-            return None
-    h = await _lp.run_in_executor(None, _hist)
-    closes = []
     try:
-        if h is not None and not h.empty:
-            closes = [float(x) for x in list(h["Close"].dropna())]
-    except Exception:
-        closes = []
-
-    def _fund():
-        f = {}
-        try:
-            if region == "IN":
-                d = fetch_nse_stock_data(sym) or {}
-                # map NSE keys -> engine keys (honest pass-through; missing -> unknown)
-                f["name"] = d.get("companyName") or sym
-                f["sector"] = d.get("sector") or ""
-                if d.get("marketCap"): f["marketCap"] = d.get("marketCap")
-                if d.get("pe"): f["trailingPE"] = d.get("pe")
-                if d.get("roe"): f["returnOnEquity"] = d.get("roe")
-                if d.get("roce"): f["returnOnAssets"] = d.get("roce")
-                if d.get("debtEquity"): f["debtToEquity"] = d.get("debtEquity")
-                if d.get("revGrowth"): f["revenueGrowth"] = d.get("revGrowth")
-                if d.get("earningsGrowth"): f["earningsGrowth"] = d.get("earningsGrowth")
-            else:
-                d = fetch_multi_source_fundamentals(sym) or {}
-                f = dict(d)
-                f["name"] = d.get("name") or d.get("companyName") or sym
-                if d.get("market_cap") and not f.get("marketCap"):
-                    f["marketCap"] = d.get("market_cap")
-        except Exception:
-            pass
-        return f
-    fund = await _lp.run_in_executor(None, _fund)
-    meta = _imdf_infer_meta(sym, region, fund)
-    meta["name"] = fund.get("name") or meta.get("name") or sym
-    try:
-        out = _undervalued_compounder(sym, region, fund, closes, meta)
+        out = await asyncio.get_event_loop().run_in_executor(None, _uvc_screen_one, sym, (region or "US").upper())
         return {"success": True, **out}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.get("/api/undervalued-universe")
+async def undervalued_universe(region: str = "US", tier: str = "large", budget: int = 28):
+    """Run the Undervalued Compounder across a curated cap-tier pool. Returns ranked candidates.
+    Bounded + time-budgeted: fundamentals are slow/flaky on this host, so results are best-effort."""
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    region = (region or "US").upper(); tier = (tier or "large").lower()
+    pool = ((_UVC_UNIVERSE.get(region) or {}).get(tier)) or []
+    if not pool:
+        return {"success": False, "error": "Unknown region/tier. Use region=US|IN, tier=large|mid|small|micro."}
+    import concurrent.futures as _cf, time as _t
+    rows = []; t0 = _t.time()
+    def _one(s):
+        try: return s, _uvc_screen_one(s, region)
+        except Exception: return s, None
+    try:
+        with _cf.ThreadPoolExecutor(max_workers=6) as ex:
+            futs = {ex.submit(_one, s): s for s in pool}
+            for fut in _cf.as_completed(futs, timeout=max(8, budget)):
+                if _t.time() - t0 > budget:
+                    break
+                s, r = fut.result()
+                if not r:
+                    continue
+                rows.append({
+                    "symbol": s, "name": r.get("name") or s,
+                    "verdict": r.get("verdict"), "verdict_color": r.get("verdict_color"),
+                    "coverage_pct": r.get("coverage_pct"), "pass_rate": r.get("pass_rate"),
+                    "passes": r.get("passes"), "scoreable": r.get("scoreable"),
+                    "rerating": (r.get("rerating") or {}).get("verdict"),
+                    "cagr_5y": r.get("stock_cagr_5y"),
+                })
+    except Exception:
+        pass
+    def _key(x):
+        cov = x.get("coverage_pct") or 0
+        usable = 1 if cov >= 40 else 0
+        return (-usable, -(x.get("pass_rate") or 0), -cov)
+    rows.sort(key=_key)
+    candidates = [x for x in rows if (x.get("coverage_pct") or 0) >= 40 and (x.get("pass_rate") or 0) >= 60]
+    insufficient = [x for x in rows if (x.get("coverage_pct") or 0) < 40]
+    return {
+        "success": True, "region": region, "tier": tier,
+        "pool_size": len(pool), "scanned": len(rows),
+        "candidate_count": len(candidates), "insufficient_count": len(insufficient),
+        "rows": rows,
+        "note": ("Curated cap-tier pool (membership/tier approximate \u2014 verify). Valuation verdict computed live per "
+                 "name. On this host many fundamentals are blocked, so names can show INSUFFICIENT DATA \u2014 honest "
+                 "non-coverage, not a fail. Time-budgeted: if the pool didn't finish, re-run. Educational, not advice."),
+    }
 
 @app.get("/api/event-radar")
 async def event_radar_endpoint(region: str = "US"):

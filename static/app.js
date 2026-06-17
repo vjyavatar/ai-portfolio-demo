@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.58";
-window.CELESYS_BUILD_TIME = 1780992000;
-window.CELESYS_BUILD_DATE = "2026-06-09 08:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.59";
+window.CELESYS_BUILD_TIME = 1780995600;
+window.CELESYS_BUILD_DATE = "2026-06-09 09:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12671,6 +12671,52 @@ window._loadUVC = function(){
     })
     .catch(function(e){ if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '\uD83D\uDC8E RUN SCREEN'; } resEl.innerHTML = '<div style="padding:14px;color:#1d4ed8;font-size:11px">Network error: ' + e.message + '</div>'; });
 };
+window._loadUVCUniverse = function(tier){
+  var reg = window._uvcRegion || 'US';
+  var resEl = document.getElementById('uvcUnivResult');
+  if (!resEl) return;
+  resEl.innerHTML = '<div style="padding:20px;text-align:center;font-size:11px;color:#1d4ed8"><div style="display:inline-block;width:16px;height:16px;border:2px solid #1d4ed8;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Screening '+reg+' \u00b7 '+tier+'-cap pool\u2026 (fundamentals are slow on the host \u2014 give it a moment)</div>';
+  fetch('/api/undervalued-universe?region='+encodeURIComponent(reg)+'&tier='+encodeURIComponent(tier), {cache:'no-store'})
+    .then(function(r){ return r.json().catch(function(){return null;}); })
+    .then(function(d){
+      if (!d || !d.success) { var m=(d&&(d.error||d.detail))||'unknown'; resEl.innerHTML = '<div style="padding:14px;color:#1d4ed8;font-size:11px">'+m+'</div>'; return; }
+      resEl.innerHTML = window._renderUVCUniverse(d);
+    })
+    .catch(function(e){ resEl.innerHTML = '<div style="padding:14px;color:#1d4ed8;font-size:11px">Network error: '+e.message+'</div>'; });
+};
+window._renderUVCUniverse = function(d){
+  var E = window._esc || function(s){return String(s||'');};
+  var h = '';
+  h += '<div style="border:1px solid #93c5fd;border-radius:10px;overflow:hidden">';
+  h += '<div style="padding:9px 14px;background:linear-gradient(135deg,#1d4ed8,#1e40af);color:#fff;display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+  h += '<span style="font-size:12px;font-weight:900">\uD83D\uDCCA '+E(d.region)+' \u00b7 '+E(String(d.tier||'').toUpperCase())+'-CAP</span>';
+  h += '<span style="font-size:10px;font-weight:700;opacity:.95">Scanned '+E(d.scanned)+'/'+E(d.pool_size)+' \u00b7 <span style="color:#86efac">'+E(d.candidate_count)+' candidate(s)</span> \u00b7 '+E(d.insufficient_count)+' insufficient</span>';
+  h += '</div>';
+  if (!d.rows || !d.rows.length) {
+    h += '<div style="padding:18px;text-align:center;font-size:11px;color:#94a3b8">No names returned in the time budget \u2014 re-run.</div>';
+  } else {
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">';
+    h += '<thead><tr style="color:#64748b;text-align:left;background:#f8fafc"><th style="padding:6px 10px">Symbol</th><th style="padding:6px 10px">Verdict</th><th style="padding:6px 10px;text-align:right">Pass</th><th style="padding:6px 10px;text-align:right">Cov</th><th style="padding:6px 10px;text-align:right">5y CAGR</th><th style="padding:6px 10px">Re-rating</th></tr></thead><tbody>';
+    d.rows.forEach(function(x){
+      var cov = x.coverage_pct||0;
+      var insuf = cov < 40;
+      var vc = x.verdict_color || '#94a3b8';
+      h += '<tr style="border-top:1px solid #f1f5f9;'+(insuf?'opacity:.6':'')+'">';
+      h += '<td style="padding:6px 10px"><b style="color:#0f172a">'+E(x.symbol)+'</b><div style="font-size:9px;color:#94a3b8">'+E(x.name)+'</div></td>';
+      h += '<td style="padding:6px 10px"><span style="font-size:10px;font-weight:800;color:'+vc+'">'+E(x.verdict)+'</span></td>';
+      h += '<td style="padding:6px 10px;text-align:right;font-weight:800;color:'+vc+'">'+(insuf?'\u2014':(E(x.pass_rate)+'%'))+'</td>';
+      h += '<td style="padding:6px 10px;text-align:right;color:#475569">'+E(cov)+'%</td>';
+      h += '<td style="padding:6px 10px;text-align:right;color:#475569">'+(x.cagr_5y!=null?(E(x.cagr_5y)+'%'):'\u2014')+'</td>';
+      h += '<td style="padding:6px 10px;font-size:10px;color:#475569">'+(x.rerating?E(x.rerating).split(" \u2014 ")[0]:'\u2014')+'</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+  if (d.note) h += '<div style="padding:9px 14px;font-size:9.5px;color:#94a3b8;line-height:1.5;border-top:1px solid #eef2f7;font-style:italic">'+E(d.note)+'</div>';
+  h += '</div>';
+  return h;
+};
+
 window._renderUVC = function(d){
   var E = window._esc || function(s){return String(s||'');};
   var ICON = {pass:'\u2705', fail:'\u274C', unknown:'\u26AA'};
