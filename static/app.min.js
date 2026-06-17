@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.55";
-window.CELESYS_BUILD_TIME = 1780981200;
-window.CELESYS_BUILD_DATE = "2026-06-09 05:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.56";
+window.CELESYS_BUILD_TIME = 1780984800;
+window.CELESYS_BUILD_DATE = "2026-06-09 06:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15208,6 +15208,9 @@ window._renderDirectionalOptions = function(d) {
     h += '</div>';
   }
 
+  /* ═══ ① MARKET CONTEXT divider ═══ */
+  h += '<div style="display:flex;align-items:center;gap:10px;margin:6px 0 12px"><span style="font-size:13px;font-weight:900;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:4px 12px">\u2460 MARKET CONTEXT</span><span style="font-size:11px;color:#94a3b8">read first \u2014 regime, catalysts, conflict</span><div style="flex:1;height:1px;background:#e2e8f0"></div></div>';
+
   /* ═══ A+ MARKET REGIME — LAYER 1 (r63.110.26) ═════════════════════════ */
   var rg = d.regime || null;
   if (rg && rg.label) {
@@ -15226,6 +15229,36 @@ window._renderDirectionalOptions = function(d) {
       h += '</div>';
     }
     if (rg.note) h += '<div style="margin-top:8px;font-size:11px;color:#94a3b8;font-style:italic">' + E(rg.note) + '</div>';
+    h += '</div>';
+  }
+
+  /* ═══ EVENT RADAR — WHY THE MARKET IS MOVING ═══════════════════════════ */
+  var erD = d.event_radar;
+  if (erD) {
+    var pfD = erD.posture_flag;
+    var erCD = (pfD==='EVENT_RISK_TODAY')?'#dc2626':(pfD==='EVENT_IMMINENT')?'#d97706':(pfD==='POST_EVENT'||pfD==='EVENT_THIS_WEEK')?'#0369a1':'#16a34a';
+    var erBgD= (pfD==='EVENT_RISK_TODAY')?'linear-gradient(135deg,#fef2f2,#fee2e2)':(pfD==='EVENT_IMMINENT')?'linear-gradient(135deg,#fffbeb,#fef3c7)':(pfD==='POST_EVENT'||pfD==='EVENT_THIS_WEEK')?'linear-gradient(135deg,#eff6ff,#dbeafe)':'linear-gradient(135deg,#f0fdf4,#dcfce7)';
+    h += '<div style="background:'+erBgD+';border:2px solid '+erCD+';border-radius:14px;padding:14px 18px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
+    h += '<span style="font-size:11px;font-weight:800;letter-spacing:.5px;color:#64748b">\uD83D\uDCE1 EVENT RADAR \u00B7 WHY THE MARKET IS MOVING</span>';
+    if (erD.active) h += '<span style="background:'+erCD+';color:#fff;border-radius:8px;padding:3px 11px;font-size:12px;font-weight:900">'+window._esc(String(pfD||'').replace(/_/g,' '))+'</span>';
+    h += '</div>';
+    if (erD.active) {
+      h += '<div style="font-size:14px;font-weight:900;color:#0f172a;margin-bottom:4px">'+window._esc(erD.active.event)+' \u00B7 <span style="color:'+erCD+'">'+window._esc(erD.active.when)+'</span></div>';
+      if (erD.posture) h += '<div style="font-size:12.5px;color:#1f2937;line-height:1.55;margin-bottom:6px">'+window._esc(erD.posture)+'</div>';
+      if (erD.size_guidance) h += '<div style="background:#fff;border:1px solid '+erCD+'33;border-radius:8px;padding:8px 11px;font-size:12px;color:#334155;line-height:1.5"><b>Sizing:</b> '+window._esc(erD.size_guidance)+'</div>';
+    } else {
+      h += '<div style="font-size:12.5px;color:#1f2937">No major scheduled catalyst in the immediate window \u2014 normal conditions.</div>';
+    }
+    if (erD.upcoming && erD.upcoming.length) {
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">';
+      erD.upcoming.slice(0,5).forEach(function(e){
+        var ic = e.impact==='HIGH'?'#dc2626':e.impact==='MED'?'#d97706':'#94a3b8';
+        h += '<span style="font-size:10px;font-weight:700;background:#fff;border:1px solid '+ic+'44;color:#334155;border-radius:12px;padding:2px 9px">'+window._esc(e.event)+' \u00B7 <b style="color:'+ic+'">'+window._esc(e.when)+'</b></span>';
+      });
+      h += '</div>';
+    }
+    if (erD.note) h += '<div style="font-size:9.5px;color:#94a3b8;margin-top:8px;line-height:1.5;font-style:italic">'+window._esc(erD.note)+'</div>';
     h += '</div>';
   }
 
@@ -15298,6 +15331,9 @@ window._renderDirectionalOptions = function(d) {
   h += '</div>';
   h += '<div style="display:flex;gap:8px"><span style="font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;padding:4px 10px">🟢 ' + (d.ce_passing_count||0) + ' CE</span>';
   h += '<span style="font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:4px 10px">🔴 ' + (d.pe_passing_count||0) + ' PE</span></div></div>';
+
+  /* ═══ ② TRADE IDEAS divider ═══ */
+  h += '<div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px"><span style="font-size:13px;font-weight:900;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:4px 12px">\u2461 TRADE IDEAS</span><span style="font-size:11px;color:#94a3b8">best picks, then the full CE / PE leaderboard</span><div style="flex:1;height:1px;background:#e2e8f0"></div></div>';
 
   /* ═══ TOP PICKS (dark card) ════════════════════════════════════════════ */
   if (d.top_pick_ce || d.top_pick_pe) {

@@ -10954,6 +10954,10 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
     _ap_tot = _ap_bull + _ap_bear
     _ap_bull_pct = (100.0 * _ap_bull / _ap_tot) if _ap_tot > 0 else None
     regime = _aplus_regime(vix_zone, vix_trend_pct, benchmark_ret_20d, benchmark_today_chg, _ap_bull_pct)
+    try:
+        _evt_radar = _event_radar(region)
+    except Exception:
+        _evt_radar = None
 
     # ───────── Build CE + PE leaderboards ─────────
     ce_passing = [r for r in results if r["ce_score"] >= min_score]
@@ -11159,6 +11163,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         "dominant_direction": dominant_direction,
         "chop_mode":          bool(both_active and dominant_direction is None),
         "regime":             regime,
+        "event_radar":        _evt_radar,
         "single_symbol":      single_symbol or None,
         "bubbles":           bubbles,
         # VIX context — the whole point of this algorithm
