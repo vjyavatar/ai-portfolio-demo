@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.54";
-window.CELESYS_BUILD_TIME = 1780977600;
-window.CELESYS_BUILD_DATE = "2026-06-09 04:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.55";
+window.CELESYS_BUILD_TIME = 1780981200;
+window.CELESYS_BUILD_DATE = "2026-06-09 05:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12742,6 +12742,42 @@ window._renderInstTerm = function(d){
     h += '<span style="margin-left:auto;display:flex;align-items:baseline;gap:5px"><span style="font-size:11px;color:'+note+';font-weight:700">REGIME</span><span style="font-size:20px;font-weight:900;color:'+mrC+'">'+E(mr.regime_score)+'</span><span style="font-size:11px;color:'+note+'">/100</span><span style="font-size:13px;font-weight:800;color:'+mrC+';margin-left:4px">'+E(mr.label)+'</span></span>';
     h += '</div>';
     if (mr.note) h += '<div style="font-size:13px;color:#334155;line-height:1.5">'+E(mr.note)+'</div>';
+    // ── Event Radar (macro catalysts — why the market is moving) ──
+    var er = mr.event_radar;
+    if (er) {
+      var pf = er.posture_flag;
+      var erC = (pf==='EVENT_RISK_TODAY')?'#dc2626':(pf==='EVENT_IMMINENT')?'#d97706':(pf==='POST_EVENT'||pf==='EVENT_THIS_WEEK')?'#0369a1':'#16a34a';
+      var erBg= (pf==='EVENT_RISK_TODAY')?'#fef2f2':(pf==='EVENT_IMMINENT')?'#fffbeb':(pf==='POST_EVENT'||pf==='EVENT_THIS_WEEK')?'#eff6ff':'#f0fdf4';
+      h += '<div style="margin-top:12px;border-top:1px dashed '+bd+';padding-top:11px">';
+      h += '<div style="font-size:11px;font-weight:900;letter-spacing:.5px;color:'+teal+';margin-bottom:7px">\uD83D\uDCE1 EVENT RADAR \u2014 WHY THE MARKET IS MOVING</div>';
+      if (er.active) {
+        h += '<div style="background:'+erBg+';border:1px solid '+erC+'44;border-left:3px solid '+erC+';border-radius:8px;padding:10px 12px;margin-bottom:8px">';
+        h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">';
+        h += '<span style="font-size:9px;font-weight:900;color:#fff;background:'+erC+';border-radius:4px;padding:2px 7px">'+E(String(pf||'').replace(/_/g,' '))+'</span>';
+        h += '<span style="font-size:13px;font-weight:900;color:#0f172a">'+E(er.active.event)+'</span>';
+        h += '<span style="font-size:11px;font-weight:800;color:'+erC+'">'+E(er.active.when)+'</span>';
+        h += '</div>';
+        if (er.posture) h += '<div style="font-size:12.5px;color:#0f172a;line-height:1.55;margin-bottom:5px">'+E(er.posture)+'</div>';
+        if (er.size_guidance) h += '<div style="font-size:12px;color:#334155;line-height:1.5"><b>Sizing:</b> '+E(er.size_guidance)+'</div>';
+        h += '</div>';
+      }
+      if (er.upcoming && er.upcoming.length) {
+        h += '<div style="font-size:11px;font-weight:800;color:'+note+';margin-bottom:4px">SCHEDULED CATALYSTS</div>';
+        h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">';
+        er.upcoming.forEach(function(e){
+          var ic = e.impact==='HIGH'?'#dc2626':e.impact==='MED'?'#d97706':'#94a3b8';
+          var td = e.days_to===0;
+          h += '<tr style="border-top:1px solid #f1f5f9;'+(td?'background:#fef2f2;font-weight:700':'')+'">';
+          h += '<td style="padding:3px 8px;color:#0f172a">'+E(e.event)+'</td>';
+          h += '<td style="padding:3px 8px;text-align:right;color:#475569;white-space:nowrap">'+E(e.when)+'</td>';
+          h += '<td style="padding:3px 8px;text-align:right"><span style="font-size:9px;font-weight:800;color:'+ic+'">'+E(e.impact)+'</span></td>';
+          h += '</tr>';
+        });
+        h += '</table></div>';
+      }
+      if (er.note) h += '<div style="font-size:10.5px;color:#94a3b8;margin-top:7px;line-height:1.5">'+E(er.note)+'</div>';
+      h += '</div>';
+    }
     h += '</div></div>';
   }
   // ── INSTITUTIONAL VERDICT (light) ──

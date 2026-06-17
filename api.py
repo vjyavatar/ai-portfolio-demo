@@ -10554,6 +10554,123 @@ def _enrich_oi_flow(ce_rows, pe_rows, region, budget_sec=6):
 # option structure → risk. Honest by construction: layers backed by LIVE indicators are graded
 # pass/warn/fail; layers needing data unavailable on this deployment (live option delta/liquidity,
 # confirmed event dates, sector-participation breadth) are surfaced as "verify" — never auto-passed.
+_FOMC_DECISION_DATES = [
+    # (decision_day_ISO, is_SEP_dotplot)  — 2026 FOMC, verified vs federalreserve.gov
+    ("2026-01-28", False), ("2026-03-18", True),  ("2026-04-29", False), ("2026-06-17", True),
+    ("2026-07-29", False), ("2026-09-16", True),  ("2026-10-28", False), ("2026-12-09", True),
+    ("2027-01-27", False),  # rollover anchor (tentative)
+]
+
+def _nth_weekday(year, month, weekday, n):
+    """n-th given weekday (Mon=0..Sun=6) of a month. n negative counts from end."""
+    import calendar
+    cal = [d for d in calendar.Calendar().itermonthdates(year, month) if d.month == month and d.weekday() == weekday]
+    if not cal:
+        return None
+    try:
+        return cal[n - 1] if n > 0 else cal[n]
+    except IndexError:
+        return None
+
+def _event_radar(region="US", today=None):
+    """Macro-catalyst radar. Deterministic scheduled events (no feed): FOMC (verified dates),
+    US NFP (1st Friday), US monthly OPEX (3rd Friday), IN monthly expiry (last Thursday, verify).
+    Event OUTCOMES (the actual decision/print) require a news headline and are NOT fabricated here."""
+    from datetime import datetime, date, timedelta
+    if today is None:
+        today = datetime.utcnow().date()
+    elif isinstance(today, str):
+        today = datetime.strptime(today[:10], "%Y-%m-%d").date()
+    region = (region or "US").upper()
+    evts = []
+
+    def add(d, name, impact, scope, detail):
+        if isinstance(d, str):
+            d = datetime.strptime(d, "%Y-%m-%d").date()
+        if d is None:
+            return
+        evts.append({"date": d.isoformat(), "days_to": (d - today).days,
+                     "event": name, "impact": impact, "scope": scope, "detail": detail})
+
+    # FOMC (global impact — moves US and, via risk sentiment, IN too)
+    for iso, sep in _FOMC_DECISION_DATES:
+        add(iso, "FOMC rate decision" + (" + dot plot/SEP" if sep else ""), "HIGH", "GLOBAL",
+            "Fed sets the funds rate; statement 2:00pm ET, presser 2:30pm." + (" Quarterly projections (dot plot) released — extra volatility." if sep else ""))
+
+    # Recurring deterministic events for the surrounding ~3 months
+    for off in (-1, 0, 1, 2):
+        m = today.month + off; y = today.year
+        while m > 12: m -= 12; y += 1
+        while m < 1:  m += 12; y -= 1
+        if region == "US":
+            add(_nth_weekday(y, m, 4, 1), "US jobs report (NFP)", "HIGH", "US", "Non-farm payrolls 8:30am ET — first Friday; big rates/USD mover.")
+            add(_nth_weekday(y, m, 4, 3), "US monthly options expiration (OPEX)", "MED", "US", "Third-Friday monthly expiry — gamma unwind, pinning, late-week vol.")
+        else:
+            add(_nth_weekday(y, m, 3, -1), "NSE monthly expiry", "MED", "IN", "Monthly F&O expiry (last Thursday — verify exact day with exchange).")
+
+    # keep events within a useful window: recent past 3d .. next 45d
+    evts = [e for e in evts if -3 <= e["days_to"] <= 45]
+    evts.sort(key=lambda e: (abs(e["days_to"]) if e["days_to"] >= 0 else 999 - e["days_to"], e["date"]))
+
+    def when_label(dd):
+        if dd == 0:   return "TODAY"
+        if dd == 1:   return "TOMORROW"
+        if dd < 0:    return f"{-dd}d ago"
+        if dd <= 7:   return f"in {dd}d (this week)"
+        return f"in {dd}d"
+    for e in evts:
+        e["when"] = when_label(e["days_to"])
+
+    # Active catalyst = the highest-impact event happening today/imminently (or just passed)
+    def _rank(e):
+        imp = {"HIGH": 0, "MED": 1, "LOW": 2}.get(e["impact"], 3)
+        prox = 0 if e["days_to"] == 0 else (1 if 1 <= e["days_to"] <= 2 else (2 if e["days_to"] < 0 else 3 + e["days_to"]))
+        return (imp, prox)
+    active = None
+    near = [e for e in evts if -2 <= e["days_to"] <= 3]
+    if near:
+        active = sorted(near, key=_rank)[0]
+
+    # Posture + size guidance
+    posture_flag, size_guidance, posture = "CLEAR", "Normal position sizing — no major scheduled catalyst in the immediate window.", None
+    if active:
+        dd, imp = active["days_to"], active["impact"]
+        is_fomc = active["event"].startswith("FOMC")
+        if dd == 0 and imp == "HIGH":
+            posture_flag = "EVENT_RISK_TODAY"
+            size_guidance = "Cut size to half or stand aside until the reaction is clear; avoid fresh option longs into the release."
+            if is_fomc:
+                posture = ("FED DAY \u2014 decision lands 2:00pm ET. Expect a volatility spike into the print, then a sharp "
+                           "IV crush after: long calls/puts bought beforehand can lose even if direction is right. "
+                           "Pre-2pm breakouts often fail. If holding options, trim or hedge; otherwise wait for the post-print trend.")
+            else:
+                posture = (active["event"] + " today \u2014 elevated two-way volatility around the release. Let the first move "
+                           "settle before committing; premium bought into the event bleeds on the vol crush.")
+        elif 1 <= dd <= 2 and imp == "HIGH":
+            posture_flag = "EVENT_IMMINENT"
+            size_guidance = "Trim new risk; IV is rising into the event. Buyers of premium are paying up — favor spreads over naked longs."
+            posture = (active["event"] + f" in {dd} day(s). IV typically inflates into it (premiums richer), then collapses after. "
+                       "Be cautious starting fresh option longs now.")
+        elif dd < 0 and imp == "HIGH":
+            posture_flag = "POST_EVENT"
+            size_guidance = "Post-event: IV has likely reset lower (cheaper premium). The first clean post-event trend is often the higher-quality entry."
+            posture = (active["event"] + f" was {-dd} day(s) ago \u2014 the vol crush has likely passed; trade the resulting trend, not the headline.")
+        else:
+            posture_flag = "EVENT_THIS_WEEK"
+            size_guidance = "A scheduled catalyst is in the week \u2014 keep size measured and avoid over-committing before it."
+            posture = active["event"] + " " + active["when"] + " \u2014 plan entries/exits around it."
+
+    nxt_fomc = next((e for e in evts if e["event"].startswith("FOMC") and e["days_to"] >= 0), None)
+    return {
+        "today": today.isoformat(), "region": region,
+        "active": active, "upcoming": evts[:6],
+        "next_fomc": nxt_fomc,
+        "posture_flag": posture_flag, "posture": posture, "size_guidance": size_guidance,
+        "note": ("Scheduled dates are deterministic (FOMC verified against federalreserve.gov; NFP = 1st Friday; "
+                 "US OPEX = 3rd Friday; IN monthly expiry approximate). The event OUTCOME (the actual decision/number) "
+                 "needs a live news headline \u2014 not provided here; read the wire at release time."),
+    }
+
 def _aplus_regime(vix_zone=None, vix_trend_pct=None, bench_ret_20d=None, bench_today_chg=None, bull_pct=None):
     """LAYER 1 — market regime (shared by the whole scan).
     Risk-On favors CE buyers, Risk-Off favors PE buyers, Neutral favors neither."""
@@ -41120,6 +41237,14 @@ def _inst_terminal(meta, tech, fund):
 _INST_TERM_CACHE = {}
 _INST_TERM_TTL = 900
 
+@app.get("/api/event-radar")
+async def event_radar_endpoint(region: str = "US"):
+    """Scheduled macro-catalyst radar (FOMC/NFP/OPEX/expiry). Deterministic dates; no feed."""
+    try:
+        return {"success": True, **_event_radar(region)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/institutional-terminal")
 async def institutional_terminal(symbol: str = "", region: str = "US", refresh: int = 0):
     """Institutional Terminal — single-symbol Bloomberg-style 3-mode decision card."""
@@ -41319,6 +41444,18 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
                             "note": "Sectors ranked by 3-month return \u2014 where institutional money is rotating."}
     except Exception:
         regime = regime or None; rotation = rotation or None
+
+    # Event Radar — scheduled macro catalysts (no fetch; always available even if regime fetch failed)
+    try:
+        _er = _event_radar(region)
+        if not isinstance(regime, dict):
+            regime = {"indices": [], "regime_score": None, "label": "Unknown",
+                      "note": "Live regime data unavailable, but scheduled catalysts are shown below."}
+        regime["event_radar"] = _er
+        if _er.get("posture_flag") in ("EVENT_RISK_TODAY", "EVENT_IMMINENT") and _er.get("active"):
+            regime["event_alert"] = _er["active"]["event"] + " \u2014 " + _er["active"]["when"]
+    except Exception:
+        pass
 
     out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym,
            "market_regime": regime, "sector_rotation": rotation, **_inst_terminal(meta, tech, fund)}
