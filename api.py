@@ -10037,6 +10037,28 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
         out["pe_signals"] = pe_signals
         out["pe_signals_passed"] = pe_passed
 
+        # ── Counter-trend guard (anti dead-cat-bounce) ──────────────────────────
+        # A CALL in a confirmed downtrend (price < 50 & 200 DMA) or a PUT in a confirmed
+        # uptrend is a counter-trend bounce — the #1 way a momentum scanner buys falling
+        # knives. Penalize the score so these fall under the MIN SCORE gate. ADX (a
+        # direction-agnostic trend-strength reading) otherwise rewards strong downtrends.
+        _mt = out.get("mtrader") or {}
+        _s50 = _mt.get("sma50"); _s200 = _mt.get("sma200"); _px = close_now
+        out["trend_context"] = None
+        if _s50 and _s200 and _px:
+            # Primary trend = 200-DMA + MA stack. A bounce above the 50-DMA while still below
+            # the 200-DMA in a death-cross (50<200) is STILL a counter-trend dead-cat bounce.
+            if _px < _s200 and _s50 < _s200:
+                out["trend_context"] = "downtrend"
+            elif _px > _s200 and _s50 > _s200:
+                out["trend_context"] = "uptrend"
+        if out["trend_context"] == "downtrend":
+            out["ce_score"] = round(out["ce_score"] * 0.55)
+            out["ce_counter_trend"] = True   # CALL into a downtrend
+        if out["trend_context"] == "uptrend":
+            out["pe_score"] = round(out["pe_score"] * 0.55)
+            out["pe_counter_trend"] = True   # PUT into an uptrend
+
         # Vijay's spec: Delta 0.50-0.60 for CE, -0.50 to -0.60 for PE
         # As a rule of thumb, ATM ≈ 0.50 delta, +5% OTM ≈ 0.35, -5% ITM ≈ 0.65
         # We surface strike suggestions; real Greeks need F&O feed.
@@ -11056,6 +11078,13 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         else:
             _tier, _lbl = "WATCHLIST", "WATCHLIST"
         _tr = 2 if _tier == "TAKE_NOW" else 1 if _tier == "WATCHLIST" else 0
+        # Counter-trend guard: a CALL in a downtrend / PUT in an uptrend can never be TAKE NOW.
+        _ct = bool(r.get("ce_counter_trend") if direction == "CE" else r.get("pe_counter_trend"))
+        row["counter_trend"] = _ct
+        row["trend_context"] = r.get("trend_context")
+        if _ct and _tier == "TAKE_NOW":
+            _tier, _lbl, _tr = "WATCHLIST", "WATCHLIST", 1
+            row["action_tier"] = _tier; row["action_label"] = _lbl
         # High-beta proxy (annualized realized vol) -> rank high-beta movers first within a tier
         _rv = ((r.get("mtrader") or {}).get("vol_annual"))
         _beta_bucket = max(0, min(9, int((_rv or 0) / 8)))
@@ -11066,7 +11095,8 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         # Order: tier > high-beta > entry readiness > grade > score
         row["action_rank"] = (_tr * 100000 + _beta_bucket * 1000 + _es * 100 + _gs * 10
                               + min(int(row.get("score") or 0), 99) // 10)
-        row["action_reason"] = ("Grade " + _g + " + entry confirmed \u2014 enter per the ticket." if _tier == "TAKE_NOW"
+        row["action_reason"] = (("Counter-trend " + ("CALL" if direction == "CE" else "PUT") + " against the primary " + (r.get("trend_context") or "") + " \u2014 dead-cat-bounce risk; not an enter-now.") if _ct
+                                else "Grade " + _g + " + entry confirmed \u2014 enter per the ticket." if _tier == "TAKE_NOW"
                                 else "Grade " + _g + ", but price is away from the entry \u2014 set an alert at the named level." if _tier == "WATCHLIST"
                                 else "Over-extended or low conviction \u2014 don't chase.")
         mt = r.get("mtrader") or {}

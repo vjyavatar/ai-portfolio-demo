@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.62";
-window.CELESYS_BUILD_TIME = 1781006400;
-window.CELESYS_BUILD_DATE = "2026-06-09 12:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.64";
+window.CELESYS_BUILD_TIME = 1781013600;
+window.CELESYS_BUILD_DATE = "2026-06-09 14:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15414,7 +15414,8 @@ window._renderDirectionalOptions = function(d) {
     h += '<li>That means the market has <b>no clear direction right now</b> &mdash; it is moving sideways (\u201cchop\u201d).</li>';
     h += '<li><b>Do not buy both a call and a put.</b> In plain terms: when you <i>buy</i> options, every day that price goes nowhere, both options <b>lose value</b> (this daily bleed is called <b>theta</b> / time decay). Buying both sides in a flat market is almost guaranteed to lose.</li>';
     h += '</ul>';
-    h += '<div style="background:#fff;border:1px solid #fde68a;border-radius:9px;padding:10px 12px">';
+    h += '<details style="margin-top:2px"><summary style="cursor:pointer;font-size:12px;font-weight:800;color:#15803d;padding:5px 0;list-style:none">&#128176; Sideways-market playbook &mdash; strategies (tap to expand)</summary>';
+    h += '<div style="background:#fff;border:1px solid #fde68a;border-radius:9px;padding:10px 12px;margin-top:6px">';
     h += '<div style="font-size:12px;font-weight:900;color:#15803d;margin-bottom:5px">&#128176; How to make money in a sideways market</div>';
     h += '<div style="font-size:11px;color:#475569;line-height:1.6;margin-bottom:7px">The trick: when the market is flat, stop <b>buying</b> options and instead <b>sell</b> them. Then time decay (theta) works <b>for</b> you &mdash; you collect the premium that option buyers lose. The catch is selling carries bigger risk, so prefer the <b>defined-risk</b> structures below.</div>';
     var strat = [
@@ -15447,6 +15448,7 @@ window._renderDirectionalOptions = function(d) {
       h += '<li>\u201cCash-secured\u201d here means <b>margin-secured</b>: you post SPAN + exposure margin, not the full cash. Defined-risk spreads get a margin benefit; naked selling needs large margin and got costlier after the 2024 lot-size / margin curbs.</li>';
       h += '</ul></div>';
     }
+    h += '</details>';
     h += '</div>';
   } else if (d.conflict_warning) {
     h += '<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #f59e0b;border-radius:12px;padding:14px 18px;margin-bottom:12px">';
@@ -15544,6 +15546,9 @@ window._renderDirectionalOptions = function(d) {
       if (_bp && _bp.bucket >= 4) {
         var _bc = _bp.bucket >= 6 ? '#dc2626' : '#d97706';
         html += '<span style="font-size:10px;font-weight:900;color:#fff;background:' + _bc + ';border-radius:10px;padding:2px 8px">\u26A1 ' + E(_bp.label) + '-\u03B2' + (_bp.vol_annual ? ' ' + E(_bp.vol_annual) + '% vol' : '') + '</span>';
+      }
+      if (c.counter_trend) {
+        html += '<span style="font-size:10px;font-weight:900;color:#fff;background:#b91c1c;border-radius:10px;padding:2px 8px">\u26A0 COUNTER-TREND</span>';
       }
       if (c.action_reason) html += '<span style="font-size:11px;color:#475569;font-weight:600">' + E(c.action_reason) + '</span>';
       html += '</div>';
