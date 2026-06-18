@@ -8619,6 +8619,8 @@ _INST_PICKS_UNIVERSE = {
         "VST", "TLN", "OKLO", "SMR", "NNE", "ETN",
         "ASTS", "LUNR", "MARA", "CLSK", "RIOT",
         "SOFI", "AFRM", "UPST", "NU", "RDDT", "HIMS", "CVNA", "CELH",
+        # ── MU/SNDK peer group: cyclical semis, memory-adjacent, AI-hardware (high beta) ──
+        "MCHP", "ADI", "MPWR", "COHR", "LITE", "ENTG", "ACLS", "ONTO", "AMKR",
         # Indexes / ETF proxies — liquid CE/PE options, directional signals
         "SPY",   # S&P 500 — most liquid US options
         "QQQ",   # NASDAQ 100 — tech-heavy, high CE/PE activity
@@ -8646,6 +8648,8 @@ _INST_PICKS_UNIVERSE = {
         "OFSS", "COFORGE", "MPHASIS", "LTIM", "KPITTECH", "TATAELXSI",
         "JSWENERGY", "NHPC", "HINDZINC", "NATIONALUM",
         "LODHA", "OBEROIRLTY", "APLAPOLLO",
+        # India has no memory/semi equivalent — closest momentum DNA is high-beta capex/defence/cyclicals (F&O):
+        "SOLARINDS", "KEI", "MOTHERSON",
         # Indexes — NIFTY / BANK NIFTY / SENSEX F&O is the highest-volume CE/PE market in India
         "^NSEI",     # NIFTY 50 — most liquid F&O
         "^NSEBANK",  # BANK NIFTY — second-highest F&O volume
@@ -9749,12 +9753,24 @@ def _mtrader_block(closes, highs, lows, volumes, ind, rs_vs_bench):
     if hv is not None and hv < 30: contracting = True
     vcp_note = ("Volatility contracting \u2014 coiled for an explosive move (good option-buy setup)." if contracting
                 else "No volatility contraction \u2014 choppy; long options can bleed theta.")
+    # Annualized realized volatility (high-beta proxy — vol tracks beta for momentum/semis names)
+    vol_annual = None
+    try:
+        seg = closes[-60:] if len(closes) > 60 else closes
+        rets = [seg[i] / seg[i - 1] - 1 for i in range(1, len(seg)) if seg[i - 1]]
+        if len(rets) >= 10:
+            mean = sum(rets) / len(rets)
+            var = sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)
+            vol_annual = (var ** 0.5) * (252 ** 0.5) * 100
+    except Exception:
+        vol_annual = None
     return {"sma50": round(s50, 2) if s50 else None, "sma150": round(s150, 2) if s150 else None,
             "sma200": round(s200, 2) if s200 else None,
             "trend_template": {"bull": tt_bull, "bear": tt_bear},
             "momentum_bull": mom_bull, "momentum_bear": mom_bear,
             "inst_accum": {"score": accum, "rating": ar},
-            "vcp": {"contracting": contracting, "note": vcp_note}}
+            "vcp": {"contracting": contracting, "note": vcp_note},
+            "vol_annual": round(vol_annual, 1) if vol_annual else None}
 
 def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None):
     """Compute CE/PE directional score for one ticker. Sync — runs in executor.
@@ -11040,9 +11056,16 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         else:
             _tier, _lbl = "WATCHLIST", "WATCHLIST"
         _tr = 2 if _tier == "TAKE_NOW" else 1 if _tier == "WATCHLIST" else 0
+        # High-beta proxy (annualized realized vol) -> rank high-beta movers first within a tier
+        _rv = ((r.get("mtrader") or {}).get("vol_annual"))
+        _beta_bucket = max(0, min(9, int((_rv or 0) / 8)))
+        _beta_label = "High" if _beta_bucket >= 6 else ("Elevated" if _beta_bucket >= 4 else "Normal")
+        row["beta_proxy"] = {"vol_annual": _rv, "bucket": _beta_bucket, "label": _beta_label}
         row["action_tier"] = _tier
         row["action_label"] = _lbl
-        row["action_rank"] = _tr * 1000 + _es * 100 + _gs * 10 + min(int(row.get("score") or 0), 99) // 10
+        # Order: tier > high-beta > entry readiness > grade > score
+        row["action_rank"] = (_tr * 100000 + _beta_bucket * 1000 + _es * 100 + _gs * 10
+                              + min(int(row.get("score") or 0), 99) // 10)
         row["action_reason"] = ("Grade " + _g + " + entry confirmed \u2014 enter per the ticket." if _tier == "TAKE_NOW"
                                 else "Grade " + _g + ", but price is away from the entry \u2014 set an alert at the named level." if _tier == "WATCHLIST"
                                 else "Over-extended or low conviction \u2014 don't chase.")

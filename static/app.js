@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.60";
-window.CELESYS_BUILD_TIME = 1780999200;
-window.CELESYS_BUILD_DATE = "2026-06-09 10:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.62";
+window.CELESYS_BUILD_TIME = 1781006400;
+window.CELESYS_BUILD_DATE = "2026-06-09 12:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15540,6 +15540,11 @@ window._renderDirectionalOptions = function(d) {
       var _atI  = _at==='TAKE_NOW' ? '\u2705' : _at==='WATCHLIST' ? '\u23F3' : '\u26D4';
       html += '<div style="background:' + _atBg + ';border-bottom:1px solid ' + _atC + '33;padding:6px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
       html += '<span style="font-size:11px;font-weight:900;color:' + _atC + ';letter-spacing:.4px">' + _atI + ' ' + E(_al) + '</span>';
+      var _bp = c.beta_proxy;
+      if (_bp && _bp.bucket >= 4) {
+        var _bc = _bp.bucket >= 6 ? '#dc2626' : '#d97706';
+        html += '<span style="font-size:10px;font-weight:900;color:#fff;background:' + _bc + ';border-radius:10px;padding:2px 8px">\u26A1 ' + E(_bp.label) + '-\u03B2' + (_bp.vol_annual ? ' ' + E(_bp.vol_annual) + '% vol' : '') + '</span>';
+      }
       if (c.action_reason) html += '<span style="font-size:11px;color:#475569;font-weight:600">' + E(c.action_reason) + '</span>';
       html += '</div>';
     }
