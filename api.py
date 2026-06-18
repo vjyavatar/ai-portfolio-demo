@@ -8614,6 +8614,11 @@ _INST_PICKS_UNIVERSE = {
         "STLD", "NUE", "GE", "BA", "RKLB",
         # Active-trading additions — semis/AI, high-beta, speculative (QUBT/RGTI have thin options)
         "TSM", "ALAB", "HOOD", "IONQ", "RGTI", "QUBT",
+        # ── High-momentum additions (SNDK-like: memory/semis, AI-infra, power, fintech, space, crypto) ──
+        "APP", "CRDO", "NBIS", "CRWV", "INTC", "TXN", "KLAC", "TER",
+        "VST", "TLN", "OKLO", "SMR", "NNE", "ETN",
+        "ASTS", "LUNR", "MARA", "CLSK", "RIOT",
+        "SOFI", "AFRM", "UPST", "NU", "RDDT", "HIMS", "CVNA", "CELH",
         # Indexes / ETF proxies — liquid CE/PE options, directional signals
         "SPY",   # S&P 500 — most liquid US options
         "QQQ",   # NASDAQ 100 — tech-heavy, high CE/PE activity
@@ -8634,6 +8639,13 @@ _INST_PICKS_UNIVERSE = {
         # F&O momentum leaders (active-trading watchlist)
         "BSE", "PERSISTENT", "POLYCAB", "CUMMINSIND", "ANGELONE",
         "SIEMENS", "ABB", "KAYNES", "MAZDOCK", "BDL", "COCHINSHIP",
+        # ── High-momentum F&O additions (NSE F&O only — new-age, capital-markets, rail/defence/PSU, realty, IT-mid) ──
+        "ETERNAL", "PAYTM", "POLICYBZR", "NYKAA", "JIOFIN",
+        "CDSL", "MCX", "CAMS",
+        "RVNL", "IRFC", "IREDA", "HUDCO", "PFC", "RECLTD",
+        "OFSS", "COFORGE", "MPHASIS", "LTIM", "KPITTECH", "TATAELXSI",
+        "JSWENERGY", "NHPC", "HINDZINC", "NATIONALUM",
+        "LODHA", "OBEROIRLTY", "APLAPOLLO",
         # Indexes — NIFTY / BANK NIFTY / SENSEX F&O is the highest-volume CE/PE market in India
         "^NSEI",     # NIFTY 50 — most liquid F&O
         "^NSEBANK",  # BANK NIFTY — second-highest F&O volume

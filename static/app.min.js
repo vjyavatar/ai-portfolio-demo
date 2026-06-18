@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.59";
-window.CELESYS_BUILD_TIME = 1780995600;
-window.CELESYS_BUILD_DATE = "2026-06-09 09:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.60";
+window.CELESYS_BUILD_TIME = 1780999200;
+window.CELESYS_BUILD_DATE = "2026-06-09 10:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
