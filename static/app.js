@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.65";
-window.CELESYS_BUILD_TIME = 1781017200;
-window.CELESYS_BUILD_DATE = "2026-06-09 15:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.68";
+window.CELESYS_BUILD_TIME = 1781028000;
+window.CELESYS_BUILD_DATE = "2026-06-09 18:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15319,38 +15319,49 @@ window._renderDirectionalOptions = function(d) {
     return t;
   }
 
-  /* ═══ CLEAN DASHBOARD HEADER (r63.110.65) — hero verdict + 4-metric row ═══ */
+  /* ═══ DASHBOARD HEADER (r63.110.67) — institutional terminal hero + metric row ═══ */
   (function(){
     var ce = d.ce_passing_count||0, pe = d.pe_passing_count||0;
     var bias = ce>pe ? 'BULLISH LEAN' : pe>ce ? 'BEARISH LEAN' : (ce||pe)?'BALANCED':'NO SIGNAL';
-    var bC = ce>pe ? '#16a34a' : pe>ce ? '#dc2626' : '#d97706';
-    var bBg = ce>pe ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : pe>ce ? 'linear-gradient(135deg,#fef2f2,#fee2e2)' : 'linear-gradient(135deg,#fffbeb,#fef3c7)';
+    var bC = ce>pe ? '#34D399' : pe>ce ? '#F87171' : '#E0A93B';   // semantic verdict on dark
     var rg = d.regime||{}; var rgL = rg.label||'\u2014';
-    h += '<div style="background:'+bBg+';border:1px solid '+bC+'33;border-radius:16px;padding:16px 20px;margin-bottom:12px">';
-    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">';
-    h += '<div><div style="font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8">SCANNER VERDICT \u00b7 '+E(d.region||'')+'</div>';
-    h += '<div style="font-size:30px;font-weight:900;color:'+bC+';font-family:Sora,sans-serif;line-height:1.05">'+bias+'</div>';
-    h += '<div style="font-size:11px;color:#475569;margin-top:2px">'+E(rg.headline || ((d.scored_count||0)+'/'+(d.universe_size||0)+' scanned \u00b7 min score '+(d.min_score_filter||0)))+'</div></div>';
-    h += '<div style="display:flex;gap:8px">';
-    h += '<div style="text-align:center;background:#fff;border:1px solid #bbf7d0;border-radius:12px;padding:8px 16px"><div style="font-size:24px;font-weight:900;color:#16a34a;font-family:JetBrains Mono,monospace">'+ce+'</div><div style="font-size:9px;font-weight:800;color:#16a34a;letter-spacing:.5px">CALL \u00b7 CE</div></div>';
-    h += '<div style="text-align:center;background:#fff;border:1px solid #fecaca;border-radius:12px;padding:8px 16px"><div style="font-size:24px;font-weight:900;color:#dc2626;font-family:JetBrains Mono,monospace">'+pe+'</div><div style="font-size:9px;font-weight:800;color:#dc2626;letter-spacing:.5px">PUT \u00b7 PE</div></div>';
-    h += '</div></div></div>';
-    function mc(icon,label,val,sub,col){
-      return '<div style="flex:1;min-width:138px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:11px 14px">'
-        +'<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:.5px">'+icon+' '+label+'</div>'
-        +'<div style="font-size:16px;font-weight:900;color:'+(col||'#0f172a')+';font-family:Sora,sans-serif;margin-top:3px;line-height:1.15">'+val+'</div>'
-        +(sub?'<div style="font-size:10px;color:#94a3b8;margin-top:1px">'+sub+'</div>':'')+'</div>';
+    var GOLD = '#C8A24B';
+    /* Hero — deep slate terminal panel with a hairline gold rule (signature) */
+    h += '<div style="background:linear-gradient(160deg,#0B1220,#141E33);border-radius:18px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.06),0 20px 44px -22px rgba(11,18,32,.5)">';
+    h += '<div style="height:3px;background:linear-gradient(90deg,rgba(200,162,75,0),'+GOLD+',rgba(200,162,75,0))"></div>';
+    h += '<div style="padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">';
+    h += '<div style="min-width:200px">';
+    h += '<div style="font-size:9.5px;font-weight:700;letter-spacing:2.5px;color:'+GOLD+';text-transform:uppercase">Celesys \u00b7 Options Desk \u00b7 '+E(d.region||'')+'</div>';
+    h += '<div style="font-size:34px;font-weight:900;color:'+bC+';font-family:Sora,sans-serif;line-height:1.04;margin-top:4px;letter-spacing:-.5px">'+bias+'</div>';
+    h += '<div style="font-size:11.5px;color:#8A94A6;margin-top:5px;line-height:1.45;max-width:400px">'+E(rg.headline || ((d.scored_count||0)+' of '+(d.universe_size||0)+' scanned \u00b7 min score '+(d.min_score_filter||0)))+'</div>';
+    h += '</div>';
+    h += '<div style="display:flex;align-items:stretch;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:14px;overflow:hidden">';
+    h += '<div style="text-align:center;padding:12px 24px"><div style="font-size:32px;font-weight:900;color:#34D399;font-family:JetBrains Mono,monospace;line-height:1">'+ce+'</div><div style="font-size:9px;font-weight:800;color:#34D399;letter-spacing:1.5px;margin-top:3px">CE</div></div>';
+    h += '<div style="width:1px;background:rgba(255,255,255,.1)"></div>';
+    h += '<div style="text-align:center;padding:12px 24px"><div style="font-size:32px;font-weight:900;color:#F87171;font-family:JetBrains Mono,monospace;line-height:1">'+pe+'</div><div style="font-size:9px;font-weight:800;color:#F87171;letter-spacing:1.5px;margin-top:3px">PE</div></div>';
+    h += '</div>';
+    h += '</div></div>';
+    /* Metric row — white cards, hairline border, colored status rule, soft elevation */
+    function mc(label,val,sub,col){
+      return '<div style="flex:1;min-width:140px;background:#fff;border:1px solid #E7ECF3;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.04),0 14px 30px -20px rgba(11,18,32,.2)">'
+        +'<div style="height:2px;background:'+(col||'#0B1220')+'"></div>'
+        +'<div style="padding:12px 15px">'
+        +'<div style="font-size:9px;font-weight:800;color:#7A8699;letter-spacing:1.2px;text-transform:uppercase">'+label+'</div>'
+        +'<div style="font-size:18px;font-weight:900;color:'+(col||'#0B1220')+';font-family:Sora,sans-serif;margin-top:4px;line-height:1.1;letter-spacing:-.3px">'+val+'</div>'
+        +(sub?'<div style="font-size:10px;color:#94a3b8;margin-top:2px">'+sub+'</div>':'')
+        +'</div></div>';
     }
     var rgC = rgL==='RISK-ON'?'#16a34a':rgL==='RISK-OFF'?'#dc2626':'#d97706';
     var vv=(d.vix_context&&d.vix_context.vix_value); var vz=(d.vix_context&&d.vix_context.zone)||{};
     var er=d.event_radar; var erA=er&&er.active;
-    var erC=(er&&er.posture_flag==='EVENT_RISK_TODAY')?'#dc2626':(er&&er.posture_flag==='EVENT_IMMINENT')?'#d97706':'#0f172a';
+    var erC=(er&&er.posture_flag==='EVENT_RISK_TODAY')?'#dc2626':(er&&er.posture_flag==='EVENT_IMMINENT')?'#d97706':'#0B1220';
     var brd=(rg.breadth_bull_pct);
+    var biasC = ce>pe?'#16a34a':pe>ce?'#dc2626':'#d97706';
     h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">';
-    h += mc('\uD83C\uDF21','REGIME', E(rgL), (rg.favors&&rg.favors!=='NONE')?('favors '+E(rg.favors)):'', rgC);
-    h += mc('\u26A1','VIX', vv!=null?vv:'\u2014', E(vz.zone_name||''), vz.color||'#0f172a');
-    h += mc('\uD83D\uDCC5','NEXT EVENT', erA?E(er.active.event):'No catalyst', erA?E(er.active.when):'normal window', erC);
-    h += mc('\uD83D\uDCCA','BREADTH', brd!=null?(brd+'% bull'):bias, brd!=null?bias:'', bC);
+    h += mc('Regime', E(rgL), (rg.favors&&rg.favors!=='NONE')?('favors '+E(rg.favors)):'', rgC);
+    h += mc('VIX', vv!=null?vv:'\u2014', E(vz.zone_name||''), vz.color||'#0B1220');
+    h += mc('Next Event', erA?E(er.active.event):'No catalyst', erA?E(er.active.when):'normal window', erC);
+    h += mc('Breadth', brd!=null?(brd+'% bull'):bias, brd!=null?bias:'', biasC);
     h += '</div>';
   })();
 
@@ -15495,33 +15506,46 @@ window._renderDirectionalOptions = function(d) {
     h += '<div style="font-size:13px;font-weight:600;color:#78350f;line-height:1.6">' + E(d.conflict_warning) + '<br><span style="font-size:11px;color:#92400e">Plain version: a call (CE) profits if price rises, a put (PE) if it falls &mdash; they cancel out, so back the stronger side only, never both.</span></div></div>';
   }
 
-  /* ═══ SCANNER STATS ════════════════════════════════════════════════════ */
-  h += '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">';
-  h += '<div style="font-size:12px;font-weight:700;color:#374151">📡 Scanned <strong>' + (d.scored_count||0) + '/' + (d.universe_size||0) + '</strong> tickers · Min score <strong>' + (d.min_score_filter||0) + '</strong>';
+  /* ═══ SCANNER STATS — slim caption (counts live in the hero) ═══ */
+  h += '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-2px 2px 14px;font-size:10.5px;color:#94a3b8;letter-spacing:.2px">';
+  h += '<span>Scanned <strong style="color:#475569">' + (d.scored_count||0) + '/' + (d.universe_size||0) + '</strong></span><span style="color:#cbd5e1">\u00b7</span>';
+  h += '<span>Min score <strong style="color:#475569">' + (d.min_score_filter||0) + '</strong></span>';
   if (d.benchmark_ret_20d_pct != null) {
     var bc = d.benchmark_ret_20d_pct>=0?'#16a34a':'#dc2626';
-    h += ' · Benchmark 20d <strong style="color:' + bc + '">' + (d.benchmark_ret_20d_pct>0?'+':'') + d.benchmark_ret_20d_pct + '%</strong>';
+    h += '<span style="color:#cbd5e1">\u00b7</span><span>Benchmark 20d <strong style="color:' + bc + '">' + (d.benchmark_ret_20d_pct>0?'+':'') + d.benchmark_ret_20d_pct + '%</strong></span>';
   }
   h += '</div>';
-  h += '<div style="display:flex;gap:8px"><span style="font-size:12px;font-weight:700;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;padding:4px 10px">🟢 ' + (d.ce_passing_count||0) + ' CE</span>';
-  h += '<span style="font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:6px;padding:4px 10px">🔴 ' + (d.pe_passing_count||0) + ' PE</span></div></div>';
 
   /* ═══ ② TRADE IDEAS divider ═══ */
-  h += '<div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px"><span style="font-size:13px;font-weight:900;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:4px 12px">\u2461 TRADE IDEAS</span><span style="font-size:11px;color:#94a3b8">best picks, then the full CE / PE leaderboard</span><div style="flex:1;height:1px;background:#e2e8f0"></div></div>';
+  h += '<div style="display:flex;align-items:center;gap:12px;margin:20px 0 12px"><span style="font-size:9px;font-weight:800;letter-spacing:2.5px;color:#0B1220;text-transform:uppercase">Trade Ideas</span><span style="font-size:10.5px;color:#94a3b8">best picks, then the full CE / PE leaderboard</span><div style="flex:1;height:1px;background:linear-gradient(90deg,#C8A24B66,#E7ECF3)"></div></div>';
 
   /* ═══ TOP PICKS (dark card) ════════════════════════════════════════════ */
   if (d.top_pick_ce || d.top_pick_pe) {
-    h += '<div style="background:linear-gradient(135deg,#0f172a,#1e293b);border-radius:14px;padding:18px 20px;margin-bottom:16px">';
-    h += '<div style="font-size:11px;font-weight:800;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:14px">⚡ BEST TRADES RIGHT NOW</div>';
+    h += '<div style="background:linear-gradient(160deg,#0B1220,#141E33);border-radius:18px;margin-bottom:16px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.06),0 20px 44px -22px rgba(11,18,32,.5)">';
+    h += '<div style="height:3px;background:linear-gradient(90deg,rgba(200,162,75,0),#C8A24B,rgba(200,162,75,0))"></div>';
+    h += '<div style="padding:18px 22px">';
+    h += '<div style="font-size:9.5px;font-weight:700;letter-spacing:2.5px;color:#C8A24B;text-transform:uppercase;margin-bottom:10px">Best Trades \u00b7 Right Now</div>';
+    var _rgFav = (d.regime && d.regime.favors) || '';
+    var _ceN = d.ce_passing_count||0, _peN = d.pe_passing_count||0;
+    var _primary = /CE|CALL/i.test(_rgFav) ? 'CE' : /PE|PUT/i.test(_rgFav) ? 'PE' : (_ceN>_peN?'CE':_peN>_ceN?'PE':null);
+    if (d.chop_mode) _primary = null;
+    var _dirMsg, _dirC;
+    if (_primary==='CE'){ _dirMsg='Market favors CALLS \u00b7 trade the CE side. The PUT pick runs against the regime.'; _dirC='#22c55e'; }
+    else if (_primary==='PE'){ _dirMsg='Market favors PUTS \u00b7 trade the PE side. The CALL pick runs against the regime.'; _dirC='#ef4444'; }
+    else { _dirMsg='No clear direction \u00b7 size small or sit out (see the conflict note above).'; _dirC='#f59e0b'; }
+    h += '<div style="font-size:12px;font-weight:700;color:'+_dirC+';background:rgba(255,255,255,.06);border:1px solid '+_dirC+'55;border-radius:8px;padding:9px 13px;margin-bottom:14px">\u25B6 '+_dirMsg+'</div>';
     h += '<div style="display:flex;gap:12px;overflow-x:auto">';
-    function renderTopPickCard(pick, side) {
+    function renderTopPickCard(pick, side, role) {
       if (!pick) return '<div style="flex:0 0 280px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:16px;text-align:center;font-size:12px;color:rgba(255,255,255,.3)">No ' + side + ' setup</div>';
       var tc = side==='CE'?'#22c55e':'#ef4444';
       var tt = pick.trade_ticket||{};
       var cur = tt.currency==='INR'?'₹':'$';
       var gr = pick.grade||'B', grC = gr==='A'?'#22c55e':gr==='B'?'#f59e0b':'#ef4444';
       var expRec = (tt.expiry_suggestion||{});
-      var out = '<div style="flex:0 0 300px;background:rgba(255,255,255,.06);border:1px solid ' + tc + '40;border-radius:10px;padding:14px">';
+      var dim = role==='counter' ? 'opacity:.5;' : '';
+      var out = '<div style="flex:0 0 300px;background:rgba(255,255,255,.06);border:1px solid ' + tc + '40;border-radius:10px;padding:14px;' + dim + '">';
+      if (role==='primary') out += '<div style="font-size:9px;font-weight:900;letter-spacing:1px;color:' + tc + ';margin-bottom:7px">\u25B6 PRIMARY DIRECTION \u2014 trade this side</div>';
+      else if (role==='counter') out += '<div style="font-size:9px;font-weight:900;letter-spacing:.4px;color:#f59e0b;margin-bottom:7px">\u26A0 COUNTER TO REGIME \u2014 hedge / skip</div>';
       out += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
       out += '<div><div style="font-size:22px;font-weight:900;color:#fff;font-family:JetBrains Mono,monospace">' + E(pick.symbol) + '</div>';
       out += '<div style="font-size:11px;color:rgba(255,255,255,.4)">' + E(pick.sector||'') + '</div></div>';
@@ -15548,9 +15572,10 @@ window._renderDirectionalOptions = function(d) {
       out += '</div>';
       return out;
     }
-    h += renderTopPickCard(d.top_pick_ce, 'CE');
-    h += renderTopPickCard(d.top_pick_pe, 'PE');
-    h += '</div></div>';
+    if (_primary==='PE') { h += renderTopPickCard(d.top_pick_pe, 'PE', 'primary'); h += renderTopPickCard(d.top_pick_ce, 'CE', 'counter'); }
+    else if (_primary==='CE') { h += renderTopPickCard(d.top_pick_ce, 'CE', 'primary'); h += renderTopPickCard(d.top_pick_pe, 'PE', 'counter'); }
+    else { h += renderTopPickCard(d.top_pick_ce, 'CE', 'neutral'); h += renderTopPickCard(d.top_pick_pe, 'PE', 'neutral'); }
+    h += '</div></div></div>';
   }
 
   /* ═══ TWO-COLUMN CE / PE (side by side, scrollable) ═══════════════════ */
@@ -15568,8 +15593,8 @@ window._renderDirectionalOptions = function(d) {
     /* Option-filter match → highlight the box (gold ring) in both columns */
     var _optPass = !!(c.momentum && c.momentum.option_filter && c.momentum.option_filter.pass);
     var _cardStyle = _optPass
-      ? 'background:#fffdf5;border:2px solid #f59e0b;border-top:4px solid ' + color + ';border-radius:12px;margin-bottom:12px;overflow:hidden;box-shadow:0 0 0 3px rgba(251,191,36,.45),0 6px 18px rgba(245,158,11,.18)'
-      : 'background:#fff;border:2px solid ' + border + ';border-top:4px solid ' + color + ';border-radius:12px;margin-bottom:12px;overflow:hidden';
+      ? 'background:#fffdf5;border:1px solid #E0A93B;border-top:3px solid ' + color + ';border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:0 0 0 2px rgba(200,162,75,.35),0 14px 30px -20px rgba(200,162,75,.35)'
+      : 'background:#fff;border:1px solid #E7ECF3;border-top:3px solid ' + color + ';border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.04),0 14px 30px -22px rgba(11,18,32,.22)';
     var _initHidden = (_savedTier !== 'ALL' && (c.action_tier||'') !== _savedTier);
     html += '<div class="sie-card" data-tier="' + (c.action_tier || '') + '" style="' + _cardStyle + (_initHidden ? ';display:none' : '') + '">';
 
@@ -16014,15 +16039,22 @@ window._renderDirectionalOptions = function(d) {
     h += '</div></div>';
   })();
 
-  h += '<div style="display:flex;gap:0;border:2px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:14px">';
+  var _rgFav2 = (d.regime && d.regime.favors) || '';
+  var _pri = /CE|CALL/i.test(_rgFav2) ? 'CE' : /PE|PUT/i.test(_rgFav2) ? 'PE' : ((d.ce_passing_count||0)>(d.pe_passing_count||0)?'CE':(d.pe_passing_count||0)>(d.ce_passing_count||0)?'PE':null);
+  if (d.chop_mode) _pri = null;
+  function _colTag(side){ return _pri===side?'<span style="font-size:8px;font-weight:900;letter-spacing:1px;color:#0B1220;background:#C8A24B;border-radius:5px;padding:2px 7px;margin-left:8px">PRIMARY</span>':(_pri&&_pri!==side?'<span style="font-size:8px;font-weight:900;letter-spacing:.5px;color:#E0A93B;border:1px solid #E0A93B66;border-radius:5px;padding:2px 6px;margin-left:8px">COUNTER</span>':''); }
+
+  h += '<div style="display:flex;gap:0;border:1px solid #E7ECF3;border-radius:18px;overflow:hidden;margin-bottom:14px;box-shadow:0 1px 2px rgba(11,18,32,.04),0 18px 38px -24px rgba(11,18,32,.22)">';
 
   // CE column
-  h += '<div style="flex:1;min-width:320px;border-right:2px solid #e2e8f0">';
-  h += '<div style="background:linear-gradient(135deg,#052e16,#14532d);padding:12px 16px;display:flex;align-items:center;justify-content:space-between">';
-  h += '<div><div style="font-size:14px;font-weight:900;color:#fff">🟢 CE BUY — CALL OPTIONS</div>';
-  h += '<div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:2px">Bullish trend + momentum + breakout</div></div>';
-  h += '<span style="font-size:20px;font-weight:900;color:#4ade80">' + (d.ce_passing_count||0) + '<span style="font-size:11px"> found</span></span>';
-  h += '</div>';
+  h += '<div style="flex:1;min-width:320px;border-right:1px solid #E7ECF3' + (_pri==='PE'?';opacity:.82':'') + '">';
+  h += '<div style="background:linear-gradient(160deg,#0B1220,#141E33);overflow:hidden">';
+  h += '<div style="height:3px;background:#22C55E"></div>';
+  h += '<div style="padding:13px 16px;display:flex;align-items:center;justify-content:space-between">';
+  h += '<div><div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#34D399;text-transform:uppercase">CE \u00b7 Call Options' + _colTag('CE') + '</div>';
+  h += '<div style="font-size:12.5px;font-weight:700;color:#F1F5F9;margin-top:4px">Bullish trend \u00b7 momentum \u00b7 breakout</div></div>';
+  h += '<span style="font-size:24px;font-weight:900;color:#34D399;font-family:JetBrains Mono,monospace">' + (d.ce_passing_count||0) + '</span>';
+  h += '</div></div>';
   h += _sieSummaryBar(d.ce_buy_candidates, 'CE', uid);
   h += '<div id="sieCards_'+uid+'_CE" style="padding:12px">';
   if (d.ce_buy_candidates && d.ce_buy_candidates.length) {
@@ -16035,12 +16067,14 @@ window._renderDirectionalOptions = function(d) {
   h += '</div></div>';
 
   // PE column
-  h += '<div style="flex:1;min-width:320px">';
-  h += '<div style="background:linear-gradient(135deg,#450a0a,#7f1d1d);padding:12px 16px;display:flex;align-items:center;justify-content:space-between">';
-  h += '<div><div style="font-size:14px;font-weight:900;color:#fff">🔴 PE BUY — PUT OPTIONS</div>';
-  h += '<div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:2px">Bearish trend + weakness + breakdown</div></div>';
-  h += '<span style="font-size:20px;font-weight:900;color:#f87171">' + (d.pe_passing_count||0) + '<span style="font-size:11px"> found</span></span>';
-  h += '</div>';
+  h += '<div style="flex:1;min-width:320px' + (_pri==='CE'?';opacity:.82':'') + '">';
+  h += '<div style="background:linear-gradient(160deg,#0B1220,#141E33);overflow:hidden">';
+  h += '<div style="height:3px;background:#EF4444"></div>';
+  h += '<div style="padding:13px 16px;display:flex;align-items:center;justify-content:space-between">';
+  h += '<div><div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#F87171;text-transform:uppercase">PE \u00b7 Put Options' + _colTag('PE') + '</div>';
+  h += '<div style="font-size:12.5px;font-weight:700;color:#F1F5F9;margin-top:4px">Bearish trend \u00b7 weakness \u00b7 breakdown</div></div>';
+  h += '<span style="font-size:24px;font-weight:900;color:#F87171;font-family:JetBrains Mono,monospace">' + (d.pe_passing_count||0) + '</span>';
+  h += '</div></div>';
   h += _sieSummaryBar(d.pe_buy_candidates, 'PE', uid);
   h += '<div id="sieCards_'+uid+'_PE" style="padding:12px">';
   if (d.pe_buy_candidates && d.pe_buy_candidates.length) {
