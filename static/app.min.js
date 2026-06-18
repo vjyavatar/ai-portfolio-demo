@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.64";
-window.CELESYS_BUILD_TIME = 1781013600;
-window.CELESYS_BUILD_DATE = "2026-06-09 14:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.65";
+window.CELESYS_BUILD_TIME = 1781017200;
+window.CELESYS_BUILD_DATE = "2026-06-09 15:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15319,6 +15319,44 @@ window._renderDirectionalOptions = function(d) {
     return t;
   }
 
+  /* ═══ CLEAN DASHBOARD HEADER (r63.110.65) — hero verdict + 4-metric row ═══ */
+  (function(){
+    var ce = d.ce_passing_count||0, pe = d.pe_passing_count||0;
+    var bias = ce>pe ? 'BULLISH LEAN' : pe>ce ? 'BEARISH LEAN' : (ce||pe)?'BALANCED':'NO SIGNAL';
+    var bC = ce>pe ? '#16a34a' : pe>ce ? '#dc2626' : '#d97706';
+    var bBg = ce>pe ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : pe>ce ? 'linear-gradient(135deg,#fef2f2,#fee2e2)' : 'linear-gradient(135deg,#fffbeb,#fef3c7)';
+    var rg = d.regime||{}; var rgL = rg.label||'\u2014';
+    h += '<div style="background:'+bBg+';border:1px solid '+bC+'33;border-radius:16px;padding:16px 20px;margin-bottom:12px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">';
+    h += '<div><div style="font-size:10px;font-weight:800;letter-spacing:1px;color:#94a3b8">SCANNER VERDICT \u00b7 '+E(d.region||'')+'</div>';
+    h += '<div style="font-size:30px;font-weight:900;color:'+bC+';font-family:Sora,sans-serif;line-height:1.05">'+bias+'</div>';
+    h += '<div style="font-size:11px;color:#475569;margin-top:2px">'+E(rg.headline || ((d.scored_count||0)+'/'+(d.universe_size||0)+' scanned \u00b7 min score '+(d.min_score_filter||0)))+'</div></div>';
+    h += '<div style="display:flex;gap:8px">';
+    h += '<div style="text-align:center;background:#fff;border:1px solid #bbf7d0;border-radius:12px;padding:8px 16px"><div style="font-size:24px;font-weight:900;color:#16a34a;font-family:JetBrains Mono,monospace">'+ce+'</div><div style="font-size:9px;font-weight:800;color:#16a34a;letter-spacing:.5px">CALL \u00b7 CE</div></div>';
+    h += '<div style="text-align:center;background:#fff;border:1px solid #fecaca;border-radius:12px;padding:8px 16px"><div style="font-size:24px;font-weight:900;color:#dc2626;font-family:JetBrains Mono,monospace">'+pe+'</div><div style="font-size:9px;font-weight:800;color:#dc2626;letter-spacing:.5px">PUT \u00b7 PE</div></div>';
+    h += '</div></div></div>';
+    function mc(icon,label,val,sub,col){
+      return '<div style="flex:1;min-width:138px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:11px 14px">'
+        +'<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:.5px">'+icon+' '+label+'</div>'
+        +'<div style="font-size:16px;font-weight:900;color:'+(col||'#0f172a')+';font-family:Sora,sans-serif;margin-top:3px;line-height:1.15">'+val+'</div>'
+        +(sub?'<div style="font-size:10px;color:#94a3b8;margin-top:1px">'+sub+'</div>':'')+'</div>';
+    }
+    var rgC = rgL==='RISK-ON'?'#16a34a':rgL==='RISK-OFF'?'#dc2626':'#d97706';
+    var vv=(d.vix_context&&d.vix_context.vix_value); var vz=(d.vix_context&&d.vix_context.zone)||{};
+    var er=d.event_radar; var erA=er&&er.active;
+    var erC=(er&&er.posture_flag==='EVENT_RISK_TODAY')?'#dc2626':(er&&er.posture_flag==='EVENT_IMMINENT')?'#d97706':'#0f172a';
+    var brd=(rg.breadth_bull_pct);
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">';
+    h += mc('\uD83C\uDF21','REGIME', E(rgL), (rg.favors&&rg.favors!=='NONE')?('favors '+E(rg.favors)):'', rgC);
+    h += mc('\u26A1','VIX', vv!=null?vv:'\u2014', E(vz.zone_name||''), vz.color||'#0f172a');
+    h += mc('\uD83D\uDCC5','NEXT EVENT', erA?E(er.active.event):'No catalyst', erA?E(er.active.when):'normal window', erC);
+    h += mc('\uD83D\uDCCA','BREADTH', brd!=null?(brd+'% bull'):bias, brd!=null?bias:'', bC);
+    h += '</div>';
+  })();
+
+  /* ═══ Full market detail — collapsed by default (VIX, regime, catalysts) ═══ */
+  h += '<details style="margin-bottom:12px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:#7c3aed;padding:6px 0;list-style:none">\u2630 Full market detail \u2014 VIX, regime, catalysts (tap to expand)</summary>';
+
   /* ═══ VIX BANNER ════════════════════════════════════════════════════════ */
   if (vixVal != null) {
     var zBg = zone.zone_code==='BELOW_12'?'linear-gradient(135deg,#e0f2fe,#bae6fd)'
@@ -15403,6 +15441,7 @@ window._renderDirectionalOptions = function(d) {
   }
 
   /* ═══ CONFLICT WARNING ════════════════════════════════════════════════ */
+  h += '</details>';
   if (d.chop_mode) {
     var ceS = (d.top_pick_ce && d.top_pick_ce.score != null) ? d.top_pick_ce.score : '?';
     var peS = (d.top_pick_pe && d.top_pick_pe.score != null) ? d.top_pick_pe.score : '?';
