@@ -10892,6 +10892,53 @@ async def directional_options_scanner(region: str = "US",
         return {"success": False, "error": _err, "trace": _tb.format_exc()[:1500]}
 
 
+_INDEX_READ_MAP = {
+    "IN": [("NIFTY", "^NSEI"), ("BANKNIFTY", "^NSEBANK"), ("SENSEX", "^BSESN")],
+    "US": [("S&P 500", "SPY"), ("Nasdaq 100", "QQQ"), ("Dow", "DIA")],
+}
+
+def _index_read(region):
+    """Always-on directional read for the region's headline indices (independent of the score gate)."""
+    pairs = _INDEX_READ_MAP.get(region, _INDEX_READ_MAP["US"])
+    syms = [p[1] for p in pairs]
+    df = None
+    try:
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        df = yf.download(tickers=" ".join(syms), period="1y", interval="1d",
+                         group_by="ticker", auto_adjust=True, threads=True, progress=False)
+    except Exception:
+        df = None
+    out = []
+    for label, ys in pairs:
+        closes = []
+        try:
+            sub = df[ys] if (df is not None and ys in getattr(df, "columns", [])) else None
+            if sub is None and df is not None and "Close" in getattr(df, "columns", []):
+                sub = df  # single-symbol shape
+            if sub is not None:
+                closes = [float(x) for x in list(sub["Close"].dropna())]
+        except Exception:
+            closes = []
+        if len(closes) < 60:
+            out.append({"label": label, "symbol": ys, "available": False})
+            continue
+        px = closes[-1]; prev = closes[-2] if len(closes) > 1 else px
+        sma200 = sum(closes[-200:]) / min(len(closes), 200)
+        sma50 = sum(closes[-50:]) / min(len(closes), 50)
+        chg = (px / prev - 1) * 100 if prev else 0.0
+        if px > sma200 and sma50 > sma200:
+            tctx, lean = "uptrend", "CE"
+        elif px < sma200 and sma50 < sma200:
+            tctx, lean = "downtrend", "PE"
+        else:
+            tctx, lean = "sideways", "NEUTRAL"
+        out.append({"label": label, "symbol": ys, "available": True,
+                    "price": round(px, 2), "change_pct": round(chg, 2),
+                    "sma200": round(sma200, 2), "sma50": round(sma50, 2),
+                    "trend_context": tctx, "lean": lean, "above_200dma": bool(px > sma200)})
+    return out
+
 async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""):
     import time as _time
     import asyncio as _aio
@@ -11012,6 +11059,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
     # ───────── Build CE + PE leaderboards ─────────
     ce_passing = [r for r in results if r["ce_score"] >= min_score]
     pe_passing = [r for r in results if r["pe_score"] >= min_score]
+    index_read = [] if single_symbol else await _lp.run_in_executor(None, _index_read, region)
     ce_passing.sort(key=lambda x: (-x["ce_score"], -x["ce_signals_passed"]))
     pe_passing.sort(key=lambda x: (-x["pe_score"], -x["pe_signals_passed"]))
 
@@ -11212,6 +11260,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         "region":            region,
         "benchmark":         bench_sym,
         "benchmark_ret_20d_pct": round(benchmark_ret_20d, 2) if benchmark_ret_20d is not None else None,
+        "index_read":        ([] if single_symbol else index_read),
         "universe_size":     len(universe),
         "scored_count":      len(results),
         "excluded_count":    len(excluded),

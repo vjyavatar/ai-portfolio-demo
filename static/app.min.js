@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.68";
-window.CELESYS_BUILD_TIME = 1781028000;
-window.CELESYS_BUILD_DATE = "2026-06-09 18:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.69";
+window.CELESYS_BUILD_TIME = 1781031600;
+window.CELESYS_BUILD_DATE = "2026-06-09 19:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15305,6 +15305,40 @@ window._loadDirectionalOptions = function(symbol) {
     });
 };
 
+window._refreshDirCard = function(uid, side, idx, symbol){
+  var reg = (window._dirCardReg && window._dirCardReg[uid]) || null;
+  var el = document.getElementById('dirCard_'+uid+'_'+side+'_'+idx);
+  if (!el) return;
+  var region = (reg && reg.region) || 'US';
+  var btn = el.querySelector('button[title="Refresh live data"]');
+  if (btn) { btn.innerHTML = '\u22EF'; btn.disabled = true; }
+  el.style.opacity = '.55';
+  fetch('/api/directional-options-scanner?region='+encodeURIComponent(region)+'&symbol='+encodeURIComponent(symbol)+'&min_score=0&top_n=1&refresh=1', {cache:'no-store'})
+    .then(function(r){ return r.json().catch(function(){return null;}); })
+    .then(function(d){
+      el.style.opacity = '1';
+      if (!d || !d.success) { if(btn){btn.innerHTML='\u21BB';btn.disabled=false;} return; }
+      var order = side==='CE' ? [[d.ce_buy_candidates,'CE'],[d.pe_buy_candidates,'PE']] : [[d.pe_buy_candidates,'PE'],[d.ce_buy_candidates,'CE']];
+      var found=null, fside=side;
+      for (var i=0;i<order.length;i++){
+        var arr = order[i][0]||[];
+        for (var j=0;j<arr.length;j++){ if(((arr[j].symbol)||'').toUpperCase()===String(symbol).toUpperCase()){ found=arr[j]; fside=order[i][1]; break; } }
+        if (found) break;
+      }
+      if (!found || !reg || !reg.fn) { if(btn){btn.innerHTML='\u21BB';btn.disabled=false;} return; }
+      try {
+        var tmp = document.createElement('div'); tmp.innerHTML = reg.fn(found, fside, idx);
+        var node = tmp.firstChild;
+        if (node && el.parentNode) {
+          node.style.boxShadow = '0 0 0 2px #16a34a55';
+          el.parentNode.replaceChild(node, el);
+          setTimeout(function(){ try{ node.style.boxShadow=''; }catch(e){} }, 1200);
+        }
+      } catch(e) { if(btn){btn.innerHTML='\u21BB';btn.disabled=false;} }
+    })
+    .catch(function(){ el.style.opacity='1'; if(btn){btn.innerHTML='\u21BB';btn.disabled=false;} });
+};
+
 window._renderDirectionalOptions = function(d) {
   var E = window._esc || function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
   var h = '';
@@ -15363,6 +15397,32 @@ window._renderDirectionalOptions = function(d) {
     h += mc('Next Event', erA?E(er.active.event):'No catalyst', erA?E(er.active.when):'normal window', erC);
     h += mc('Breadth', brd!=null?(brd+'% bull'):bias, brd!=null?bias:'', biasC);
     h += '</div>';
+    /* Always-on INDEX READ — NIFTY/SENSEX (IN) or S&P/Nasdaq/Dow (US) */
+    var ir = d.index_read || [];
+    if (ir.length) {
+      h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">';
+      ir.forEach(function(x){
+        if (!x.available) {
+          h += '<div style="flex:1;min-width:150px;background:#fff;border:1px solid #E7ECF3;border-radius:14px;padding:11px 14px"><div style="font-size:11px;font-weight:900;color:#0B1220">'+E(x.label)+'</div><div style="font-size:10px;color:#94a3b8;margin-top:3px">data unavailable</div></div>';
+          return;
+        }
+        var lc = x.lean==='CE'?'#16a34a':x.lean==='PE'?'#dc2626':'#d97706';
+        var leanTxt = x.lean==='CE'?'CALL bias':x.lean==='PE'?'PUT bias':'No clear bias';
+        var chgC = x.change_pct>=0?'#16a34a':'#dc2626';
+        h += '<div style="flex:1;min-width:150px;background:#fff;border:1px solid #E7ECF3;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.04),0 14px 30px -22px rgba(11,18,32,.18)">';
+        h += '<div style="height:2px;background:'+lc+'"></div>';
+        h += '<div style="padding:11px 14px">';
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
+        h += '<span style="font-size:11px;font-weight:900;color:#0B1220;letter-spacing:.5px">'+E(x.label)+'</span>';
+        h += '<span style="font-size:11px;font-weight:800;color:'+chgC+';font-family:JetBrains Mono,monospace">'+(x.change_pct>=0?'+':'')+E(x.change_pct)+'%</span></div>';
+        h += '<div style="font-size:15px;font-weight:900;color:#0B1220;font-family:JetBrains Mono,monospace;margin-top:3px">'+E(x.price)+'</div>';
+        h += '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">';
+        h += '<span style="font-size:9px;font-weight:900;color:#fff;background:'+lc+';border-radius:5px;padding:2px 7px">'+E(x.lean==='NEUTRAL'?'NEUTRAL':x.lean)+'</span>';
+        h += '<span style="font-size:9.5px;color:#94a3b8">'+leanTxt+' \u00b7 '+(x.above_200dma?'above':'below')+' 200-DMA</span>';
+        h += '</div></div></div>';
+      });
+      h += '</div>';
+    }
   })();
 
   /* ═══ Full market detail — collapsed by default (VIX, regime, catalysts) ═══ */
@@ -15596,7 +15656,7 @@ window._renderDirectionalOptions = function(d) {
       ? 'background:#fffdf5;border:1px solid #E0A93B;border-top:3px solid ' + color + ';border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:0 0 0 2px rgba(200,162,75,.35),0 14px 30px -20px rgba(200,162,75,.35)'
       : 'background:#fff;border:1px solid #E7ECF3;border-top:3px solid ' + color + ';border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.04),0 14px 30px -22px rgba(11,18,32,.22)';
     var _initHidden = (_savedTier !== 'ALL' && (c.action_tier||'') !== _savedTier);
-    html += '<div class="sie-card" data-tier="' + (c.action_tier || '') + '" style="' + _cardStyle + (_initHidden ? ';display:none' : '') + '">';
+    html += '<div id="dirCard_' + cid + '" class="sie-card" data-tier="' + (c.action_tier || '') + '" style="' + _cardStyle + (_initHidden ? ';display:none' : '') + '">';
 
     /* Actionability ribbon — TAKE NOW / WATCHLIST / SKIP (cards are sorted to top by this) */
     var _at = c.action_tier, _al = c.action_label || '';
@@ -15629,7 +15689,24 @@ window._renderDirectionalOptions = function(d) {
     html += '<span style="font-size:12px;font-weight:600;color:#64748b">' + E(c.sector||'?') + '</span>';
     if (c.price) html += '<span style="font-size:12px;font-weight:700;color:#374151;font-family:JetBrains Mono,monospace">' + (tt.currency==='INR'?'₹':'$') + c.price + '</span>';
     html += '<span style="font-size:20px;font-weight:900;color:' + color + ';font-family:JetBrains Mono,monospace;background:' + bg + ';padding:3px 11px;border-radius:7px">' + (c.score||0) + '</span>';
+    html += '<button onclick="window._refreshDirCard(\'' + uid + '\',\'' + side + '\',' + idx + ',\'' + E(c.symbol) + '\')" title="Refresh live data" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:13px;color:#64748b;line-height:1">\u21BB</button>';
     html += '</div></div>';
+
+    /* Trend context — why this passed the trend filter (verify, don't trust) */
+    var _mtt = c.momentum_trader || {}; var _s200 = _mtt.sma200, _s50 = _mtt.sma50, _tc = c.trend_context;
+    if (_s200 || _tc) {
+      var _cur = (tt.currency==='INR'?'₹':'$');
+      var _tcC, _tcIco, _tcMsg;
+      if (_tc === 'uptrend') { _tcC='#16a34a'; _tcIco='\u25B2'; _tcMsg='Uptrend'; }
+      else if (_tc === 'downtrend') { _tcC='#dc2626'; _tcIco='\u25BC'; _tcMsg='Downtrend'; }
+      else { _tcC='#d97706'; _tcIco='\u25CF'; _tcMsg='Sideways'; }
+      var _rel = (c.price && _s200) ? (c.price > _s200 ? 'above' : 'below') : null;
+      html += '<div style="margin:0 14px 8px;padding:6px 10px;background:'+_tcC+'0d;border:1px solid '+_tcC+'33;border-radius:8px;font-size:10.5px;color:'+_tcC+';font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+      html += '<span>'+_tcIco+' '+_tcMsg+'</span>';
+      if (_s200 && _rel) html += '<span style="color:#64748b;font-weight:600">price '+_cur+(c.price)+' '+_rel+' 200-DMA '+_cur+(Math.round(_s200*100)/100)+'</span>';
+      if (_s50 && _s200) html += '<span style="color:#64748b;font-weight:600">\u00b7 50-DMA '+(_s50>_s200?'>':'<')+' 200-DMA '+(_s50>_s200?'\u2713':'\u2717')+'</span>';
+      html += '</div>';
+    }
 
     /* Dominant-direction + momentum badges (US scanner) */
     var ddir = d.dominant_direction;
@@ -16043,6 +16120,8 @@ window._renderDirectionalOptions = function(d) {
   var _pri = /CE|CALL/i.test(_rgFav2) ? 'CE' : /PE|PUT/i.test(_rgFav2) ? 'PE' : ((d.ce_passing_count||0)>(d.pe_passing_count||0)?'CE':(d.pe_passing_count||0)>(d.ce_passing_count||0)?'PE':null);
   if (d.chop_mode) _pri = null;
   function _colTag(side){ return _pri===side?'<span style="font-size:8px;font-weight:900;letter-spacing:1px;color:#0B1220;background:#C8A24B;border-radius:5px;padding:2px 7px;margin-left:8px">PRIMARY</span>':(_pri&&_pri!==side?'<span style="font-size:8px;font-weight:900;letter-spacing:.5px;color:#E0A93B;border:1px solid #E0A93B66;border-radius:5px;padding:2px 6px;margin-left:8px">COUNTER</span>':''); }
+  window._dirCardReg = window._dirCardReg || {};
+  window._dirCardReg[uid] = { fn: renderCandidate, region: d.region || 'US' };
 
   h += '<div style="display:flex;gap:0;border:1px solid #E7ECF3;border-radius:18px;overflow:hidden;margin-bottom:14px;box-shadow:0 1px 2px rgba(11,18,32,.04),0 18px 38px -24px rgba(11,18,32,.22)">';
 
