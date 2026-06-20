@@ -11228,27 +11228,39 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
     top_pick_ce = ce_top[0] if ce_top else None
     top_pick_pe = pe_top[0] if pe_top else None
 
-    # Conflict warning — both CE and PE passing means chop or breakout ambiguity
+    # Direction call — breadth FIRST (consistent with the hero's CE/PE count lean),
+    # then top-pick scores. Only call it "chop" when breadth AND scores are both balanced.
     both_active = bool(top_pick_ce and top_pick_pe)
     conflict_warning = None
-    dominant_direction = None   # "CE" | "PE" | None (None = chop / no clear edge)
+    dominant_direction = None   # "CE" | "PE" | None (None = genuine chop)
+    _ce_n = len(ce_passing); _pe_n = len(pe_passing)
     if both_active:
-        ce_s = top_pick_ce["score"]
-        pe_s = top_pick_pe["score"]
-        if abs(ce_s - pe_s) < 15:
+        ce_s = top_pick_ce["score"]; pe_s = top_pick_pe["score"]
+        _tot = max(_ce_n + _pe_n, 1)
+        _skew = abs(_ce_n - _pe_n) / _tot
+        if _skew >= 0.30:
+            # clear breadth lean (e.g. 53 vs 12) — NOT a conflict
+            dominant_direction = "CE" if _ce_n > _pe_n else "PE"
+            _side = "CALLS (bullish)" if dominant_direction == "CE" else "PUTS (bearish)"
+            _off = "PE" if dominant_direction == "CE" else "CE"
+            conflict_warning = (
+                f"{_ce_n} CE vs {_pe_n} PE setups — the tape clearly favors {_side}. "
+                f"Trade the {dominant_direction} side; the {_off} names are the few bucking the trend "
+                f"(counter-trend — hedge or skip, not equal ideas)."
+            )
+        elif abs(ce_s - pe_s) < 12:
+            # balanced breadth AND scores → genuine chop
             dominant_direction = None
             conflict_warning = (
-                f"⚠️ Both CE and PE candidates passed with similar scores "
-                f"(CE: {ce_s}, PE: {pe_s}). Market is in CHOP / no clear direction. "
-                f"DO NOT buy both — that guarantees theta decay. "
-                f"Wait for direction confirmation or sit out."
+                f"Balanced — {_ce_n} CE vs {_pe_n} PE, top scores within {abs(ce_s - pe_s)} pts. "
+                f"No clear edge (chop). Don't buy both sides — wait for confirmation or sit out."
             )
         else:
             dominant_direction = "CE" if ce_s > pe_s else "PE"
-            stronger = "CE (bullish)" if ce_s > pe_s else "PE (bearish)"
+            _side = "CALLS (bullish)" if dominant_direction == "CE" else "PUTS (bearish)"
             conflict_warning = (
-                f"Both CE and PE candidates identified. {stronger} is stronger. "
-                f"Trade only the dominant direction — never buy both sides."
+                f"Mixed — {_ce_n} CE vs {_pe_n} PE; the stronger setups are {_side}. "
+                f"Lead with the {dominant_direction} side, treat the other as counter-trend."
             )
     elif top_pick_ce:
         dominant_direction = "CE"
