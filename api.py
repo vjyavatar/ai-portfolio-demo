@@ -9875,6 +9875,8 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
             "adx14": round(adx14, 1) if adx14 else None,
             "vol_ratio": round(vol_ratio, 2) if vol_ratio else None,
             "ret_20d_pct": round(ret_20, 2),
+            "ret_5d_pct": round((close_now / closes[-6] - 1) * 100, 2) if (len(closes) >= 6 and closes[-6]) else None,
+            "ret_10d_pct": round((close_now / closes[-11] - 1) * 100, 2) if (len(closes) >= 11 and closes[-11]) else None,
             "rs_vs_bench_pct": round(rs_vs_bench, 2) if rs_vs_bench is not None else None,
             "high_20d": round(high_20, 2) if high_20 else None,
             "low_20d": round(low_20, 2) if low_20 else None,
@@ -11126,6 +11128,33 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         else:
             _tier, _lbl = "WATCHLIST", "WATCHLIST"
         _tr = 2 if _tier == "TAKE_NOW" else 1 if _tier == "WATCHLIST" else 0
+        # ── Movement / velocity (is it actually MOVING, or dead money that bleeds theta?) ──
+        _ind = r.get("indicators") or {}
+        _dir = 1 if direction == "CE" else -1
+        _r5 = _ind.get("ret_5d_pct"); _r10 = _ind.get("ret_10d_pct")
+        _px2 = r.get("price") or _ind.get("close")
+        _atr = _ind.get("atr14")
+        _atr_pct = (float(_atr) / float(_px2) * 100.0) if (_atr and _px2) else None
+        _m5 = (_r5 * _dir) if _r5 is not None else 0.0   # travel in the trade direction
+        _m10 = (_r10 * _dir) if _r10 is not None else 0.0
+        _vel = max(0.0, _m5) * 6 + max(0.0, _m10) * 2 + (max(0.0, _atr_pct - 1.0) * 10 if _atr_pct else 0)
+        _vel = int(max(0, min(100, round(_vel))))
+        _contracting = bool(((r.get("mtrader") or {}).get("vcp") or {}).get("contracting"))
+        if _m5 >= 3 or (_m5 >= 1.5 and (_atr_pct or 0) >= 2.5):
+            _mv_state = "MOVING"
+        elif (_r5 is not None and abs(_r5) < 1.0) and (_atr_pct is not None and _atr_pct < 1.8):
+            _mv_state = "FLAT"
+        else:
+            _mv_state = "NORMAL"
+        row["movement"] = {"state": _mv_state, "velocity": _vel, "ret_5d": _r5, "ret_10d": _r10,
+                           "atr_pct": round(_atr_pct, 2) if _atr_pct else None,
+                           "in_direction": _m5 > 0, "coiling": _contracting}
+        _mv_bucket = min(9, _vel // 10)
+        # Dead money (flat AND not coiling for a breakout) can't be an enter-now for an OPTION buy.
+        if _mv_state == "FLAT" and not _contracting and _tier == "TAKE_NOW":
+            _tier, _lbl, _tr = "WATCHLIST", "WATCHLIST", 1
+            row["action_tier"] = _tier; row["action_label"] = _lbl
+            row["flat_demoted"] = True
         # Counter-trend guard: a CALL in a downtrend / PUT in an uptrend can never be TAKE NOW.
         _ct = bool(r.get("ce_counter_trend") if direction == "CE" else r.get("pe_counter_trend"))
         row["counter_trend"] = _ct
@@ -11141,12 +11170,13 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         row["action_tier"] = _tier
         row["action_label"] = _lbl
         # Order: tier > high-beta > entry readiness > grade > score
-        row["action_rank"] = (_tr * 100000 + _beta_bucket * 1000 + _es * 100 + _gs * 10
+        row["action_rank"] = (_tr * 1000000 + _mv_bucket * 100000 + _beta_bucket * 1000 + _es * 100 + _gs * 10
                               + min(int(row.get("score") or 0), 99) // 10)
-        row["action_reason"] = (("Counter-trend " + ("CALL" if direction == "CE" else "PUT") + " against the primary " + (r.get("trend_context") or "") + " \u2014 dead-cat-bounce risk; not an enter-now.") if _ct
+        row["action_reason"] = ((("Counter-trend " + ("CALL" if direction == "CE" else "PUT") + " against the primary " + (r.get("trend_context") or "") + " \u2014 dead-cat-bounce risk; not an enter-now.") if _ct
+                                else ("Low movement \u2014 barely moved in 5d and tight range; an option here bleeds theta while you wait. Watchlist until it actually travels." if row.get("flat_demoted")
                                 else "Grade " + _g + " + entry confirmed \u2014 enter per the ticket." if _tier == "TAKE_NOW"
                                 else "Grade " + _g + ", but price is away from the entry \u2014 set an alert at the named level." if _tier == "WATCHLIST"
-                                else "Over-extended or low conviction \u2014 don't chase.")
+                                else "Over-extended or low conviction \u2014 don't chase.")))
         mt = r.get("mtrader") or {}
         if mt:
             tt_d = mt.get("trend_template") or {}

@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.70";
-window.CELESYS_BUILD_TIME = 1781035200;
-window.CELESYS_BUILD_DATE = "2026-06-09 20:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.71";
+window.CELESYS_BUILD_TIME = 1781038800;
+window.CELESYS_BUILD_DATE = "2026-06-09 21:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15673,6 +15673,16 @@ window._renderDirectionalOptions = function(d) {
       }
       if (c.counter_trend) {
         html += '<span style="font-size:10px;font-weight:900;color:#fff;background:#b91c1c;border-radius:10px;padding:2px 8px">\u26A0 COUNTER-TREND</span>';
+      }
+      var _mv = c.movement;
+      if (_mv) {
+        if (_mv.state === 'MOVING') {
+          var _r5 = (_mv.ret_5d!=null) ? ((_mv.ret_5d>0?'+':'')+_mv.ret_5d+'% 5d') : '';
+          html += '<span style="font-size:10px;font-weight:900;color:#fff;background:#0d9488;border-radius:10px;padding:2px 8px">\uD83D\uDD25 MOVING ' + E(_r5) + '</span>';
+        } else if (_mv.state === 'FLAT') {
+          var _lbl2 = _mv.coiling ? '\uD83D\uDCA4 FLAT \u00b7 coiling' : '\uD83D\uDCA4 LOW MOVEMENT';
+          html += '<span style="font-size:10px;font-weight:900;color:#fff;background:' + (_mv.coiling?'#6366f1':'#94a3b8') + ';border-radius:10px;padding:2px 8px">' + _lbl2 + '</span>';
+        }
       }
       if (c.action_reason) html += '<span style="font-size:11px;color:#475569;font-weight:600">' + E(c.action_reason) + '</span>';
       html += '</div>';
