@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.71";
-window.CELESYS_BUILD_TIME = 1781038800;
-window.CELESYS_BUILD_DATE = "2026-06-09 21:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.72";
+window.CELESYS_BUILD_TIME = 1781042400;
+window.CELESYS_BUILD_DATE = "2026-06-09 22:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -15655,8 +15655,9 @@ window._renderDirectionalOptions = function(d) {
     var _cardStyle = _optPass
       ? 'background:#fffdf5;border:1px solid #E0A93B;border-top:3px solid ' + color + ';border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:0 0 0 2px rgba(200,162,75,.35),0 14px 30px -20px rgba(200,162,75,.35)'
       : 'background:#fff;border:1px solid #E7ECF3;border-top:3px solid ' + color + ';border-radius:14px;margin-bottom:12px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.04),0 14px 30px -22px rgba(11,18,32,.22)';
-    var _initHidden = (_savedTier !== 'ALL' && (c.action_tier||'') !== _savedTier);
-    html += '<div id="dirCard_' + cid + '" class="sie-card" data-tier="' + (c.action_tier || '') + '" style="' + _cardStyle + (_initHidden ? ';display:none' : '') + '">';
+    var _isMoving = !!(c.movement && c.movement.state === 'MOVING');
+    var _initHidden = (_savedTier === 'MOVING') ? !_isMoving : (_savedTier !== 'ALL' && (c.action_tier||'') !== _savedTier);
+    html += '<div id="dirCard_' + cid + '" class="sie-card" data-tier="' + (c.action_tier || '') + '" data-moving="' + (_isMoving ? '1' : '0') + '" style="' + _cardStyle + (_initHidden ? ';display:none' : '') + '">';
 
     /* Actionability ribbon — TAKE NOW / WATCHLIST / SKIP (cards are sorted to top by this) */
     var _at = c.action_tier, _al = c.action_label || '';
@@ -16083,7 +16084,7 @@ window._renderDirectionalOptions = function(d) {
     var cards = wrap.querySelectorAll('.sie-card'), shown = 0;
     for(var i=0;i<cards.length;i++){
       var ct = cards[i].getAttribute('data-tier');
-      var vis = (tier==='ALL' || ct===tier);
+      var vis = (tier==='ALL') || (tier==='MOVING' ? cards[i].getAttribute('data-moving')==='1' : ct===tier);
       cards[i].style.display = vis ? '' : 'none';
       if(vis) shown++;
     }
@@ -16096,7 +16097,7 @@ window._renderDirectionalOptions = function(d) {
     var ow = document.getElementById('sieCards_'+_uid+'_'+other);
     if(ow){
       var oc = ow.querySelectorAll('.sie-card'), os = 0;
-      for(var k=0;k<oc.length;k++){ var oct=oc[k].getAttribute('data-tier'); var ov=(tier==='ALL'||oct===tier); oc[k].style.display=ov?'':'none'; if(ov)os++; }
+      for(var k=0;k<oc.length;k++){ var oct=oc[k].getAttribute('data-tier'); var ov=(tier==='ALL')||(tier==='MOVING'?oc[k].getAttribute('data-moving')==='1':oct===tier); oc[k].style.display=ov?'':'none'; if(ov)os++; }
       var oe = document.getElementById('sieEmpty_'+_uid+'_'+other);
       if(oe) oe.style.display = os ? 'none' : '';
       var obar = document.getElementById('sieBar_'+_uid+'_'+other);
@@ -16122,6 +16123,7 @@ window._renderDirectionalOptions = function(d) {
     h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
     h += '<span style="font-size:11px;color:#94a3b8">Bias <b style="color:'+biasC+'">'+bias+' '+biasPct+'%</b> <span style="color:#64748b">('+ceF+' CE / '+peF+' PE)</span></span>';
     h += '<button onclick="_sieFilter(\''+uid+'\',\'CE\',\'TAKE_NOW\',null);_sieFilter(\''+uid+'\',\'PE\',\'TAKE_NOW\',null)" style="cursor:pointer;border:0;background:#16a34a;color:#fff;font-size:10px;font-weight:800;border-radius:14px;padding:5px 12px">\u2605 Only TAKE NOW</button>';
+    h += '<button onclick="_sieFilter(\''+uid+'\',\'CE\',\'MOVING\',null);_sieFilter(\''+uid+'\',\'PE\',\'MOVING\',null)" style="cursor:pointer;border:0;background:#0d9488;color:#fff;font-size:10px;font-weight:800;border-radius:14px;padding:5px 12px">\uD83D\uDD25 Movers only</button>';
     h += '<button onclick="_sieFilter(\''+uid+'\',\'CE\',\'ALL\',null);_sieFilter(\''+uid+'\',\'PE\',\'ALL\',null)" style="cursor:pointer;border:1px solid #475569;background:transparent;color:#cbd5e1;font-size:10px;font-weight:800;border-radius:14px;padding:5px 12px">Show all</button>';
     h += '</div></div>';
   })();
@@ -16148,7 +16150,7 @@ window._renderDirectionalOptions = function(d) {
   h += '<div id="sieCards_'+uid+'_CE" style="padding:12px">';
   if (d.ce_buy_candidates && d.ce_buy_candidates.length) {
     d.ce_buy_candidates.forEach(function(c,i){ h += renderCandidate(c,'CE',i); });
-    var _ceShown = (_savedTier==='ALL') ? d.ce_buy_candidates.length : d.ce_buy_candidates.filter(function(c){return c.action_tier===_savedTier;}).length;
+    var _ceShown = (_savedTier==='ALL') ? d.ce_buy_candidates.length : d.ce_buy_candidates.filter(function(c){return _savedTier==='MOVING' ? (c.movement&&c.movement.state==='MOVING') : c.action_tier===_savedTier;}).length;
     h += '<div id="sieEmpty_'+uid+'_CE" style="'+(_ceShown?'display:none;':'')+'padding:18px;text-align:center;font-size:12px;color:#94a3b8">No cards in this filter.</div>';
   } else {
     h += '<div style="padding:20px;text-align:center;font-size:13px;color:#94a3b8">No CE setups meeting criteria. Markets may be declining.</div>';
@@ -16168,7 +16170,7 @@ window._renderDirectionalOptions = function(d) {
   h += '<div id="sieCards_'+uid+'_PE" style="padding:12px">';
   if (d.pe_buy_candidates && d.pe_buy_candidates.length) {
     d.pe_buy_candidates.forEach(function(c,i){ h += renderCandidate(c,'PE',i); });
-    var _peShown = (_savedTier==='ALL') ? d.pe_buy_candidates.length : d.pe_buy_candidates.filter(function(c){return c.action_tier===_savedTier;}).length;
+    var _peShown = (_savedTier==='ALL') ? d.pe_buy_candidates.length : d.pe_buy_candidates.filter(function(c){return _savedTier==='MOVING' ? (c.movement&&c.movement.state==='MOVING') : c.action_tier===_savedTier;}).length;
     h += '<div id="sieEmpty_'+uid+'_PE" style="'+(_peShown?'display:none;':'')+'padding:18px;text-align:center;font-size:12px;color:#94a3b8">No cards in this filter.</div>';
   } else {
     h += '<div style="padding:20px;text-align:center;font-size:13px;color:#94a3b8">No PE setups. Markets may be rising.</div>';
