@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.72";
-window.CELESYS_BUILD_TIME = 1781042400;
-window.CELESYS_BUILD_DATE = "2026-06-09 22:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.74";
+window.CELESYS_BUILD_TIME = 1781049600;
+window.CELESYS_BUILD_DATE = "2026-06-10 00:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -11801,6 +11801,7 @@ window._engShow = function(panel) {
     'redflag': 'engRedFlagPanel',
     'instterm': 'engInstTermPanel',
     'undervalued': 'engUVCPanel',
+    'mdo': 'engMDOPanel',
   };
   Object.keys(panelMap).forEach(function(k) {
     var el = document.getElementById(panelMap[k]);
@@ -11823,6 +11824,7 @@ window._engShow = function(panel) {
     'redflag': 'engBtnRedFlag',
     'instterm': 'engBtnInstTerm',
     'undervalued': 'engBtnUVC',
+    'mdo': 'engBtnMDO',
   };
   Object.keys(btnMap).forEach(function(k) {
     var btn = document.getElementById(btnMap[k]);
@@ -12653,6 +12655,66 @@ window._loadInstTerm = function(){
 
 window._uvcRegion = window._uvcRegion || 'US';
 window._uvcInit = function(){ /* placeholder for focus; region defaults US */ };
+window._mdoRegion = window._mdoRegion || 'US';
+window._loadMDO = function(){
+  var inp=document.getElementById('mdoSym'); var sym=((inp&&inp.value)||'').trim().toUpperCase();
+  var res=document.getElementById('mdoResult'); var btn=document.getElementById('mdoBtn');
+  if(!res) return;
+  if(!sym){ res.innerHTML='<div style="padding:14px;color:#0B1220;font-size:11px">Enter a symbol first (MU, NVDA, RELIANCE\u2026).</div>'; return; }
+  var reg=window._mdoRegion||'US';
+  if(btn){btn.disabled=true;btn.style.opacity='.6';btn.innerHTML='\u23F3 RUNNING\u2026';}
+  res.innerHTML='<div style="padding:24px;text-align:center;font-size:11px;color:#0B1220"><div style="display:inline-block;width:16px;height:16px;border:2px solid #C8A24B;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin-right:8px"></div>Running 10-layer stack on '+sym+'\u2026</div>';
+  fetch('/api/master-decision?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg)+'&refresh=1',{cache:'no-store'})
+    .then(function(r){return r.json().catch(function(){return null;});})
+    .then(function(d){
+      if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83C\uDFAF RUN STACK';}
+      if(!d||!d.success){ var m=(d&&(d.error||d.detail))||'unknown'; res.innerHTML='<div style="padding:14px;color:#0B1220;font-size:11px">'+sym+': '+m+'</div>'; return; }
+      res.innerHTML=window._renderMDO(d);
+    })
+    .catch(function(e){ if(btn){btn.disabled=false;btn.style.opacity='1';btn.innerHTML='\uD83C\uDFAF RUN STACK';} res.innerHTML='<div style="padding:14px;color:#0B1220;font-size:11px">Network error: '+e.message+'</div>'; });
+};
+window._renderMDO = function(d){
+  var E=window._esc||function(s){return String(s||'');};
+  var dc=d.decision_color||'#94a3b8'; var ms=(d.master_score!=null)?d.master_score:'\u2014';
+  var h='';
+  // Decision hero (slate + gold + master score gauge)
+  h+='<div style="background:linear-gradient(160deg,#0B1220,#141E33);border-radius:18px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.06),0 20px 44px -22px rgba(11,18,32,.55);margin-bottom:14px">';
+  h+='<div style="height:3px;background:linear-gradient(90deg,rgba(200,162,75,0),#C8A24B,rgba(200,162,75,0))"></div>';
+  h+='<div style="padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">';
+  h+='<div><div style="font-size:9.5px;font-weight:800;letter-spacing:2.5px;color:#C8A24B;text-transform:uppercase">Master Decision \u00b7 '+E(d.name)+' \u00b7 '+E(d.region)+'</div>';
+  h+='<div style="font-size:26px;font-weight:900;color:'+dc+';font-family:Sora,sans-serif;line-height:1.05;margin-top:4px;letter-spacing:-.5px">'+E(d.decision)+'</div>';
+  h+='<div style="font-size:11px;color:#8A94A6;margin-top:5px">Confidence '+E(d.confidence)+' \u00b7 Coverage '+E(d.coverage_pct)+'% \u00b7 Size '+E(d.position_size)+(d.price?(' \u00b7 $'+E(d.price)):'')+'</div></div>';
+  h+='<div style="text-align:center"><div style="font-size:44px;font-weight:900;color:'+dc+';font-family:JetBrains Mono,monospace;line-height:1">'+ms+'</div><div style="font-size:9px;font-weight:800;color:#8A94A6;letter-spacing:1.5px">MASTER / 100</div></div>';
+  h+='</div></div>';
+  if(d.iv_caution){ h+='<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:11px;color:#92400e;font-weight:600;line-height:1.5">\u26A0 '+E(d.iv_caution)+'</div>'; }
+  // Layer bars
+  h+='<div style="background:#fff;border:1px solid #E7ECF3;border-radius:14px;overflow:hidden;margin-bottom:12px">';
+  (d.layers||[]).forEach(function(L){
+    var ic={available:'\u2705',partial:'\u25D0',unavailable:'\u26AA'}[L.status]||'\u26AA';
+    var sc=(L.score!=null)?L.score:null;
+    var bar=(sc!=null)?sc:0;
+    var bc=(sc==null)?'#cbd5e1':(sc>=75?'#16a34a':sc>=55?'#ca8a04':'#dc2626');
+    h+='<div style="padding:9px 14px;border-top:1px solid #f1f5f9">';
+    h+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px">'+ic+'</span>';
+    h+='<span style="font-size:12px;font-weight:800;color:#0f172a">'+E(L.name)+'</span>';
+    if(L.blocking) h+='<span style="font-size:8px;font-weight:900;color:#fff;background:#dc2626;border-radius:5px;padding:1px 6px">BLOCKING</span>';
+    h+='<span style="margin-left:auto;font-size:12px;font-weight:900;color:'+bc+';font-family:JetBrains Mono,monospace">'+(sc!=null?sc:'\u2014')+'</span></div>';
+    h+='<div style="height:5px;background:#f1f5f9;border-radius:3px;margin-top:5px;overflow:hidden"><div style="width:'+bar+'%;height:100%;background:'+bc+'"></div></div>';
+    h+='<div style="font-size:10px;color:#94a3b8;margin-top:3px">'+E(L.label)+(L.detail?(' \u2014 '+E(L.detail)):'')+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  // Trade plan
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">';
+  function plan(lbl,val){ return '<div style="flex:1;min-width:150px;background:#fff;border:1px solid #E7ECF3;border-radius:12px;padding:10px 14px"><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase">'+lbl+'</div><div style="font-size:12px;font-weight:800;color:#0B1220;margin-top:3px">'+E(val)+'</div></div>'; }
+  h+=plan('Position size', d.position_size||'\u2014');
+  h+=plan('Invalidation', d.invalidation||'\u2014');
+  h+=plan('Target', d.target||'\u2014');
+  h+='</div>';
+  if(d.disclosure) h+='<div style="font-size:10px;color:#94a3b8;line-height:1.5;font-style:italic">'+E(d.disclosure)+'</div>';
+  return h;
+};
+
 window._loadUVC = function(){
   var inp = document.getElementById('uvcSym');
   var sym = ((inp && inp.value) || '').trim().toUpperCase();
@@ -15561,9 +15623,37 @@ window._renderDirectionalOptions = function(d) {
     h += '</details>';
     h += '</div>';
   } else if (d.conflict_warning) {
-    h += '<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #f59e0b;border-radius:12px;padding:14px 18px;margin-bottom:12px">';
-    h += '<div style="font-size:14px;font-weight:900;color:#92400e;margin-bottom:4px">&#9888;&#65039; Trade one direction only</div>';
-    h += '<div style="font-size:13px;font-weight:600;color:#78350f;line-height:1.6">' + E(d.conflict_warning) + '<br><span style="font-size:11px;color:#92400e">Plain version: a call (CE) profits if price rises, a put (PE) if it falls &mdash; they cancel out, so back the stronger side only, never both.</span></div></div>';
+    var _dd = d.dominant_direction || ((d.ce_passing_count||0) >= (d.pe_passing_count||0) ? 'CE' : 'PE');
+    var _ceN = d.ce_passing_count||0, _peN = d.pe_passing_count||0, _tot = Math.max(_ceN+_peN, 1);
+    var _isCE = _dd === 'CE';
+    var _dc = _isCE ? '#16a34a' : '#dc2626';
+    var _dbg = _isCE ? 'linear-gradient(135deg,#0B1220,#0f2a1c)' : 'linear-gradient(135deg,#0B1220,#2a1212)';
+    var _word = _isCE ? 'CALLS' : 'PUTS';
+    var _off = _isCE ? 'PE' : 'CE';
+    var _domN = _isCE ? _ceN : _peN, _offN = _isCE ? _peN : _ceN;
+    var _conv = Math.round((_isCE?_ceN:_peN)/_tot*100);
+    h += '<div style="position:sticky;top:8px;z-index:5;background:'+_dbg+';border:1px solid '+_dc+'66;border-left:5px solid '+_dc+';border-radius:16px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(11,18,32,.06),0 20px 44px -22px rgba(11,18,32,.55)">';
+    h += '<div style="height:3px;background:linear-gradient(90deg,rgba(200,162,75,0),#C8A24B,rgba(200,162,75,0))"></div>';
+    h += '<div style="padding:14px 20px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">';
+    h += '<div>';
+    h += '<div style="font-size:9px;font-weight:800;letter-spacing:2.5px;color:#C8A24B;text-transform:uppercase">\uD83D\uDCCC Decision \u00b7 trade one side only</div>';
+    h += '<div style="font-size:27px;font-weight:900;color:'+_dc+';font-family:Sora,sans-serif;line-height:1.05;margin-top:3px;letter-spacing:-.5px">\u25B6 TRADE '+_word+' <span style="color:#F1F5F9;opacity:.85;font-size:18px;font-weight:800">\u00b7 '+_dd+' SIDE</span></div>';
+    h += '<div style="font-size:11px;color:#8A94A6;margin-top:4px">'+_domN+' '+_dd+' setups vs '+_offN+' '+_off+' \u2014 the '+_off+' names are counter-trend (hedge or skip, not equal ideas)</div>';
+    h += '</div>';
+    h += '<div style="min-width:160px">';
+    h += '<div style="font-size:9px;font-weight:800;color:#8A94A6;letter-spacing:1px;text-align:right;margin-bottom:4px">CONVICTION '+_conv+'%</div>';
+    h += '<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.08)">';
+    h += '<div style="width:'+Math.round(_ceN/_tot*100)+'%;background:#16a34a"></div>';
+    h += '<div style="width:'+Math.round(_peN/_tot*100)+'%;background:#dc2626"></div>';
+    h += '</div>';
+    h += '<div style="display:flex;justify-content:space-between;font-size:9px;font-weight:800;margin-top:3px"><span style="color:#34D399">'+_ceN+' CE</span><span style="color:#F87171">'+_peN+' PE</span></div>';
+    h += '</div>';
+    h += '</div>';
+    h += '<details style="margin-top:9px"><summary style="cursor:pointer;font-size:10px;color:#8A94A6;list-style:none">\u24D8 why this call \u00b7 plain-English</summary>';
+    h += '<div style="font-size:11px;color:#cbd5e1;line-height:1.55;margin-top:5px">' + E(d.conflict_warning) + '<br><span style="color:#8A94A6">A call (CE) profits if price rises, a put (PE) if it falls \u2014 they cancel out, so back the stronger side only, never both.</span></div>';
+    h += '</details>';
+    h += '</div></div>';
   }
 
   /* ═══ SCANNER STATS — slim caption (counts live in the hero) ═══ */

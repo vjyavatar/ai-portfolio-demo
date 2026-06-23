@@ -41671,6 +41671,296 @@ def _uvc_screen_one(sym, region):
     meta["name"] = fund.get("name") or meta.get("name") or sym
     return _undervalued_compounder(sym, region, fund, closes, meta)
 
+# ═══ MASTER DECISION ORCHESTRATOR (MDO, r63.110.74) ═══════════════════════════
+# 10-layer institutional decision stack -> one master score + call-buy decision card.
+# Reuses _mtrader_block (price action) and _undervalued_compounder (valuation).
+# HONESTY: every layer is tri-state (available / partial / unavailable). UNAVAILABLE
+# layers are NEVER scored as a pass; the master score is computed only over layers we
+# can actually measure, and a "CALL BUY" is withheld below a coverage floor or when a
+# blocking layer (buyability red, counter-trend, IV-crush/earnings risk) fires.
+
+def _mdo_num(v):
+    try:
+        f = float(v); return f if f == f else None
+    except (TypeError, ValueError):
+        return None
+
+def _mdo_indicators(closes, highs, lows, volumes):
+    n = len(closes); out = {}
+    if n < 30:
+        return out
+    px = closes[-1]
+    # EMA20
+    k = 2 / (20 + 1); ema = closes[0]
+    for c in closes[1:]:
+        ema = c * k + ema * (1 - k)
+    out["ema20"] = ema
+    # RSI14
+    gains = losses = 0.0
+    for i in range(max(1, n - 14), n):
+        ch = closes[i] - closes[i - 1]
+        gains += max(ch, 0); losses += max(-ch, 0)
+    rs = (gains / 14) / ((losses / 14) or 1e-9)
+    out["rsi14"] = 100 - 100 / (1 + rs)
+    # ATR14
+    trs = []
+    for i in range(max(1, n - 14), n):
+        trs.append(max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])))
+    out["atr14"] = sum(trs) / len(trs) if trs else None
+    out["atr_pct"] = (out["atr14"] / px * 100) if out.get("atr14") and px else None
+    # ADX14 (simplified directional)
+    pdm = ndm = tr_sum = 0.0
+    for i in range(max(1, n - 14), n):
+        up = highs[i] - highs[i - 1]; dn = lows[i - 1] - lows[i]
+        pdm += up if (up > dn and up > 0) else 0
+        ndm += dn if (dn > up and dn > 0) else 0
+        tr_sum += max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+    pdi = 100 * pdm / (tr_sum or 1e-9); ndi = 100 * ndm / (tr_sum or 1e-9)
+    out["adx14"] = 100 * abs(pdi - ndi) / ((pdi + ndi) or 1e-9)
+    out["plus_di"] = pdi; out["minus_di"] = ndi
+    # volume ratio
+    if volumes and len(volumes) >= 20:
+        av = sum(volumes[-20:]) / 20
+        out["vol_ratio"] = (volumes[-1] / av) if av else None
+    # returns
+    out["ret_5d"] = (px / closes[-6] - 1) * 100 if n >= 6 and closes[-6] else None
+    out["ret_20d"] = (px / closes[-21] - 1) * 100 if n >= 21 and closes[-21] else None
+    out["close"] = px
+    return out
+
+
+def _master_decision_orchestrator(symbol, region, closes, highs, lows, volumes, fund, meta):
+    fund = fund or {}; meta = meta or {}
+    px = closes[-1] if closes else None
+    ind = _mdo_indicators(closes, highs, lows, volumes)
+    layers = []   # {key, name, score(0-100|None), status, label, detail, weight, blocking}
+
+    def add(key, name, score, status, label, detail, weight, blocking=False):
+        layers.append({"key": key, "name": name, "score": (round(score) if score is not None else None),
+                       "status": status, "label": label, "detail": detail, "weight": weight, "blocking": blocking})
+
+    # ── L4 Price Action (Minervini/O'Neil) — reuse _mtrader_block ──
+    mt = {}
+    try:
+        mt = _mtrader_block(closes, highs, lows, volumes, ind, 0.0) or {}
+    except Exception:
+        mt = {}
+    s50, s150, s200 = mt.get("sma50"), mt.get("sma150"), mt.get("sma200")
+    tt = (mt.get("trend_template") or {})
+    pa_checks = 0; pa_pass = 0
+    for cond in [(px and s50 and px > s50), (px and s150 and px > s150), (px and s200 and px > s200),
+                 (s50 and s200 and s50 > s200), (ind.get("rsi14") and ind["rsi14"] > 50), bool(tt.get("bull"))]:
+        pa_checks += 1; pa_pass += 1 if cond else 0
+    pa_score = round(pa_pass / pa_checks * 100) if pa_checks else None
+    pa_up = bool(px and s200 and s50 and px > s200 and s50 > s200)
+    add("price_action", "Price Action (Minervini)", pa_score, "available",
+        ("Stage-2 uptrend" if pa_up else "Not in a clean uptrend"),
+        f"{pa_pass}/{pa_checks} trend-template checks; 50/150/200-DMA stack.", 0.15, blocking=False)
+
+    # ── L7 Option Buyability (trend + volume + momentum + RR) ──
+    vol_exp = bool(ind.get("vol_ratio") and ind["vol_ratio"] >= 1.3)
+    mom_acc = bool(ind.get("ret_5d") is not None and ind.get("ret_20d") is not None and ind["ret_5d"] > ind["ret_20d"] / 4)
+    adx_ok = bool(ind.get("adx14") and ind["adx14"] >= 20 and ind.get("plus_di", 0) > ind.get("minus_di", 0))
+    buy_checks = [pa_up, vol_exp, mom_acc, adx_ok, bool(ind.get("rsi14") and 50 < ind["rsi14"] < 75)]
+    buy_score = round(sum(1 for x in buy_checks if x) / len(buy_checks) * 100)
+    buy_block = not pa_up   # counter-trend = no call-buy
+    add("buyability", "Option Buyability", buy_score, "available",
+        ("Buyable now" if buy_score >= 60 and pa_up else ("Counter-trend — no call buy" if not pa_up else "Weak — wait")),
+        "Trend+volume+momentum+ADX+RSI band. Counter-trend blocks a call buy.", 0.18, blocking=buy_block)
+
+    # ── L5 Volume Profile (POC acceptance) — computable from price+volume ──
+    if volumes and len(volumes) >= 40 and px:
+        seg_c = closes[-60:]; seg_v = volumes[-60:]
+        lo, hi = min(seg_c), max(seg_c)
+        if hi > lo:
+            bins = 20; width = (hi - lo) / bins; buckets = [0.0] * bins
+            for c, v in zip(seg_c, seg_v):
+                bi = min(bins - 1, int((c - lo) / width)); buckets[bi] += v
+            poc_bin = buckets.index(max(buckets)); poc_price = lo + (poc_bin + 0.5) * width
+            above = px > poc_price
+            vp_score = 75 if above else 40
+            add("volume_profile", "Volume Profile", vp_score, "available",
+                ("Acceptance above POC" if above else "Below POC — rejection risk"),
+                f"POC ~{round(poc_price,2)} vs price {round(px,2)}.", 0.10)
+        else:
+            add("volume_profile", "Volume Profile", None, "unavailable", "Flat range", "Insufficient price dispersion.", 0.10)
+    else:
+        add("volume_profile", "Volume Profile", None, "unavailable", "No volume data", "Volume profile needs volume history.", 0.10)
+
+    # ── L2 Valuation — reuse Undervalued Compounder ──
+    try:
+        uvc = _undervalued_compounder(symbol, region, fund, closes, meta)
+        if uvc.get("coverage_pct", 0) >= 40:
+            val_score = uvc.get("pass_rate")
+            add("valuation", "Valuation", val_score, "available" if uvc["coverage_pct"] >= 60 else "partial",
+                uvc.get("verdict", ""), f"UVC pass {uvc.get('pass_rate')}% over {uvc.get('coverage_pct')}% coverage.", 0.10)
+        else:
+            add("valuation", "Valuation", None, "unavailable", "Fundamentals blocked",
+                "Not enough fundamentals reachable to value it.", 0.10)
+    except Exception:
+        add("valuation", "Valuation", None, "unavailable", "Error", "Valuation engine error.", 0.10)
+
+    # ── L3 Smart Money (volume-accumulation proxy; true 13F/flow unavailable) ──
+    if volumes and len(volumes) >= 30 and closes:
+        up_v = dn_v = 0.0
+        for i in range(len(closes) - 20, len(closes)):
+            if i <= 0: continue
+            (up_v := up_v + volumes[i]) if closes[i] >= closes[i - 1] else (dn_v := dn_v + volumes[i])
+        acc = up_v / ((up_v + dn_v) or 1e-9) * 100
+        sm_score = round(acc)
+        add("smart_money", "Smart Money", sm_score, "partial",
+            ("Accumulation" if acc >= 55 else "Distribution" if acc <= 45 else "Neutral"),
+            "Up/down-volume proxy (true 13F / hedge-fund flow not on feed).", 0.12)
+    else:
+        add("smart_money", "Smart Money", None, "unavailable", "No flow data", "13F / institutional flow not on feed.", 0.12)
+
+    # ── L1 Earnings Quality (growth proxy; guidance/margins not on feed) ──
+    rg = _mdo_num(fund.get("revenueGrowth")); eg = _mdo_num(fund.get("earningsGrowth"))
+    if rg is not None or eg is not None:
+        rgp = (rg * 100 if abs(rg) <= 2 else rg) if rg is not None else None
+        egp = (eg * 100 if abs(eg) <= 2 else eg) if eg is not None else None
+        sc = 50
+        if rgp is not None: sc += 15 if rgp > 10 else (-10 if rgp < 0 else 0)
+        if egp is not None: sc += 20 if egp > 15 else (-15 if egp < 0 else 0)
+        add("earnings", "Earnings Quality", max(0, min(100, sc)), "partial",
+            "Growth-positive" if sc >= 60 else "Soft",
+            "Revenue/EPS growth proxy; guidance, margins, DC/HBM detail NOT on feed.", 0.10)
+    else:
+        add("earnings", "Earnings Quality", None, "unavailable", "No earnings data",
+            "Guidance / margin / segment detail not on feed.", 0.10)
+
+    # ── L8 Volatility / IV (true IV rank needs the chain — gated) ──
+    rv = mt.get("vol_annual")
+    add("volatility", "Volatility / IV", None, "unavailable",
+        "IV rank unavailable" + (" (IN chain blocked)" if region == "IN" else ""),
+        (f"Realized vol ~{rv}% (NOT IV rank). True IV rank / percentile / earnings-crush risk need the option chain."
+         if rv else "Option-chain IV not reachable on this host — cannot rank IV or gauge crush risk."), 0.10, blocking=False)
+
+    # ── L6 Options Flow (sweeps/blocks/dealer — gated) ──
+    add("options_flow", "Options Flow", None, "unavailable",
+        "Flow feed not wired", "Sweeps / blocks / dealer-gamma require an options-flow feed (not connected).", 0.08)
+
+    # ── L9 Strike Intelligence (light ATM read; full SIE in the scanner) ──
+    if px:
+        atm = round(px / 5) * 5 if px > 50 else round(px)
+        add("strike", "Strike Intelligence", 70, "partial",
+            f"ATM ~{atm}",
+            ("Live chain on the scanner for US; IN strikes are MODELED." if region == "US" else "IN strikes MODELED (no live chain)."),
+            0.04)
+    else:
+        add("strike", "Strike Intelligence", None, "unavailable", "No price", "", 0.04)
+
+    # ── L10 Portfolio Risk (no portfolio context loaded) ──
+    add("portfolio_risk", "Portfolio Risk", None, "unavailable", "No portfolio loaded",
+        "Correlation / sector-concentration / event sizing needs your live positions.", 0.03)
+
+    # ── Aggregate (only scorable layers; UNAVAILABLE never counts) ──
+    scored = [L for L in layers if L["status"] in ("available", "partial") and L["score"] is not None]
+    wsum = sum(L["weight"] for L in scored)
+    master = round(sum(L["score"] * L["weight"] for L in scored) / wsum) if wsum else None
+    coverage = round(len(scored) / len(layers) * 100)
+    blockers = [L for L in layers if L.get("blocking") and (L["score"] is None or L["score"] < 50)]
+
+    # ── Decision (gated, honest) ──
+    iv_unknown = any(L["key"] == "volatility" and L["status"] == "unavailable" for L in layers)
+    if master is None or coverage < 50:
+        decision, dcolor = "INSUFFICIENT DATA — cannot issue a call-buy decision", "#94a3b8"
+        size, conf = "—", 0
+    elif blockers:
+        decision, dcolor = "AVOID / NO TRADE — counter-trend or unbuyable", "#dc2626"
+        size, conf = "Avoid", round(master * 0.4)
+    else:
+        conf = round(master * (0.6 + 0.4 * coverage / 100))
+        if master >= 90: decision, dcolor, size = "STRONG BUY CALL", "#16a34a", "Full"
+        elif master >= 80: decision, dcolor, size = "BUY CALL", "#16a34a", "Half"
+        elif master >= 70: decision, dcolor, size = "WATCHLIST", "#ca8a04", "Quarter"
+        elif master >= 60: decision, dcolor, size = "NEUTRAL", "#ca8a04", "—"
+        else: decision, dcolor, size = "AVOID", "#dc2626", "Avoid"
+
+    # IV-crush caution (since IV rank is unknown, never claim 'IV acceptable')
+    iv_caution = ("IV rank / earnings-crush risk is UNVERIFIED (no chain). Before buying a call, check IV "
+                  "rank and the next earnings date yourself — high IV or earnings-soon turns a correct call into a loss."
+                  if iv_unknown else None)
+
+    # invalidation + target
+    invalidation = (f"Below 50-DMA {round(s50,2)}" if s50 else (f"Below recent swing low {round(min(closes[-20:]),2)}" if len(closes) >= 20 else None))
+    atrp = ind.get("atr_pct")
+    target = (f"2R–3R (~{round(atrp*2,1)}%–{round(atrp*3,1)}% underlying move)" if atrp else "2R–3R")
+
+    return {
+        "symbol": symbol, "region": region, "name": meta.get("name") or symbol,
+        "price": round(px, 2) if px else None,
+        "master_score": master, "coverage_pct": coverage, "confidence": conf,
+        "decision": decision, "decision_color": dcolor, "position_size": size,
+        "layers": layers, "blockers": [b["name"] for b in blockers],
+        "iv_caution": iv_caution, "invalidation": invalidation, "target": target,
+        "disclosure": ("Orchestrates 10 institutional layers into one score. Layers marked UNAVAILABLE (options flow, "
+                       "true IV rank, 13F, portfolio risk) are NOT counted — the master score reflects only what's "
+                       "measurable on this host. Educational, not investment advice."),
+    }
+
+
+@app.get("/api/master-decision")
+async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0):
+    """Master Decision Orchestrator — 10-layer institutional stack -> one call-buy decision."""
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return {"success": False, "error": "Enter a symbol (e.g. MU, NVDA, RELIANCE)."}
+    if yf is None:
+        return {"success": False, "error": "yfinance unavailable"}
+    region = (region or "US").upper()
+    _lp = asyncio.get_event_loop()
+    _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN"}
+    yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
+
+    def _hist():
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        try:
+            return yf.Ticker(yf_sym).history(period="1y", interval="1d", auto_adjust=True)
+        except Exception:
+            return None
+    h = await _lp.run_in_executor(None, _hist)
+    closes = highs = lows = vols = []
+    try:
+        if h is not None and not h.empty:
+            closes = [float(x) for x in list(h["Close"].dropna())]
+            highs = [float(x) for x in list(h["High"].dropna())]
+            lows = [float(x) for x in list(h["Low"].dropna())]
+            vols = [float(x) for x in list(h["Volume"].fillna(0))]
+    except Exception:
+        pass
+    if len(closes) < 30:
+        return {"success": False, "error": "Not enough price history for %s." % sym}
+
+    def _fund():
+        f = {}
+        try:
+            if region == "IN":
+                d = fetch_nse_stock_data(sym) or {}
+                f["name"] = d.get("companyName") or sym
+                if d.get("marketCap"): f["marketCap"] = d.get("marketCap")
+                if d.get("pe"): f["trailingPE"] = d.get("pe")
+                if d.get("roe"): f["returnOnEquity"] = d.get("roe")
+                if d.get("debtEquity"): f["debtToEquity"] = d.get("debtEquity")
+                if d.get("revGrowth"): f["revenueGrowth"] = d.get("revGrowth")
+                if d.get("earningsGrowth"): f["earningsGrowth"] = d.get("earningsGrowth")
+            else:
+                d = fetch_multi_source_fundamentals(sym) or {}
+                f = dict(d); f["name"] = d.get("name") or sym
+                if d.get("market_cap") and not f.get("marketCap"): f["marketCap"] = d.get("market_cap")
+        except Exception:
+            pass
+        return f
+    fund = await _lp.run_in_executor(None, _fund)
+    meta = _imdf_infer_meta(sym, region, fund)
+    meta["name"] = fund.get("name") or meta.get("name") or sym
+    try:
+        out = _master_decision_orchestrator(sym, region, closes, highs, lows, vols, fund, meta)
+        return {"success": True, **out}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/undervalued-screen")
 async def undervalued_screen(symbol: str = "", region: str = "US", refresh: int = 0):
     """Institutional Undervalued Compounder screen (single symbol, tri-state, honest coverage gate)."""
