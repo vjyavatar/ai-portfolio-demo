@@ -41729,7 +41729,8 @@ def _mdo_indicators(closes, highs, lows, volumes):
     return out
 
 
-def _master_decision_orchestrator(symbol, region, closes, highs, lows, volumes, fund, meta):
+def _master_decision_orchestrator(symbol, region, closes, highs, lows, volumes, fund, meta, iv_data=None):
+    iv_data = iv_data or {}
     fund = fund or {}; meta = meta or {}
     px = closes[-1] if closes else None
     ind = _mdo_indicators(closes, highs, lows, volumes)
@@ -41747,26 +41748,54 @@ def _master_decision_orchestrator(symbol, region, closes, highs, lows, volumes, 
         mt = {}
     s50, s150, s200 = mt.get("sma50"), mt.get("sma150"), mt.get("sma200")
     tt = (mt.get("trend_template") or {})
-    pa_checks = 0; pa_pass = 0
-    for cond in [(px and s50 and px > s50), (px and s150 and px > s150), (px and s200 and px > s200),
-                 (s50 and s200 and s50 > s200), (ind.get("rsi14") and ind["rsi14"] > 50), bool(tt.get("bull"))]:
-        pa_checks += 1; pa_pass += 1 if cond else 0
-    pa_score = round(pa_pass / pa_checks * 100) if pa_checks else None
+    rsi0 = ind.get("rsi14")
     pa_up = bool(px and s200 and s50 and px > s200 and s50 > s200)
+    pa_down = bool(px and s200 and s50 and px < s200 and s50 < s200)
+    if pa_up:
+        bias = "CALL"
+    elif pa_down:
+        bias = "PUT"
+    else:
+        bias = "CALL" if (px and s200 and px > s200) else ("PUT" if (px and s200 and px < s200) else "NEUTRAL")
+    # Price-action score = alignment with the TRADE direction (bearish stack scores high for a PUT)
+    if bias == "PUT":
+        pa_conds = [(px and s50 and px < s50), (px and s150 and px < s150), (px and s200 and px < s200),
+                    (s50 and s200 and s50 < s200), (rsi0 and rsi0 < 50), (not tt.get("bull"))]
+    else:
+        pa_conds = [(px and s50 and px > s50), (px and s150 and px > s150), (px and s200 and px > s200),
+                    (s50 and s200 and s50 > s200), (rsi0 and rsi0 > 50), bool(tt.get("bull"))]
+    pa_pass = sum(1 for c in pa_conds if c); pa_checks = len(pa_conds)
+    pa_score = round(pa_pass / pa_checks * 100) if pa_checks else None
     add("price_action", "Price Action (Minervini)", pa_score, "available",
-        ("Stage-2 uptrend" if pa_up else "Not in a clean uptrend"),
-        f"{pa_pass}/{pa_checks} trend-template checks; 50/150/200-DMA stack.", 0.15, blocking=False)
+        ("Stage-2 uptrend" if pa_up else "Stage-4 downtrend" if pa_down else "Transitional / no clean stack"),
+        f"{pa_pass}/{pa_checks} trend-template checks aligned to the {bias} side; 50/150/200-DMA stack.", 0.15, blocking=False)
 
-    # ── L7 Option Buyability (trend + volume + momentum + RR) ──
+    # ── L7 Option Buyability — direction-aware (CALL needs uptrend, PUT needs downtrend) ──
     vol_exp = bool(ind.get("vol_ratio") and ind["vol_ratio"] >= 1.3)
-    mom_acc = bool(ind.get("ret_5d") is not None and ind.get("ret_20d") is not None and ind["ret_5d"] > ind["ret_20d"] / 4)
-    adx_ok = bool(ind.get("adx14") and ind["adx14"] >= 20 and ind.get("plus_di", 0) > ind.get("minus_di", 0))
-    buy_checks = [pa_up, vol_exp, mom_acc, adx_ok, bool(ind.get("rsi14") and 50 < ind["rsi14"] < 75)]
+    rsi = ind.get("rsi14")
+    di_plus = ind.get("plus_di", 0); di_minus = ind.get("minus_di", 0)
+    adx_strong = bool(ind.get("adx14") and ind["adx14"] >= 20)
+    r5 = ind.get("ret_5d"); r20 = ind.get("ret_20d")
+    if bias == "PUT":
+        trend_ok = pa_down
+        mom_dir = bool(r5 is not None and r20 is not None and r5 < r20 / 4)   # falling
+        adx_dir = bool(adx_strong and di_minus > di_plus)
+        rsi_band = bool(rsi and 25 < rsi < 50)
+        buy_checks = [trend_ok, vol_exp, mom_dir, adx_dir, rsi_band]
+        buy_block = not pa_down
+        _bword = "PUT"
+    else:
+        trend_ok = pa_up
+        mom_dir = bool(r5 is not None and r20 is not None and r5 > r20 / 4)   # rising
+        adx_dir = bool(adx_strong and di_plus > di_minus)
+        rsi_band = bool(rsi and 50 < rsi < 75)
+        buy_checks = [trend_ok, vol_exp, mom_dir, adx_dir, rsi_band]
+        buy_block = not pa_up
+        _bword = "CALL"
     buy_score = round(sum(1 for x in buy_checks if x) / len(buy_checks) * 100)
-    buy_block = not pa_up   # counter-trend = no call-buy
     add("buyability", "Option Buyability", buy_score, "available",
-        ("Buyable now" if buy_score >= 60 and pa_up else ("Counter-trend — no call buy" if not pa_up else "Weak — wait")),
-        "Trend+volume+momentum+ADX+RSI band. Counter-trend blocks a call buy.", 0.18, blocking=buy_block)
+        (f"{_bword} buyable" if buy_score >= 60 and not buy_block else ("Counter-trend — no clean buy" if buy_block else f"Weak {_bword} — wait")),
+        f"Direction-aware: {_bword} needs aligned trend+volume+momentum+ADX+RSI. Counter-trend blocks the buy.", 0.18, blocking=buy_block)
 
     # ── L5 Volume Profile (POC acceptance) — computable from price+volume ──
     if volumes and len(volumes) >= 40 and px:
@@ -41778,10 +41807,12 @@ def _master_decision_orchestrator(symbol, region, closes, highs, lows, volumes, 
                 bi = min(bins - 1, int((c - lo) / width)); buckets[bi] += v
             poc_bin = buckets.index(max(buckets)); poc_price = lo + (poc_bin + 0.5) * width
             above = px > poc_price
-            vp_score = 75 if above else 40
+            _good = (above if bias != "PUT" else (not above))
+            vp_score = 75 if _good else 40
             add("volume_profile", "Volume Profile", vp_score, "available",
-                ("Acceptance above POC" if above else "Below POC — rejection risk"),
-                f"POC ~{round(poc_price,2)} vs price {round(px,2)}.", 0.10)
+                (("Acceptance above POC" if above else "Below POC — rejection risk") if bias != "PUT"
+                 else ("Below POC — sellers in control" if not above else "Above POC — counter to short")),
+                f"POC ~{round(poc_price,2)} vs price {round(px,2)} (scored for the {bias} side).", 0.10)
         else:
             add("volume_profile", "Volume Profile", None, "unavailable", "Flat range", "Insufficient price dispersion.", 0.10)
     else:
@@ -41807,10 +41838,10 @@ def _master_decision_orchestrator(symbol, region, closes, highs, lows, volumes, 
             if i <= 0: continue
             (up_v := up_v + volumes[i]) if closes[i] >= closes[i - 1] else (dn_v := dn_v + volumes[i])
         acc = up_v / ((up_v + dn_v) or 1e-9) * 100
-        sm_score = round(acc)
+        sm_score = round(acc if bias != "PUT" else (100 - acc))
         add("smart_money", "Smart Money", sm_score, "partial",
-            ("Accumulation" if acc >= 55 else "Distribution" if acc <= 45 else "Neutral"),
-            "Up/down-volume proxy (true 13F / hedge-fund flow not on feed).", 0.12)
+            ("Accumulation" if acc >= 55 else "Distribution" if acc <= 45 else "Neutral") + (" (good for PUT)" if (bias == "PUT" and acc <= 45) else ""),
+            "Up/down-volume proxy scored for the " + bias + " side (true 13F / flow not on feed).", 0.12)
     else:
         add("smart_money", "Smart Money", None, "unavailable", "No flow data", "13F / institutional flow not on feed.", 0.12)
 
@@ -41829,12 +41860,30 @@ def _master_decision_orchestrator(symbol, region, closes, highs, lows, volumes, 
         add("earnings", "Earnings Quality", None, "unavailable", "No earnings data",
             "Guidance / margin / segment detail not on feed.", 0.10)
 
-    # ── L8 Volatility / IV (true IV rank needs the chain — gated) ──
+    # ── L8 Volatility / IV — use the chain when reachable, else honest fallback ──
     rv = mt.get("vol_annual")
-    add("volatility", "Volatility / IV", None, "unavailable",
-        "IV rank unavailable" + (" (IN chain blocked)" if region == "IN" else ""),
-        (f"Realized vol ~{rv}% (NOT IV rank). True IV rank / percentile / earnings-crush risk need the option chain."
-         if rv else "Option-chain IV not reachable on this host — cannot rank IV or gauge crush risk."), 0.10, blocking=False)
+    atm_iv = iv_data.get("atm_iv")          # % (e.g. 55.0)
+    if atm_iv is not None:
+        rich = (atm_iv / rv) if rv else None   # IV vs realized vol
+        if rich is None:
+            iv_score = 55; iv_lbl = f"ATM IV {round(atm_iv,1)}%"
+        elif rich >= 1.4:
+            iv_score = 30; iv_lbl = f"IV RICH — {round(atm_iv,1)}% (~{round(rich,1)}\u00d7 realized) \u2014 crush risk"
+        elif rich >= 1.1:
+            iv_score = 55; iv_lbl = f"IV fair-to-rich — {round(atm_iv,1)}% (~{round(rich,1)}\u00d7 realized)"
+        else:
+            iv_score = 80; iv_lbl = f"IV cheap — {round(atm_iv,1)}% (~{round(rich,1)}\u00d7 realized) \u2014 good for buyers"
+        _ivdet = f"ATM IV from chain ({iv_data.get('expiry','')}); compared to realized vol. NOTE: this is current IV vs realized, not a true 1-yr IV rank (needs an IV history feed)."
+        if iv_data.get("earnings_soon"):
+            _ivdet += " Earnings imminent \u2014 expect post-print IV crush."
+        add("volatility", "Volatility / IV", iv_score, "partial", iv_lbl, _ivdet, 0.10, blocking=False)
+        iv_used = True
+    else:
+        add("volatility", "Volatility / IV", None, "unavailable",
+            "IV rank unavailable" + (" (IN chain blocked)" if region == "IN" else ""),
+            (f"Realized vol ~{rv}% (NOT IV rank). True IV rank / percentile / earnings-crush risk need the option chain."
+             if rv else "Option-chain IV not reachable on this host — cannot rank IV or gauge crush risk."), 0.10, blocking=False)
+        iv_used = False
 
     # ── L6 Options Flow (sweeps/blocks/dealer — gated) ──
     add("options_flow", "Options Flow", None, "unavailable",
@@ -41861,42 +41910,93 @@ def _master_decision_orchestrator(symbol, region, closes, highs, lows, volumes, 
     coverage = round(len(scored) / len(layers) * 100)
     blockers = [L for L in layers if L.get("blocking") and (L["score"] is None or L["score"] < 50)]
 
-    # ── Decision (gated, honest) ──
-    iv_unknown = any(L["key"] == "volatility" and L["status"] == "unavailable" for L in layers)
+    # ── Decision (gated, honest, direction-aware) ──
+    iv_unknown = not iv_used
+    _side = "CALL" if bias != "PUT" else "PUT"
+    # Data basis shown in brackets so the call is always honest about what it rests on
+    basis = ("full stack incl. IV" if iv_used else "ex-IV/Greeks \u2014 verify the option")
     if master is None or coverage < 50:
-        decision, dcolor = "INSUFFICIENT DATA — cannot issue a call-buy decision", "#94a3b8"
+        decision, dcolor = "INSUFFICIENT DATA — cannot issue a decision", "#94a3b8"
         size, conf = "—", 0
-    elif blockers:
-        decision, dcolor = "AVOID / NO TRADE — counter-trend or unbuyable", "#dc2626"
-        size, conf = "Avoid", round(master * 0.4)
+    elif blockers or bias == "NEUTRAL":
+        decision = (("NO TRADE — counter-trend / unbuyable" if blockers else "NO TRADE — no clean trend (chop)") + f" ({basis})")
+        dcolor, size, conf = "#dc2626", "Avoid", round(master * 0.4)
     else:
         conf = round(master * (0.6 + 0.4 * coverage / 100))
-        if master >= 90: decision, dcolor, size = "STRONG BUY CALL", "#16a34a", "Full"
-        elif master >= 80: decision, dcolor, size = "BUY CALL", "#16a34a", "Half"
-        elif master >= 70: decision, dcolor, size = "WATCHLIST", "#ca8a04", "Quarter"
-        elif master >= 60: decision, dcolor, size = "NEUTRAL", "#ca8a04", "—"
-        else: decision, dcolor, size = "AVOID", "#dc2626", "Avoid"
+        if master >= 90: decision, dcolor, size = f"STRONG BUY {_side} ({basis})", "#16a34a", "Full"
+        elif master >= 80: decision, dcolor, size = f"BUY {_side} ({basis})", "#16a34a", "Half"
+        elif master >= 70: decision, dcolor, size = f"WATCHLIST ({_side} bias, {basis})", "#ca8a04", "Quarter"
+        elif master >= 60: decision, dcolor, size = f"NEUTRAL ({_side} lean, {basis})", "#ca8a04", "—"
+        else: decision, dcolor, size = f"AVOID ({basis})", "#dc2626", "Avoid"
 
-    # IV-crush caution (since IV rank is unknown, never claim 'IV acceptable')
-    iv_caution = ("IV rank / earnings-crush risk is UNVERIFIED (no chain). Before buying a call, check IV "
-                  "rank and the next earnings date yourself — high IV or earnings-soon turns a correct call into a loss."
-                  if iv_unknown else None)
+    # Volatility note — caution if IV unknown; confirmation if it was used
+    if iv_unknown:
+        iv_caution = ("Decision is based on the remaining parameters EXCLUDING IV/Greeks (option chain not reachable). "
+                      "Direction + entry are valid; before buying the actual option, check IV rank and the next earnings "
+                      "date yourself — high IV or earnings-soon turns a correct direction into a loss.")
+    else:
+        iv_caution = (f"IV/Greeks factored in from the chain ({iv_data.get('expiry','')}). This is current IV vs realized "
+                      "vol, not a true 1-yr IV rank — still glance at the earnings date before buying.")
 
-    # invalidation + target
-    invalidation = (f"Below 50-DMA {round(s50,2)}" if s50 else (f"Below recent swing low {round(min(closes[-20:]),2)}" if len(closes) >= 20 else None))
-    atrp = ind.get("atr_pct")
+    # ── ENTRY PLAN — best entry zone for the underlying (direction-aware) ──
+    ema20 = ind.get("ema20"); atr = ind.get("atr14"); atrp = ind.get("atr_pct")
+    entry = {"side": _side}
+    if px and atr:
+        if _side == "CALL":
+            ref = ema20 or (s50 or px)
+            dist_atr = (px - ref) / atr if atr else 0
+            if dist_atr <= 0.5:
+                entry["quality"] = "BUYABLE NOW"; entry["note"] = "price is at/near support — entry here is fine"
+                lo, hi = round(ref, 2), round(px, 2)
+            elif dist_atr <= 1.5:
+                entry["quality"] = "SLIGHTLY EXTENDED"; entry["note"] = "ok on a small dip; ideal entry is the support zone below"
+                lo, hi = round(ref, 2), round(px, 2)
+            else:
+                entry["quality"] = "EXTENDED — WAIT"; entry["note"] = f"price is {round(dist_atr,1)}\u00d7ATR above support — chasing here invites a pullback; wait for a dip into the zone"
+                lo, hi = round(ref, 2), round(ref + atr, 2)
+            stop = round(max((s50 or 0), (min(closes[-20:]) if len(closes) >= 20 else ref)) * 0.998, 2)
+            if stop >= lo: stop = round(lo - 1.2 * atr, 2)
+            tgt1 = round(px + 2 * atr, 2); tgt2 = round(px + 3 * atr, 2)
+        else:  # PUT
+            ref = ema20 or (s50 or px)
+            dist_atr = (ref - px) / atr if atr else 0
+            if dist_atr <= 0.5:
+                entry["quality"] = "BUYABLE NOW"; entry["note"] = "price is at/near resistance — entry here is fine"
+                lo, hi = round(px, 2), round(ref, 2)
+            elif dist_atr <= 1.5:
+                entry["quality"] = "SLIGHTLY EXTENDED"; entry["note"] = "ok on a small bounce; ideal entry is the resistance zone above"
+                lo, hi = round(px, 2), round(ref, 2)
+            else:
+                entry["quality"] = "EXTENDED — WAIT"; entry["note"] = f"price is {round(dist_atr,1)}\u00d7ATR below resistance — wait for a bounce into the zone"
+                lo, hi = round(ref - atr, 2), round(ref, 2)
+            stop = round(max((s50 or px), (max(closes[-20:]) if len(closes) >= 20 else ref)) * 1.002, 2)
+            tgt1 = round(px - 2 * atr, 2); tgt2 = round(px - 3 * atr, 2)
+        risk = abs((hi if _side == "CALL" else lo) - stop)
+        rew = abs(tgt1 - (hi if _side == "CALL" else lo))
+        entry["zone_low"] = lo; entry["zone_high"] = hi
+        entry["stop"] = stop; entry["target_1"] = tgt1; entry["target_2"] = tgt2
+        entry["rr"] = round(rew / risk, 1) if risk else None
+        entry["atr"] = round(atr, 2)
+    else:
+        entry["quality"] = "NO DATA"
+
+    invalidation = (f"Below 50-DMA {round(s50,2)}" if (_side == "CALL" and s50) else
+                    (f"Above 50-DMA {round(s50,2)}" if (_side == "PUT" and s50) else
+                     (f"Stop {entry.get('stop')}" if entry.get("stop") else None)))
     target = (f"2R–3R (~{round(atrp*2,1)}%–{round(atrp*3,1)}% underlying move)" if atrp else "2R–3R")
 
     return {
         "symbol": symbol, "region": region, "name": meta.get("name") or symbol,
-        "price": round(px, 2) if px else None,
+        "price": round(px, 2) if px else None, "bias": bias, "side": _side,
         "master_score": master, "coverage_pct": coverage, "confidence": conf,
         "decision": decision, "decision_color": dcolor, "position_size": size,
+        "iv_used": iv_used, "decision_basis": basis,
         "layers": layers, "blockers": [b["name"] for b in blockers],
-        "iv_caution": iv_caution, "invalidation": invalidation, "target": target,
-        "disclosure": ("Orchestrates 10 institutional layers into one score. Layers marked UNAVAILABLE (options flow, "
-                       "true IV rank, 13F, portfolio risk) are NOT counted — the master score reflects only what's "
-                       "measurable on this host. Educational, not investment advice."),
+        "entry": entry, "iv_caution": iv_caution, "invalidation": invalidation, "target": target,
+        "disclosure": ("Orchestrates 10 institutional layers into one score + a direction (CALL/PUT) and entry zone. "
+                       "Layers marked UNAVAILABLE (options flow, true IV rank, 13F, portfolio risk) are NOT counted. "
+                       "Entry levels are for the underlying; the option leg still needs an IV/earnings check. "
+                       "Educational, not investment advice."),
     }
 
 
@@ -41955,8 +42055,40 @@ async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0
     fund = await _lp.run_in_executor(None, _fund)
     meta = _imdf_infer_meta(sym, region, fund)
     meta["name"] = fund.get("name") or meta.get("name") or sym
+
+    # Best-effort options-chain IV (US only; usually 401-blocked on Render -> honest fallback)
+    def _iv():
+        if region != "US":
+            return {}
+        try:
+            tk = yf.Ticker(yf_sym); exps = list(getattr(tk, "options", []) or [])
+            if not exps:
+                return {}
+            exp = exps[0]
+            ch = tk.option_chain(exp)
+            calls = ch.calls
+            if calls is None or calls.empty or "impliedVolatility" not in calls:
+                return {}
+            spot = closes[-1]
+            calls = calls.dropna(subset=["impliedVolatility"])
+            calls["_d"] = (calls["strike"] - spot).abs()
+            atm = calls.sort_values("_d").iloc[0]
+            iv = float(atm["impliedVolatility"]) * 100.0
+            if not (iv == iv) or iv <= 0 or iv > 500:
+                return {}
+            import datetime as _dt
+            try:
+                dte = (_dt.date.fromisoformat(exp) - _dt.date.today()).days
+            except Exception:
+                dte = None
+            return {"atm_iv": round(iv, 1), "expiry": exp, "dte": dte,
+                    "earnings_soon": bool(dte is not None and dte <= 10)}
+        except Exception:
+            return {}
+    iv_data = await _lp.run_in_executor(None, _iv)
+
     try:
-        out = _master_decision_orchestrator(sym, region, closes, highs, lows, vols, fund, meta)
+        out = _master_decision_orchestrator(sym, region, closes, highs, lows, vols, fund, meta, iv_data)
         return {"success": True, **out}
     except Exception as e:
         return {"success": False, "error": str(e)}

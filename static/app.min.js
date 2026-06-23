@@ -654,9 +654,9 @@
 //   valuation clamp, breakout at-high / below, technicals clamp, response
 //   shape). Regressions: r99.44 (66) + r99.43 (42) + r99.41 (42) + r99.39 (38)
 //   all unchanged. 216 TOTAL CHECKS PASSING.
-window.CELESYS_VERSION = "r63.110.74";
-window.CELESYS_BUILD_TIME = 1781049600;
-window.CELESYS_BUILD_DATE = "2026-06-10 00:00:00 UTC";
+window.CELESYS_VERSION = "r63.110.76";
+window.CELESYS_BUILD_TIME = 1781056800;
+window.CELESYS_BUILD_DATE = "2026-06-10 02:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -12686,7 +12686,27 @@ window._renderMDO = function(d){
   h+='<div style="font-size:11px;color:#8A94A6;margin-top:5px">Confidence '+E(d.confidence)+' \u00b7 Coverage '+E(d.coverage_pct)+'% \u00b7 Size '+E(d.position_size)+(d.price?(' \u00b7 $'+E(d.price)):'')+'</div></div>';
   h+='<div style="text-align:center"><div style="font-size:44px;font-weight:900;color:'+dc+';font-family:JetBrains Mono,monospace;line-height:1">'+ms+'</div><div style="font-size:9px;font-weight:800;color:#8A94A6;letter-spacing:1.5px">MASTER / 100</div></div>';
   h+='</div></div>';
-  if(d.iv_caution){ h+='<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:11px;color:#92400e;font-weight:600;line-height:1.5">\u26A0 '+E(d.iv_caution)+'</div>'; }
+  if(d.iv_caution){ var _ivU=d.iv_used; var _cbg=_ivU?'#ecfdf5':'#fffbeb'; var _cbd=_ivU?'#10b981':'#f59e0b'; var _ctx=_ivU?'#065f46':'#92400e'; var _cic=_ivU?'\u2713':'\u26A0'; h+='<div style="background:'+_cbg+';border:1px solid '+_cbd+';border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:11px;color:'+_ctx+';font-weight:600;line-height:1.5">'+_cic+' '+E(d.iv_caution)+'</div>'; }
+  // ENTRY PLAN
+  var en=d.entry||{};
+  if(en.zone_low!=null){
+    var qc=en.quality==='BUYABLE NOW'?'#16a34a':en.quality==='SLIGHTLY EXTENDED'?'#ca8a04':en.quality==='EXTENDED — WAIT'?'#dc2626':'#94a3b8';
+    var sideC=(d.side==='PUT')?'#dc2626':'#16a34a';
+    h+='<div style="background:#fff;border:1px solid #E7ECF3;border-left:5px solid '+sideC+';border-radius:14px;padding:14px 16px;margin-bottom:12px">';
+    h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">';
+    h+='<span style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:#94a3b8;text-transform:uppercase">Entry plan \u00b7 '+E(d.side)+' side</span>';
+    h+='<span style="font-size:10px;font-weight:900;color:#fff;background:'+qc+';border-radius:6px;padding:2px 9px">'+E(en.quality)+'</span></div>';
+    if(en.note) h+='<div style="font-size:11px;color:#475569;margin-bottom:10px;line-height:1.5">'+E(en.note)+'</div>';
+    h+='<div style="display:flex;gap:10px;flex-wrap:wrap">';
+    function box(lbl,val,c){ return '<div style="flex:1;min-width:96px;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;padding:8px 11px"><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:.5px;text-transform:uppercase">'+lbl+'</div><div style="font-size:13px;font-weight:900;color:'+(c||'#0B1220')+';font-family:JetBrains Mono,monospace;margin-top:2px">'+E(val)+'</div></div>'; }
+    var cur=(d.region==='IN')?'\u20B9':'$';
+    h+=box('Entry zone', cur+en.zone_low+' – '+cur+en.zone_high, '#0B1220');
+    h+=box('Stop', cur+en.stop, '#dc2626');
+    h+=box('Target 1', cur+en.target_1, '#16a34a');
+    h+=box('Target 2', cur+en.target_2, '#16a34a');
+    if(en.rr!=null) h+=box('R:R', en.rr+':1', en.rr>=2?'#16a34a':'#ca8a04');
+    h+='</div></div>';
+  }
   // Layer bars
   h+='<div style="background:#fff;border:1px solid #E7ECF3;border-radius:14px;overflow:hidden;margin-bottom:12px">';
   (d.layers||[]).forEach(function(L){
