@@ -2527,6 +2527,14 @@ app.add_middleware(
 from starlette.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
+# NextStep is isolated under /nextstep; an optional asset failure must not
+# prevent the stock platform from starting.
+try:
+    from nextstep_site import attach_nextstep
+    attach_nextstep(app)
+except Exception:
+    logging.getLogger(__name__).exception("NextStep unavailable; stock routes remain active")
+
 # Serve static JS/CSS files
 os.makedirs("static", exist_ok=True)
 try:
@@ -13244,6 +13252,7 @@ Allow: /
 Disallow: /api/
 
 Sitemap: https://celesys.ai/sitemap.xml
+Sitemap: https://celesys.ai/nextstep/sitemap.xml
 """
 
 @app.get("/llms.txt", response_class=PlainTextResponse)
