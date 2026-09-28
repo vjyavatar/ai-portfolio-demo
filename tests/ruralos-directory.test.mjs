@@ -1,9 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {directory,findServices,serviceFromQuery,serviceTitle,categories} from '../ruralos-src/lib/service-directory.ts';
+import {directory,findServices,serviceFromQuery,serviceSteps,serviceTitle,categories} from '../ruralos-src/lib/service-directory.ts';
+import {serviceTranslations} from '../ruralos-src/lib/service-translations.ts';
 import {workflows} from '../ruralos-src/lib/task-engine.ts';
 test('every directory card maps to a working workflow with an explicit non-transactional state',()=>{assert.equal(directory.length,42);assert.equal(new Set(directory.map(s=>s.id)).size,42);for(const s of directory){const w=workflows.find(x=>x.id===s.id);assert.ok(w);assert.equal(w.transactionEnabled,false);assert.ok(s.description);assert.ok(categories.includes(s.category));for(const l of ['en','hi','te'])assert.ok(serviceTitle(s.id,l).length>0)}});
 test('all deep links restore the exact service',()=>{for(const s of directory)assert.equal(serviceFromQuery('?service='+s.id),s.id);for(const s of ['?service=unknown','?service=https://evil.example','?service=../admin','?service=<script>',''])assert.equal(serviceFromQuery(s),null)});
 test('search matches multilingual names and practical synonyms',()=>{for(const [query,id] of [['aadhar','aadhaar'],['పెన్షన్','schemes'],['पेंशन','schemes'],['taxi','cab'],['రైలు','rail'],['apartment','flat'],['doctor','telemedicine']])assert.ok(findServices(query).some(s=>s.id===id),query)});
 test('filters, empty states and hostile-looking text are handled as data',()=>{assert.equal(findServices('zzqqwwe').length,0);assert.equal(findServices('<script>alert(1)</script>').length,0);assert.equal(findServices('','Travel').length,4);assert.ok(findServices('','Documents').every(s=>s.category==='Documents'));assert.equal(findServices('').length,42)});
 test('natural request filler does not drown out the requested service',()=>{const results=findServices('I need help with my passport please');assert.equal(results[0].id,'passport');assert.equal(results.length,1)});
+test('every service has complete distinct Hindi and Telugu next-step guidance',()=>{for(const service of directory){for(const language of ['hi','te']){const local=serviceTranslations[language][service.id];assert.ok(local,`${language}:${service.id}`);assert.ok(local.title.length>2);assert.ok(local.steps.length>=3);assert.deepEqual(serviceSteps(service.id,language),local.steps);assert.notDeepEqual(serviceSteps(service.id,language),serviceSteps(service.id,'en'));}}});
