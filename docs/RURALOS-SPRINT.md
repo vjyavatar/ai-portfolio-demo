@@ -1,5 +1,11 @@
 # RuralOS bounded improvement sprint
 
+## Reviewed research publication — 29 September 2026
+
+- Isolated `ruralos-radar-soar`, parent `0a0578f8be894b082424669fe9e92e1a258c1ffd`. Added `volato-ai-orders-2026-09-28` revision1: reported USD1.17bn signed orders from the September28 company release and filed agreement; June30 SEC financials add operating losses, cash use and going-concern counterevidence. Missing current quote, valuation and post-transaction capital structure are explicit: research lead only. Observation20:29UTC; eventSeptember22; publicationSeptember28. No verified travel deal and no additional India alert met the evidence gate. No transactions.
+- Only editorial JSON, generated static alerts and regression fixture maintenance changed. First run exposed mutation tests using a fixed20:00 clock against new20:29 evidence; isolated the existing business seed for deterministic negative tests and added full-catalogue validation at actual time. All67Python checks and141JS checks passed; public routes, unsafe links, future dates, missing valuation, expiry and forbidden writes remain tested. No production routing/auth changes. Existing agent-development worktree left untouched.
+- Live release, exact commit and delivery results pending verification below. Current quotes/project economics remain research dependencies; no price target or cheap-stock claim.
+
 ## Proactive answers and reviewed alert centre — 29 September 2026
 
 - Parent `d3cddf8a439e9fc1ed55d0f1e1faa19b1de8e6fe`, isolated `ruralos-proactive-alerts`. The user requested deeper service answers and public/email opportunity notifications. Existing 38 service playbooks/76 preparation paths remain intact; they are not verified eligibility or transaction integrations. This increment adds a UIDAI-source-backed mobile-update decision aid in English/Hindi/Telugu: old-number access, first registration and whether the app number matches determine the next route. Unknown answers never infer access. After source-review expiry, use the official route. No Aadhaar numbers/OTPs collected; no fee invented. Source: https://uidai.gov.in/hi/aadhaar-app-faq, reviewed 28 September UTC. Translations still need independent rural/native-speaker validation.

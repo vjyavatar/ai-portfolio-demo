@@ -7,7 +7,20 @@ import ruralos_alerts as alerts
 NOW=datetime(2026,9,28,20,tzinfo=timezone.utc)
 
 @pytest.fixture
-def data():return json.loads(alerts.DATA.read_text())
+def data():
+ # Freeze the original business example for deterministic mutation tests.
+ # Newly published records must not be tested against a historical clock,
+ # nor accidentally supply the stock evidence a negative test omits.
+ catalogue=json.loads(alerts.DATA.read_text())
+ seed=next(a for a in catalogue['alerts'] if a['id']=='saginaw-precision-2026-09-28')
+ return {'version':1,'alerts':[seed]}
+
+def test_entire_published_catalogue_at_actual_observation_time():
+ catalogue=json.loads(alerts.DATA.read_text())
+ assert alerts.validate(catalogue,datetime.now(timezone.utc))==catalogue
+ for a in catalogue['alerts']:
+  assert alerts.status(a,alerts.timestamp(a['reviewBy']))=='Needs recheck'
+  assert a['id'] in alerts.poster(a,datetime.now(timezone.utc))
 
 @pytest.fixture
 def client():
