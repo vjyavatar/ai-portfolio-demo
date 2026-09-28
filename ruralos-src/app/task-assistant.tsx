@@ -8,6 +8,8 @@ import {canStartVoiceCapture,voiceCaptureError,type VoicePhase} from '../lib/voi
 import {providerReadinessFor,isSafeProviderUrl} from '../lib/provider-readiness';
 import {taskFocusTarget} from '../lib/task-focus';
 import {localizeProviderItem,localizeTaskError,taskCopy,taskEventLabel} from '../lib/task-copy';
+import ServicePreparation,{preparationCopy} from './service-preparation';
+import {playbooks} from '../lib/service-playbooks';
 
 const labels:Record<string,string[]>={
  region:['Choose your State or Union Territory','अपना राज्य या केंद्र शासित प्रदेश चुनें','మీ రాష్ట్రం లేదా కేంద్ర పాలిత ప్రాంతాన్ని ఎంచుకోండి'],
@@ -62,6 +64,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
    </>:<>
     <h3>{localizedTitle}</h3>
     {localizedSteps[0]&&<p>{localizedSteps[0]}</p>}
+    {field==='goal'&&playbooks[task.serviceId]&&<fieldset className="service-preparation"><legend>{preparationCopy[language].choose}</legend>{language!=='en'&&<p>{preparationCopy[language].preview}</p>}<div className="prep-options">{playbooks[task.serviceId].goals.map(goal=><button type="button" lang="en" key={goal} onClick={()=>{speech.current?.stop();focusAfterProgress.current=true;setTask(answerTask(task,goal));setValue('');setError('')}}>{goal}</button>)}</div></fieldset>}
     {field&&<form onSubmit={e=>{e.preventDefault();try{const next=answerTask(task,value);focusAfterProgress.current=true;setTask(next);setValue('');setError('')}catch(e){focusAfterProgress.current=false;setError(localizeTaskError((e as Error).message,language))}}}>
      <label>{labels[field][lang]}{field==='region'?<select ref={node=>{fieldControl.current=node}} value={value} onChange={e=>setValue(e.target.value)} required><option value="">{c.chooseRegion}</option>{regions.map(r=><option key={r}>{r}</option>)}</select>:<input ref={node=>{fieldControl.current=node}} value={value} maxLength={250} type={field==='date'?'date':'text'} inputMode={['travellers','budget'].includes(field)?'numeric':'text'} onChange={e=>setValue(e.target.value)} required/>}</label>
      <div className="row"><button type="button" className="outline" onClick={()=>read(labels[field][lang])}>{c.listenQuestion}</button><button type="button" className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen()}>{c.speakAnswer}</button><button className="primary" type="submit">{c.confirm}</button></div>
@@ -73,7 +76,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
       <article className="task-action-card" aria-labelledby="task-action-title">
        <p className="task-status" role="status">{c.status}</p>
        <h3 ref={actionHeading} className="task-focus-heading" tabIndex={-1} id="task-action-title">{c.next}</h3>
-       <p>{localizedSteps[0]}</p>
+       {playbooks[task.serviceId]?<ServicePreparation key={task.serviceId+task.answers.goal+language} serviceId={task.serviceId} goal={task.answers.goal} region={task.answers.region} language={language} stopOtherAudio={()=>speech.current?.stop()}/>:<p>{localizedSteps[0]}</p>}
        {service&&<p className="task-caution">{language==='en'?service.caution:<><strong>{c.important}.</strong> {c.onlyOfficial}<br/><small>{c.englishDetail} <span lang="en">{service.caution}</span></small></>}</p>}
        <div className="task-actions">
         <button type="button" className="outline" onClick={()=>void read(spokenSteps)}>{c.listen}</button>
@@ -81,8 +84,9 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
         <a className="outline" href={secureSite+'/?view=Reminders'} target="_blank" rel="noreferrer">{c.reminder}</a>
         <a className="outline" href={secureSite+'/?view=Help'} target="_blank" rel="noreferrer">{c.help}</a>
        </div>
-       {(language==='en'?service?.checklist:localizedSteps)?.length?<section className="task-checklist" aria-labelledby="document-checklist-title"><h4 id="document-checklist-title">{c.checklist}</h4><ul>{(language==='en'?service?.checklist:localizedSteps)!.map(item=><li key={item}>□ {item}</li>)}</ul></section>:null}
-       {readiness&&<section className="task-provider-card" aria-labelledby="provider-readiness-title">
+       {!playbooks[task.serviceId]&&(language==='en'?service?.checklist:localizedSteps)?.length?<section className="task-checklist" aria-labelledby="document-checklist-title"><h4 id="document-checklist-title">{c.checklist}</h4><ul>{(language==='en'?service?.checklist:localizedSteps)!.map(item=><li key={item}>□ {item}</li>)}</ul></section>:null}
+       {service&&<p>{service.sourceName} · <a href={service.source} target="_blank" rel="noreferrer">{c.openOfficial}</a></p>}
+       {readiness&&<details className="task-provider-card"><summary id="provider-readiness-title">{c.connection}</summary>
         <p className="task-provider-state">{c.connection} · {readiness.state==='official_handoff_only'?c.official:c.guidance}</p>
         <h4 id="provider-readiness-title">{c.works}</h4>
         <ul>{readiness.available.map(item=><li key={item}>✓ {localizeProviderItem(item,language)}</li>)}</ul>
@@ -90,7 +94,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
         <ul>{readiness.unavailable.map(item=><li key={item}>— {localizeProviderItem(item,language)}</li>)}</ul>
         <p>{c.notSent}</p>
         {offline&&<p className="task-offline-provider" role="alert">{c.offline}</p>}
-       </section>}
+       </details>}
        {w!.source&&isSafeProviderUrl(w!.source)?offline?<button className="primary task-official-link" type="button" disabled>{c.reconnect}</button>:<a className="primary task-official-link" href={w!.source} target="_blank" rel="noreferrer">{c.openOfficial}</a>:<p>{c.chooseProvider}</p>}
       </article>
       {localRoute&&<aside className="task-region-card" aria-labelledby="region-route-title">
