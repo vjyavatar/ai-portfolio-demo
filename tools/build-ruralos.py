@@ -13,7 +13,9 @@ with tempfile.TemporaryDirectory() as tmp:
  for p in Path(tmp).iterdir():
   target=Path('ruralos')/p.name
   shutil.copytree(p,target,dirs_exist_ok=True) if p.is_dir() else shutil.copy(p,target)
-files=['/ruralos/']+sorted('/'+p.as_posix() for p in Path('ruralos').rglob('*') if p.is_file() and p.name!='sw.js')
+subprocess.run(['python', 'ruralos_alerts.py'],check=True)
+# Research snapshots must not become offline/current-looking alerts.
+files=['/ruralos/']+sorted('/'+p.as_posix() for p in Path('ruralos').rglob('*') if p.is_file() and p.name!='sw.js' and 'alerts' not in p.parts and p.name!='alerts.js')
 entry=Path('ruralos/index.html').read_text()
 core=['/ruralos/','/ruralos/manifest.webmanifest','/ruralos/favicon.svg','/ruralos/icon-192.png']+re.findall(r'(?:src|href)="(/ruralos/assets/[^"?]+)"',entry)
 key=hashlib.sha256(''.join(files).encode()).hexdigest()[:12]
