@@ -1,0 +1,4 @@
+const CACHE="saathi-ruralos-62071d67b260", ASSETS=["/ruralos/", "/ruralos/favicon.svg", "/ruralos/family.webp", "/ruralos/index.html", "/ruralos/icon-192.png", "/ruralos/icon-512.png", "/ruralos/manifest.webmanifest", "/ruralos/assets/index-jwpMKg7c.js", "/ruralos/assets/index-B1xd0BxF.css"];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('saathi-ruralos-')&&k!==CACHE).map(k=>caches.delete(k))))));
+self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==self.location.origin||!u.pathname.startsWith('/ruralos/')||(!ASSETS.includes(u.pathname)))return;e.respondWith(fetch(e.request).catch(()=>caches.open(CACHE).then(c=>c.match(u.pathname)).then(r=>r||Response.error())))});

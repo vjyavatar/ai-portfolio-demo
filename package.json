@@ -1,0 +1,8 @@
+{
+  "name": "celesys-public-app-assets",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node tools/verify-ruralos.mjs"
+  }
+}

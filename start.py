@@ -28,3 +28,11 @@ except Exception as e:
         return {"status": "error", "detail": str(e)[:200]}
     
     print(f"[START] ⚠️ Running fallback app — check logs for the real error", flush=True)
+
+# Optional public rural-family app; failures must not affect stock routes.
+try:
+    from ruralos_site import attach_ruralos
+    attach_ruralos(app)
+except Exception:
+    import logging
+    logging.getLogger(__name__).exception('Rural OS unavailable; existing routes remain active')
