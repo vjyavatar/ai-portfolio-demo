@@ -4,6 +4,7 @@ import {createSpeechSession,type SpeechSession} from '../lib/speech-client';
 import {directory} from '../lib/service-directory';
 import {regionalRoute} from '../lib/regional-guidance';
 import {regions} from '../lib/regions';
+import {canStartVoiceCapture,voiceCaptureError,type VoicePhase} from '../lib/voice-safety';
 
 const labels:Record<string,string[]>={
  region:['Choose your State or Union Territory','अपना राज्य या केंद्र शासित प्रदेश चुनें','మీ రాష్ట్రం లేదా కేంద్ర పాలిత ప్రాంతాన్ని ఎంచుకోండి'],
@@ -15,16 +16,22 @@ const labels:Record<string,string[]>={
  budget:['What is your total budget in rupees?','आपका कुल बजट कितने रुपये है?','మీ మొత్తం బడ్జెట్ ఎన్ని రూపాయలు?']
 };
 const secureSite='https://rural-family-action-os.vjyrcks.chatgpt.site';
+const voiceWords={
+ consent:['Allow voice answers. My browser or device may process audio online. Do not speak Aadhaar numbers, PINs, OTPs or bank details.','आवाज़ से जवाब देने की अनुमति दें। ब्राउज़र या फ़ोन ऑडियो को ऑनलाइन प्रोसेस कर सकता है। आधार नंबर, PIN, OTP या बैंक जानकारी न बोलें।','వాయిస్ సమాధానాలకు అనుమతించండి. బ్రౌజర్ లేదా ఫోన్ ఆడియోను ఆన్‌లైన్‌లో ప్రాసెస్ చేయవచ్చు. ఆధార్ నంబర్, PIN, OTP లేదా బ్యాంక్ వివరాలు చెప్పవద్దు.'],
+ fallback:['Voice is optional. You can always type or tap a choice.','आवाज़ वैकल्पिक है। आप हमेशा लिख सकते हैं या विकल्प चुन सकते हैं।','వాయిస్ ఐచ్చికం. మీరు ఎప్పుడైనా టైప్ చేయవచ్చు లేదా ఎంపికను నొక్కవచ్చు.'],
+ ready:['Microphone ready','माइक्रोफ़ोन तैयार','మైక్రోఫోన్ సిద్ధంగా ఉంది'],
+ listening:['Listening…','सुन रहे हैं…','వింటున్నాం…']
+};
 
 export default function TaskAssistant({initialService,initialLanguage='en'}:{initialService?:string;initialLanguage?:string}={}){
- const[open,setOpen]=useState(!!initialService),[task,setTask]=useState<Task|null>(()=>initialService?startTask(initialService):null),[value,setValue]=useState(''),[query,setQuery]=useState(''),[error,setError]=useState(''),[lang,setLang]=useState(['en','hi','te'].indexOf(initialLanguage)),[phase,setPhase]=useState('ready');
+ const[open,setOpen]=useState(!!initialService),[task,setTask]=useState<Task|null>(()=>initialService?startTask(initialService):null),[value,setValue]=useState(''),[query,setQuery]=useState(''),[error,setError]=useState(''),[lang,setLang]=useState(['en','hi','te'].indexOf(initialLanguage)),[phase,setPhase]=useState<VoicePhase>('ready'),[voiceConsent,setVoiceConsent]=useState(false);
  const speech=useRef<SpeechSession|null>(null);
  useEffect(()=>{speech.current=createSpeechSession(setPhase,['en-IN','hi-IN','te-IN'][lang]);const stop=()=>{if(document.hidden)speech.current?.stop()};document.addEventListener('visibilitychange',stop);return()=>{speech.current?.stop();document.removeEventListener('visibilitychange',stop)}},[lang]);
  const w=workflows.find(w=>w.id===task?.serviceId),service=directory.find(s=>s.id===task?.serviceId),field=task?nextField(task):null;
  const localRoute=task?.answers.region&&task.serviceId?regionalRoute(task.answers.region,task.serviceId):null;
- function reset(){speech.current?.stop();setTask(null);setValue('');setQuery('');setError('')}
- async function listen(search=false){setError('');try{const text=await speech.current!.listen();search?setQuery(text):setValue(text)}catch(e){setError(String((e as Error).message))}}
- async function read(text:string){try{setError('');await speech.current!.speak(text,.9)}catch(e){setError(String((e as Error).message))}}
+ function reset(){speech.current?.stop();setTask(null);setValue('');setQuery('');setError('');setVoiceConsent(false)}
+ async function listen(search=false){setError('');if(!voiceConsent){setError(voiceCaptureError(lang,undefined,false));return}try{const text=await speech.current!.listen();search?setQuery(text):setValue(text)}catch(e){setError(voiceCaptureError(lang,e))}}
+ async function read(text:string){try{setError('');await speech.current!.speak(text,.9)}catch(e){setError(voiceCaptureError(lang,e))}}
  const candidates=matchTasks(query);
  const spokenSteps=w&&service?[w.title,service.description,...w.steps,service.caution].join('. '):'';
  return <section className="panel task-guide" style={{maxWidth:1100,margin:'20px auto'}}>
@@ -34,9 +41,14 @@ export default function TaskAssistant({initialService,initialLanguage='en'}:{ini
    <p className="notice">Guided task preview · No booking or submission provider is connected. This uses structured workflows, not a connected general AI model. Answers stay in this tab and are cleared when you close or restart.</p>
    <label>Spoken question language <select value={lang} onChange={e=>{speech.current?.stop();setLang(+e.target.value)}}><option value={0}>English · India</option><option value={1}>हिन्दी · review preview</option><option value={2}>తెలుగు · review preview</option></select></label>
    <p>Service names and next-step instructions below are currently English.</p>
+   <div className="task-voice-consent">
+    <label><input type="checkbox" checked={voiceConsent} onChange={e=>{setVoiceConsent(e.target.checked);setError('');if(!e.target.checked)speech.current?.stop()}}/> {voiceWords.consent[lang]}</label>
+    <p>{voiceWords.fallback[lang]}</p>
+    <span role="status" aria-live="polite">{phase==='listening'?voiceWords.listening[lang]:voiceConsent?voiceWords.ready[lang]:''}</span>
+   </div>
    {!task?<>
     <label>Describe your task<input value={query} maxLength={250} onChange={e=>setQuery(e.target.value)} placeholder="Book a train, update Aadhaar, find document help…"/></label>
-    <button className="outline" onClick={()=>listen(true)}>Speak your request</button>
+    <button className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen(true)}>Speak your request</button>
     {query&&<p>Please choose the matching service below. Your spoken text is not submitted.</p>}
     <div className="form-grid">{(candidates.length?candidates:workflows).map(w=><button className="outline" key={w.id} onClick={()=>{setTask(startTask(w.id));setQuery('');setError('')}}>{w.title}</button>)}</div>
    </>:<>
@@ -44,7 +56,7 @@ export default function TaskAssistant({initialService,initialLanguage='en'}:{ini
     {service&&<p>{service.description}</p>}
     {field&&<form onSubmit={e=>{e.preventDefault();try{setTask(answerTask(task,value));setValue('');setError('')}catch(e){setError((e as Error).message)}}}>
      <label>{labels[field][lang]}{field==='region'?<select value={value} onChange={e=>setValue(e.target.value)} required><option value="">Choose region</option>{regions.map(r=><option key={r}>{r}</option>)}</select>:<input value={value} maxLength={250} type={field==='date'?'date':'text'} inputMode={['travellers','budget'].includes(field)?'numeric':'text'} onChange={e=>setValue(e.target.value)} required/>}</label>
-     <div className="row"><button type="button" className="outline" onClick={()=>read(labels[field][lang])}>Listen to question</button><button type="button" className="outline" onClick={()=>listen()}>Speak answer</button><button className="primary" type="submit">Confirm answer & continue</button></div>
+     <div className="row"><button type="button" className="outline" onClick={()=>read(labels[field][lang])}>Listen to question</button><button type="button" className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen()}>Speak answer</button><button className="primary" type="submit">Confirm answer & continue</button></div>
     </form>}
     {task.status!=='collecting'&&<>
      <h3>Check your details</h3>
@@ -79,7 +91,7 @@ export default function TaskAssistant({initialService,initialLanguage='en'}:{ini
     <button className="outline" onClick={reset}>Start again / clear answers</button>
    </>}
    {phase!=='ready'&&<button className="outline" onClick={()=>speech.current?.stop()}>Stop audio</button>}
-   <p role="alert">{error}</p><a href="/ruralos/integrations/">See all integration gaps</a>
+   {error&&<p role="alert" className="task-voice-error">{error}</p>}<a href="/ruralos/integrations/">See all integration gaps</a>
   </>}
  </section>
 }
