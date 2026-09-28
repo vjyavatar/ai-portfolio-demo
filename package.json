@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "build": "node tools/verify-ruralos.mjs && npm run test:ruralos",
-    "test:ruralos": "node --experimental-strip-types --test tests/ruralos-agent.test.mjs tests/ruralos-directory.test.mjs tests/ruralos-offline.test.mjs tests/ruralos-depth.test.mjs tests/ruralos-aadhaar.test.mjs tests/ruralos-alerts.test.mjs"
+    "test:ruralos": "node --experimental-strip-types --test tests/ruralos-agent.test.mjs tests/ruralos-directory.test.mjs tests/ruralos-offline.test.mjs tests/ruralos-depth.test.mjs tests/ruralos-aadhaar.test.mjs tests/ruralos-alerts.test.mjs tests/ruralos-scenarios.test.mjs"
   },
   "engines": {
     "node": ">=22.13.0 <23"

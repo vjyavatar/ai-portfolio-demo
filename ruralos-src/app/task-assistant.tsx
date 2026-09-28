@@ -12,6 +12,8 @@ import ServicePreparation,{preparationCopy} from './service-preparation';
 import {playbooks} from '../lib/service-playbooks';
 import {journeyCopy} from '../lib/journey-copy';
 import './task-journey.css';
+import ScenarioHelp,{scenarioCopy} from './scenario-help';
+import {scenariosFor,scenarioGoalTitle} from '../lib/service-scenarios';
 
 const labels:Record<string,string[]>={
  region:['Choose your State or Union Territory','अपना राज्य या केंद्र शासित प्रदेश चुनें','మీ రాష్ట్రం లేదా కేంద్ర పాలిత ప్రాంతాన్ని ఎంచుకోండి'],
@@ -48,7 +50,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
  async function read(text:string){try{setError('');await speech.current!.speak(text,.9)}catch(e){setError(voiceCaptureError(lang,e))}}
  const candidates=matchTasks(query);
  const spokenSteps=w?[localizedTitle,...localizedSteps,c.onlyOfficial].join('. '):'';
- const answerList=task&&<dl className="journey-answers">{Object.entries(task.answers).map(([key,v])=><div key={key}><dt>{labels[key][lang]}</dt><dd>{v} <button type="button" className="outline" onClick={()=>edit(key)} aria-label={j.change+': '+labels[key][lang]}>{j.change}</button></dd></div>)}</dl>;
+ const answerList=task&&<dl className="journey-answers">{Object.entries(task.answers).map(([key,v])=><div key={key}><dt>{labels[key][lang]}</dt><dd>{key==='goal'?scenarioGoalTitle(task.serviceId,v,language):v} <button type="button" className="outline" onClick={()=>edit(key)} aria-label={j.change+': '+labels[key][lang]}>{j.change}</button></dd></div>)}</dl>;
  const previous=field&&w?w.fields.slice(0,w.fields.indexOf(field)).filter(key=>task?.answers[key]).at(-1):undefined;
  return <section className="panel task-guide" style={{maxWidth:1100,margin:'20px auto'}}>
   {!initialService&&<button className="primary" onClick={()=>{reset();setOpen(!open)}}>{open?c.close:c.open}</button>}
@@ -69,7 +71,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
     <div className="form-grid">{(candidates.length?candidates:workflows).map(w=><button className="outline" key={w.id} onClick={()=>{focusAfterProgress.current=true;setTask(startTask(w.id));setQuery('');setError('')}}>{serviceTitle(w.id,language)}</button>)}</div>
    </>:<>
     {field&&<><h2 className="journey-question">{labels[field][lang]}</h2><p>{field==='region'?j.regionWhy:j.goalWhy}</p></>}
-    {field==='goal'&&playbooks[task.serviceId]&&<fieldset className="service-preparation"><legend>{preparationCopy[language].choose}</legend>{language!=='en'&&<p>{preparationCopy[language].preview}</p>}<div className="prep-options">{playbooks[task.serviceId].goals.map((goal,index)=><button ref={node=>{if(index===0)fieldControl.current=node}} type="button" lang="en" key={goal} onClick={()=>{speech.current?.stop();focusAfterProgress.current=true;setTask(answerTask(task,goal));setValue('');setError('')}}>{goal}</button>)}</div></fieldset>}
+    {field==='goal'&&playbooks[task.serviceId]&&<fieldset className="service-preparation"><legend>{preparationCopy[language].choose}</legend>{language!=='en'&&!scenariosFor(task.serviceId).length&&<p>{preparationCopy[language].preview}</p>}<div className="prep-options">{playbooks[task.serviceId].goals.map((goal,index)=><button ref={node=>{if(index===0)fieldControl.current=node}} type="button" lang={scenariosFor(task.serviceId).length?language:'en'} key={goal} onClick={()=>{speech.current?.stop();focusAfterProgress.current=true;setTask(answerTask(task,goal));setValue('');setError('')}}>{scenarioGoalTitle(task.serviceId,goal,language)}</button>)}</div></fieldset>}
     {field&&<form onSubmit={e=>{e.preventDefault();try{const next=answerTask(task,value);focusAfterProgress.current=true;setTask(next);setValue('');setError('')}catch(e){focusAfterProgress.current=false;setError(localizeTaskError((e as Error).message,language))}}}>
      <label>{field==='goal'?j.other:labels[field][lang]}{field==='region'?<select ref={node=>{fieldControl.current=node}} value={value} onChange={e=>setValue(e.target.value)} required><option value="">{c.chooseRegion}</option>{regions.map(r=><option key={r}>{r}</option>)}</select>:<input ref={node=>{if(field!=='goal'||!playbooks[task.serviceId])fieldControl.current=node}} value={value} maxLength={250} type={field==='date'?'date':'text'} inputMode={['travellers','budget'].includes(field)?'numeric':'text'} onChange={e=>setValue(e.target.value)} required/>}</label>
      <div className="row journey-controls"><button type="button" className="outline" onClick={()=>read(labels[field][lang])}>{c.listenQuestion}</button><button type="button" className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen()}>{c.speakAnswer}</button><button className="primary" type="submit">{j.continue}</button>{previous&&<button type="button" className="outline" onClick={()=>edit(previous)}>{j.back}</button>}</div>
@@ -79,7 +81,8 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
       <article className="task-action-card" aria-labelledby="task-action-title">
        <p className="task-status" role="status">{c.status}</p>
        <h3 ref={actionHeading} className="task-focus-heading" tabIndex={-1} id="task-action-title">{c.next}</h3>
-       {playbooks[task.serviceId]?<ServicePreparation key={task.serviceId+task.answers.goal} serviceId={task.serviceId} goal={task.answers.goal} region={task.answers.region} language={language} stopOtherAudio={()=>speech.current?.stop()}/>:<p>{localizedSteps[0]}</p>}
+       {scenariosFor(task.serviceId).length>0&&<ScenarioHelp key={task.serviceId+task.answers.goal+task.answers.region} serviceId={task.serviceId} region={task.answers.region} language={language} offline={offline} stopOtherAudio={()=>speech.current?.stop()}/>}
+       {playbooks[task.serviceId]?(scenariosFor(task.serviceId).length>0?<details className="scenario-general"><summary>{scenarioCopy[language].general}</summary><ServicePreparation key={task.serviceId+task.answers.goal} serviceId={task.serviceId} goal={task.answers.goal} region={task.answers.region} language={language} stopOtherAudio={()=>speech.current?.stop()}/></details>:<ServicePreparation key={task.serviceId+task.answers.goal} serviceId={task.serviceId} goal={task.answers.goal} region={task.answers.region} language={language} stopOtherAudio={()=>speech.current?.stop()}/>):<p>{localizedSteps[0]}</p>}
        {service&&<p className="task-caution">{language==='en'?service.caution:<><strong>{c.important}.</strong> {c.onlyOfficial}<br/><small>{c.englishDetail} <span lang="en">{service.caution}</span></small></>}</p>}
        <div className="task-actions">
         <button type="button" className="outline" onClick={()=>void read(spokenSteps)}>{c.listen}</button>

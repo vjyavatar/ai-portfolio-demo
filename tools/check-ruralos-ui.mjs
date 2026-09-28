@@ -16,7 +16,16 @@ try{
  const {default:Mobile}=await server.ssrLoadModule('/app/aadhaar-mobile-help.tsx');
  const {default:Alerts}=await server.ssrLoadModule('/app/alert-preview.tsx');
  const {default:TaskGuide}=await server.ssrLoadModule('/app/task-assistant.tsx');
+ const {ScenarioAnswer}=await server.ssrLoadModule('/app/scenario-help.tsx');
+ const {serviceScenarios}=await server.ssrLoadModule('/lib/service-scenarios.ts');
  for(const language of ['en','hi','te']){
+  for(const s of serviceScenarios){
+   const props={serviceId:s.service,scenarioId:s.id,region:'Telangana',language,now:Date.parse('2026-09-29T00:00:00Z')};
+   const html=render(React.createElement(ScenarioAnswer,props));
+   assert.match(html,/<h5/g);assert.ok(html.includes(s.next[language].replaceAll('&','&amp;').replaceAll("'",'&#x27;')));assert.match(html,/2026-09-28/);assert.match(html,/2026-10-12/);assert.doesNotMatch(html,/<input|<textarea|undefined|NaN/);checks++;
+   const offline=render(React.createElement(ScenarioAnswer,{...props,offline:true}));assert.doesNotMatch(offline,/<a /);checks++;
+   const stale=render(React.createElement(ScenarioAnswer,{...props,now:Date.parse('2026-10-12T00:00:00Z')}));assert.doesNotMatch(stale,/<h5|₹|<a /);assert.match(stale,/role="status"/);checks++;
+  }
   for(const initialService of ['schemes','aadhaar','land']){
    const guide=render(React.createElement(TaskGuide,{initialService,initialLanguage:language,onLanguageChange:()=>{}}));
    assert.equal((guide.match(/<select/g)||[]).length,1,'embedded guide uses one regional selector, not a second language selector');
