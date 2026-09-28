@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {workflows,startTask,answerTask,nextField,confirmTask,matchTasks,type Task} from '../lib/task-engine';
+import {workflows,startTask,answerTask,nextField,confirmTask,editTask,matchTasks,type Task} from '../lib/task-engine';
 import {createSpeechSession,type SpeechSession} from '../lib/speech-client';
 import {directory,serviceSteps,serviceTitle,type DirectoryLanguage} from '../lib/service-directory';
 import {regionalRoute} from '../lib/regional-guidance';
@@ -10,6 +10,8 @@ import {taskFocusTarget} from '../lib/task-focus';
 import {localizeProviderItem,localizeTaskError,taskCopy,taskEventLabel} from '../lib/task-copy';
 import ServicePreparation,{preparationCopy} from './service-preparation';
 import {playbooks} from '../lib/service-playbooks';
+import {journeyCopy} from '../lib/journey-copy';
+import './task-journey.css';
 
 const labels:Record<string,string[]>={
  region:['Choose your State or Union Territory','अपना राज्य या केंद्र शासित प्रदेश चुनें','మీ రాష్ట్రం లేదా కేంద్ర పాలిత ప్రాంతాన్ని ఎంచుకోండి'],
@@ -28,55 +30,56 @@ const voiceWords={
  listening:['Listening…','सुन रहे हैं…','వింటున్నాం…']
 };
 
-export default function TaskAssistant({initialService,initialLanguage='en',offline=false}:{initialService?:string;initialLanguage?:string;offline?:boolean}={}){
+export default function TaskAssistant({initialService,initialLanguage='en',offline=false,onLanguageChange}:{initialService?:string;initialLanguage?:string;offline?:boolean;onLanguageChange?:(language:DirectoryLanguage)=>void}={}){
  const[open,setOpen]=useState(!!initialService),[task,setTask]=useState<Task|null>(()=>initialService?startTask(initialService):null),[value,setValue]=useState(''),[query,setQuery]=useState(''),[error,setError]=useState(''),[lang,setLang]=useState(['en','hi','te'].indexOf(initialLanguage)),[phase,setPhase]=useState<VoicePhase>('ready'),[voiceConsent,setVoiceConsent]=useState(false);
  const speech=useRef<SpeechSession|null>(null);
- const focusAfterProgress=useRef(!!initialService),fieldControl=useRef<HTMLInputElement|HTMLSelectElement|null>(null),reviewHeading=useRef<HTMLHeadingElement|null>(null),actionHeading=useRef<HTMLHeadingElement|null>(null);
+ const focusAfterProgress=useRef(!!initialService),fieldControl=useRef<HTMLInputElement|HTMLSelectElement|HTMLButtonElement|null>(null),reviewHeading=useRef<HTMLHeadingElement|null>(null),actionHeading=useRef<HTMLHeadingElement|null>(null);
+ useEffect(()=>{setLang(Math.max(0,['en','hi','te'].indexOf(initialLanguage)))},[initialLanguage]);
  useEffect(()=>{speech.current=createSpeechSession(setPhase,['en-IN','hi-IN','te-IN'][lang]);const stop=()=>{if(document.hidden)speech.current?.stop()};document.addEventListener('visibilitychange',stop);return()=>{speech.current?.stop();document.removeEventListener('visibilitychange',stop)}},[lang]);
- const language=['en','hi','te'][lang] as DirectoryLanguage,c=taskCopy[language];
+ const language=['en','hi','te'][lang] as DirectoryLanguage,c=taskCopy[language],j=journeyCopy[language];
  const w=workflows.find(w=>w.id===task?.serviceId),service=directory.find(s=>s.id===task?.serviceId),field=task?nextField(task):null;
  const localizedTitle=task?.serviceId?serviceTitle(task.serviceId,language):'',localizedSteps=task?.serviceId?serviceSteps(task.serviceId,language):[];
  const localRoute=task?.answers.region&&task.serviceId?regionalRoute(task.answers.region,task.serviceId):null;
  const readiness=task?.serviceId?providerReadinessFor(task.serviceId):null;
- useEffect(()=>{if(!focusAfterProgress.current)return;const target=taskFocusTarget(task,field);const node=target==='field'?fieldControl.current:target==='review'?reviewHeading.current:target==='action'?actionHeading.current:null;if(node){node.focus({preventScroll:true});focusAfterProgress.current=false}},[field,task?.status]);
- function reset(){speech.current?.stop();focusAfterProgress.current=false;setTask(null);setValue('');setQuery('');setError('');setVoiceConsent(false)}
+ useEffect(()=>{if(!focusAfterProgress.current)return;const target=taskFocusTarget(task,field);const node=target==='field'?fieldControl.current:target==='review'?reviewHeading.current:target==='action'?actionHeading.current:null;if(node){node.focus({preventScroll:true});focusAfterProgress.current=false}},[field,task]);
+ function reset(){speech.current?.stop();focusAfterProgress.current=!!initialService;setTask(initialService?startTask(initialService):null);setValue('');setQuery('');setError('');setVoiceConsent(false)}
+ function edit(field:string){if(!task)return;speech.current?.stop();setValue(task.answers[field]);setTask(editTask(task,field));focusAfterProgress.current=true;setError('')}
  async function listen(search=false){setError('');if(!voiceConsent){setError(voiceCaptureError(lang,undefined,false));return}try{const text=await speech.current!.listen();search?setQuery(text):setValue(text)}catch(e){setError(voiceCaptureError(lang,e))}}
  async function read(text:string){try{setError('');await speech.current!.speak(text,.9)}catch(e){setError(voiceCaptureError(lang,e))}}
  const candidates=matchTasks(query);
  const spokenSteps=w?[localizedTitle,...localizedSteps,c.onlyOfficial].join('. '):'';
+ const answerList=task&&<dl className="journey-answers">{Object.entries(task.answers).map(([key,v])=><div key={key}><dt>{labels[key][lang]}</dt><dd>{v} <button type="button" className="outline" onClick={()=>edit(key)} aria-label={j.change+': '+labels[key][lang]}>{j.change}</button></dd></div>)}</dl>;
+ const previous=field&&w?w.fields.slice(0,w.fields.indexOf(field)).filter(key=>task?.answers[key]).at(-1):undefined;
  return <section className="panel task-guide" style={{maxWidth:1100,margin:'20px auto'}}>
-  <button className="primary" onClick={()=>{reset();setOpen(!open)}}>{open?c.close:c.open}</button>
+  {!initialService&&<button className="primary" onClick={()=>{reset();setOpen(!open)}}>{open?c.close:c.open}</button>}
   {open&&<>
-   <h2>{c.question}</h2>
-   <p className="notice">{c.preview}</p>
-   <label>{c.language} <select value={lang} onChange={e=>{speech.current?.stop();setLang(+e.target.value)}}><option value={0}>English · India</option><option value={1}>हिन्दी · समीक्षा पूर्वावलोकन</option><option value={2}>తెలుగు · సమీక్ష ముందస్తు రూపం</option></select></label>
-   <p>{c.languageNote}</p>
-   <div className="task-voice-consent">
+   {!task&&<h2>{c.question}</h2>}
+   <p className="journey-promise">{j.promise}</p>
+   {!onLanguageChange&&<label>{c.language} <select value={lang} onChange={e=>{speech.current?.stop();setLang(+e.target.value)}}><option value={0}>English · India</option><option value={1}>हिन्दी · समीक्षा पूर्वावलोकन</option><option value={2}>తెలుగు · సమీక్ష ముందస్తు రూపం</option></select></label>}
+   {task&&<p className="journey-progress" role="status">{field?`${j.question} ${w!.fields.indexOf(field)+1} / ${w!.fields.length}`:task.status==='review'?j.review:j.plan}</p>}
+   <details className="task-voice-consent journey-voice"><summary>{j.voice}</summary>
     <label><input type="checkbox" checked={voiceConsent} onChange={e=>{setVoiceConsent(e.target.checked);setError('');if(!e.target.checked)speech.current?.stop()}}/> {voiceWords.consent[lang]}</label>
     <p>{voiceWords.fallback[lang]}</p>
     <span role="status" aria-live="polite">{phase==='listening'?voiceWords.listening[lang]:voiceConsent?voiceWords.ready[lang]:''}</span>
-   </div>
+   </details>
    {!task?<>
     <label>{c.describe}<input value={query} maxLength={250} onChange={e=>setQuery(e.target.value)} placeholder={c.requestPlaceholder}/></label>
     <button className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen(true)}>{c.speakRequest}</button>
     {query&&<p>{c.choose}</p>}
     <div className="form-grid">{(candidates.length?candidates:workflows).map(w=><button className="outline" key={w.id} onClick={()=>{focusAfterProgress.current=true;setTask(startTask(w.id));setQuery('');setError('')}}>{serviceTitle(w.id,language)}</button>)}</div>
    </>:<>
-    <h3>{localizedTitle}</h3>
-    {localizedSteps[0]&&<p>{localizedSteps[0]}</p>}
-    {field==='goal'&&playbooks[task.serviceId]&&<fieldset className="service-preparation"><legend>{preparationCopy[language].choose}</legend>{language!=='en'&&<p>{preparationCopy[language].preview}</p>}<div className="prep-options">{playbooks[task.serviceId].goals.map(goal=><button type="button" lang="en" key={goal} onClick={()=>{speech.current?.stop();focusAfterProgress.current=true;setTask(answerTask(task,goal));setValue('');setError('')}}>{goal}</button>)}</div></fieldset>}
+    {field&&<><h2 className="journey-question">{labels[field][lang]}</h2><p>{field==='region'?j.regionWhy:j.goalWhy}</p></>}
+    {field==='goal'&&playbooks[task.serviceId]&&<fieldset className="service-preparation"><legend>{preparationCopy[language].choose}</legend>{language!=='en'&&<p>{preparationCopy[language].preview}</p>}<div className="prep-options">{playbooks[task.serviceId].goals.map((goal,index)=><button ref={node=>{if(index===0)fieldControl.current=node}} type="button" lang="en" key={goal} onClick={()=>{speech.current?.stop();focusAfterProgress.current=true;setTask(answerTask(task,goal));setValue('');setError('')}}>{goal}</button>)}</div></fieldset>}
     {field&&<form onSubmit={e=>{e.preventDefault();try{const next=answerTask(task,value);focusAfterProgress.current=true;setTask(next);setValue('');setError('')}catch(e){focusAfterProgress.current=false;setError(localizeTaskError((e as Error).message,language))}}}>
-     <label>{labels[field][lang]}{field==='region'?<select ref={node=>{fieldControl.current=node}} value={value} onChange={e=>setValue(e.target.value)} required><option value="">{c.chooseRegion}</option>{regions.map(r=><option key={r}>{r}</option>)}</select>:<input ref={node=>{fieldControl.current=node}} value={value} maxLength={250} type={field==='date'?'date':'text'} inputMode={['travellers','budget'].includes(field)?'numeric':'text'} onChange={e=>setValue(e.target.value)} required/>}</label>
-     <div className="row"><button type="button" className="outline" onClick={()=>read(labels[field][lang])}>{c.listenQuestion}</button><button type="button" className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen()}>{c.speakAnswer}</button><button className="primary" type="submit">{c.confirm}</button></div>
+     <label>{field==='goal'?j.other:labels[field][lang]}{field==='region'?<select ref={node=>{fieldControl.current=node}} value={value} onChange={e=>setValue(e.target.value)} required><option value="">{c.chooseRegion}</option>{regions.map(r=><option key={r}>{r}</option>)}</select>:<input ref={node=>{if(field!=='goal'||!playbooks[task.serviceId])fieldControl.current=node}} value={value} maxLength={250} type={field==='date'?'date':'text'} inputMode={['travellers','budget'].includes(field)?'numeric':'text'} onChange={e=>setValue(e.target.value)} required/>}</label>
+     <div className="row journey-controls"><button type="button" className="outline" onClick={()=>read(labels[field][lang])}>{c.listenQuestion}</button><button type="button" className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen()}>{c.speakAnswer}</button><button className="primary" type="submit">{j.continue}</button>{previous&&<button type="button" className="outline" onClick={()=>edit(previous)}>{j.back}</button>}</div>
     </form>}
     {task.status!=='collecting'&&<>
-     <h3 ref={reviewHeading} className="task-focus-heading" tabIndex={-1}>{c.review}</h3>
-     <dl>{Object.entries(task.answers).map(([key,v])=><React.Fragment key={key}><dt>{labels[key][lang]}</dt><dd>{v}</dd></React.Fragment>)}</dl>
-     {task.status==='review'?<button className="primary" onClick={()=>{focusAfterProgress.current=true;setTask(confirmTask(task))}}>{c.confirmDetails}</button>:<>
+     {task.status==='review'?<><h2 ref={reviewHeading} className="task-focus-heading" tabIndex={-1}>{c.review}</h2>{answerList}<button className="primary" onClick={()=>{focusAfterProgress.current=true;setTask(confirmTask(task))}}>{c.confirmDetails}</button></>:<>
       <article className="task-action-card" aria-labelledby="task-action-title">
        <p className="task-status" role="status">{c.status}</p>
        <h3 ref={actionHeading} className="task-focus-heading" tabIndex={-1} id="task-action-title">{c.next}</h3>
-       {playbooks[task.serviceId]?<ServicePreparation key={task.serviceId+task.answers.goal+language} serviceId={task.serviceId} goal={task.answers.goal} region={task.answers.region} language={language} stopOtherAudio={()=>speech.current?.stop()}/>:<p>{localizedSteps[0]}</p>}
+       {playbooks[task.serviceId]?<ServicePreparation key={task.serviceId+task.answers.goal} serviceId={task.serviceId} goal={task.answers.goal} region={task.answers.region} language={language} stopOtherAudio={()=>speech.current?.stop()}/>:<p>{localizedSteps[0]}</p>}
        {service&&<p className="task-caution">{language==='en'?service.caution:<><strong>{c.important}.</strong> {c.onlyOfficial}<br/><small>{c.englishDetail} <span lang="en">{service.caution}</span></small></>}</p>}
        <div className="task-actions">
         <button type="button" className="outline" onClick={()=>void read(spokenSteps)}>{c.listen}</button>
@@ -88,7 +91,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
        {service&&<p>{service.sourceName} · <a href={service.source} target="_blank" rel="noreferrer">{c.openOfficial}</a></p>}
        {readiness&&<details className="task-provider-card"><summary id="provider-readiness-title">{c.connection}</summary>
         <p className="task-provider-state">{c.connection} · {readiness.state==='official_handoff_only'?c.official:c.guidance}</p>
-        <h4 id="provider-readiness-title">{c.works}</h4>
+        <h4>{c.works}</h4>
         <ul>{readiness.available.map(item=><li key={item}>✓ {localizeProviderItem(item,language)}</li>)}</ul>
         <h4>{c.notConnected}</h4>
         <ul>{readiness.unavailable.map(item=><li key={item}>— {localizeProviderItem(item,language)}</li>)}</ul>
@@ -97,6 +100,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
        </details>}
        {w!.source&&isSafeProviderUrl(w!.source)?offline?<button className="primary task-official-link" type="button" disabled>{c.reconnect}</button>:<a className="primary task-official-link" href={w!.source} target="_blank" rel="noreferrer">{c.openOfficial}</a>:<p>{c.chooseProvider}</p>}
       </article>
+      <details className="journey-edit"><summary>{j.answers}</summary>{answerList}</details>
       {localRoute&&<aside className="task-region-card" aria-labelledby="region-route-title">
        <p className="task-verified">{c.region} · {localRoute.region}</p>
        <h3 id="region-route-title">{c.regionTitle}</h3>
@@ -109,10 +113,10 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
       <details><summary>{c.progress}</summary><ol>{task.events.map((e,i)=><li key={i}>{taskEventLabel(e.event,language)}</li>)}</ol></details>
      </>}
     </>}
-    <button className="outline" onClick={reset}>{c.restart}</button>
+    <button className="outline journey-reset" onClick={reset}>{j.clear}</button>
    </>}
    {phase!=='ready'&&<button className="outline" onClick={()=>speech.current?.stop()}>{c.stop}</button>}
-   {error&&<p role="alert" className="task-voice-error">{error}</p>}<a href="/ruralos/integrations/">{c.gaps}</a>
+   {error&&<p role="alert" className="task-voice-error">{error}</p>}<details className="journey-privacy"><summary>{j.privacy}</summary><p>{c.preview}</p><p>{c.languageNote}</p><a href="/ruralos/integrations/">{c.gaps}</a></details>
   </>}
  </section>
 }

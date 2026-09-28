@@ -11,6 +11,14 @@ export const workflows=[...services,...travel].map(s=>({id:s.id,title:s.title,so
 export type Task={serviceId:string;answers:Record<string,string>;status:'collecting'|'review'|'handoff';events:{event:string;at:string}[]};
 export function startTask(id:string):Task{if(!workflows.some(w=>w.id===id))throw Error('Unknown service');return {serviceId:id,answers:{},status:'collecting',events:[{event:'started',at:new Date().toISOString()}]}}
 export function nextField(task:Task){return workflows.find(w=>w.id===task.serviceId)!.fields.find(f=>!task.answers[f])}
+// Re-open one existing answer without discarding the other answers. Any old
+// confirmation is revoked; the user must review the changed plan again.
+export function editTask(task:Task,field:string):Task{
+ const workflow=workflows.find(w=>w.id===task.serviceId);
+ if(!workflow?.fields.includes(field)||!Object.hasOwn(task.answers,field))throw Error('Choose an existing answer to change.');
+ const answers={...task.answers};delete answers[field];
+ return {...task,answers,status:'collecting',events:[...task.events,{event:'edited:'+field,at:new Date().toISOString()}]};
+}
 export function answerTask(task:Task,value:string):Task{if(task.status!=='collecting')throw Error('Review or restart this task.');const key=nextField(task)!;const v=value.trim();if(!v||v.length>250)throw Error('Use a short answer, up to 250 characters.');if(hasIdentityNumber(v)||/\b(otp|pin|password|cvv)\b|@/i.test(v))throw Error('Do not enter identity numbers, passwords, OTPs or private contact details.');if(key==='region'&&!regions.includes(v as any))throw Error('Choose a listed Indian State or Union Territory.');if(key==='travellers'&&(!/^\d{1,2}$/.test(v)||+v<1||+v>20))throw Error('Enter a traveller count from 1 to 20.');if(key==='budget'&&(!/^\d{1,7}$/.test(v)||+v<1))throw Error('Enter a positive budget in rupees.');if(key==='date'){const d=new Date(v+'T00:00:00Z');const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});if(!/^\d{4}-\d{2}-\d{2}$/.test(v)||!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==v||v<today)throw Error('Choose today or a future date.');}const next={...task,answers:{...task.answers,[key]:v},events:[...task.events,{event:'answered:'+key,at:new Date().toISOString()}]};if(!nextField(next))next.status='review';return next;}
 export function confirmTask(task:Task):Task{if(task.status!=='review'||nextField(task))throw Error('Complete and review your details first.');return {...task,status:'handoff',events:[...task.events,{event:'details_confirmed_not_submitted',at:new Date().toISOString()}]};}
 export function executeTask(_task:Task):never{throw Error('Provider not connected. No booking, payment or application has been submitted.');}

@@ -15,7 +15,16 @@ try{
  const {playbooks}=await server.ssrLoadModule('/lib/service-playbooks.ts');
  const {default:Mobile}=await server.ssrLoadModule('/app/aadhaar-mobile-help.tsx');
  const {default:Alerts}=await server.ssrLoadModule('/app/alert-preview.tsx');
+ const {default:TaskGuide}=await server.ssrLoadModule('/app/task-assistant.tsx');
  for(const language of ['en','hi','te']){
+  for(const initialService of ['schemes','aadhaar','land']){
+   const guide=render(React.createElement(TaskGuide,{initialService,initialLanguage:language,onLanguageChange:()=>{}}));
+   assert.equal((guide.match(/<select/g)||[]).length,1,'embedded guide uses one regional selector, not a second language selector');
+   assert.match(guide,/class="journey-progress" role="status"/);assert.match(guide,/1 \/ 2/);
+   assert.match(guide,/<details class="task-voice-consent journey-voice"><summary>/);
+   assert.doesNotMatch(guide,/type="checkbox"[^>]*checked|<details[^>]* open/);
+   assert.match(guide,/<button[^>]*disabled=""/);assert.match(guide,/class="journey-question"/);checks++;
+  }
   const mobile=render(React.createElement(Mobile,{language,stopOtherAudio:()=>{}}));assert.equal((mobile.match(/aria-pressed=/g)||[]).length,4);assert.equal((mobile.match(/aria-pressed="true"/g)||[]).length,1);assert.doesNotMatch(mobile,/<input|<textarea/);assert.match(mobile,/uidai.gov.in/);checks++;
   const alerts=render(React.createElement(Alerts,{language}));assert.match(alerts,/href="\/ruralos\/alerts\/"/);assert.match(alerts,/role="status"/);assert.doesNotMatch(alerts,/undefined|NaN/);checks++;
   const hero=render(React.createElement(HomeDesk,{language,voice:React.createElement('button',null,'Speak'),search:React.createElement('input',{'aria-label':'Search'}),heading:null}));

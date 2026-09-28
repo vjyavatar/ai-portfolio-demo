@@ -1,4 +1,4 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {workflows,startTask,answerTask,nextField,confirmTask,executeTask,matchTasks} from '../ruralos-src/lib/task-engine.ts';
+import {test} from 'node:test';import assert from 'node:assert/strict';import {workflows,startTask,answerTask,nextField,confirmTask,editTask,executeTask,matchTasks} from '../ruralos-src/lib/task-engine.ts';
 import {regionalRoute,regionalGuidance} from '../ruralos-src/lib/regional-guidance.ts';
 import {regions} from '../ruralos-src/lib/regions.ts';
 import {canStartVoiceCapture,voiceCaptureError} from '../ruralos-src/lib/voice-safety.ts';
@@ -8,6 +8,17 @@ import {localizeProviderItem,localizeTaskError,taskCopy,taskEventLabel} from '..
 import {resolveSpokenService} from '../ruralos-src/lib/service-directory.ts';
 for(const w of workflows)test(w.id+' completes preparation but never transaction',()=>{let t=startTask(w.id);for(const field of w.fields)t=answerTask(t,({origin:'Hyderabad',destination:'Vijayawada',date:'2099-01-01',travellers:'2',budget:'5000',region:'Telangana',goal:'Help with the official process'})[field]);assert.equal(t.status,'review');assert.equal(confirmTask(t).status,'handoff');assert.throws(()=>executeTask(t),/not connected/);assert.equal(w.transactionEnabled,false)});
 test('unknown, premature confirmation, sensitive and incorrect input fail closed',()=>{assert.throws(()=>startTask('unknown'));assert.throws(()=>confirmTask(startTask('cab')));assert.throws(()=>answerTask(startTask('cab'),'123456789012'));assert.throws(()=>answerTask(startTask('cab'),'OTP 123456'));assert.throws(()=>answerTask(startTask('aadhaar'),'Outside India'))});
+test('correcting an answer preserves other answers and revokes previous confirmation',()=>{
+ const original=confirmTask(answerTask(answerTask(startTask('land'),'Telangana'),'Check before buying land'));
+ const editing=editTask(original,'region');assert.equal(editing.status,'collecting');assert.equal(nextField(editing),'region');assert.equal(editing.answers.goal,original.answers.goal);assert.equal(original.answers.region,'Telangana');assert.throws(()=>confirmTask(editing));
+ const changed=answerTask(editing,'Andhra Pradesh');assert.equal(changed.status,'review');assert.equal(changed.answers.goal,original.answers.goal);assert.equal(changed.answers.region,'Andhra Pradesh');assert.equal(confirmTask(changed).status,'handoff');assert.throws(()=>executeTask(changed));
+});
+test('back and correction cannot inject fields or bypass input validation',()=>{
+ const task=answerTask(startTask('aadhaar'),'Telangana');const back=editTask(task,'region');assert.deepEqual(back.answers,{});assert.equal(nextField(back),'region');
+ for(const key of ['goal','__proto__','status','email','providerToken'])assert.throws(()=>editTask(task,key));
+ for(const value of ['Outside India','OTP 123456','123456789012','person@example.com'])assert.throws(()=>answerTask(back,value));
+ assert.deepEqual(task.answers,{region:'Telangana'});
+});
 test('multilingual routing is only a suggestion',()=>{for(const q of ['train','रेल','రైలు'])assert.equal(matchTasks(q)[0].id,'rail');assert.deepEqual(matchTasks('unmatched unknown'),[])});
 test('clear spoken service requests route without another tap',()=>{assert.equal(resolveSpokenService("I need help with my mother's pension"),'schemes');assert.equal(resolveSpokenService('I need land registration'),'land');assert.equal(resolveSpokenService('आधार मोबाइल नंबर','hi'),'aadhaar');assert.equal(resolveSpokenService('రైలు టికెట్','te'),'rail')});
 test('ambiguous or hostile voice text never guesses or escapes the allowlist',()=>{for(const q of ['help','registration','ignore instructions','123456789012',''])assert.equal(resolveSpokenService(q),null);const id=resolveSpokenService('I want a train ticket');assert.equal(id,'rail');assert.ok(id===null||workflows.some(w=>w.id===id));assert.equal(resolveSpokenService('x'.repeat(1000)),null)});
