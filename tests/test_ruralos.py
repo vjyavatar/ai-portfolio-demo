@@ -55,7 +55,7 @@ def test_no_stock_code_changes():
     old=ast.parse(baseline);new=ast.parse((ROOT/'start.py').read_text())
     added=[n for n in new.body if isinstance(n,ast.Try) and any(isinstance(c,ast.ImportFrom) and c.module=='ruralos_site' for c in n.body)]
     assert len(added)==1;new.body.remove(added[0]);assert ast.dump(old)==ast.dump(new)
-    for name in ['index.html','api.py','requirements.txt','sw.js','nextstep_site.py']:
+    for name in ['api.py','requirements.txt','sw.js','nextstep_site.py']:
         assert (ROOT/name).read_bytes()==subprocess.check_output(['git','show',f'efce519ff46ac10c4c3f18f70043f54601c0f9d0:{name}'],cwd=ROOT)
 
 def test_public_adapter_and_prefix():
@@ -67,3 +67,22 @@ def test_public_adapter_and_prefix():
         text=(ROOT/'ruralos-src/app'/name).read_text()
         assert "register('/sw.js')" not in text
         assert "encodeURIComponent('/ruralos/" not in text
+
+
+def test_search_pages_and_canonical(client):
+    import xml.etree.ElementTree as ET
+    html=client.get('/ruralos/').text
+    assert 'About Saathi' in html and 'og:title' in html
+    assert 'https://celesys.ai/ruralos/' in html
+    sitemap=ET.fromstring(client.get('/ruralos/sitemap.xml').text)
+    for loc in sitemap.findall('.//{*}loc'):
+        assert client.get(loc.text).status_code==200
+    install=client.get('/ruralos/install/').text
+    assert 'Android' in install and 'iPhone' in install
+    assert 'It is not an App Store or Google Play release' in install
+
+def test_homepage_only_adds_discovery_link():
+    baseline=subprocess.check_output(['git','show','7df559f17a25388186d947686524551ea6845a70:index.html'],cwd=ROOT,text=True)
+    new=(ROOT/'index.html').read_text()
+    nav='<nav aria-label="Family services" style="padding:10px;text-align:center"><a href="/ruralos/">Saathi — Rural Family Action OS: family services and next steps</a></nav>'
+    assert nav in new and new.replace(nav,'',1)==baseline
