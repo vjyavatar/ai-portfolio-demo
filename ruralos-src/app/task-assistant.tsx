@@ -6,6 +6,7 @@ import {regionalRoute} from '../lib/regional-guidance';
 import {regions} from '../lib/regions';
 import {canStartVoiceCapture,voiceCaptureError,type VoicePhase} from '../lib/voice-safety';
 import {providerReadinessFor,isSafeProviderUrl} from '../lib/provider-readiness';
+import {taskFocusTarget} from '../lib/task-focus';
 
 const labels:Record<string,string[]>={
  region:['Choose your State or Union Territory','अपना राज्य या केंद्र शासित प्रदेश चुनें','మీ రాష్ట్రం లేదా కేంద్ర పాలిత ప్రాంతాన్ని ఎంచుకోండి'],
@@ -27,11 +28,13 @@ const voiceWords={
 export default function TaskAssistant({initialService,initialLanguage='en',offline=false}:{initialService?:string;initialLanguage?:string;offline?:boolean}={}){
  const[open,setOpen]=useState(!!initialService),[task,setTask]=useState<Task|null>(()=>initialService?startTask(initialService):null),[value,setValue]=useState(''),[query,setQuery]=useState(''),[error,setError]=useState(''),[lang,setLang]=useState(['en','hi','te'].indexOf(initialLanguage)),[phase,setPhase]=useState<VoicePhase>('ready'),[voiceConsent,setVoiceConsent]=useState(false);
  const speech=useRef<SpeechSession|null>(null);
+ const focusAfterProgress=useRef(!!initialService),fieldControl=useRef<HTMLInputElement|HTMLSelectElement|null>(null),reviewHeading=useRef<HTMLHeadingElement|null>(null),actionHeading=useRef<HTMLHeadingElement|null>(null);
  useEffect(()=>{speech.current=createSpeechSession(setPhase,['en-IN','hi-IN','te-IN'][lang]);const stop=()=>{if(document.hidden)speech.current?.stop()};document.addEventListener('visibilitychange',stop);return()=>{speech.current?.stop();document.removeEventListener('visibilitychange',stop)}},[lang]);
  const w=workflows.find(w=>w.id===task?.serviceId),service=directory.find(s=>s.id===task?.serviceId),field=task?nextField(task):null;
  const localRoute=task?.answers.region&&task.serviceId?regionalRoute(task.answers.region,task.serviceId):null;
  const readiness=task?.serviceId?providerReadinessFor(task.serviceId):null;
- function reset(){speech.current?.stop();setTask(null);setValue('');setQuery('');setError('');setVoiceConsent(false)}
+ useEffect(()=>{if(!focusAfterProgress.current)return;const target=taskFocusTarget(task,field);const node=target==='field'?fieldControl.current:target==='review'?reviewHeading.current:target==='action'?actionHeading.current:null;if(node){node.focus({preventScroll:true});focusAfterProgress.current=false}},[field,task?.status]);
+ function reset(){speech.current?.stop();focusAfterProgress.current=false;setTask(null);setValue('');setQuery('');setError('');setVoiceConsent(false)}
  async function listen(search=false){setError('');if(!voiceConsent){setError(voiceCaptureError(lang,undefined,false));return}try{const text=await speech.current!.listen();search?setQuery(text):setValue(text)}catch(e){setError(voiceCaptureError(lang,e))}}
  async function read(text:string){try{setError('');await speech.current!.speak(text,.9)}catch(e){setError(voiceCaptureError(lang,e))}}
  const candidates=matchTasks(query);
@@ -52,21 +55,21 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
     <label>Describe your task<input value={query} maxLength={250} onChange={e=>setQuery(e.target.value)} placeholder="Book a train, update Aadhaar, find document help…"/></label>
     <button className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen(true)}>Speak your request</button>
     {query&&<p>Please choose the matching service below. Your spoken text is not submitted.</p>}
-    <div className="form-grid">{(candidates.length?candidates:workflows).map(w=><button className="outline" key={w.id} onClick={()=>{setTask(startTask(w.id));setQuery('');setError('')}}>{w.title}</button>)}</div>
+    <div className="form-grid">{(candidates.length?candidates:workflows).map(w=><button className="outline" key={w.id} onClick={()=>{focusAfterProgress.current=true;setTask(startTask(w.id));setQuery('');setError('')}}>{w.title}</button>)}</div>
    </>:<>
     <h3>{w!.title}</h3>
     {service&&<p>{service.description}</p>}
-    {field&&<form onSubmit={e=>{e.preventDefault();try{setTask(answerTask(task,value));setValue('');setError('')}catch(e){setError((e as Error).message)}}}>
-     <label>{labels[field][lang]}{field==='region'?<select value={value} onChange={e=>setValue(e.target.value)} required><option value="">Choose region</option>{regions.map(r=><option key={r}>{r}</option>)}</select>:<input value={value} maxLength={250} type={field==='date'?'date':'text'} inputMode={['travellers','budget'].includes(field)?'numeric':'text'} onChange={e=>setValue(e.target.value)} required/>}</label>
+    {field&&<form onSubmit={e=>{e.preventDefault();try{const next=answerTask(task,value);focusAfterProgress.current=true;setTask(next);setValue('');setError('')}catch(e){focusAfterProgress.current=false;setError((e as Error).message)}}}>
+     <label>{labels[field][lang]}{field==='region'?<select ref={node=>{fieldControl.current=node}} value={value} onChange={e=>setValue(e.target.value)} required><option value="">Choose region</option>{regions.map(r=><option key={r}>{r}</option>)}</select>:<input ref={node=>{fieldControl.current=node}} value={value} maxLength={250} type={field==='date'?'date':'text'} inputMode={['travellers','budget'].includes(field)?'numeric':'text'} onChange={e=>setValue(e.target.value)} required/>}</label>
      <div className="row"><button type="button" className="outline" onClick={()=>read(labels[field][lang])}>Listen to question</button><button type="button" className="outline" disabled={!canStartVoiceCapture(voiceConsent,phase)} onClick={()=>listen()}>Speak answer</button><button className="primary" type="submit">Confirm answer & continue</button></div>
     </form>}
     {task.status!=='collecting'&&<>
-     <h3>Check your details</h3>
+     <h3 ref={reviewHeading} className="task-focus-heading" tabIndex={-1}>Check your details</h3>
      <dl>{Object.entries(task.answers).map(([key,v])=><React.Fragment key={key}><dt>{labels[key][0]}</dt><dd>{v}</dd></React.Fragment>)}</dl>
-     {task.status==='review'?<button className="primary" onClick={()=>setTask(confirmTask(task))}>These details are correct — show next steps</button>:<>
+     {task.status==='review'?<button className="primary" onClick={()=>{focusAfterProgress.current=true;setTask(confirmTask(task))}}>These details are correct — show next steps</button>:<>
       <article className="task-action-card" aria-labelledby="task-action-title">
        <p className="task-status" role="status">Prepared · not submitted · official approval required</p>
-       <h3 id="task-action-title">Your next action</h3>
+       <h3 ref={actionHeading} className="task-focus-heading" tabIndex={-1} id="task-action-title">Your next action</h3>
        <p>{w!.steps[0]}</p>
        {service&&<p className="task-caution">{service.caution}</p>}
        <div className="task-actions">
