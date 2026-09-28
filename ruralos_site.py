@@ -19,5 +19,7 @@ def attach_ruralos(app):
     if not all((ASSET_DIRECTORY / name).is_file() for name in ('index.html', 'sw.js', 'manifest.webmanifest')):
         logging.getLogger(__name__).warning('Rural OS assets missing; skipping optional mount')
         return False
+    from ruralos_live import router
+    app.include_router(router)
     app.mount('/ruralos', RuralOSFiles(directory=str(ASSET_DIRECTORY), html=True), name='ruralos')
     return True
