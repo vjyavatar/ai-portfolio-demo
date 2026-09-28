@@ -86,3 +86,12 @@ def test_homepage_only_adds_discovery_link():
     new=(ROOT/'index.html').read_text()
     nav='<nav aria-label="Family services" style="padding:10px;text-align:center"><a href="/ruralos/">Saathi — Rural Family Action OS: family services and next steps</a></nav>'
     assert nav in new and new.replace(nav,'',1)==baseline
+
+
+def test_private_tracking_is_only_a_secure_redirect(client):
+    for path in ['/ruralos/tracking','/ruralos/tracking/']:
+        r=client.get(path,follow_redirects=False)
+        assert r.status_code==303
+        assert r.headers['location']=='https://rural-family-action-os.vjyrcks.chatgpt.site/tracking'
+        assert 'no-store' in r.headers['cache-control']
+        assert 'latitude' not in r.text

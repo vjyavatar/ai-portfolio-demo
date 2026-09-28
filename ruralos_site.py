@@ -2,6 +2,7 @@
 from pathlib import Path
 import logging
 from starlette.staticfiles import StaticFiles
+from starlette.responses import RedirectResponse
 ASSET_DIRECTORY = Path(__file__).resolve().parent / 'ruralos'
 class RuralOSFiles(StaticFiles):
     async def get_response(self, path, scope):
@@ -21,5 +22,9 @@ def attach_ruralos(app):
         return False
     from ruralos_live import router
     app.include_router(router)
+    @app.get('/ruralos/tracking', include_in_schema=False)
+    @app.get('/ruralos/tracking/', include_in_schema=False)
+    def private_tracking():
+        return RedirectResponse('https://rural-family-action-os.vjyrcks.chatgpt.site/tracking', status_code=303, headers={'Cache-Control':'private, no-store','X-Robots-Tag':'noindex, nofollow'})
     app.mount('/ruralos', RuralOSFiles(directory=str(ASSET_DIRECTORY), html=True), name='ruralos')
     return True
