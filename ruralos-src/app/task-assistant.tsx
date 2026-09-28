@@ -5,6 +5,7 @@ import {directory} from '../lib/service-directory';
 import {regionalRoute} from '../lib/regional-guidance';
 import {regions} from '../lib/regions';
 import {canStartVoiceCapture,voiceCaptureError,type VoicePhase} from '../lib/voice-safety';
+import {providerReadinessFor,isSafeProviderUrl} from '../lib/provider-readiness';
 
 const labels:Record<string,string[]>={
  region:['Choose your State or Union Territory','अपना राज्य या केंद्र शासित प्रदेश चुनें','మీ రాష్ట్రం లేదా కేంద్ర పాలిత ప్రాంతాన్ని ఎంచుకోండి'],
@@ -23,12 +24,13 @@ const voiceWords={
  listening:['Listening…','सुन रहे हैं…','వింటున్నాం…']
 };
 
-export default function TaskAssistant({initialService,initialLanguage='en'}:{initialService?:string;initialLanguage?:string}={}){
+export default function TaskAssistant({initialService,initialLanguage='en',offline=false}:{initialService?:string;initialLanguage?:string;offline?:boolean}={}){
  const[open,setOpen]=useState(!!initialService),[task,setTask]=useState<Task|null>(()=>initialService?startTask(initialService):null),[value,setValue]=useState(''),[query,setQuery]=useState(''),[error,setError]=useState(''),[lang,setLang]=useState(['en','hi','te'].indexOf(initialLanguage)),[phase,setPhase]=useState<VoicePhase>('ready'),[voiceConsent,setVoiceConsent]=useState(false);
  const speech=useRef<SpeechSession|null>(null);
  useEffect(()=>{speech.current=createSpeechSession(setPhase,['en-IN','hi-IN','te-IN'][lang]);const stop=()=>{if(document.hidden)speech.current?.stop()};document.addEventListener('visibilitychange',stop);return()=>{speech.current?.stop();document.removeEventListener('visibilitychange',stop)}},[lang]);
  const w=workflows.find(w=>w.id===task?.serviceId),service=directory.find(s=>s.id===task?.serviceId),field=task?nextField(task):null;
  const localRoute=task?.answers.region&&task.serviceId?regionalRoute(task.answers.region,task.serviceId):null;
+ const readiness=task?.serviceId?providerReadinessFor(task.serviceId):null;
  function reset(){speech.current?.stop();setTask(null);setValue('');setQuery('');setError('');setVoiceConsent(false)}
  async function listen(search=false){setError('');if(!voiceConsent){setError(voiceCaptureError(lang,undefined,false));return}try{const text=await speech.current!.listen();search?setQuery(text):setValue(text)}catch(e){setError(voiceCaptureError(lang,e))}}
  async function read(text:string){try{setError('');await speech.current!.speak(text,.9)}catch(e){setError(voiceCaptureError(lang,e))}}
@@ -74,7 +76,16 @@ export default function TaskAssistant({initialService,initialLanguage='en'}:{ini
         <a className="outline" href={secureSite+'/?view=Help'} target="_blank" rel="noreferrer">Get help</a>
        </div>
        {service?.checklist.length?<section className="task-checklist" aria-labelledby="document-checklist-title"><h4 id="document-checklist-title">Checklist before you continue</h4><ul>{service.checklist.map(item=><li key={item}>□ {item}</li>)}</ul></section>:null}
-       {w!.source?<a className="primary task-official-link" href={w!.source} target="_blank" rel="noreferrer">Open {service?.sourceName||'official service'}</a>:<p>Choose a provider you trust. Provider search and booking are unavailable here.</p>}
+       {readiness&&<section className="task-provider-card" aria-labelledby="provider-readiness-title">
+        <p className="task-provider-state">Connection status · {readiness.state==='official_handoff_only'?'Official handoff only':'Guidance only · no provider selected'}</p>
+        <h4 id="provider-readiness-title">What works here</h4>
+        <ul>{readiness.available.map(item=><li key={item}>✓ {item}</li>)}</ul>
+        <h4>Not connected</h4>
+        <ul>{readiness.unavailable.map(item=><li key={item}>— {item}</li>)}</ul>
+        <p>Your answers have not been sent to the provider. Enter login, identity and payment details only after you open and verify the official service.</p>
+        {offline&&<p className="task-offline-provider" role="alert">You are offline. Reconnect before opening the official service; cached steps may be outdated.</p>}
+       </section>}
+       {w!.source&&isSafeProviderUrl(w!.source)?offline?<button className="primary task-official-link" type="button" disabled>Reconnect to open {service?.sourceName||'official service'}</button>:<a className="primary task-official-link" href={w!.source} target="_blank" rel="noreferrer">Open {service?.sourceName||'official service'} · new screen</a>:<p>Choose a provider you trust. Provider search and booking are unavailable here.</p>}
       </article>
       {localRoute&&<aside className="task-region-card" aria-labelledby="region-route-title">
        <p className="task-verified">Applicable region · {localRoute.region}</p>
