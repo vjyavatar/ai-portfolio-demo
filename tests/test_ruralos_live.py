@@ -50,3 +50,22 @@ def test_single_fetch_for_concurrent_callers(monkeypatch):
 def test_stale_source_time():
  now=time.time();live._cache['earthquakes']=(now,{'generatedAt':(now-3600)*1000,'items':[]})
  assert live.envelope('earthquakes')['status']=='stale'
+
+def test_malformed_rows_do_not_discard_valid_observations():
+ now=time.time()
+ assert len(live.normalize('weather',[None,'bad',*weather()],now)['items'])==1
+ good={'id':'ok','geometry':{'coordinates':[78,18]},'properties':{'mag':3,'time':now*1000,'place':'Test'}}
+ malformed=[None,{'geometry':None},{'geometry':{'coordinates':None},'properties':{}},good]
+ assert len(live.normalize('earthquakes',{'metadata':{'generated':now*1000},'features':malformed},now)['items'])==1
+
+def test_quake_time_filters_future_and_outside_feed_window():
+ now=time.time()
+ events=[{'id':str(delta),'geometry':{'coordinates':[78,18]},'properties':{'mag':3,'time':(now+delta)*1000}} for delta in [0,1000,-90000]]
+ r=live.normalize('earthquakes',{'metadata':{'generated':now*1000},'features':events},now)
+ assert len(r['items'])==1
+
+def test_weather_age_is_recomputed_while_cached(monkeypatch):
+ now=time.time();live._cache['weather']=(now,live.normalize('weather',weather(now-10799),now))
+ monkeypatch.setattr(live.time,'time',lambda:now+2)
+ assert live.envelope('weather')['status']=='stale'
+ assert live.envelope('weather')['items'][0]['outdated']

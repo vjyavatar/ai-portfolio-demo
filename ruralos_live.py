@@ -17,20 +17,25 @@ def normalize(kind,data,now):
     if kind=='weather':
         if not isinstance(data,list):raise ValueError('Invalid weather response')
         for item in data:
+            if not isinstance(item,dict):continue
             station=item.get('icaoId');observed=item.get('obsTime');temp=item.get('temp')
             if station not in STATIONS or not number(observed) or not number(temp) or observed>now+300:continue
             rows.append({'id':station,'name':STATIONS[station],'temperatureC':temp,'observedAt':int(observed)*1000,'outdated':now-observed>10800})
         if not rows:raise ValueError('No current station observations returned')
         return {'items':rows,'scope':'Airport observations only; not village weather or a forecast. Do not use for crop, medical or travel-safety decisions.','generatedAt':None}
     if not isinstance(data,dict) or not isinstance(data.get('features'),list):raise ValueError('Invalid earthquake response')
-    generated=data.get('metadata',{}).get('generated')
+    metadata=data.get('metadata')
+    generated=metadata.get('generated') if isinstance(metadata,dict) else None
     if not number(generated) or generated>now*1000+300000:raise ValueError('Invalid feed time')
     for feature in data['features']:
-        coords=feature.get('geometry',{}).get('coordinates',[]);p=feature.get('properties',{})
-        if len(coords)<2 or not all(number(x) for x in coords[:2]):continue
+        if not isinstance(feature,dict):continue
+        geometry=feature.get('geometry');p=feature.get('properties')
+        if not isinstance(geometry,dict) or not isinstance(p,dict):continue
+        coords=geometry.get('coordinates')
+        if not isinstance(coords,list) or len(coords)<2 or not all(number(x) for x in coords[:2]):continue
         lon,lat=coords[:2]
         if not (6<=lat<=38 and 68<=lon<=98):continue
-        if not number(p.get('mag')) or not number(p.get('time')):continue
+        if not number(p.get('mag')) or not number(p.get('time')) or p['time']>now*1000+300000 or p['time']<now*1000-86400000:continue
         rows.append({'id':str(feature.get('id',''))[:80],'name':str(p.get('place','Location unavailable'))[:180],'magnitude':p['mag'],'observedAt':p['time']})
     return {'items':sorted(rows,key=lambda r:r['observedAt'],reverse=True)[:30],'generatedAt':generated,'scope':'Reported magnitude 2.5+ events in the past-day feed within 6–38°N, 68–98°E. Includes neighbouring countries. Not predictions or an emergency alert service; absence of reports does not prove safety.'}
 async def download(kind):
@@ -45,7 +50,10 @@ async def download(kind):
 def envelope(kind,error=False):
     now=time.time();cached=_cache.get(kind)
     if not cached:return {'status':'unavailable','source':SOURCES[kind],'retrievedAt':None,'items':[],'message':'The source is unavailable. No live result can be shown.'}
-    saved,payload=cached;result=copy.deepcopy(payload);age=now-saved;generated=result.get('generatedAt');old=bool(generated and now*1000-generated>900000) or (kind=='weather' and all(i['outdated'] for i in result['items']))
+    saved,payload=cached;result=copy.deepcopy(payload);age=now-saved;
+    if kind=='weather':
+        for item in result['items']:item['outdated']=now*1000-item['observedAt']>10800000
+    generated=result.get('generatedAt');old=bool(generated and now*1000-generated>900000) or (kind=='weather' and all(i['outdated'] for i in result['items']))
     result.update(status='stale' if error or age>600 or old else 'recent',source=SOURCES[kind],retrievedAt=int(saved*1000),cacheAgeSeconds=int(age),message='Previously retrieved data. Refresh failed or the source is old.' if error or age>600 or old else 'Recently retrieved public data; not continuous tracking.')
     return result
 @router.get('/ruralos-data/{kind}')
