@@ -74,3 +74,7 @@ Sources: PM-KISAN homepage, Know Your Status and official Point of Contact page;
 2. Follow a small number of real cases with consent through the responsible provider, recording actual completion and unresolved causes privately.
 3. Prioritise verified certificate, scholarship and property subtypes next; do not expand via generic pending messages.
 4. Obtain authorised case/inventory integrations only where permissions exist. A new AI library alone cannot supply missing official records or live prices.
+
+
+### Entrepreneurship follow-up, 29 September 2026
+The business route now has a dedicated seven-programme central-government guide, five purpose filters, specific actions and a private session-only preparation checklist. This supersedes its earlier checklist-only assessment. That leaves 33 other non-travel services largely at preparation depth; four travel workflows remain planning-only. National programme summaries do not establish state entitlements, open allocations or individual loan eligibility. Homepage now includes a 28-second illustrated usage video, chosen-language captions, a spoken transcript and service shortcuts. These changes are not evidence of rural-household comprehension or successfully obtained credit.

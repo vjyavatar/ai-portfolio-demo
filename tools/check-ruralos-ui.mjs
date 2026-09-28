@@ -8,6 +8,9 @@ import {renderToStaticMarkup as render} from '../ruralos-src/node_modules/react-
 const server=await createServer({configFile:false,root:resolve('ruralos-src'),server:{middlewareMode:true},optimizeDeps:{noDiscovery:true,include:[]},appType:'custom'});
 let checks=0;
 try{
+ const {ProgrammeCards,default:Enterprise}=await server.ssrLoadModule('/app/enterprise-guide.tsx');
+ const {default:HomeVideo}=await server.ssrLoadModule('/app/home-video.tsx');
+ const {programmes}=await server.ssrLoadModule('/lib/enterprise.ts');
  const {HomeDesk,HomeStarts,HomeSteps}=await server.ssrLoadModule('/app/home-desk.tsx');
  const {default:Travel}=await server.ssrLoadModule('/app/travel-planner.tsx');
  const {default:Preparation}=await server.ssrLoadModule('/app/service-preparation.tsx');
@@ -19,6 +22,15 @@ try{
  const {ScenarioAnswer}=await server.ssrLoadModule('/app/scenario-help.tsx');
  const {serviceScenarios}=await server.ssrLoadModule('/lib/service-scenarios.ts');
  for(const language of ['en','hi','te']){
+  for(const offline of [false,true]){
+   const cards=render(React.createElement(ProgrammeCards,{language,offline,now:Date.parse('2026-09-29T00:00:00Z')}));
+   assert.equal((cards.match(/<article/g)||[]).length,7);for(const p of programmes)assert.ok(cards.includes(p.name));
+   if(offline)assert.doesNotMatch(cards,/<a /);else assert.match(cards,/noopener noreferrer/);checks++;
+   const expired=render(React.createElement(ProgrammeCards,{language,offline,now:Date.parse('2026-10-12T00:00:00Z')}));assert.doesNotMatch(expired,/₹|5%/);checks++;
+   const vid=render(React.createElement(HomeVideo,{language,offline,onSpeak:()=>{},onStop:()=>{},onOpen:()=>{}}));
+   if(offline)assert.doesNotMatch(vid,/<video/);else{assert.match(vid,/preload="none"/);assert.match(vid,new RegExp('srcLang="'+language+'"'));assert.doesNotMatch(vid,/autoPlay/);}assert.match(vid,/<ol>/);checks++;
+  }
+
   for(const s of serviceScenarios){
    const props={serviceId:s.service,scenarioId:s.id,region:'Telangana',language,now:Date.parse('2026-09-29T00:00:00Z')};
    const html=render(React.createElement(ScenarioAnswer,props));
