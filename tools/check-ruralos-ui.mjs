@@ -8,6 +8,7 @@ import {renderToStaticMarkup as render} from '../ruralos-src/node_modules/react-
 const server=await createServer({configFile:false,root:resolve('ruralos-src'),server:{middlewareMode:true},optimizeDeps:{noDiscovery:true,include:[]},appType:'custom'});
 let checks=0;
 try{
+ const {default:QuickAnswer}=await server.ssrLoadModule('/app/service-quick-answer.tsx');
  const {default:LiveHub}=await server.ssrLoadModule('/app/live-hub.tsx');
  const live=render(React.createElement(LiveHub,{initiallyOpen:true}));
  assert.match(live,/class="live-centre"/);assert.match(live,/Pending integration/);assert.match(live,/Airport temperatures/);assert.doesNotMatch(live,/<iframe|role="alert"/);checks++;
@@ -55,6 +56,13 @@ try{
   assert.match(hero,/<h1/);assert.match(hero,/aria-label="Search"/);assert.doesNotMatch(hero,/undefined|NaN/);checks++;
   const starts=render(React.createElement(HomeStarts,{language,onOpen:()=>{}}));assert.equal((starts.match(/<button/g)||[]).length,6);assert.equal((starts.match(/<small>/g)||[]).length,6);checks++;
   const steps=render(React.createElement(HomeSteps,{language,children:'Tutorial'}));assert.equal((steps.match(/<li>/g)||[]).length,3);assert.match(steps,/<details><summary>/);checks++;
+  for(const [serviceId,p] of Object.entries(playbooks)){
+   const quick=render(React.createElement(QuickAnswer,{serviceId,language,stopOtherAudio:()=>{}}));
+   assert.equal((quick.match(/aria-pressed=/g)||[]).length,2);assert.equal((quick.match(/aria-pressed="true"/g)||[]).length,1);
+   assert.ok(quick.includes(p.actions[0].replaceAll('&','&amp;').replaceAll("'",'&#x27;')));assert.equal((quick.match(/<li>/g)||[]).length,p.prepare.length+p.ask.length);
+   assert.doesNotMatch(quick,/<input|<select|<form|<a |<iframe|undefined|NaN/);assert.match(quick,/lang="en"/);assert.match(quick,/<details><summary>/);checks++;
+  }
+  assert.equal(render(React.createElement(QuickAnswer,{serviceId:'unrecognised',language,stopOtherAudio:()=>{}})),'');checks++;
   for(const [serviceId,p] of Object.entries(playbooks))for(const goal of p.goals){
    const html=render(React.createElement(Preparation,{serviceId,goal,region:'Telangana',language,stopOtherAudio:()=>{}}));
    assert.equal((html.match(/type="checkbox"/g)||[]).length,4);assert.equal((html.match(/aria-pressed="true"/g)||[]).length,serviceId==="aadhaar"?2:1);assert.match(html,/Telangana/);assert.match(html,/lang="en"/);assert.doesNotMatch(html,/undefined|NaN/);assert.ok(html.includes(p.actions[p.goals.indexOf(goal)].replaceAll('&','&amp;').replaceAll("'",'&#x27;')));checks++;

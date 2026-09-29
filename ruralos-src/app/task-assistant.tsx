@@ -12,6 +12,7 @@ import ServicePreparation,{preparationCopy} from './service-preparation';
 import {playbooks} from '../lib/service-playbooks';
 import {journeyCopy} from '../lib/journey-copy';
 import './task-journey.css';
+import ServiceQuickAnswer from './service-quick-answer';
 import ScenarioHelp,{scenarioCopy} from './scenario-help';
 import {scenariosFor,scenarioGoalTitle} from '../lib/service-scenarios';
 
@@ -56,6 +57,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
   {!initialService&&<button className="primary" onClick={()=>{reset();setOpen(!open)}}>{open?c.close:c.open}</button>}
   {open&&<>
    {!task&&<h2>{c.question}</h2>}
+   {task&&field==='region'&&<ServiceQuickAnswer key={task.serviceId} serviceId={task.serviceId} language={language} stopOtherAudio={()=>speech.current?.stop()}/>}
    <p className="journey-promise">{j.promise}</p>
    {!onLanguageChange&&<label>{c.language} <select value={lang} onChange={e=>{speech.current?.stop();setLang(+e.target.value)}}><option value={0}>English · India</option><option value={1}>हिन्दी · समीक्षा पूर्वावलोकन</option><option value={2}>తెలుగు · సమీక్ష ముందస్తు రూపం</option></select></label>}
    {task&&<p className="journey-progress" role="status">{field?`${j.question} ${w!.fields.indexOf(field)+1} / ${w!.fields.length}`:task.status==='review'?j.review:j.plan}</p>}
