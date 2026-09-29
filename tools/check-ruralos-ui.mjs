@@ -8,6 +8,7 @@ import {renderToStaticMarkup as render} from '../ruralos-src/node_modules/react-
 const server=await createServer({configFile:false,root:resolve('ruralos-src'),server:{middlewareMode:true},optimizeDeps:{noDiscovery:true,include:[]},appType:'custom'});
 let checks=0;
 try{
+ const {default:ActionCase}=await server.ssrLoadModule('/app/action-case.tsx');
  const {default:QuickAnswer}=await server.ssrLoadModule('/app/service-quick-answer.tsx');
  const {default:LiveHub}=await server.ssrLoadModule('/app/live-hub.tsx');
  const live=render(React.createElement(LiveHub,{initiallyOpen:true}));
@@ -26,6 +27,13 @@ try{
  const {ScenarioAnswer}=await server.ssrLoadModule('/app/scenario-help.tsx');
  const {serviceScenarios}=await server.ssrLoadModule('/lib/service-scenarios.ts');
  for(const language of ['en','hi','te']){
+  for(const kind of ['farm','grievance'])for(const offline of [true,false]){
+   const html=render(React.createElement(ActionCase,{kind,language,offline}));
+   assert.match(html,/Prepare my action pack/);assert.match(html,/No AI model, live account access/);assert.match(html,/type="checkbox"/);assert.doesNotMatch(html,/type="checkbox"[^>]*checked|<iframe|undefined|NaN/);
+   if(offline)assert.doesNotMatch(html,/<a /);else assert.match(html,/noopener noreferrer/);
+   if(language!=='en')assert.match(html,/currently in English/);checks++;
+  }
+
   for(const offline of [false,true]){
    const cards=render(React.createElement(ProgrammeCards,{language,offline,now:Date.parse('2026-09-29T00:00:00Z')}));
    assert.equal((cards.match(/<article/g)||[]).length,7);for(const p of programmes)assert.ok(cards.includes(p.name));
