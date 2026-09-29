@@ -91,7 +91,7 @@ export default function TaskAssistant({initialService,initialLanguage='en',offli
         <a className="outline" href={secureSite+'/?view=Help'} target="_blank" rel="noreferrer">{c.help}</a>
        </div>
        {!playbooks[task.serviceId]&&(language==='en'?service?.checklist:localizedSteps)?.length?<section className="task-checklist" aria-labelledby="document-checklist-title"><h4 id="document-checklist-title">{c.checklist}</h4><ul>{(language==='en'?service?.checklist:localizedSteps)!.map(item=><li key={item}>□ {item}</li>)}</ul></section>:null}
-       {service&&<p>{service.sourceName} · <a href={service.source} target="_blank" rel="noreferrer">{c.openOfficial}</a></p>}
+       {service&&!offline&&<p>{service.sourceName} · <a href={service.source} target="_blank" rel="noreferrer">{c.openOfficial}</a></p>}
        {readiness&&<details className="task-provider-card"><summary id="provider-readiness-title">{c.connection}</summary>
         <p className="task-provider-state">{c.connection} · {readiness.state==='official_handoff_only'?c.official:c.guidance}</p>
         <h4>{c.works}</h4>

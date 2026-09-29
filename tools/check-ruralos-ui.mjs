@@ -8,6 +8,9 @@ import {renderToStaticMarkup as render} from '../ruralos-src/node_modules/react-
 const server=await createServer({configFile:false,root:resolve('ruralos-src'),server:{middlewareMode:true},optimizeDeps:{noDiscovery:true,include:[]},appType:'custom'});
 let checks=0;
 try{
+ const {default:LiveHub}=await server.ssrLoadModule('/app/live-hub.tsx');
+ const live=render(React.createElement(LiveHub,{initiallyOpen:true}));
+ assert.match(live,/class="live-centre"/);assert.match(live,/Pending integration/);assert.match(live,/Airport temperatures/);assert.doesNotMatch(live,/<iframe|role="alert"/);checks++;
  const {ProgrammeCards,default:Enterprise}=await server.ssrLoadModule('/app/enterprise-guide.tsx');
  const {default:HomeVideo}=await server.ssrLoadModule('/app/home-video.tsx');
  const {programmes}=await server.ssrLoadModule('/lib/enterprise.ts');
