@@ -129,3 +129,26 @@ export function observedExits(a, report, now = Date.now() / 1000) {
     }
   return count;
 }
+
+export function autoPaper(a, report, riskPct, now = Date.now() / 1000) {
+  if (!report || report.mode === "SAMPLE" || report.source === "SYNTHETIC SAMPLE")
+    return "Automatic paper trading skips sample data.";
+  if (!fresh(report, now) || report.market_status !== "OPEN" ||
+      !Number.isFinite(report.session_end) || now >= report.session_end ||
+      !Number.isFinite(report.session_start) || now < report.session_start)
+    return "Waiting for fresh regular-session data.";
+  const exits = observedExits(a, report, now);
+  if (exits) return "Closed " + exits + " paper position at the observed quote.";
+  if (!report.paper_eligible || report.verdict !== "LONG_RESEARCH" ||
+      !Array.isArray(report.stages) || !report.stages.length ||
+      report.stages.some(s => s.status === "blocked"))
+    return "No qualifying long stock/ETF setup; no paper entry.";
+  const key = [report.region, report.symbol, report.session_start].join(":");
+  if ([...a.positions, ...a.closed].some(p => p.autoKey === key))
+    return "This instrument already had an automatic entry this session.";
+  try {
+    const size = openPaper(report, a, riskPct, now);
+    a.positions[a.positions.length - 1].autoKey = key;
+    return "Opened " + size.qty + " simulated shares of " + report.symbol + ".";
+  } catch (error) { return error.message; }
+}

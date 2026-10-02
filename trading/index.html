@@ -53,8 +53,8 @@
         <section class="intro">
           <div>
             <div class="eyebrow">CLARITY BEFORE CAPITAL</div>
-            <h1>One desk. Every decision.</h1>
-            <p>Research the setup. Challenge the evidence. Define your risk.</p>
+            <h1>Evidence before execution.</h1>
+            <p>A disciplined workspace for market structure, risk and accountable decisions.</p>
           </div>
           <button id="demo-button" class="button secondary">
             Explore a sample ↗
@@ -64,6 +64,11 @@
           Ready when you are. Run research to check source data and setup
           conditions.
         </div>
+        <section class="readiness-strip" aria-label="Research readiness">
+          <div><span class="tiny-label">DATA CONNECTION</span><strong id="connection-state">Not checked</strong><small id="connection-detail">Run research to test the provider</small></div>
+          <div><span class="tiny-label">SCAN COVERAGE</span><strong id="coverage-state">Manual · one instrument</strong><small id="coverage-detail">Background monitoring is off</small></div>
+          <div><span class="tiny-label">STRATEGY VALIDATION</span><strong>Unproven</strong><small>No audited out-of-sample performance</small></div>
+        </section>
         <form id="scan-form" class="toolbar">
           <div class="market-switch" role="group" aria-label="Market">
             <button
@@ -158,13 +163,14 @@
             </div>
           </section>
         </div>
+        <section class="workflow-strip" aria-label="Decision workflow"><span>01 / Verify data</span><span>02 / Review the setup</span><span>03 / Size paper risk</span><span>04 / Record the outcome</span></section>
         <section id="agent-section" class="panel agent-panel">
           <div class="panel-head">
             <div>
               <div class="eyebrow">RESEARCH ORCHESTRATOR</div>
               <h2>Every conclusion has a trail.</h2>
               <p class="panel-sub">
-                Deterministic research stages, with an independent check. Scores
+                Deterministic rule checks, including a current-quote guard. Scores
                 are not win probabilities.
               </p>
             </div>
@@ -293,6 +299,9 @@
             </button>
           </div>
           <div class="journal-summary" id="journal-summary"></div>
+          <label class="auto-label journal-auto"><input type="checkbox" id="auto-paper" /> Start automatic paper trading</label>
+          <p id="auto-paper-status" class="help" role="status">Stopped. Enable to scan the selected instrument every five minutes and simulate qualifying entries and observed stop/target exits.</p>
+          <p class="help">Long stock/ETF shares only. Uses your paper risk settings, cash limit, three-position maximum and 1% daily realized-loss guard. At most one automatic entry per instrument per session. Keep this tab open and visible; closing it stops automation. Re-enable after reload. No real orders.</p>
           <label class="auto-label journal-auto"
             ><input type="checkbox" id="auto-exit" /> Apply paper stops/targets
             when a fresh scan arrives</label

@@ -16,8 +16,9 @@ export function notificationCenter(getReport, isSample) {
       const row = document.createElement("div"), body = document.createElement("div");
       const title = document.createElement("strong"), detail = document.createElement("p");
       title.textContent = item.symbol + " · " + item.verdict.replaceAll("_", " ") +
-        (Date.now() / 1000 >= item.expires ? " · EXPIRED" : " · RECENT EVIDENCE");
+        (item.invalidated ? " · INVALIDATED" : Date.now() / 1000 >= item.expires ? " · EXPIRED" : " · RECENT EVIDENCE");
       detail.textContent = new Date(item.sourceTime * 1000).toLocaleString() + " · " + item.reason + " · Research only; not an order.";
+      if (item.invalidated) detail.textContent += " Latest scan: " + item.invalidationReason;
       body.append(title, detail); row.append(body); $("alert-inbox").append(row);
     }
   }
@@ -35,7 +36,7 @@ export function notificationCenter(getReport, isSample) {
   $("enable-alerts").onclick = async () => {
     try {
       if (!("Notification" in window)) throw Error("Browser notifications are unavailable here.");
-      if (enabled) { enabled = false; render(); return; }
+      if (enabled) { enabled = false; render(); $("enable-alerts").textContent = "Enable browser alerts"; return; }
       enabled = (await Notification.requestPermission()) === "granted";
       render();
       if (!enabled) $("delivery-status").textContent += " · Permission not granted; use the inbox.";
@@ -64,8 +65,9 @@ export function notificationCenter(getReport, isSample) {
     process(report) {
       if (isSample()) return;
       const result = enqueue(inbox, report); inbox = result.inbox;
+      persist(); render();
       if (!result.alert) return;
-      persist(); render(); beep();
+      beep();
       if (enabled && Notification.permission === "granted") {
         try { new Notification("Celesys · " + result.alert.symbol + " research", { body: "Underlying setup passed automated checks. Review evidence and unverified risks in the desk. Not an order.", tag: result.alert.id }); }
         catch { $("delivery-status").textContent += " · OS notification unavailable; alert saved in inbox."; }

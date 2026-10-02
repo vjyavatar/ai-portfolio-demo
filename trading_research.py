@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import math
 
-VERSION = 'trading-desk-1.0'
+VERSION = 'trading-desk-1.1'
 
 def number(value):
     if isinstance(value, bool): return None
@@ -32,6 +32,10 @@ def analyze_chart(payload, symbol, region, now):
         stage('Data steward','blocked','Provider returned no usable chart data.')
         return out
     raw=result[0];meta=raw.get('meta') or {}
+    if not isinstance(meta,dict) or meta.get('currency') != out['currency'] or meta.get('dataGranularity') != '5m':
+        stage('Data steward','blocked','Source currency or five-minute interval is unverified or mismatched.')
+        out['reason']='Source metadata does not match the selected market and interval.'
+        return out
     regular=((meta.get('currentTradingPeriod') or {}).get('regular') or {})
     start,end=number(regular.get('start')),number(regular.get('end'))
     session_known=bool(start and end and start<end and end-start<=86400)
@@ -94,7 +98,14 @@ def analyze_chart(payload, symbol, region, now):
     stage('Trend analyst','pass' if direction!='MIXED' and vwap else 'watch',f'{direction.title()} alignment of EMA 9/20 and volume-weighted price.' if vwap else 'No usable volume; VWAP and direction are unavailable.')
     stage('Setup analyst','pass' if breakout and volume_ok else 'watch','Closed-bar breakout and volume confirmed.' if breakout and volume_ok else 'Needs a close beyond the prior three bars and relative volume ≥ 1.2×.')
     stage('Risk critic','pass' if not_extended else 'blocked','Within three ATR of VWAP.' if not_extended else 'Extended entry or missing volatility evidence; wait for a better location.')
-    eligible=all((freshness,enough,full_session,market_open,breakout,volume_ok,not_extended,atr>0))
+    # A closed-bar setup is no longer usable if the current quote has reversed or run away.
+    quote_aligned=bool(price and atr>0 and (
+        (direction=='BULLISH' and price>max(prior_high,vwap or 0) and price<=last['close']+0.75*atr) or
+        (direction=='BEARISH' and price<min(prior_low,vwap or float('inf')) and price>=last['close']-0.75*atr)))
+    stage('Quote guard','pass' if quote_aligned else 'blocked',
+        'Current quote still supports the closed-bar setup, within 0.75 ATR of its close.' if quote_aligned else
+        'Current quote invalidated the breakout or moved too far beyond the signal close.')
+    eligible=all((freshness,enough,full_session,market_open,breakout,volume_ok,not_extended,quote_aligned,atr>0))
     if eligible:
         out['verdict']='LONG_RESEARCH' if direction=='BULLISH' else 'BEARISH_RESEARCH'
         out['reason']='Conditions align for review. Verify prices and event risk before acting.'

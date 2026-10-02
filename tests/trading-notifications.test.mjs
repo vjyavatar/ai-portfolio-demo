@@ -17,3 +17,21 @@ test("repeat scans and reloads deduplicate the same directional session", () => 
   assert.equal(enqueue(stored,{...report,quote_time:1050},1051).alert,null);
   assert.ok(enqueue(stored,{...report,verdict:"BEARISH_RESEARCH"},1001).alert);
 });
+test("new WAIT invalidates previous evidence without repeating alerts", () => {
+  const first=enqueue([],report,1001);
+  const next=enqueue(first.inbox,{...report,verdict:"WAIT",reason:"Breakout lost"},1002);
+  assert.equal(next.alert,null);
+  assert.equal(next.inbox[0].invalidated,1002);
+  assert.equal(next.inbox[0].invalidationReason,"Breakout lost");
+  assert.equal(enqueue(next.inbox,report,1003).alert,null);
+});
+test("sample and unrelated symbols do not invalidate an alert", () => {
+  const first=enqueue([],report,1001);
+  assert.equal(enqueue(first.inbox,{...report,mode:"SAMPLE"},1002).inbox[0].invalidated,undefined);
+  assert.equal(enqueue(first.inbox,{...report,symbol:"QQQ",verdict:"WAIT"},1002).inbox[0].invalidated,undefined);
+});
+test("failed request invalidates previous symbol evidence", () => {
+  const first=enqueue([],report,1001);
+  const next=enqueue(first.inbox,{symbol:"SPY",region:"US",verdict:"WAIT"},1002);
+  assert.equal(next.inbox[0].invalidated,1002);
+});
