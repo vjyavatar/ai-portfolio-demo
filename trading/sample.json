@@ -1,0 +1,278 @@
+{
+  "version": "trading-desk-1.0",
+  "symbol": "SAMPLE",
+  "region": "US",
+  "currency": "USD",
+  "mode": "SAMPLE",
+  "generated_at": 1790955301,
+  "source": "SYNTHETIC SAMPLE",
+  "source_latency": "Not guaranteed real-time",
+  "verdict": "LONG_RESEARCH",
+  "bias": "BULLISH",
+  "reason": "Synthetic exercise: inspect each check and practice with paper capital. Not a market opportunity.",
+  "paper_eligible": true,
+  "stages": [
+    {
+      "name": "Data steward",
+      "status": "pass",
+      "detail": "25 closed five-minute bars. Recent source timestamps."
+    },
+    {
+      "name": "Session guard",
+      "status": "pass",
+      "detail": "Inside provider-reported regular session."
+    },
+    {
+      "name": "Trend analyst",
+      "status": "pass",
+      "detail": "Bullish alignment of EMA 9/20 and volume-weighted price."
+    },
+    {
+      "name": "Setup analyst",
+      "status": "pass",
+      "detail": "Closed-bar breakout and volume confirmed."
+    },
+    {
+      "name": "Risk critic",
+      "status": "pass",
+      "detail": "Within three ATR of VWAP."
+    },
+    {
+      "name": "Independent review",
+      "status": "watch",
+      "detail": "Event calendar and executable options quotes are not verified. No call/put contract recommendation."
+    },
+    {
+      "name": "Research coordinator",
+      "status": "pass",
+      "detail": "Conditions align for review. Verify prices and event risk before acting."
+    }
+  ],
+  "bars": [
+    {
+      "time": 1790947800.0,
+      "open": 99.98,
+      "high": 100.14,
+      "low": 99.83,
+      "close": 100.0,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790948100.0,
+      "open": 100.0,
+      "high": 100.16,
+      "low": 99.85,
+      "close": 100.02,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790948400.0,
+      "open": 100.02000000000001,
+      "high": 100.18,
+      "low": 99.87,
+      "close": 100.04,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790948700.0,
+      "open": 100.04,
+      "high": 100.2,
+      "low": 99.89,
+      "close": 100.06,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790949000.0,
+      "open": 100.06,
+      "high": 100.22,
+      "low": 99.91,
+      "close": 100.08,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790949300.0,
+      "open": 100.08,
+      "high": 100.24,
+      "low": 99.92999999999999,
+      "close": 100.1,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790949600.0,
+      "open": 100.10000000000001,
+      "high": 100.26,
+      "low": 99.95,
+      "close": 100.12,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790949900.0,
+      "open": 100.12,
+      "high": 100.28,
+      "low": 99.97,
+      "close": 100.14,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790950200.0,
+      "open": 100.14,
+      "high": 100.3,
+      "low": 99.99,
+      "close": 100.16,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790950500.0,
+      "open": 100.16000000000001,
+      "high": 100.32000000000001,
+      "low": 100.01,
+      "close": 100.18,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790950800.0,
+      "open": 100.18,
+      "high": 100.34,
+      "low": 100.03,
+      "close": 100.2,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790951100.0,
+      "open": 100.2,
+      "high": 100.36,
+      "low": 100.05,
+      "close": 100.22,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790951400.0,
+      "open": 100.22,
+      "high": 100.38,
+      "low": 100.07,
+      "close": 100.24,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790951700.0,
+      "open": 100.24000000000001,
+      "high": 100.4,
+      "low": 100.09,
+      "close": 100.26,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790952000.0,
+      "open": 100.26,
+      "high": 100.42,
+      "low": 100.11,
+      "close": 100.28,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790952300.0,
+      "open": 100.28,
+      "high": 100.44,
+      "low": 100.13,
+      "close": 100.3,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790952600.0,
+      "open": 100.3,
+      "high": 100.46,
+      "low": 100.14999999999999,
+      "close": 100.32,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790952900.0,
+      "open": 100.32000000000001,
+      "high": 100.48,
+      "low": 100.17,
+      "close": 100.34,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790953200.0,
+      "open": 100.34,
+      "high": 100.5,
+      "low": 100.19,
+      "close": 100.36,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790953500.0,
+      "open": 100.36,
+      "high": 100.52,
+      "low": 100.21,
+      "close": 100.38,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790953800.0,
+      "open": 100.38000000000001,
+      "high": 100.54,
+      "low": 100.23,
+      "close": 100.4,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790954100.0,
+      "open": 100.4,
+      "high": 100.56,
+      "low": 100.25,
+      "close": 100.42,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790954400.0,
+      "open": 100.42,
+      "high": 100.58,
+      "low": 100.27,
+      "close": 100.44,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790954700.0,
+      "open": 100.44,
+      "high": 100.6,
+      "low": 100.28999999999999,
+      "close": 100.46,
+      "volume": 1000.0
+    },
+    {
+      "time": 1790955000.0,
+      "open": 100.58,
+      "high": 100.8,
+      "low": 100.42999999999999,
+      "close": 100.75,
+      "volume": 1800.0
+    }
+  ],
+  "metrics": {
+    "ema9": 100.45437778931863,
+    "ema20": 100.3329162067687,
+    "vwap": 100.2506976744186,
+    "relative_volume": 1.8,
+    "atr14": 0.3142857142857167,
+    "extension_atr": 1.588689217758977
+  },
+  "quote_time": 1790955300.0,
+  "bar_close_time": 1790955300.0,
+  "limitations": [
+    "Rule-based research stages; no LLM or calibrated win probability",
+    "No option chain, Greeks, event-calendar or broker execution in this workspace",
+    "Targets and stops are illustrative underlying-price levels, not option premiums"
+  ],
+  "market_status": "OPEN",
+  "session_start": 1790947800.0,
+  "session_end": 1790971200.0,
+  "price": 100.75,
+  "scenario": {
+    "entry": 100.75,
+    "stop": 100.27857142857142,
+    "target": 101.69285714285715,
+    "kind": "UNDERLYING_ONLY"
+  }
+}

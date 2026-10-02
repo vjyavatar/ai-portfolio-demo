@@ -1,1 +1,0 @@
-import {defineConfig} from 'vite';import react from '@vitejs/plugin-react';import path from 'node:path';const root=import.meta.dirname;export default defineConfig({root,base:'/ruralos/',publicDir:false,plugins:[react()],resolve:{alias:{'@':root}},build:{outDir:path.resolve(root,'../ruralos'),emptyOutDir:true},css:{postcss:root}});

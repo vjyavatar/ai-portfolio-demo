@@ -3,8 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "node tools/verify-ruralos.mjs && npm run test:ruralos",
-    "test:ruralos": "node --experimental-strip-types --test tests/ruralos-agent.test.mjs tests/ruralos-directory.test.mjs tests/ruralos-offline.test.mjs tests/ruralos-depth.test.mjs tests/ruralos-aadhaar.test.mjs tests/ruralos-alerts.test.mjs tests/ruralos-scenarios.test.mjs tests/ruralos-enterprise.test.mjs tests/ruralos-validation.test.mjs tests/ruralos-cases.test.mjs"
+    "build": "node --check trading/desk.js && node --check trading/notifications-ui.js && npm run test:trading",
+    "test:trading": "node --test tests/trading-*.test.mjs"
   },
   "engines": {
     "node": ">=22.13.0 <23"
