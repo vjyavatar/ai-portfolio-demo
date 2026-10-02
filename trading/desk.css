@@ -903,3 +903,7 @@ footer a {
 .readiness-strip small {color:var(--muted);}
 .workflow-strip {display:flex;flex-wrap:wrap;gap:12px 28px;margin:24px 0;color:var(--muted);font-size:11px;letter-spacing:.8px;}
 @media(max-width:700px){.readiness-strip{grid-template-columns:1fr}.readiness-strip>div{padding:13px 18px}.workflow-strip{gap:8px 18px}}
+
+.options-body { padding: 0 24px 24px; }
+.options-body h3 { color: #74dfb4; font-size: 1.3rem; }
+.options-body p { line-height: 1.6; }

@@ -1,3 +1,4 @@
+import { optionView } from "./options.mjs";
 import { notificationCenter } from "./notifications-ui.js";
 import {
   autoPaper,
@@ -37,6 +38,7 @@ const lists = {
 };
 let region = "US",
   report = null,
+  optionsResult = null,
   sample = false,
   busy = false,
   timer = null,
@@ -127,6 +129,7 @@ function resetResearch() {
   $("scan-button").disabled = false;
   $("scan-button").textContent = "↗ Run research";
   report = null;
+  optionsResult = null;
   sample = false;
   render();
 }
@@ -245,8 +248,25 @@ function render() {
     report?.reason ||
     "Call/put contract selection needs verified options quotes and contract metadata. This desk evaluates the underlying only.";
   chart();
+  renderOptions();
   renderRisk();
   renderJournal();
+}
+function renderOptions() {
+  const v = optionView(optionsResult);
+  $("options-title").textContent = v.title;
+  $("options-direction").textContent = v.direction;
+  $("options-reason").textContent = v.reason;
+  const c = optionsResult?.candidate;
+  $("options-contract").textContent = v.valid ?
+    `${c.contract} · Expiry ${c.expiry} · Strike $${c.strike} · Bid $${c.bid} / ask $${c.ask}. `+
+    `Bid time ${time(c.bid_time)}; ask time ${time(c.ask_time)}. `+
+    `Maximum premium $${c.maximum_premium} per share; $${c.premium_at_risk} premium at risk per standard contract, plus costs. `+
+    `Underlying invalidation $${c.underlying_invalidation}; underlying target $${c.underlying_target}. `+
+    `Exit review on invalidation/target or before session end; no overnight plan. `+
+    `Volume ${c.volume}; open interest ${c.open_interest}; delta ${c.delta}; IV ${c.iv}. `+
+    `Greeks/IV estimate updated ${c.greeks_updated_at} (provider time, hourly; not live). `+
+    `Skip stale quotes, widened spreads, changed setup or unchecked event risk. No quantity recommendation.` : '';
 }
 function renderRisk() {
   const a = activeAccount(),
@@ -275,6 +295,7 @@ async function scan() {
   const sym = $("symbol").value.trim().toUpperCase();
   sample = false;
   report = null;
+  optionsResult = null;
   busy = true;
   const id = ++scanId,
     scanRegion = region;
@@ -316,9 +337,24 @@ async function scan() {
     }
     render();
     notify(d.reason);
+    if (scanRegion === 'US' && ['SPY','QQQ'].includes(sym)) {
+      try {
+        const response = await fetch(`/api/trading-desk/options?symbol=${encodeURIComponent(sym)}&region=US`,
+          {signal:currentController.signal,cache:'no-store'});
+        if (!response.ok) throw Error('Options service unavailable.');
+        const result = await response.json();
+        if (id !== scanId) return;
+        optionsResult = result;
+      } catch {
+        if (id !== scanId) return;
+        optionsResult = {reason:'Options evidence unavailable; no buy signal.'};
+      }
+    } else optionsResult = {reason:'Options candidates currently support SPY and QQQ only.'};
+    renderOptions();
   } catch (e) {
     if (id !== scanId) return;
     report = null;
+  optionsResult = null;
     alerts.process({symbol:sym,region:scanRegion,verdict:"WAIT",reason:"Latest research request failed; evidence cannot be reconfirmed."});
     render();
     notify(
@@ -422,6 +458,7 @@ $("demo-button").addEventListener("click", async () => {
   $("auto-refresh").checked = false;
   clearInterval(timer);
   timer = null;
+  optionsResult = {reason: "Synthetic sample: options buy candidates are disabled."};
   sample = true;
   const demoId = scanId;
   try {
@@ -457,6 +494,7 @@ setInterval(() => {
       minute: "2-digit",
     });
   renderReadiness();
+  renderOptions();
   if (report && !sample) {
     $("freshness").textContent = fresh(report) ? "Recent timestamp" : "Stale / unknown";
     if (!fresh(report)) {

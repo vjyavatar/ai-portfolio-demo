@@ -126,6 +126,15 @@ def research(symbol: str='SPY',region: str='US'):
     finally: _slots.release()
     return JSONResponse(data,headers={'Cache-Control':'no-store'})
 
+@router.get('/api/trading-desk/options')
+def options(symbol: str='SPY', region: str='US'):
+    from trading_options import option_research
+    if region != 'US' or symbol not in ('SPY', 'QQQ'):
+        raise HTTPException(422, 'Options research supports SPY and QQQ in US only.')
+    underlying = research(symbol, region)
+    report = json.loads(underlying.body)
+    return JSONResponse(option_research(report), headers={'Cache-Control':'no-store'})
+
 class DeskFiles(StaticFiles):
     async def get_response(self,path,scope):
         r=await super().get_response(path,scope)

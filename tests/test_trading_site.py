@@ -100,4 +100,12 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(d['verdict'],'WAIT')
             self.assertEqual(d['quote_time'],n-1)
             call.assert_not_called()
-if __name__=='__main__':unittest.main()
+
+    def test_options_route_missing_feed_and_invalid_symbol(self):
+        import os
+        with patch.dict(os.environ,{},clear=True), patch('trading_site.urlopen',side_effect=TimeoutError):
+            result=self.client.get('/api/trading-desk/options').json()
+        self.assertEqual(result['status'],'WAIT')
+        self.assertIsNone(result['candidate'])
+        self.assertFalse(result['execution_enabled'])
+        self.assertEqual(self.client.get('/api/trading-desk/options?symbol=SPX').status_code,422)
