@@ -50,3 +50,13 @@ The improvement task is already disabled; it was not re-enabled or extended. Rem
 ## Owner-requested automatic paper mode
 
 The owner explicitly renewed deployment authorization after the cutoff and requested automatic paper trading. Added a session-only opt-in checkbox: scan selected instrument every five minutes while visible, simulated long entries and observed stop/target exits, once per symbol/session, preserving existing cash/position/daily realized-loss limits. No server background execution. Data failures block entries; this is not an option-trading simulator.
+
+## v1.2 provider rate-limit handling
+
+Owner requested a rate-limit fix and deployment. The production v1.1 diagnostic confirmed Yahoo HTTP 429; a code change cannot guarantee upstream service access.
+
+Changes: serialize Trading Desk provider calls, share cooldown across all desk symbols, honor Retry-After seconds or HTTP-date (RFC 9110), exponential 429 cooldown of 5/10/20/40/60 minutes and any longer provider-requested delay, 15-second pacing for uncached successful requests, 60-second cache with source timestamp revalidation, and public non-sensitive request/cooldown diagnostics. Cached malformed schemas no longer raise unhandled errors.
+
+Scope is the Trading Desk in one server process. Legacy scanners make separate Yahoo requests, and this limiter does not govern them. It is not a distributed limiter and resets on process restart. There is no alternate hostname/proxy rotation or attempt to bypass rate limits. Persistent provider restrictions require a permitted reliable data source with appropriate entitlements. No paid account or subscription was created.
+
+Validation: 29 Python research/API tests and existing JS paper/notification tests. Added coverage for cross-symbol cooldown, Retry-After formats, repeated failures, single-flight behavior, recovery/cache reuse and stale source timestamps.
