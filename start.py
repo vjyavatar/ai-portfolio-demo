@@ -29,10 +29,14 @@ except Exception as e:
     
     print(f"[START] ⚠️ Running fallback app — check logs for the real error", flush=True)
 
-# Optional public rural-family app; failures must not affect stock routes.
+# Retire the removed Saathi app and its offline cache.
+from retired_site import attach_retired_routes
+attach_retired_routes(app)
+
+# Isolated trading desk uses the deployed startup entrypoint.
 try:
-    from ruralos_site import attach_ruralos
-    attach_ruralos(app)
+    from trading_site import attach_trading_desk
+    attach_trading_desk(app)
 except Exception:
     import logging
-    logging.getLogger(__name__).exception('Rural OS unavailable; existing routes remain active')
+    logging.getLogger(__name__).exception("Trading Desk unavailable; existing routes remain active")

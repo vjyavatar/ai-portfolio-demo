@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0c131b" />
+    <title>Celesys | Trading Desk</title>
+    <meta
+      name="description"
+      content="A focused Celesys workspace for market research, transparent signal checks, risk planning and paper trading."
+    />
+    <link rel="stylesheet" href="/trading/desk.css" />
+    <script type="module" src="/trading/desk.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to research</a>
+    <aside class="sidebar">
+      <a class="brand" href="/"
+        ><span class="brand-mark">C</span
+        ><span
+          >CELESYS<span class="brand-sub">MARKET INTELLIGENCE</span></span
+        ></a
+      >
+      <div class="workspace-label">YOUR WORKSPACE</div>
+      <nav aria-label="Trading workspace">
+        <a class="nav-active" href="#main"><span>◈</span> Trading desk</a
+        ><a href="#agent-section"><span>◎</span> Research agents</a
+        ><a href="#risk-section"><span>◇</span> Risk planner</a
+        ><a href="#journal-section"><span>▤</span> Paper journal</a>
+      </nav>
+      <div class="side-bottom">
+        <div class="side-note">
+          <span class="tiny-label">EXECUTION MODE</span
+          ><strong><i class="dot"></i> Research & paper</strong>
+          <p>Your capital stays with you.<br />No brokerage connection.</p>
+        </div>
+        <a href="/">← All Celesys research</a
+        ><a href="#notifications-section">Notification center ↗</a>
+      </div>
+    </aside>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <span class="crumb">WORKSPACE</span
+          ><span class="slash">/</span>Trading desk
+        </div>
+        <div class="top-right">
+          <span id="clock">Dallas · —</span
+          ><span class="pill">READ-ONLY MARKET DATA</span>
+        </div>
+      </header>
+      <main id="main">
+        <section class="intro">
+          <div>
+            <div class="eyebrow">CLARITY BEFORE CAPITAL</div>
+            <h1>One desk. Every decision.</h1>
+            <p>Research the setup. Challenge the evidence. Define your risk.</p>
+          </div>
+          <button id="demo-button" class="button secondary">
+            Explore a sample ↗
+          </button>
+        </section>
+        <div id="notice" class="notice" role="status" aria-live="polite">
+          Ready when you are. Run research to check source data and setup
+          conditions.
+        </div>
+        <form id="scan-form" class="toolbar">
+          <div class="market-switch" role="group" aria-label="Market">
+            <button
+              type="button"
+              data-region="US"
+              class="selected"
+              aria-pressed="true"
+            >
+              United States</button
+            ><button type="button" data-region="IN" aria-pressed="false">
+              India
+            </button>
+          </div>
+          <label class="ticker-label"
+            ><span class="sr-only">Ticker or index</span
+            ><input
+              id="symbol"
+              value="SPY"
+              maxlength="20"
+              pattern="[A-Za-z][A-Za-z0-9.\-]{0,19}"
+              required
+              autocomplete="off"
+              aria-label="Ticker or index" /></label
+          ><button class="button primary" id="scan-button" type="submit">
+            <span>↗</span> Run research</button
+          ><label class="auto-label"
+            ><input type="checkbox" id="auto-refresh" /> Refresh every 5
+            min</label
+          >
+        </form>
+        <section class="metrics" aria-label="Research summary">
+          <article class="metric">
+            <span>UNDERLYING PRICE</span><strong id="price">—</strong
+            ><small id="price-note">No quote loaded</small>
+          </article>
+          <article class="metric">
+            <span>RESEARCH VERDICT</span
+            ><strong id="verdict">Not scanned</strong
+            ><small id="verdict-note">Evidence comes first</small>
+          </article>
+          <article class="metric">
+            <span>DATA FRESHNESS</span><strong id="freshness">Unverified</strong
+            ><small id="freshness-note">Source timestamp required</small>
+          </article>
+          <article class="metric">
+            <span>SESSION</span><strong id="session">—</strong
+            ><small id="session-note">Provider-reported regular hours</small>
+          </article>
+        </section>
+        <div class="main-grid">
+          <section class="panel watch-panel">
+            <div class="panel-head">
+              <h2>Focus list</h2>
+              <span class="tiny-label">RESEARCH UNIVERSE</span>
+            </div>
+            <div id="watchlist"></div>
+            <div class="watch-foot">
+              Select an instrument, then run research. No prices are invented
+              while waiting for data.
+            </div>
+            <div class="guard-note">
+              <span>◈</span>
+              <div>
+                <strong>Waiting is a decision.</strong>
+                <p>
+                  Missing or stale data blocks a candidate. There is no daily
+                  profit quota.
+                </p>
+              </div>
+            </div>
+          </section>
+          <section class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h2 id="chart-title">
+                  SPY <span class="subtle">/ Price structure</span>
+                </h2>
+                <p class="panel-sub" id="chart-sub">
+                  Closed five-minute bars · regular session only
+                </p>
+              </div>
+              <span class="chip">5 MIN</span>
+            </div>
+            <div id="chart" class="chart-empty">
+              <span class="empty-icon">⌁</span
+              ><strong>A clear view starts with real data.</strong>
+              <p>Your session chart and research levels appear after a scan.</p>
+            </div>
+            <div class="chart-legend">
+              <span><i class="dot"></i> Close price</span
+              ><span id="source-label">Source not loaded</span>
+            </div>
+          </section>
+        </div>
+        <section id="agent-section" class="panel agent-panel">
+          <div class="panel-head">
+            <div>
+              <div class="eyebrow">RESEARCH ORCHESTRATOR</div>
+              <h2>Every conclusion has a trail.</h2>
+              <p class="panel-sub">
+                Deterministic research stages, with an independent check. Scores
+                are not win probabilities.
+              </p>
+            </div>
+            <span id="agent-count" class="chip">AWAITING RUN</span>
+          </div>
+          <div id="agents" class="agents">
+            <div class="empty-state">
+              Data steward → session guard → trend analyst → setup analyst →
+              risk critic → review
+            </div>
+          </div>
+          <div class="decision-note" id="decision-note">
+            Call/put contract selection needs verified options quotes and
+            contract metadata. This desk evaluates the underlying only.
+          </div>
+        </section>
+        <div class="bottom-grid">
+          <section id="risk-section" class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">CAPITAL DISCIPLINE</div>
+                <h2>Plan the downside first.</h2>
+              </div>
+              <span class="chip">SIMULATION</span>
+            </div>
+            <form id="risk-form" class="risk-form">
+              <label
+                >Paper starting balance <span id="currency">USD</span
+                ><input
+                  id="capital"
+                  type="number"
+                  value="2000"
+                  min="1"
+                  max="10000000"
+                  step="0.01"
+                  required /></label
+              ><label
+                >Risk budget per idea (%)<input
+                  id="risk-pct"
+                  type="number"
+                  value="0.5"
+                  min="0.1"
+                  max="2"
+                  step="0.1"
+                  required /></label
+              ><button class="button secondary" type="submit">
+                Save paper settings
+              </button>
+            </form>
+            <p class="help">
+              Illustrative settings, not a funding recommendation. Currency
+              accounts stay separate. Balance cannot change while positions are
+              open.
+            </p>
+            <div id="risk-result" class="risk-result">
+              Run research to evaluate an underlying-price scenario.
+            </div>
+            <button class="button primary wide" id="paper-button" disabled>
+              Add to paper account
+            </button>
+            <p class="help">
+              Long stock/ETF shares only. Simulated buys use a 0.05% adverse
+              fill adjustment and 1 currency-unit fee. The full purchase must
+              fit paper cash. Stops can slip.
+            </p>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">KNOW WHAT IS VERIFIED</div>
+                <h2>Trust, made visible.</h2>
+              </div>
+            </div>
+            <div class="trust-list">
+              <div>
+                <span class="trust-icon">✓</span>
+                <div>
+                  <strong>Source time, not request time</strong>
+                  <p>A successful fetch never makes an old quote fresh.</p>
+                </div>
+              </div>
+              <div>
+                <span class="trust-icon">✓</span>
+                <div>
+                  <strong>Closed bars only</strong>
+                  <p>
+                    Forming bars are excluded. Missing intervals block signals.
+                  </p>
+                </div>
+              </div>
+              <div>
+                <span class="trust-icon amber">!</span>
+                <div>
+                  <strong>Public feed limitations</strong>
+                  <p>
+                    Yahoo data is best-effort. Delivery latency and execution
+                    prices are not guaranteed.
+                  </p>
+                </div>
+              </div>
+              <div>
+                <span class="trust-icon amber">!</span>
+                <div>
+                  <strong>Options & event risk</strong>
+                  <p>
+                    No verified option chain or event calendar here. A bullish
+                    stock setup does not automatically mean buy a call.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <section id="journal-section" class="panel journal-panel">
+          <div class="panel-head">
+            <div>
+              <div class="eyebrow">PRACTICE WITH ACCOUNTABILITY</div>
+              <h2>Paper journal</h2>
+              <p class="panel-sub">
+                Saved on this browser only. Sample exercises and market-data
+                research use separate accounts.
+              </p>
+            </div>
+            <button class="button secondary" id="export-button">
+              Export journal
+            </button>
+          </div>
+          <div class="journal-summary" id="journal-summary"></div>
+          <label class="auto-label journal-auto"
+            ><input type="checkbox" id="auto-exit" /> Apply paper stops/targets
+            when a fresh scan arrives</label
+          >
+          <p class="help">
+            Only while this page runs, and only for the scanned symbol. Not
+            continuous monitoring; exits use the observed price, which may cross
+            the stop.
+          </p>
+          <div id="journal" class="journal-wrap"></div>
+        </section>
+        <section id="notifications-section" class="panel journal-panel">
+          <div class="panel-head"><div><div class="eyebrow">DELIVERY &amp; EVIDENCE</div>
+          <h2>Notification center</h2><p class="panel-sub">Fresh underlying research only. Every alert expires with its evidence.</p></div><span class="chip">THIS BROWSER</span></div>
+          <div class="notification-controls">
+            <button id="enable-alerts" class="button secondary">Enable browser alerts</button>
+            <button id="enable-sound" class="button secondary">Enable &amp; test sound</button>
+            <button id="clear-alerts" class="button secondary">Clear inbox</button>
+            <button id="export-evidence" class="button secondary">Export research evidence</button>
+          </div>
+          <p id="delivery-status" class="help" role="status"></p>
+          <p class="help">Scans run for the selected instrument while this tab is visible. Closing or suspending it stops checks. Sound requires enabling each session; browser and OS settings can suppress delivery. Email scheduling is separate and is not verified by this page.</p>
+          <div id="alert-inbox" class="trust-list" aria-live="polite"></div>
+        </section>
+        <footer>
+          <strong>CELESYS / TRADING DESK</strong
+          ><span>Research informs. You decide. No real-money orders.</span
+          ><span>v1.0 · <a href="/disclaimer">Risk disclosure</a></span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
