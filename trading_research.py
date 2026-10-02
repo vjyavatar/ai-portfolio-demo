@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import math
 
-VERSION = 'trading-desk-1.2'
+VERSION = 'trading-desk-1.3'
 
 def number(value):
     if isinstance(value, bool): return None
