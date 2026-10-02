@@ -299,6 +299,9 @@
             </button>
           </div>
           <div class="journal-summary" id="journal-summary"></div>
+          <label class="auto-label journal-auto"><input type="checkbox" id="auto-paper" /> Start automatic paper trading</label>
+          <p id="auto-paper-status" class="help" role="status">Stopped. Enable to scan the selected instrument every five minutes and simulate qualifying entries and observed stop/target exits.</p>
+          <p class="help">Long stock/ETF shares only. Uses your paper risk settings, cash limit, three-position maximum and 1% daily realized-loss guard. At most one automatic entry per instrument per session. Keep this tab open and visible; closing it stops automation. Re-enable after reload. No real orders.</p>
           <label class="auto-label journal-auto"
             ><input type="checkbox" id="auto-exit" /> Apply paper stops/targets
             when a fresh scan arrives</label

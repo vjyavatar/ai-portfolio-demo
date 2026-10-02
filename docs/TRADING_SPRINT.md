@@ -46,3 +46,7 @@ PR #3 (https://github.com/vjyavatar/ai-portfolio-demo/pull/3) contains the teste
 Fresh production verification: /api/trading-desk/status returned HTTP 200, version trading-desk-1.0, execution_enabled=false. /trading/ returned 200; /ruralos/ returned 410. SPY research returned HTTP 200 with WAIT and provider unavailable, so fresh data and executable options evidence are still unavailable. Render's latest live release remains 5f586ff3d4f6377ee118ae75d6a6784956503cd8, deployment dep-davih26gekts73e6pkbg. No later release was active when checked.
 
 The improvement task is already disabled; it was not re-enabled or extended. Remaining work: release/review PR #3 in a new authorized work window, inspect its provider diagnostics after deployment, then address the source failure using a permitted and verified feed. Profitability and real-money readiness are not established. The new alert invalidation and quote gates must not be described as live yet.
+
+## Owner-requested automatic paper mode
+
+The owner explicitly renewed deployment authorization after the cutoff and requested automatic paper trading. Added a session-only opt-in checkbox: scan selected instrument every five minutes while visible, simulated long entries and observed stop/target exits, once per symbol/session, preserving existing cash/position/daily realized-loss limits. No server background execution. Data failures block entries; this is not an option-trading simulator.

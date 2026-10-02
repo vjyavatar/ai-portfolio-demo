@@ -1,5 +1,6 @@
 import { notificationCenter } from "./notifications-ui.js";
 import {
+  autoPaper,
   account,
   sizing,
   openPaper,
@@ -306,7 +307,10 @@ async function scan() {
       throw Error("Unexpected research response; no signal issued.");
     report = d;
     alerts.process(d);
-    if ($("auto-exit").checked) {
+    if ($("auto-paper").checked) {
+      $("auto-paper-status").textContent = autoPaper(activeAccount(), report, riskPct);
+      persist();
+    } else if ($("auto-exit").checked) {
       observedExits(activeAccount(), report);
       persist();
     }
@@ -467,3 +471,15 @@ setInterval(() => {
 document.addEventListener("visibilitychange", renderReadiness);
 watchlist();
 render();
+
+$("auto-paper").addEventListener("change", () => {
+  const enabled = $("auto-paper").checked;
+  $("auto-paper-status").textContent = enabled
+    ? "Running for the selected instrument while this tab is visible. Waiting for a qualifying scan."
+    : "Automatic paper trading stopped. Existing paper positions remain in the journal.";
+  if (enabled) {
+    $("auto-refresh").checked = true;
+    $("auto-refresh").dispatchEvent(new Event("change"));
+    scan();
+  }
+});
