@@ -1346,56 +1346,8 @@ window._renderIVTermStructure=function(ivTerm,ivSmile,spot,S){
 };
 
 // ─── FEATURE 3: Backtest Preview ───
-window._renderBacktest=function(strat,spot,regime,vix,S){
-  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
-  h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">🔬 BACKTEST PREVIEW — '+strat.name+' in Similar Conditions</div>';
-  
-  // Simulated historical performance based on regime + strategy type
-  var scenarios=[];
-  if(strat.name==='Iron Condor'){
-    scenarios=[
-      {label:'Range + High IV (Best)',winRate:72,avgReturn:2.8,maxDD:-4.2,color:'#059669'},
-      {label:'Range + Low IV',winRate:58,avgReturn:1.2,maxDD:-3.1,color:'#d97706'},
-      {label:'Trending Market (Worst)',winRate:35,avgReturn:-1.5,maxDD:-8.7,color:'#ef4444'},
-    ];
-  }else if(strat.name.indexOf('Bull')>=0){
-    scenarios=[
-      {label:'Bullish + Rising VIX',winRate:65,avgReturn:4.5,maxDD:-6.0,color:'#059669'},
-      {label:'Mild Bullish',winRate:52,avgReturn:2.0,maxDD:-3.5,color:'#d97706'},
-      {label:'Reversal (Worst)',winRate:28,avgReturn:-3.2,maxDD:-10.0,color:'#ef4444'},
-    ];
-  }else if(strat.name.indexOf('Bear')>=0){
-    scenarios=[
-      {label:'Bearish + VIX Spike',winRate:68,avgReturn:5.2,maxDD:-5.5,color:'#059669'},
-      {label:'Mild Bearish',winRate:50,avgReturn:1.8,maxDD:-4.0,color:'#d97706'},
-      {label:'Bounce (Worst)',winRate:25,avgReturn:-4.0,maxDD:-12.0,color:'#ef4444'},
-    ];
-  }else{
-    scenarios=[
-      {label:'Flat + Theta Harvest',winRate:60,avgReturn:3.0,maxDD:-5.0,color:'#059669'},
-      {label:'Mild Move',winRate:45,avgReturn:0.5,maxDD:-6.5,color:'#d97706'},
-      {label:'Gap Move (Worst)',winRate:20,avgReturn:-5.5,maxDD:-15.0,color:'#ef4444'},
-    ];
-  }
-  
-  h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  scenarios.forEach(function(s){
-    h+='<div style="flex:1;min-width:140px;padding:10px 12px;border-radius:10px;background:#e2e8f0;border-left:3px solid '+s.color+'">';
-    h+='<div style="font-size:8px;color:'+s.color+';font-weight:700;margin-bottom:6px">'+s.label+'</div>';
-    h+='<div style="display:flex;justify-content:space-between;font-size:8px;color:#4a6fa5;margin-bottom:2px"><span>Win Rate</span><span style="color:'+s.color+';font-weight:800">'+s.winRate+'%</span></div>';
-    h+='<div style="display:flex;justify-content:space-between;font-size:8px;color:#4a6fa5;margin-bottom:2px"><span>Avg Return</span><span style="color:'+(s.avgReturn>=0?'#059669':'#ef4444')+';font-weight:800">'+(s.avgReturn>=0?'+':'')+s.avgReturn+'%</span></div>';
-    h+='<div style="display:flex;justify-content:space-between;font-size:8px;color:#4a6fa5"><span>Max Drawdown</span><span style="color:#ef4444;font-weight:800">'+s.maxDD+'%</span></div>';
-    h+='</div>';
-  });
-  h+='</div>';
-  
-  // Current regime match
-  var matchIdx=regime.trend==='RANGE-BOUND'?0:1;
-  h+='<div style="margin-top:8px;padding:6px 10px;border-radius:6px;background:#3b82f610;border-left:3px solid #3b82f6;font-size:9px;color:#3b82f6">';
-  h+='📊 Current regime matches: <strong>'+scenarios[matchIdx].label+'</strong> → Historical win rate: <strong>'+scenarios[matchIdx].winRate+'%</strong></div>';
-  h+='<div style="margin-top:4px;font-size:7px;color:#2d4373;text-align:center">⚠️ Based on pattern matching — not guaranteed. Past performance ≠ future results.</div>';
-  h+='</div>';
-  return h;
+window._renderBacktest=function(){
+  return '<section style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;margin-bottom:10px"><h3 style="font-size:14px;color:#172431">Strategy validation: not established</h3><p style="font-size:12px;color:#475569">No verified historical backtest is connected to this panel. Win rate, expected return and maximum drawdown are unavailable.</p><p style="font-size:12px;color:#475569">Rule scores describe setup alignment, not the probability of profit. Evaluate timestamped out-of-sample trades with spreads, fees and slippage before relying on a strategy.</p></section>';
 };
 
 // ─── FEATURE 4: Alert System for Level Breaks ───

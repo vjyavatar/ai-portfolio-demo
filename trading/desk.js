@@ -171,7 +171,16 @@ function chart() {
   $("chart").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(report.symbol)} closed five-minute prices, ${esc(sample ? "synthetic sample" : "Yahoo source")}">${lines}<polyline points="${points}" fill="none" stroke="#74dfb4" stroke-width="2.5"/><circle cx="${x(bars.length - 1)}" cy="${y(prices.at(-1))}" r="4" fill="#74dfb4"/><text x="35" y="295" fill="#9babba" font-size="10">${esc(time(bars[0].time))}</text><text x="765" y="295" text-anchor="end" fill="#9babba" font-size="10">${esc(time(bars.at(-1).time))}</text></svg>`;
 }
+function renderReadiness() {
+  const status = report?.provider_status;
+  const labels = {RATE_LIMITED:"Provider rate-limited",ACCESS_DENIED:"Provider access denied",HTTP_ERROR:"Provider HTTP error",CONNECTION_FAILURE:"Connection failed",INVALID_RESPONSE:"Invalid provider response",PROVIDER_FAILURE:"Provider unavailable",RESPONSE_RECEIVED:"Response received"};
+  $("connection-state").textContent = sample ? "Synthetic exercise" : status ? labels[status.code] || "Unverified" : report ? "Unverified" : "Not checked";
+  $("connection-detail").textContent = sample ? "No market-data connection used" : status?.code === "RESPONSE_RECEIVED" ? "Source freshness is evaluated separately" : status?.retry_after ? "Retry after " + time(status.retry_after) : "Run research to test the provider";
+  $("coverage-state").textContent = $("auto-refresh").checked ? (document.hidden ? "Paused · hidden tab" : sample ? "Paused · sample mode" : "Every 5 min · one instrument") : "Manual · one instrument";
+  $("coverage-detail").textContent = "Selected: " + $("symbol").value.toUpperCase() + " · checks stop when this page closes";
+}
 function render() {
+  renderReadiness();
   const a = activeAccount();
   riskPct =
     Number.isFinite(a.riskPct) && a.riskPct >= 0.1 && a.riskPct <= 2
@@ -306,6 +315,7 @@ async function scan() {
   } catch (e) {
     if (id !== scanId) return;
     report = null;
+    alerts.process({symbol:sym,region:scanRegion,verdict:"WAIT",reason:"Latest research request failed; evidence cannot be reconfirmed."});
     render();
     notify(
       e.name === "AbortError"
@@ -442,11 +452,18 @@ setInterval(() => {
       hour: "2-digit",
       minute: "2-digit",
     });
-  if (report) {
+  renderReadiness();
+  if (report && !sample) {
+    $("freshness").textContent = fresh(report) ? "Recent timestamp" : "Stale / unknown";
+    if (!fresh(report)) {
+      $("verdict").textContent = "Expired / rescan";
+      $("verdict-note").textContent = "Previous result no longer current";
+    }
     $("paper-button").disabled = !(
       sizing(report, activeAccount(), riskPct)?.qty > 0 && fresh(report)
     );
   }
 }, 15000);
+document.addEventListener("visibilitychange", renderReadiness);
 watchlist();
 render();

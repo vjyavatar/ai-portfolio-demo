@@ -3,6 +3,7 @@ from pathlib import Path
 import json, re, threading, time
 from urllib.request import Request, urlopen
 from urllib.parse import quote
+from urllib.error import HTTPError, URLError
 from fastapi import APIRouter, HTTPException
 from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
@@ -11,6 +12,7 @@ from trading_research import analyze_chart, VERSION
 ROOT=Path(__file__).resolve().parent/'trading'
 router=APIRouter()
 _cache={}
+_failures={}
 _lock=threading.Lock()
 _slots=threading.BoundedSemaphore(2)
 INDEX_MAP={'NIFTY':'^NSEI','BANKNIFTY':'^NSEBANK','SENSEX':'^BSESN','SPX':'^GSPC','NDX':'^NDX'}
@@ -31,6 +33,20 @@ def market_symbol(symbol,region):
 def status():
     return dict(version=VERSION,mode='research_and_local_paper',execution_enabled=False,source='Yahoo Finance chart',live_latency_guaranteed=False)
 
+def provider_failure(exc):
+    if isinstance(exc,HTTPError):
+        code='RATE_LIMITED' if exc.code==429 else ('ACCESS_DENIED' if exc.code in (401,403) else 'HTTP_ERROR')
+        return dict(code=code,http_status=exc.code)
+    if isinstance(exc,(TimeoutError,URLError)): return dict(code='CONNECTION_FAILURE')
+    if isinstance(exc,(ValueError,KeyError,TypeError,IndexError)): return dict(code='INVALID_RESPONSE')
+    return dict(code='PROVIDER_FAILURE')
+
+def failed_report(clean,region,now,details):
+    data=analyze_chart({},clean,region,now)
+    data['provider_status']=details
+    data['reason']='Market data unavailable ('+details['code']+'). No substitute prices or buy signal.'
+    return data
+
 @router.get('/api/trading-desk/research')
 def research(symbol: str='SPY',region: str='US'):
     try: clean,provider_symbol=market_symbol(symbol,region)
@@ -38,9 +54,13 @@ def research(symbol: str='SPY',region: str='US'):
     now=time.time();key=(clean,region)
     with _lock:
         hit=_cache.get(key)
+        failure=_failures.get(key)
+    if failure and now<failure['retry_after']:
+        return JSONResponse(failed_report(clean,region,now,failure),headers={'Cache-Control':'no-store'})
     if hit and now-hit[0]<60:
         # Re-run freshness/session gates at request time; cache fetch time is NOT quote time.
         data=analyze_chart(hit[1],clean,region,now);data['fetched_at']=hit[0]
+        data['provider_status']=dict(code='RESPONSE_RECEIVED',cached=True,checked_at=hit[0])
         return JSONResponse(data,headers={'Cache-Control':'no-store'})
     if not _slots.acquire(blocking=False):
         raise HTTPException(429,'Research capacity busy. Retry in a minute.',headers={'Retry-After':'60'})
@@ -56,9 +76,15 @@ def research(symbol: str='SPY',region: str='US'):
             if len(_cache)>=100: _cache.pop(next(iter(_cache)))
             _cache[key]=(fetched,payload)
         data=analyze_chart(payload,clean,region,fetched);data['fetched_at']=fetched
-    except Exception:
-        data=analyze_chart({},clean,region,time.time())
-        data['reason']='Market-data provider unavailable. No substitute prices or buy signal.'
+        data['provider_status']=dict(code='RESPONSE_RECEIVED',cached=False,checked_at=fetched)
+        with _lock: _failures.pop(key,None)
+    except Exception as exc:
+        failed_at=time.time()
+        details=dict(provider_failure(exc),checked_at=failed_at,retry_after=failed_at+60)
+        with _lock:
+            if len(_failures)>=100: _failures.pop(next(iter(_failures)))
+            _failures[key]=details
+        data=failed_report(clean,region,failed_at,details)
     finally: _slots.release()
     return JSONResponse(data,headers={'Cache-Control':'no-store'})
 

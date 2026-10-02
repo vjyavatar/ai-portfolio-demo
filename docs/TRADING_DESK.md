@@ -2,7 +2,7 @@
 
 ## Why
 
-The existing site exposes many overlapping research panels and a homepage claim of knowing exactly when to trade. The new `/trading/` workspace provides a focused path from evidence to a risk scenario and local paper journal, without replacing stock research or Rural OS. The homepage links to it and uses more accurate research language.
+The existing site exposes many overlapping research panels and a homepage claim of knowing exactly when to trade. The new `/trading/` workspace provides a focused path from evidence to a risk scenario and local paper journal, while preserving legacy stock research (Saathi/RuralOS is now retired). The homepage links to it and uses more accurate research language.
 
 ## What is implemented
 
@@ -60,3 +60,13 @@ Evidence export includes the current report, source times, stages and a sample f
 Saathi retirement removes 278 tracked files. The startup wrapper serves HTTP 410 for old routes and a minimal service-worker retirement script, which unregisters itself and clears only caches starting with saathi-ruralos-. Existing installations receive cleanup when their browser next checks the worker. Repository history retains earlier files for rollback. The shared Render service remains in place, with its existing plan; file deletion alone does not reduce plan charges.
 
 Validation for this revision: 19 research/API tests, 11 paper/notification tests, one retirement-route test, plus a DOM integration exercise for sample research, paper entry, notification suppression and inbox clearing. Native browser sound, OS notification delivery and visual QA remain deployment checks.
+
+## v1.1 readiness corrections
+
+The readiness strip separates data transport, scan coverage and strategy validation. HTTP errors, provider access denial, rate limiting, invalid responses and connectivity failures have distinct non-sensitive codes. Failed provider requests have a 60-second per-symbol cooldown. A successful response is not proof of fresh data.
+
+Currency and five-minute interval metadata must match the selected market. The current quote must still support the breakout and stay within 0.75 ATR beyond the signal close. These conservative policy thresholds are not statistically optimized or proven profitable. The existing 21-closed-bar warmup means candidates cannot appear in the first 105 minutes of a regular session with this current-session-only design.
+
+New scans that fail or no longer confirm a setup invalidate its local notification. Invalidation does not resend the same directional/session alert. The freshness label and verdict expire as time passes; background coverage is never implied.
+
+The legacy options engine's hard-coded Backtest Preview was replaced with explicit unverified validation status. No fabricated historical win rates, returns or drawdown are displayed by that panel. Other legacy panels remain only partially audited; rule-based confidence labels elsewhere should not be interpreted as calibrated probabilities.

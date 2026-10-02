@@ -896,3 +896,10 @@ footer a {
 
 .notification-controls { display:flex; flex-wrap:wrap; gap:10px; padding: 0 24px 12px; }
 #alert-inbox {padding: 12px 24px 24px;}
+
+.readiness-strip {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:20px 0;}
+.readiness-strip>div {background:var(--panel);padding:18px 22px;display:grid;gap:5px;}
+.readiness-strip strong {font-size:16px;letter-spacing:-.3px;}
+.readiness-strip small {color:var(--muted);}
+.workflow-strip {display:flex;flex-wrap:wrap;gap:12px 28px;margin:24px 0;color:var(--muted);font-size:11px;letter-spacing:.8px;}
+@media(max-width:700px){.readiness-strip{grid-template-columns:1fr}.readiness-strip>div{padding:13px 18px}.workflow-strip{gap:8px 18px}}

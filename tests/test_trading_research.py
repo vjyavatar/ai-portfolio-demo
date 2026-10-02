@@ -7,7 +7,7 @@ def fixture():
     stamps=[start+i*300 for i in range(25)]
     q={'open':[v-.02 for v in prices],'high':[v+.14 for v in prices],'low':[v-.17 for v in prices],'close':prices,'volume':[1000]*24+[1800]}
     now=stamps[-1]+301
-    return {'chart':{'result':[{'meta':{'regularMarketPrice':prices[-1],'regularMarketTime':now-1,'instrumentType':'ETF','currentTradingPeriod':{'regular':{'start':start,'end':start+23400}}},'timestamp':stamps,'indicators':{'quote':[q]}}]}},now
+    return {'chart':{'result':[{'meta':{'currency':'USD','dataGranularity':'5m','regularMarketPrice':prices[-1],'regularMarketTime':now-1,'instrumentType':'ETF','currentTradingPeriod':{'regular':{'start':start,'end':start+23400}}},'timestamp':stamps,'indicators':{'quote':[q]}}]}},now
 class ResearchTests(unittest.TestCase):
     def test_fresh_signal_not_probability(self):
         p,n=fixture();r=analyze_chart(p,'SPY','US',n)
@@ -36,7 +36,7 @@ class ResearchTests(unittest.TestCase):
         p,n=fixture();p['chart']['result'][0]['indicators']['quote'][0]['low'][3]=999
         self.assertEqual(analyze_chart(p,'SPY','US',n)['bars'],[])
     def test_zero_volume_not_faked(self):
-        p,n=fixture();p['chart']['result'][0]['indicators']['quote'][0]['volume']=[0]*25
+        p,n=fixture();p['chart']['result'][0]['meta']['currency']='INR';p['chart']['result'][0]['indicators']['quote'][0]['volume']=[0]*25
         r=analyze_chart(p,'NIFTY','IN',n);self.assertIsNone(r['metrics']['vwap']);self.assertFalse(r['paper_eligible'])
     def test_provider_failure(self):
         r=analyze_chart({},'SPY','US',1);self.assertFalse(r['paper_eligible']);self.assertEqual(r['verdict'],'WAIT')
@@ -45,4 +45,17 @@ class ResearchTests(unittest.TestCase):
     def test_future_quote_blocks(self):
         p,n=fixture();p['chart']['result'][0]['meta']['regularMarketTime']=n+60
         self.assertFalse(analyze_chart(p,'SPY','US',n)['paper_eligible'])
+
+    def test_quote_reversal_invalidates_closed_bar_candidate(self):
+        p,n=fixture();p['chart']['result'][0]['meta']['regularMarketPrice']=100.10
+        r=analyze_chart(p,'SPY','US',n)
+        self.assertEqual(r['verdict'],'WAIT')
+        self.assertEqual(next(s for s in r['stages'] if s['name']=='Quote guard')['status'],'blocked')
+    def test_quote_chasing_blocks(self):
+        p,n=fixture();p['chart']['result'][0]['meta']['regularMarketPrice']=102
+        self.assertEqual(analyze_chart(p,'SPY','US',n)['verdict'],'WAIT')
+    def test_wrong_currency_and_interval_block(self):
+        for key,value in [('currency','CAD'),('dataGranularity','1d')]:
+            p,n=fixture();p['chart']['result'][0]['meta'][key]=value
+            self.assertEqual(analyze_chart(p,'SPY','US',n)['verdict'],'WAIT')
 if __name__=='__main__':unittest.main()
