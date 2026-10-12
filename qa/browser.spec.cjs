@@ -564,3 +564,25 @@ test('original Decide private chain rejects server 401 and ignores late response
  releaseOld();await page.clock.fastForward(1000);await expect(page.locator('#de-chain-table')).toBeHidden();await expect(page.locator('#de-chain-source')).toHaveText('');await expect(page.locator('#de-chain-status')).toContainText('Verified sign-in with full access is required');
  await page.clock.fastForward(61000);expect(calls).toBe(2);
 });
+
+test('original Decide labels reused chain analytics as a returned-strike subset and never promotes them to a trade',async({page})=>{
+ await page.setViewportSize({width:390,height:844});await page.clock.install({time:new Date('2026-10-12T16:00:00Z')});await boot(page);await profile(page,'full');
+ await page.waitForFunction(()=>typeof window.mountDecideOptions==='function'&&window.CelesysOptionsAnalytics);
+ const requested=[];
+ await page.route('**/api/private-options/chain?**',route=>{
+  const expiry=new URL(route.request().url()).searchParams.get('expiry')||'2026-10-15';requested.push(expiry);
+  const data=privateChainFixture('NIFTY','IN',expiry);
+  data.coverage={scope:'BOUNDED_NEAR_SPOT_WINDOW_NOT_FULL_CHAIN',maximum_contracts:50};
+  data.rows=[{strike:25000,call:{bid:2,ask:2.1,oi:100,volume:100,lot_size:65},put:{bid:3,ask:3.1,oi:200,volume:200,lot_size:65}},{strike:25050,call:{bid:1,ask:1.1,oi:100,volume:100,lot_size:65},put:{bid:4,ask:4.1,oi:200,volume:200,lot_size:65}}];
+  if(expiry==='2026-10-22'){data.rows[0].put.oi=null;data.rows[0].put.volume=null;}
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+ });
+ await openOriginalDecideTicket(page,'NIFTY','IN');await page.locator('#de-chain-load').click();
+ const analytics=page.locator('#de-chain-analytics');await expect(analytics).toBeVisible();await expect(analytics).toContainText('2.00');
+ await expect(analytics).toContainText(/returned.strike/i);await expect(analytics).toContainText(/not.*forecast|not.*recommendation/i);
+ await expect(page.locator('#de-options-ticket')).toHaveAttribute('data-state','wait');await expect(page.locator('#de-options-entry')).toHaveText('Unavailable');
+ await page.screenshot({path:'qa-output/original-chain-analytics-mobile.png',fullPage:true});
+ await page.locator('#de-chain-expiry').selectOption('2026-10-22');await expect(analytics).toContainText(/unavailable/i);await expect(analytics).not.toContainText('2.00');
+ await page.clock.fastForward(61000);expect(requested).toEqual(['2026-10-15','2026-10-22']);
+ const width=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));expect(width.document<=width.viewport+2,JSON.stringify(width)).toBe(true);
+});
