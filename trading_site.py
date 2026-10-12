@@ -53,13 +53,13 @@ def market_symbol(symbol,region):
 
 @router.get('/api/trading-desk/status')
 def status():
-    from private_options import ready
+    from private_options import ready,provider_name
     from secure_access import configured,enforced
     return dict(version=VERSION,mode='research_and_local_paper',execution_enabled=False,
         source='Yahoo Finance chart',live_latency_guaranteed=False,provider=provider_snapshot(),
         legacy_requests=legacy_cache.snapshot(),background_prefetch_enabled=os.getenv('CELESYS_YAHOO_PREFETCH','').lower()=='true',
         cadence_seconds=300,requires_visible_tab=True,
-        options_accounts={region:dict(provider='Dhan' if region=='IN' else 'Tradier',
+        options_accounts={region:dict(provider=provider_name(region),
             configured=bool(ready(region)),connection_verified=False) for region in ('IN','US')},
         authentication=dict(configured=bool(configured()),enforced=enforced()),
         note='Configuration is not a successful live-feed test. Public snapshots may be available separately.')

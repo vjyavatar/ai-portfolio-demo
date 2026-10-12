@@ -39,7 +39,7 @@ setInterval(()=>{if(rows.size){if(alertsActive&&!document.hidden)for(const r of 
 async function feedStatus(){
  const target=$('tw-feed-status');if(!target)return;
  try{const response=await fetch('/api/trading-desk/status',{credentials:'same-origin'});if(!response.ok)throw Error();const data=await response.json();
- const accounts=data.options_accounts||{};target.textContent='Underlying research: '+(data.source||'source unverified')+'; real-time latency is not guaranteed. '+['IN','US'].map(region=>region+' options account feed: '+(accounts[region]?.configured?'configured; live connection still requires verification':'not configured')).join('. ')+'. Public snapshots are checked separately. '+(data.authentication?.configured?'Verified sign-in configured.':'Verified sign-in needs email-service setup.');
+ const accounts=data.options_accounts||{};target.textContent='Underlying research: '+(data.source||'source unverified')+'; real-time latency is not guaranteed. '+['IN','US'].map(region=>region+' options account feed ('+(accounts[region]?.provider||'unconfigured provider')+'): '+(accounts[region]?.configured?'configured; live connection still requires verification':'not configured')).join('. ')+'. Public snapshots are checked separately. '+(data.authentication?.configured?'Verified sign-in configured.':'Verified sign-in needs email-service setup.');
  }catch(e){target.textContent='Connection status unavailable. Check source timestamps on each result; no live connection is assumed.';}
 }
 $('tw-feed-refresh')?.addEventListener('click',feedStatus);feedStatus();

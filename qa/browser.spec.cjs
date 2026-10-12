@@ -464,14 +464,14 @@ test('original Active Trading discards an unmounted scan and stops polling after
  expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden');
 });
 
-async function openOriginalDecideTicket(page){
+async function openOriginalDecideTicket(page,symbol='SPY',region='US'){
  // Exercise the original dispatcher and loadDE integration, not a direct module mount.
  // The legacy report is deliberately unavailable; the separately verified ticket must still work.
  await page.route('**/api/decision-engine?**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:false,error:'QA legacy report unavailable; independent contract evidence follows.'})}));
- await page.evaluate(()=>{
+ await page.evaluate(({symbol,region})=>{
   window.CelesysWorkspace.openTool(window.CelesysWorkspace.tools.find(t=>t.group==='decide'&&t.tab==='decision'));
-  window._deMode='trader';window._deRegion='US';window.loadDE('SPY');
- });
+  window._deMode='trader';window._deRegion=region;window.loadDE(symbol);
+ },{symbol,region});
  await expect(page.locator('#de-options-ticket')).toBeVisible();
  await expect(page.locator('#deResult')).toContainText('QA legacy report unavailable');
 }
@@ -522,4 +522,45 @@ test('original Decide Trader treats server 401 as WAIT without quotes or automat
  for(const key of ['type','strike','expiry','entry','stop','target','invalidation','underlyingTarget','loss'])await expect(page.locator('#de-options-'+key)).toHaveText('Unavailable');
  await expect(page.locator('#de-options-source')).toHaveText('No current contract quote verified.');
  await page.clock.fastForward(121000);expect(calls).toBe(1);
+});
+
+function privateChainFixture(symbol,region,expiry='2026-10-15'){
+ const india=region==='IN';
+ return {symbol,region,currency:india?'INR':'USD',source:india?'Angel One SmartAPI':'Tradier',status:'SNAPSHOT',expiry,expiries:['2026-10-15','2026-10-22'],fetched_at:1791817200,freshness:'UNVERIFIED_OR_STALE',execution_enabled:false,message:'QA provider snapshot, not live market data.',rows:[{strike:india?25000:600,call:{bid:2,ask:2.1,oi:0,volume:100,bid_time:null,ask_time:null},put:{bid:3,ask:3.1,oi:null,volume:null,bid_time:null,ask_time:null}}]};
+}
+for(const market of [{symbol:'NIFTY',region:'IN',source:'Angel One SmartAPI',width:390},{symbol:'SPY',region:'US',source:'Tradier',width:1440}])test('original Decide views '+market.symbol+' private chain with selectable expiry and honest quote timing',async({page})=>{
+ await page.setViewportSize({width:market.width,height:900});await page.clock.install({time:new Date('2026-10-12T16:00:00Z')});await boot(page);await profile(page,'full');
+ await page.waitForFunction(()=>typeof window.mountDecideOptions==='function');const requested=[];
+ await page.route('**/api/private-options/chain?**',route=>{
+  const params=new URL(route.request().url()).searchParams;requested.push(params.get('expiry'));expect(params.get('symbol')).toBe(market.symbol);expect(params.get('region')).toBe(market.region);expect(route.request().headers()['x-celesys-email']).toBeUndefined();
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(privateChainFixture(market.symbol,market.region,params.get('expiry')||undefined))});
+ });
+ await openOriginalDecideTicket(page,market.symbol,market.region);await page.clock.fastForward(1000);expect(requested).toEqual([]);
+ await page.locator('#de-chain-load').click();await expect(page.locator('#de-chain-table')).toBeVisible();
+ await expect(page.locator('#de-chain-source')).toContainText(market.source);await expect(page.locator('#de-chain-source')).toContainText('(not quote time)');
+ await expect(page.locator('#de-chain-status')).toContainText('quote timing unverified or stale');await expect(page.locator('#de-chain-status')).not.toContainText('Recent source quotes');
+ const row=page.locator('#de-chain-table tbody tr');await expect(row).toHaveCount(1);await expect(row).toContainText('Bid unknown / Ask unknown');await expect(row).toContainText('0 / 100');await expect(row).toContainText('— / —');
+ await expect(row).toContainText(market.region==='IN'?'₹2.00':'$2.00');await expect(row).toContainText(market.region==='IN'?'₹25,000.00':'$600.00');
+ await expect(page.locator('#de-chain-expiry')).toHaveValue('2026-10-15');await page.locator('#de-chain-expiry').selectOption('2026-10-22');await expect(page.locator('#de-chain-source')).toContainText('2026-10-22');expect(requested).toEqual(['','2026-10-22']);
+ // Browsing a chain never manufactures a call/put recommendation.
+ await expect(page.locator('#de-options-ticket')).toHaveAttribute('data-state','wait');await expect(page.locator('#de-options-entry')).toHaveText('Unavailable');
+ await page.screenshot({path:'qa-output/original-chain-'+market.region.toLowerCase()+'.png',fullPage:true});
+ const width=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));expect(width.document<=width.viewport+2,JSON.stringify(width)).toBe(true);
+ await page.clock.fastForward(61000);expect(requested).toHaveLength(2);
+});
+test('original Decide private chain rejects server 401 and ignores late responses after context changes',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-12T16:00:00Z')});await boot(page);await profile(page,'full');await page.waitForFunction(()=>typeof window.mountDecideOptions==='function');
+ let calls=0,releaseOld;
+ await page.route('**/api/private-options/chain?**',async route=>{
+  const params=new URL(route.request().url()).searchParams;calls++;
+  if(params.get('symbol')==='NIFTY'){
+   await new Promise(resolve=>{releaseOld=resolve;});
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(privateChainFixture('NIFTY','IN'))}).catch(()=>{}); // Deliberately aborted old context.
+  }
+  return route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({detail:'Verified authorized sign-in required.'})});
+ });
+ await openOriginalDecideTicket(page,'NIFTY','IN');expect(calls).toBe(0);await page.locator('#de-chain-load').click();await expect.poll(()=>typeof releaseOld).toBe('function');
+ await page.evaluate(()=>{window._deRegion='US';window.loadDE('SPY');});await page.locator('#de-chain-load').click();await expect(page.locator('#de-chain-status')).toContainText('Verified sign-in with full access is required');
+ releaseOld();await page.clock.fastForward(1000);await expect(page.locator('#de-chain-table')).toBeHidden();await expect(page.locator('#de-chain-source')).toHaveText('');await expect(page.locator('#de-chain-status')).toContainText('Verified sign-in with full access is required');
+ await page.clock.fastForward(61000);expect(calls).toBe(2);
 });
