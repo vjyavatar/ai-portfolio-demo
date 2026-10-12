@@ -69,6 +69,14 @@ test('mobile homepage keeps the original analysis form usable',async({page})=>{
 for(const viewport of [{name:'desktop',width:1440,height:900},{name:'mobile',width:390,height:844}]){
  test('completed stock analysis stays on results after delayed callbacks — '+viewport.name,async({page})=>{
   await page.setViewportSize({width:viewport.width,height:viewport.height});await boot(page);await profile(page,'full');
+  let permissionRefreshFinished=false;
+  await page.route('**/api/auth/verify',async route=>{
+   // Reproduce authorization arriving after the report is already on screen.
+   await page.waitForFunction(()=>document.getElementById('report').classList.contains('show'));
+   await page.waitForTimeout(250);
+   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,premium:true,dreamAccess:true})});
+   permissionRefreshFinished=true;
+  });
   await page.route('**/api/generate-report',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}})}));
   await page.locator('#ticker').fill('AAPL');
   if(viewport.name==='mobile'){
@@ -82,6 +90,7 @@ for(const viewport of [{name:'desktop',width:1440,height:900},{name:'mobile',wid
   // The regression was a 200 ms page-top timer scheduled after results appeared.
   // Let that timer and the 400 ms section animation complete before checking location.
   await page.waitForTimeout(1000);
+  await expect.poll(()=>permissionRefreshFinished).toBe(true);
   const location=await page.evaluate(()=>({scroll:window.scrollY,reportTop:document.getElementById('report').getBoundingClientRect().top,toolbarBottom:document.querySelector('.ws-topbar').getBoundingClientRect().bottom}));
   expect(location.scroll,JSON.stringify(location)).toBeGreaterThan(0);
   expect(location.reportTop,JSON.stringify(location)).toBeLessThanOrEqual(location.toolbarBottom+100);
