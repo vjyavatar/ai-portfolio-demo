@@ -95,6 +95,25 @@ test('browser focus and developer tools never blur reports or block the whole pa
 test('analyzing a full report closes secondary controls',async()=>{
  const a=setup();a.get('ws-quick-controls').open=true;await a.get('btn').emit('click');assert.equal(a.get('ws-quick-controls').open,false);
 });
+test('late permission refresh retains access checks without initiating navigation',()=>{
+ const source=app.slice(app.indexOf('function _applyPremiumGating('),app.indexOf('// Email listeners —'));
+ const calls=[],report={classList:{contains:()=>true}},button={style:{}};
+ const scope={document:{getElementById:id=>id==='report'?report:button,querySelectorAll:()=>[]},TRADING_ONLY_EMAILS:[],initTradesProtection(){},renderPicks(){},renderFunds(){},switchTabGroup:(...args)=>calls.push(args)};scope.window=scope;
+ vm.runInNewContext(source,scope);
+ scope._activeGroup='research';scope._applyPremiumGating(false,false,'qa@example.invalid');
+ assert.equal(calls[0][0],'overview');assert.equal(calls[0][1].scroll,false);
+ scope._activeGroup='dream';scope._applyDreamGating(true);
+ assert.equal(calls[1][0],'dream');assert.equal(calls[1][1].scroll,false);
+});
+test('summary and research refreshes suppress scroll only when explicitly requested',()=>{
+ const source=app.slice(app.indexOf('function switchAnalysisSubTab('),app.indexOf('// ═══ TAB GROUP SYSTEM'));
+ let scrolls=0;const section={scrollIntoView(){scrolls++;}},button={classList:{add(){},remove(){}}};
+ const scope={document:{querySelectorAll:()=>[],querySelector:()=>section,getElementById:()=>button},setTimeout(){}};scope.window=scope;
+ vm.runInNewContext(source,scope);
+ scope.switchSubTab('overview',{scroll:false});scope.switchAnalysisSubTab('report',{scroll:false});
+ assert.equal(scrolls,0);
+ scope.switchSubTab('overview');scope.switchAnalysisSubTab('report');assert.equal(scrolls,2);
+});
 
 test('focused views keep scanner out of home and open it only for trading',()=>{const a=setup();assert.equal(a.get('tw-panel').hidden,true);assert.equal(a.get('ws-quick-controls').hidden,true);assert.equal(a.get('ws-start-cards').hidden,false);a.context.CelesysWorkspace.setMode('trading');assert.equal(a.get('tw-panel').hidden,false);assert.equal(a.get('tw-disclosure').open,true);assert.equal(a.get('ws-account').hidden,true);assert.equal(a.get('ws-plan').hidden,true);a.context.CelesysWorkspace.setMode('options');assert.equal(a.get('tw-panel').hidden,true);assert.equal(a.get('ws-options').hidden,false);assert.equal(a.get('ws-plan').hidden,true);});
 test('leaving trading stops scanner and opening account reveals the retained form',()=>{const a=setup();let stopped=0;a.get('tw-stop').click=()=>stopped++;a.context.CelesysWorkspace.setMode('trading');a.context.CelesysWorkspace.openAccount();assert.equal(a.get('ws-account').hidden,false);a.context.CelesysWorkspace.setMode('stock');assert.equal(stopped,1);});

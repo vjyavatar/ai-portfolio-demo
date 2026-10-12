@@ -130,4 +130,6 @@ body.ws-unified{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 /* Keep the stock query usable alongside the original full-width controls. */
 .ws-unified #ws-legacy-search .irow{display:grid!important;grid-template-columns:minmax(180px,1fr) minmax(240px,1.3fr) auto!important}.ws-unified #ws-legacy-search .irow>*{min-width:0!important;width:100%!important}.ws-unified #ws-legacy-search .iwrap .ipt{width:100%!important}.ws-unified #ws-legacy-search #btn{width:auto!important}
 #ws-manual-plan{margin-top:10px;padding:10px 14px;border:1px solid var(--ws-line);background:var(--ws-card);color:var(--ws-ink);border-radius:6px;font-size:12px;min-height:42px;cursor:pointer}
-@media(max-width:760px){.ws-unified #ws-legacy-search .irow{grid-template-columns:minmax(0,1fr)!important}.ws-unified #ws-legacy-search #btn{width:100%!important}}
+@media(max-width:760px){.ws-unified #ws-legacy-search .irow{grid-template-columns:minmax(0,1fr)!important}.ws-unified #ws-legacy-search #btn{width:100%!important}.ws-unified #ws-legacy-search #autocomplete{position:static!important;max-height:200px;margin-top:4px}}
+/* Async report cards must not become scroll anchors that hide the report header. */
+.ws-unified #report{overflow-anchor:none}

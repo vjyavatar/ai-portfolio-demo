@@ -1397,7 +1397,7 @@ var _hasAccess=showTrades||TRADING_ONLY_EMAILS.includes(email);
 var _ag=window._activeGroup||'overview';
 if(!_hasAccess&&['overview','tools'].indexOf(_ag)<0){_ag='overview';}
 window._activeGroup=_ag;
-try{if(typeof switchTabGroup==='function'){switchTabGroup(_ag)}}catch(e){}
+try{if(typeof switchTabGroup==='function'){switchTabGroup(_ag,{scroll:false})}}catch(e){}
 }
 }
 function _applyDreamGating(show){
@@ -1413,7 +1413,7 @@ if(dreamTab)dreamTab.style.display=show?'':'none';
 // Re-render active group if user is on dream tab so content loads correctly
 var _rptVis2=document.getElementById('report');
 if(_rptVis2&&_rptVis2.classList.contains('show')){
-try{if(show&&window._activeGroup==='dream'&&typeof switchTabGroup==='function'){switchTabGroup('dream')}}catch(e){}
+try{if(show&&window._activeGroup==='dream'&&typeof switchTabGroup==='function'){switchTabGroup('dream',{scroll:false})}}catch(e){}
 }
 }
 // Email listeners — only store email for later use, do NOT trigger tab changes
@@ -2171,7 +2171,10 @@ if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_dat
 clearInterval(_timerIv);
 showStatus(e.message==='Failed to fetch'?'Cannot connect to server.':e.message,'error');
 }
-btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}
+btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();
+// Navigate only after the loading controls have stopped changing page height.
+if(rpt.classList.contains('show'))document.dispatchEvent(new Event('celesys:report-ready'));
+}
 
 function displayReport(data){
 console.log('displayReport START',data?.live_data?.ticker);
@@ -2270,8 +2273,8 @@ try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:
 try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',e)}
 // Show all Summary tab content now that everything is populated
 switchTab('quick');
-// Scroll to tab bar so everything is cleanly inside tabs
-setTimeout(()=>{window.scrollTo({top:0,behavior:'smooth'})},200);
+// Keep the report selected by switchTab / the workspace observer in view.
+// A delayed page-top scroll would override that navigation and return users home.
 setTimeout(animSections,400)
 }catch(e){console.error('displayReport FATAL:',e);var rpt=document.getElementById('report');if(rpt){rpt.style.setProperty('display','block','important');rpt.classList.add('show');}
 // Overview enhancements triggered only on Overview tab click (in premium-override.js)
@@ -3173,7 +3176,7 @@ window.dispatchEvent(new Event('resize'));
 
 // ═══ ANALYSIS SUB-TAB SYSTEM ═══
 window._activeAnalysisSubTab='report';
-function switchAnalysisSubTab(sub){
+function switchAnalysisSubTab(sub,options){
 window._activeAnalysisSubTab=sub;
 document.querySelectorAll('[data-tab="analysis"][data-asub]').forEach(el=>{el.style.display='none'});
 document.querySelectorAll('[data-tab="analysis"][data-asub="'+sub+'"]').forEach(el=>{el.style.display='block'});
@@ -3182,14 +3185,14 @@ var btns=document.querySelectorAll('#analysisSubTabs .stab');
 const map={report:0,earnings:1,management:2,outlook:3};
 if(btns[map[sub]])btns[map[sub]].classList.add('active');
 const first=document.querySelector('[data-tab="analysis"][data-asub="'+sub+'"]:not([style*="display:none"])');
-if(first)first.scrollIntoView({behavior:'instant',block:'start'});
+if(first&&(!options||options.scroll!==false))first.scrollIntoView({behavior:'instant',block:'start'});
 // Re-render QoQ/YoY charts after making earnings tab visible
 if(sub==='earnings'){setTimeout(function(){window.dispatchEvent(new Event('resize'));},300);}
 }
 
 // ═══ SUMMARY SUB-TAB SYSTEM ═══
 window._activeSubTab='overview';
-function switchSubTab(sub){
+function switchSubTab(sub,options){
 window._activeSubTab=sub;
 // Hide all quick sections that have a subtab
 document.querySelectorAll('[data-tab="quick"][data-subtab]').forEach(el=>{
@@ -3211,7 +3214,7 @@ const btn=document.getElementById(btnMap[sub]);
 if(btn)btn.classList.add('active');
 // Scroll to top of content
 const firstVisible=document.querySelector('[data-tab="quick"][data-subtab="'+sub+'"]:not([style*="display:none"]):not([style*="display: none"])');
-if(firstVisible)firstVisible.scrollIntoView({behavior:'instant',block:'start'});
+if(firstVisible&&(!options||options.scroll!==false))firstVisible.scrollIntoView({behavior:'instant',block:'start'});
 // Charts need resize after becoming visible
 if(sub==='technical'){setTimeout(function(){
 if(window._activeSubTab!=='technical'||window._activeGroup!=='overview')return;
@@ -3258,7 +3261,7 @@ var TAB_GROUPS = {
 };
 window._activeGroup = 'overview';
 
-function switchTabGroup(group) {
+function switchTabGroup(group,options) {
   var isolated=document.getElementById('tradingOnlyView');if(isolated)isolated.style.display='none';
   if(window._tradingRefreshTimer){clearInterval(window._tradingRefreshTimer);window._tradingRefreshTimer=null;}
   var g = TAB_GROUPS[group];
@@ -3394,7 +3397,7 @@ function switchTabGroup(group) {
   }
   
   // Activate first sub-tab
-  switchTab(tabs[0]);
+  switchTab(tabs[0],options);
 }
 
 // ═══ UNIVERSAL PREMIUM FOLD SYSTEM — Collapsible sections ═══
@@ -3439,7 +3442,7 @@ h+='</div>';
 return h;
 
 }
-function switchTab(tab){
+function switchTab(tab,options){
 try{
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
@@ -3511,12 +3514,12 @@ try{var _c=document.getElementById(cid);if(_c){var _ch=Chart.getChart(_c);if(_ch
 if(tab==='quick'){
 var subBar=document.getElementById('summarySubTabs');
 if(subBar)subBar.style.display='flex';
-switchSubTab(window._activeSubTab||'overview');
+switchSubTab(window._activeSubTab||'overview',options);
 }
 if(tab==='analysis'){
 var aBar=document.getElementById('analysisSubTabs');
 if(aBar)aBar.style.display='flex';
-switchAnalysisSubTab(window._activeAnalysisSubTab||'report');
+switchAnalysisSubTab(window._activeAnalysisSubTab||'report',options);
 }
 // Auto-load breaking news when News Impact tab opens
 if(tab==='newsimpact'){
@@ -3529,7 +3532,7 @@ loadBreakingNews();
 // 4) Scroll to top of new tab content
 if(tab!=='quick'&&tab!=='analysis'){
 const firstSec=document.querySelector('.sc[data-tab="'+tab+'"]');
-if(firstSec) firstSec.scrollIntoView({behavior:'instant',block:'start'});
+if(firstSec&&(!options||options.scroll!==false)) firstSec.scrollIntoView({behavior:'instant',block:'start'});
 }
 
 // 5) REFRESH LIVE PRICES on tab switch — forces fresh data every tab click
