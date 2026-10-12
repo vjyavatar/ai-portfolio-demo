@@ -68,6 +68,20 @@ class ExistingEngineTests(unittest.TestCase):
             self.assertEqual(client.get('/api/existing-option-chain?symbol=SPY&region=US&expiry=2099-02-16').status_code,422)
         self.assertEqual(calls[0][1],{'symbol':'SPY','region':'US'})
 
+    def test_actual_startup_wiring_routes_each_engine_correctly(self):
+        tree=ast.parse(Path('start.py').read_text())
+        call=next(n for n in tree.body if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='attach_discovery')
+        async def stock(**kw):return {'success':True,'decision':{'verdict':'WAIT','summary_one_liner':'Stock engine connected'},'summary':{'price':100}}
+        async def trading(**kw):return {'success':True,'explanation':{'what':'Trading engine connected'}}
+        async def options(**kw):return {'success':True,'expiry':'2099-01-16','chain_near_atm':[{'strike':100,'ce_ltp':5}]}
+        app=FastAPI()
+        scope={'attach_discovery':attach_discovery,'app':app,'stock_dashboard':stock,'decision_engine':trading,'options_quick':options}
+        exec(compile(ast.Module(body=[call],type_ignores=[]),'start.py','exec'),scope)
+        with TestClient(app) as client,patch.dict('os.environ',{},clear=True):
+            self.assertIn('Stock engine connected',client.get('/api/research-brief?mode=stock&symbol=AAPL&region=US').json()['assessment'])
+            self.assertEqual(client.get('/api/research-brief?mode=trading&symbol=SPY&region=US').json()['assessment'],'Trading engine connected')
+            self.assertEqual(client.get('/api/existing-option-chain?symbol=NIFTY&region=IN').json()['status'],'SNAPSHOT')
+
     def test_private_provider_errors_redacted(self):
         async def broken(**kw):raise RuntimeError('secret token')
         self.assertEqual(asyncio.run(ee.fetch(broken,'SPY','US')), {})

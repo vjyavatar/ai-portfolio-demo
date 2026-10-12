@@ -41,3 +41,16 @@ class WorkspaceBackendTests(unittest.TestCase):
         self.assertTrue(html.rstrip().endswith('</html>'))
     def test_frontend_asset_copy_matches_source(self):
         self.assertEqual(Path('static/app.js').read_bytes(),Path('static/app.min.js').read_bytes())
+
+    def test_trading_response_is_sanitized_before_fastapi_encoding(self):
+        import json,math
+        node=next(n for n in self.tree.body if isinstance(n,ast.ClassDef) and n.name=='NaNSafeEncoder')
+        scope={'json':json,'_math_global':math}
+        exec(compile(ast.Module(body=[node],type_ignores=[]),'api.py','exec'),scope)
+        # NumPy 2 uses type name bool as well as older bool_ aliases.
+        NumBool=type('bool',(),{'__bool__':lambda self:True})
+        Array=type('ndarray',(),{'tolist':lambda self:[NumBool(),float('nan')]})
+        converted=scope['NaNSafeEncoder']()._sanitize({'flag':NumBool(),'rows':Array()})
+        self.assertEqual(json.dumps(converted,allow_nan=False),'{'+'"flag": true, "rows": [true, null]'+'}')
+        fn=self.function('decision_engine')
+        self.assertTrue(any(isinstance(n,ast.Return) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Attribute) and n.value.func.attr=='_sanitize' for n in ast.walk(fn)))

@@ -23,3 +23,9 @@ body.ws-unified{background:var(--ws-bg)!important;color:var(--ws-ink);font-famil
 
 #ws-today-frame{width:100%;height:75vh;min-height:500px;border:1px solid var(--ws-line);border-radius:8px;background:var(--ws-card)}
 .ws-unified #activeTradingMount button{min-height:36px!important;font-size:12px!important}.ws-unified #atTopBar{height:58px!important;background:#102237!important;color:#e5edf5!important}.ws-unified #atTopBar button{color:#e5edf5!important;border-color:#647387!important}.ws-unified #activeTradingMount [style*="font-size: 9px"],.ws-unified #activeTradingMount [style*="font-size: 10px"],.ws-unified #activeTradingMount [style*="font-size: 11px"]{font-size:12px!important;line-height:1.5!important}
+
+/* Original analysis is the primary homepage workflow. */
+.ws-analysis-entry{border-top:3px solid var(--ws-accent)}
+#ws-account{scroll-margin-top:80px}#report{scroll-margin-top:80px}
+.ws-unified #ws-legacy-search .icard{max-width:none;width:100%;box-sizing:border-box}
+.ws-unified #ws-start-cards{display:none}

@@ -48,4 +48,4 @@ try:
 except ImportError:
     stock_dashboard = None
     decision_engine = options_quick = None
-attach_discovery(app, stock_dashboard, decision_engine, options_quick)
+attach_discovery(app, dashboard_supplier=stock_dashboard, trading_supplier=decision_engine, options_supplier=options_quick)

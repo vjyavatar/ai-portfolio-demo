@@ -1487,10 +1487,10 @@ class NaNSafeEncoder(json.JSONEncoder):
             elif _type in ('float64', 'float32', 'float16', 'float_'):
                 v = float(obj)
                 return None if (_math_global.isnan(v) or _math_global.isinf(v)) else v
-            elif _type in ('bool_', 'bool8'):
+            elif _type in ('bool', 'bool_', 'bool8'):
                 return bool(obj)
             elif _type == 'ndarray':
-                return [self._sanitize(x) for x in obj.tolist()]
+                return self._sanitize(obj.tolist())
         return obj
 
 class SafeJSONResponse(JSONResponse):
@@ -34177,7 +34177,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
             traceback.print_exc()
             print(f"  ⚠️ Variables at crash: _is_index={locals().get('_is_index','?')}, _dte_exp={locals().get('_dte_exp','?')}, _is_expiry_day={locals().get('_is_expiry_day','?')}")
         
-        return {
+        return NaNSafeEncoder()._sanitize({
             "success": True, "symbol": symbol, "price": p, "csym": S, "region": region,
             "sector": tech.get("sector", "") or algo.get("sector", "") or "",
             "marketState": {"state": state, "strength": strength, "direction": direction, "adx": round(adx, 1), "regimeScore": regime_score},
@@ -34233,7 +34233,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
             "expiryIntel": expiry_intel,
             "engines": algo.get("engines", {}),
             "timestamp": (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%H:%M IST") if not is_us else datetime.utcnow().strftime("%H:%M UTC"),
-        }
+        })
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"success": False, "error": str(e)[:200]}

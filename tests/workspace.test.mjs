@@ -28,3 +28,29 @@ test('brief renders all five sections as literal text and preserves existing ass
 test('blocked original tool does not call its renderer',()=>{const a=setup();a.context.switchTabGroup=()=>{throw Error('Must not run');};a.context.CelesysWorkspace.openTool({group:'dream',tab:'optionspulse',label:'Options Pulse'});assert.equal(a.get('ws-account').hidden,false);assert.match(a.get('ws-status').textContent,/account access/);});
 test('voice is opt-in and stop mutes the shared voice flag',async()=>{const a=setup();assert.equal(a.context._voiceEnabled,false);await a.get('ws-voice-toggle').emit('click');assert.equal(a.context._voiceEnabled,true);assert.equal(a.get('ws-voice-toggle')['aria-pressed'],'true');await a.get('ws-stop').emit('click');assert.equal(a.context._voiceEnabled,false);});
 test('unsupported microphone leaves a usable typed-input fallback',async()=>{const a=setup();await a.get('ws-dictate').emit('click');assert.match(a.get('ws-status').textContent,/Type a symbol/);assert.equal(a.get('ws-symbol').value,'AAPL');});
+test('original email allowlist controls actual menu visibility for every role',()=>{
+ const source=app.slice(app.indexOf('  function applyTabAccess(email){'),app.indexOf('  // ═══ 4. IDLE CHECK'));
+ for(const [email,role] of [['visitor@example.org','public'],['allowed@example.org','full'],['tmp@cls.com','trading'],['vj@vnky.com','admin'],['ALLOWED@EXAMPLE.ORG','full'],['','public']]){
+  const nodes=new Map(),ctx={CELESYS_TIERS:{full_access:['allowed@example.org']},console:{log(){}},setInterval(){return 1;},clearInterval(){},setTimeout(){},document:{querySelectorAll(sel){if(!nodes.has(sel))nodes.set(sel,{style:{}});return [nodes.get(sel)];}}};ctx.window=ctx;
+  vm.runInNewContext(source+';applyTabAccess('+JSON.stringify(email)+');',ctx);
+  assert.equal(ctx._userRole,role);
+  assert.equal(nodes.get('#tabBtnResearch').style.display,['admin','full'].includes(role)?'':'none');
+  assert.equal(nodes.get('#tabBtnTrading').style.display,role==='public'?'none':'');
+  assert.equal(nodes.get('#pdfExportBtn').style.display,role==='admin'?'':'none');
+ }
+});
+test('original chart form is visible before the optional quick brief',()=>{
+ const html=fs.readFileSync(new URL('../static/workspace.html',import.meta.url),'utf8');
+ assert.doesNotMatch(html,/<section id="ws-account"[^>]*\bhidden/);
+ assert.ok(html.indexOf('id="ws-legacy-search"')<html.indexOf('id="ws-search"'));
+ assert.match(app,/try\{createCharts\(d\)\}/);
+});
+test('return to charts reveals an existing report without refetching or rebuilding it',async()=>{
+ const a=setup();let shown=false,scrolled=false;
+ a.get('report').classList.contains=()=>true;
+ a.get('report').style.setProperty=(key,val)=>{shown=key==='display'&&val==='block';};
+ a.get('report').scrollIntoView=()=>{scrolled=true;};
+ a.get('report').children=['existing charts'];
+ await a.get('ws-return-report').emit('click');
+ assert.equal(shown,true);assert.equal(scrolled,true);assert.deepEqual(a.get('report').children,['existing charts']);
+});
