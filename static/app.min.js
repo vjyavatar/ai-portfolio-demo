@@ -3473,7 +3473,7 @@ b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(-
 // 2) Show matching tab content (sections + inline data-tab elements)
 // dreamportfolio and multibagger render into the decision section's deResult
 var _showTab = tab;
-if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday'||tab==='positioning'||tab==='diamond'||tab==='smartmoney'||tab==='smv3') _showTab='decision';
+if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday'||tab==='positioning'||tab==='diamond'||tab==='smartmoney'||tab==='smv3'||tab==='analyst') _showTab='decision';
 // Show tab sections with animation
 document.querySelectorAll('.sc[data-tab="'+_showTab+'"]').forEach(function(s,idx){
 if(_showTab==='quick' && s.dataset.subtab) return;
@@ -9587,6 +9587,10 @@ window._topTradesLoaded=true;
 }
 
 function _updateGamePlan(d,S){
+if(d.live_data_verified===false){
+[['gpMarketMode','HISTORICAL RESEARCH'],['gpStrategy','WAIT — current market data not verified'],['gpTip','Daily-history scenarios are not live entry prices. Use the timestamp-checked watchlist for current research.'],['gpDiscipline','No actionable trade is confirmed.']].forEach(function(pair){var node=document.getElementById(pair[0]);if(node)node.textContent=pair[1];});return;
+}
+
 var vi=d.volIntelligence||{};var oi=d.options_intel||{};
 var mode=document.getElementById('gpMarketMode');
 var strat=document.getElementById('gpStrategy');
@@ -9630,6 +9634,7 @@ var isUS=reg==='US';
 
 var h='<div style="padding:0;border-radius:12px;border:2px solid '+winC+'30;background:var(--surface);overflow:hidden;cursor:pointer;transition:transform .15s" onmouseover="this.style.transform=\'scale(1.01)\'" onmouseout="this.style.transform=\'scale(1)\'" onclick="algoSelect(\''+d.symbol+'\',null)">';
 
+if(d.live_data_verified===false)h+='<div class="ws-data-warning">Historical research · current quote and session not verified. No live trade confirmed.</div>';
 // Header bar
 h+='<div style="padding:10px 14px;background:'+dC+'08;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
 h+='<div style="display:flex;align-items:center;gap:8px">';
@@ -30215,6 +30220,7 @@ var _trd=d.trend||{};var _vix=Number(nse.vix||0);
 var _tPct=_trd.pct||0;
 var _grC=_grade.startsWith('A')?'#059669':_grade.startsWith('B')?'#1a56db':'#d97706';
 var h='';
+if(d.live_data_verified===false)h+='<div class="ws-data-warning" role="status">Historical research only. Daily-history prices and model scores are not verified live quotes or win probabilities. Use the five-minute watchlist for timestamp-checked research.</div>';
 
 // ═══ 🆕 MDO GUARDRAIL — Global decision authority ═══
 if(window._mdoState){var _ms=window._mdoState;
@@ -30257,7 +30263,7 @@ h+='<div style="text-align:center"><svg width="56" height="56" viewBox="0 0 56 5
 var _cl=2*3.14159*23;var _co=_cl*(1-_win/100);
 h+='<circle cx="28" cy="28" r="23" fill="none" stroke="'+(_win>=65?'#059669':_win>=50?'#d97706':'#dc2626')+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+_cl+'" stroke-dashoffset="'+_co+'" transform="rotate(-90 28 28)"/>';
 h+='<text x="28" y="26" text-anchor="middle" font-size="15" font-weight="900" fill="var(--text)" font-family="var(--mono)">'+_win+'</text>';
-h+='<text x="28" y="36" text-anchor="middle" font-size="6" fill="var(--text3)">%WIN</text></svg></div>';
+h+='<text x="28" y="36" text-anchor="middle" font-size="6" fill="var(--text3)">SCORE</text></svg></div>';
 h+='<div style="width:36px;height:36px;border-radius:50%;background:'+_grC+';display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px '+_grC+'40"><span style="font-size:14px;font-weight:900;color:#fff">'+_grade+'</span></div>';
 // GAUGE: Signal Strength
 try{if(typeof _riskGauge==='function'&&_win>0){h+=_riskGauge(_win,'SIGNAL',90);}}catch(e){}
