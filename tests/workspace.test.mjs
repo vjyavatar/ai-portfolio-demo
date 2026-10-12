@@ -64,7 +64,7 @@ for(const tool of setup().context.CelesysWorkspace.tools){
    a.context.switchTabGroup=()=>{opened=true;};a.context.switchTab=()=>{};a.context.switchDEMode=()=>{opened=true;};
    a.context.CelesysWorkspace.openTool(tool);
    const groupAllowed=['overview','tools'].includes(tool.group)||(['trading','intradayopt'].includes(tool.group)?['trading','full','admin'].includes(profile.role):['full','admin'].includes(profile.role));
-   const permitted=groupAllowed&&(tool.group!=='dream'||!!profile.dream)&&(!['smarttrades','journal','aiassist','valreport','backtest','stockintel','pms','proscan'].includes(tool.tab)||!!profile.premium);
+   const permitted=groupAllowed&&((tool.group!=='dream'&&!['mchunter','intraday'].includes(tool.tab))||!!profile.dream)&&(!['smarttrades','journal','aiassist','valreport','backtest','stockintel','pms','proscan'].includes(tool.tab)||!!profile.premium);
    if(!permitted){assert.equal(opened,false);assert.match(a.get('ws-status').textContent,/account access/);}
    else if(tool.tab==='_today'){assert.equal(a.get('ws-embedded').hidden,false);assert.match(a.get('ws-today-frame').src,/^\/today\?email=/);}
    else assert.equal(opened,true,profile.role+' should reach '+tool.tab);
@@ -120,3 +120,11 @@ test('leaving trading stops scanner and opening account reveals the retained for
 test('tool library replaces competing panels and preserves all tools',()=>{const a=setup();a.context.CelesysWorkspace.showDirectory();assert.equal(a.get('ws-account').hidden,true);assert.equal(a.get('tw-panel').hidden,true);assert.equal(a.get('ws-directory').hidden,false);assert.equal(a.get('ws-tool-grid').children.length,50);});
 
 test('report-dependent tool explains the next step when research is missing',()=>{const a=setup();a.context.CelesysWorkspace.openTool({group:'overview',tab:'quick',label:'Overview'});assert.equal(a.get('ws-notice').hidden,false);assert.match(a.get('ws-notice').textContent,/Generate a full report/);assert.equal(a.get('ws-account').hidden,false);});
+
+test('Intraday Setups and Micro-Cap Hunter preserve their existing dream renderer requirement',()=>{
+ for(const tab of ['intraday','mchunter']){
+  for(const profile of [{role:'public',dream:true},{role:'trading',dream:true},{role:'full'},{role:'full',premium:true,dream:false}])assert.equal(core.canOpen('decide',tab,profile),false,tab+' must not advertise unavailable access');
+  assert.equal(core.canOpen('decide',tab,{role:'full',dream:true}),true);
+  assert.equal(core.canOpen('decide',tab,{role:'admin',dream:true,premium:true}),true);
+ }
+});
