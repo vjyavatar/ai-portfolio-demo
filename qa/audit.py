@@ -68,7 +68,7 @@ def main():
         if f['status']=='FAIL':record('Source '+f['file'],'UNVERIFIED',f['reason'])
     menus=json.loads(subprocess.check_output(['node','qa/menu-inventory.cjs'],cwd=ROOT,text=True))
     if not a.skip_tests:
-        suites=[['npm','run','build']]+[[sys.executable,'-m','unittest','discover','-s','tests','-p',pattern] for pattern in ['test_existing_engines.py','test_workspace_backend.py','test_discovery.py','test_trading_*.py','test_qa_audit.py']]
+        suites=[['npm','run','build']]+[[sys.executable,'-m','unittest','discover','-s','tests','-p',pattern] for pattern in ['test_existing_engines.py','test_workspace_backend.py','test_discovery.py','test_trading_*.py','test_qa_audit.py','test_secure_trading.py']]
         for i,cmd in enumerate(suites):
             try:
                 result=subprocess.run(cmd,cwd=ROOT,text=True,capture_output=True,timeout=180)

@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "node --check trading/desk.js && node --check trading/notifications-ui.js && npm run test:trading && node --check discovery/options.js && node --check discovery/agents.js && node --check discovery/home.js && node --check discovery/analytics.js && npm run test:discovery && node --check static/app.js && node --check static/active-trading.js && node --check static/workspace.js && node --check static/workspace-core.js && node --check sw.js && npm run test:workspace",
+    "build": "node --check trading/desk.js && node --check trading/notifications-ui.js && npm run test:trading && node --check discovery/options.js && node --check discovery/agents.js && node --check discovery/home.js && node --check discovery/analytics.js && npm run test:discovery && node --check static/app.js && node --check static/active-trading.js && node --check static/workspace.js && node --check static/workspace-core.js && node --check sw.js && npm run test:workspace && node --check static/trading-watch.js && node --test tests/trading-watch.test.mjs",
     "test:trading": "node --test tests/trading-*.test.mjs",
     "test:discovery": "node --test tests/discovery-ui.test.mjs",
     "test:workspace": "node --test tests/workspace.test.mjs"

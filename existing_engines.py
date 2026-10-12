@@ -78,6 +78,12 @@ async def existing_chain(symbol: str='SPY', region: str='US', expiry: str=''):
         symbol, _ = market_symbol(symbol, region)
     except ValueError as error:
         raise HTTPException(422, str(error))
+    from secure_access import identity
+    from private_options import ready, chain
+    user = identity.get()
+    if user and user.get('full') and ready(region):
+        from starlette.concurrency import run_in_threadpool
+        return JSONResponse(await run_in_threadpool(chain, symbol, region, expiry), headers={'Cache-Control':'no-store'})
     data = option_snapshot(await fetch(_options, symbol, region), symbol, region)
     # The legacy engine only supplies the nearest expiry. Never mislabel another one.
     if expiry and data['expiry'] and expiry != data['expiry']:

@@ -2220,7 +2220,7 @@ global_request_log = []           # [timestamp1, timestamp2, ...]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://celesys.ai", "https://www.celesys.ai"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -13308,6 +13308,10 @@ _PREMIUM_TIER_SETS = {
 def has_tier(email, tier):
     """Standard tier check. Use this for new code.
     Returns True if email belongs to the named tier."""
+    from secure_access import enforced, identity
+    if enforced():
+        user = identity.get()
+        return bool(user and str(email or '').strip().lower() == user['email'] and user.get(tier))
     if not email or not tier:
         return False
     return str(email).strip().lower() in _PREMIUM_TIER_SETS.get(tier, frozenset())
@@ -13338,33 +13342,14 @@ DREAM_ALLOWED_EMAILS = PREMIUM_TIERS["dream"]
 #       return {"success": False, "error": "Premium feature."}
 
 def check_premium_gate(email: str, tier: str, session_ttl_sec: int = 86400):
-    """Check if email has access to a premium tier.
-    
-    Returns (ok: bool, email: str). On session-fallback hit, the
-    returned email is the matched session email (so caller can use it
-    consistently downstream).
-    
-    Args:
-        email: User-supplied email (will be normalized)
-        tier: One of "trades" or "dream" (matches PREMIUM_TIERS keys)
-        session_ttl_sec: How long ago a session activation is still valid
-    """
+    """Keep access caller-specific. Verified mode never trusts a supplied email."""
+    from secure_access import enforced, identity
     email = (email or "").strip().lower()
-    
-    # Fast path: email is directly in tier list
-    if has_tier(email, tier):
-        return True, email
-    
-    # Slow path: check active sessions for any tier member
-    tier_emails = PREMIUM_TIERS.get(tier, [])
-    now = time.time()
-    for tier_email in tier_emails:
-        te_lower = tier_email.lower()
-        sess = _premium_sessions.get(te_lower, {})
-        if sess.get(tier) and (now - sess.get("ts", 0)) < session_ttl_sec:
-            return True, te_lower
-    
-    return False, email
+    if enforced():
+        user = identity.get()
+        return (True, user['email']) if user and user.get(tier) else (False, email)
+    # Compatibility mode until verified delivery is configured. No other user's session.
+    return has_tier(email, tier), email
 
 
 # Master list — ALL emails that can access the platform
@@ -13379,6 +13364,10 @@ TRADING_ONLY_EMAILS = ["tmp@cls.com"]
 
 def _is_authorized(email: str) -> bool:
     """Check if email is authorized to use the platform."""
+    from secure_access import enforced, identity
+    if enforced():
+        user = identity.get()
+        return bool(user and str(email or '').strip().lower() == user['email'] and user.get('full'))
     return email.strip().lower() in AUTHORIZED_EMAILS
 
 # ═══ SERVER-SIDE AUTH — Premium email verification ═══
@@ -13427,6 +13416,10 @@ async def verify_premium(request: Request):
 
 def _is_premium_email(email: str) -> bool:
     """Check if email is premium — from session cache or direct check"""
+    from secure_access import enforced, identity
+    if enforced():
+        user = identity.get()
+        return bool(user and str(email or '').strip().lower() == user['email'] and user.get('trades'))
     email = email.strip().lower()
     if email in _premium_sessions:
         session = _premium_sessions[email]
@@ -21695,82 +21688,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             except Exception as _nh_err:
                 print(f"  ⚠️ NSE historical: {_nh_err}")
         
-        # ── SOURCE 3: NSE Quote API (stock spot price + basic data) ──
-        if (daily is None or len(daily) < 5) and not _is_nse_index:
-            try:
-                _quote = await _loop.run_in_executor(None, lambda: _nse_get(f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"))
-                if _quote and _quote.get("priceInfo"):
-                    _pi = _quote["priceInfo"]
-                    _sp = float(_pi.get("lastPrice", 0) or 0)
-                    if _sp > 0:
-                        import random
-                        # Create synthetic 60-day history from quote data
-                        _hi52 = float(_pi.get("weekHighLow", {}).get("max", _sp * 1.15) or _sp * 1.15)
-                        _lo52 = float(_pi.get("weekHighLow", {}).get("min", _sp * 0.85) or _sp * 0.85)
-                        _rng = _hi52 - _lo52
-                        _prices_syn = []
-                        for i in range(60):
-                            _frac = i / 59
-                            _mid = _lo52 + _rng * (0.3 + 0.4 * _frac + random.uniform(-0.1, 0.1))
-                            _prices_syn.append(round(_mid, 2))
-                        _prices_syn[-1] = _sp  # Last = current
-                        daily = pd.DataFrame({"Close": _prices_syn, "Open": _prices_syn,
-                            "High": [p * (1 + random.uniform(0, 0.015)) for p in _prices_syn],
-                            "Low": [p * (1 - random.uniform(0, 0.015)) for p in _prices_syn],
-                            "Volume": [random.randint(500000, 5000000) for _ in _prices_syn]})
-                        print(f"  ✅ NSE quote: {symbol} at ₹{_sp}")
-            except Exception as _nq_err:
-                print(f"  ⚠️ NSE quote: {_nq_err}")
-        
-        # ── SOURCE 4: NSE allIndices API (spot price for any index) ──
-        if (daily is None or len(daily) < 5) and _is_nse_index:
-            try:
-                import random
-                _all_idx = await _loop.run_in_executor(None, lambda: _nse_get("https://www.nseindia.com/api/allIndices"))
-                if _all_idx:
-                    for _ii in _all_idx.get("data", []):
-                        if _ii.get("index") == _nse_idx_map.get(symbol):
-                            _sp = float(_ii.get("last", 0) or 0)
-                            if _sp > 0:
-                                _op = float(_ii.get("open", _sp) or _sp)
-                                _hi = float(_ii.get("high", _sp) or _sp)
-                                _lo = float(_ii.get("low", _sp) or _sp)
-                                _pch = float(_ii.get("percentChange", 0) or 0)
-                                # Build 60-day synthetic from spot + pct change pattern
-                                _prices_syn = [_sp * (1 + random.uniform(-0.02, 0.02)) for _ in range(59)] + [_sp]
-                                daily = pd.DataFrame({"Close": _prices_syn, "Open": _prices_syn,
-                                    "High": [p * (1 + random.uniform(0, 0.01)) for p in _prices_syn],
-                                    "Low": [p * (1 - random.uniform(0, 0.01)) for p in _prices_syn],
-                                    "Volume": [random.randint(100000, 3000000) for _ in _prices_syn]})
-                                print(f"  ✅ NSE allIndices: {symbol} at ₹{_sp}")
-                                break
-            except Exception as _ai_err:
-                print(f"  ⚠️ NSE allIndices: {_ai_err}")
-        
-        # ── SOURCE 5: Google Finance (last resort for India) ──
-        if daily is None or len(daily) < 5:
-            try:
-                import random
-                _gsym = f"NSE:{symbol}" if not _is_nse_index else ("INDEXNSE:NIFTY_50" if symbol == "NIFTY" else f"INDEXNSE:{symbol}")
-                if symbol == "SENSEX": _gsym = "INDEXBOM:SENSEX"
-                if symbol == "BANKNIFTY": _gsym = "INDEXNSE:NIFTY_BANK"
-                _gurl = f"https://www.google.com/finance/quote/{_gsym}"
-                _gr = await _loop.run_in_executor(None, lambda: requests.get(_gurl, headers={"User-Agent": "Mozilla/5.0"}, timeout=8))
-                if _gr.status_code == 200:
-                    import re
-                    _gprice_match = re.search(r'data-last-price="([0-9.,]+)"', _gr.text)
-                    if _gprice_match:
-                        _gp = float(_gprice_match.group(1).replace(",", ""))
-                        if _gp > 0:
-                            _prices_syn = [_gp * (1 + random.uniform(-0.015, 0.015)) for _ in range(59)] + [_gp]
-                            daily = pd.DataFrame({"Close": _prices_syn, "Open": _prices_syn,
-                                "High": [p * (1 + random.uniform(0, 0.01)) for p in _prices_syn],
-                                "Low": [p * (1 - random.uniform(0, 0.01)) for p in _prices_syn],
-                                "Volume": [random.randint(100000, 2000000) for _ in _prices_syn]})
-                            print(f"  ✅ Google Finance: {symbol} at ₹{_gp}")
-            except Exception as _gf_err:
-                print(f"  ⚠️ Google Finance: {_gf_err}")
-        
+        # Spot-only quotes cannot reconstruct historical OHLCV. Never manufacture bars.
+        # Continue to the genuine historical provider; fail closed if history is unavailable.
         # ── SOURCE 6: yfinance as LAST RESORT for India (cache was cleared at startup) ──
         if daily is None or len(daily) < 5:
             try:
@@ -21798,7 +21717,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             daily = None
     
     if daily is None or len(daily) < 5:
-        return {"success": False, "error": f"No price data for {symbol}. All 6 sources failed (NSE Chart/History/Quote/allIndices + Google + yfinance). Visit /api/health to diagnose. Fix: pip install yfinance --upgrade --break-system-packages && restart."}
+        return {"success": False, "error": f"No price data for {symbol}. Genuine historical data is unavailable. No synthetic candles or substitute volumes are used; try again later."}
     
     # ═══ INTRADAY 5-MINUTE CANDLE FETCH (9.0+ Engine Upgrade) ═══
     intraday_5m = None
@@ -61609,21 +61528,8 @@ async def _run_stock_intel(symbol, region, cache_key):
                     pass
             
             if len(hist) == 0:
-                # Fallback: create minimal price history from NSE price
-                if nse["price"] > 0:
-                    print(f"  ⚠️ No yfinance history — using NSE price only for {symbol}")
-                    _p = nse["price"]
-                    # Generate synthetic 60-day history from current price (flat line + small noise)
-                    import random
-                    hist = pd.DataFrame({
-                        "Close": [_p * (1 + random.uniform(-0.02, 0.02)) for _ in range(60)] + [_p],
-                        "High": [_p * (1 + random.uniform(0, 0.02)) for _ in range(60)] + [_p],
-                        "Low": [_p * (1 + random.uniform(-0.02, 0)) for _ in range(60)] + [_p],
-                        "Volume": [random.randint(100000, 5000000) for _ in range(61)],
-                    })
-                else:
-                    return {"success": False, "error": f"No data available for {symbol}. NSE and yfinance both returned empty. Try again in 2 minutes."}
-            
+                return {"success": False, "error": "Genuine historical bars are unavailable. A spot quote cannot support technical indicators."}
+
             closes = hist["Close"].values.astype(float)
             volumes = hist["Volume"].values.astype(float) if "Volume" in hist else []
             highs = hist["High"].values.astype(float) if "High" in hist else closes
@@ -61854,26 +61760,6 @@ async def _run_stock_intel(symbol, region, cache_key):
                         hist = pd.DataFrame({"Close": quotes.get("close", []), "Open": quotes.get("open", []), "High": quotes.get("high", []), "Low": quotes.get("low", []), "Volume": quotes.get("volume", [])}).dropna()
                 except:
                     pass
-            
-            if len(hist) == 0:
-                # Try Google Finance for just the price
-                try:
-                    import re as _re
-                    g_url = f"https://www.google.com/finance/quote/{symbol}:NASDAQ"
-                    g_r = requests.get(g_url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html'}, timeout=5)
-                    if g_r.status_code == 200:
-                        pm = _re.search(r'data-last-price="([0-9.]+)"', g_r.text)
-                        if pm:
-                            _gp = float(pm.group(1))
-                            import random
-                            hist = pd.DataFrame({
-                                "Close": [_gp * (1 + random.uniform(-0.02, 0.02)) for _ in range(60)] + [_gp],
-                                "High": [_gp * (1 + random.uniform(0, 0.02)) for _ in range(60)] + [_gp],
-                                "Low": [_gp * (1 + random.uniform(-0.02, 0)) for _ in range(60)] + [_gp],
-                                "Volume": [random.randint(100000, 5000000) for _ in range(61)],
-                            })
-                            print(f"  ✅ Google Finance fallback: ${_gp}")
-                except: pass
             
             if len(hist) == 0:
                 return {"success": False, "error": f"Yahoo Finance is rate-limiting. Wait 2 minutes and try again. Stock: {symbol}"}
