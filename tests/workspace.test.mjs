@@ -71,3 +71,27 @@ for(const tool of setup().context.CelesysWorkspace.tools){
   }
  });
 }
+
+test('homepage keeps secondary controls collapsed and trading/options open them',()=>{
+ const a=setup();assert.equal(a.get('ws-quick-controls').open,false);
+ for(const mode of ['trading','options']){a.context.CelesysWorkspace.setMode(mode);assert.equal(a.get('ws-quick-controls').open,true);}
+ a.context.CelesysWorkspace.setMode('stock');assert.equal(a.get('ws-quick-controls').open,false);
+});
+test('internal quick stock task keeps its form open and leaves original report hidden',()=>{
+ const a=setup();let shown=false;a.get('report').style.setProperty=(k,v)=>{shown=v==='block';};a.get('report').classList.contains=()=>true;
+ a.context.CelesysWorkspace.setMode('stock',false,true);
+ assert.equal(a.get('ws-quick-controls').open,true);assert.equal(shown,false);
+});
+test('stock navigation restores original overview and retained charts after another tool',()=>{
+ const a=setup();let selected='',shown=false;a.context._stockData={ticker:'AAPL'};
+ a.context.switchTabGroup=g=>{selected=g;};a.get('report').classList.contains=()=>true;a.get('report').style.setProperty=(k,v)=>{shown=v==='block';};
+ a.context.CelesysWorkspace.setMode('stock');assert.equal(selected,'overview');assert.equal(shown,true);
+});
+test('browser focus and developer tools never blur reports or block the whole page',()=>{
+ assert.doesNotMatch(app,/classList\.add\('trades-blurred'\)/);
+ assert.doesNotMatch(app,/devtoolsOverlay|Screen capture blocked/);
+ assert.match(app,/function applyTabAccess\(email\)/);
+});
+test('analyzing a full report closes secondary controls',async()=>{
+ const a=setup();a.get('ws-quick-controls').open=true;await a.get('btn').emit('click');assert.equal(a.get('ws-quick-controls').open,false);
+});

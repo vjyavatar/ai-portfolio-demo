@@ -1490,86 +1490,8 @@ tradesTab.addEventListener('copy',e=>{e.preventDefault();e.clipboardData&&e.clip
 tradesTab.addEventListener('cut',e=>{e.preventDefault()});
 }
 
-// 5. Block keyboard shortcuts GLOBALLY on any report content
-document.addEventListener('keydown',function(e){
-const reportVisible=document.querySelector('#report.show');
-if(!reportVisible)return;
-if(e.key==='PrintScreen'){e.preventDefault();return false}
-if(e.ctrlKey&&e.key==='p'){e.preventDefault();return false}
-if(e.ctrlKey&&e.key==='s'){e.preventDefault();return false}
-if(e.ctrlKey&&e.shiftKey&&(e.key==='I'||e.key==='i'||e.key==='J'||e.key==='j')){e.preventDefault();return false}
-if(e.ctrlKey&&(e.key==='u'||e.key==='U')){e.preventDefault();return false}
-if(e.key==='F12'){e.preventDefault();return false}
-if(e.ctrlKey&&e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();return false}
-if(e.ctrlKey&&(e.key==='c'||e.key==='C')){e.preventDefault();return false}
-if(e.ctrlKey&&(e.key==='a'||e.key==='A')){e.preventDefault();return false}
-if(e.metaKey&&e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();return false}
-});
-
-// 5b. Block right-click GLOBALLY on entire page
-document.addEventListener('contextmenu',function(e){
-// Allow right-click only on inputs
-if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
-e.preventDefault();return false;
-});
-
-// 5c. Block drag on all content
-document.addEventListener('dragstart',function(e){
-if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
-e.preventDefault();return false;
-});
-
-// 5d. Block copy/paste globally (except inputs)
-document.addEventListener('copy',function(e){
-if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
-e.preventDefault();
-if(e.clipboardData)e.clipboardData.setData('text/plain','Content is protected — celesys.ai');
-return false;
-});
-document.addEventListener('cut',function(e){e.preventDefault();return false});
-
-// 6. Blur content when page loses visibility (anti-screenshot)
-document.addEventListener('visibilitychange',function(){
-if(document.hidden){
-document.body.classList.add('trades-blurred');
-}else{
-setTimeout(()=>document.body.classList.remove('trades-blurred'),1200);
-}
-});
-
-// 7. Blur on window blur (when focus moves away from browser)
-window.addEventListener('blur',function(){
-document.body.classList.add('trades-blurred');
-});
-window.addEventListener('focus',function(){
-setTimeout(()=>document.body.classList.remove('trades-blurred'),800);
-});
-
-// 8. Detect screen recording/capture API
-if(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia){
-const origGetDisplay=navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
-navigator.mediaDevices.getDisplayMedia=function(){
-alert('Screen recording is not permitted on Celesys AI reports.');
-return Promise.reject(new Error('Screen capture blocked'));
-};
-}
-
-// 9. DevTools detection — blur report if DevTools open
-(function(){
-const dt=new Image();
-let devOpen=false;
-Object.defineProperty(dt,'id',{get:function(){
-devOpen=true;document.body.classList.add('trades-blurred');
-const overlay=document.getElementById('devtoolsOverlay');
-if(!overlay){const ov=document.createElement('div');ov.id='devtoolsOverlay';
-ov.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#fff;font-family:Sora,sans-serif';
-ov.innerHTML='<div style="font-size:48px;margin-bottom:20px">&#128274;</div><div style="font-size:20px;font-weight:800;margin-bottom:8px">Developer Tools Detected</div><div style="font-size:14px;color:#aaa">Please close DevTools to continue using Celesys AI.</div>';
-document.body.appendChild(ov);}
-}});
-setInterval(function(){devOpen=false;console.log(dt);
-if(!devOpen){const ov=document.getElementById('devtoolsOverlay');if(ov)ov.remove();document.body.classList.remove('trades-blurred')}},2000)
-})();
-
+// Browser focus, clipboard and developer tools are not authorization boundaries.
+// Keep reports readable during multitasking; server and existing tier gates remain authoritative.
 // 10. Dynamic watermark with user email embedded
 function refreshWatermark(){
 const em=document.getElementById('email')?.value||'';
@@ -1587,19 +1509,6 @@ s.style.opacity=0.04+Math.random()*0.03;
 wm.appendChild(s);}
 }
 
-// 9. Periodic check — if dev tools are open (detected by debugger timing)
-(function detectDevTools(){
-const el=new Image();
-let open=false;
-Object.defineProperty(el,'id',{get:function(){open=true}});
-setInterval(()=>{
-open=false;
-console.log(el);
-if(open){
-document.body.classList.add('trades-blurred');
-}
-},3000);
-})();
 TI.addEventListener('keypress',e=>{if(e.key==='Enter')analyze()});
 
 function showStatus(m,t){const s=document.getElementById('status');s.innerHTML=m;s.className='sbar show '+t}

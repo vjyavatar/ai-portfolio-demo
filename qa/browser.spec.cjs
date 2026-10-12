@@ -3,8 +3,11 @@ const {test,expect}=require('@playwright/test');
 require('node:fs').mkdirSync('qa-output',{recursive:true});
 const {execFileSync}=require('node:child_process');
 const menus=JSON.parse(execFileSync('node',['qa/menu-inventory.cjs'],{encoding:'utf8'}));
+const runtimeErrors=new WeakMap();
+test.afterEach(async({page})=>{expect(runtimeErrors.get(page)||[], 'Uncaught JavaScript errors, including startup and report rendering').toEqual([]);});
 const stock={ticker:'AAPL',company_name:'QA fixture — not live data',currency:'USD',current_price:100,previous_close:99,market_cap:1000000000,pe_ratio:20,pb_ratio:3,dividend_yield:1,profit_margin:20,operating_margin:25,roe:18,beta:1.1,debt_to_equity:30,current_ratio:2,week52_low:80,week52_high:120,revenue:100000000,free_cash_flow:20000000,data_timestamp:'2026-01-02T16:00:00Z',data_source:'QA_FIXTURE',price_history:[95,96,98,99,100],revenue_growth:10,earnings_growth:12};
 async function boot(page){
+ const errors=[];runtimeErrors.set(page,errors);page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
   const u=new URL(route.request().url());
   if(u.hostname==='127.0.0.1'){
@@ -47,7 +50,6 @@ for(const menu of menus){
  test('menu '+menu.group+'/'+menu.tab+' opens for a full UI fixture',async({page})=>{
   await boot(page);await profile(page,'full');
   await page.evaluate(stock=>window.displayReport({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}}),stock);
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.evaluate(tab=>{const t=window.CelesysWorkspace.tools.find(t=>t.tab===tab);window.CelesysWorkspace.openTool(t);},menu.tab);
   if(menu.tab==='_today')await expect(page.locator('#ws-embedded')).toBeVisible();
   else if(menu.tab==='_active')await expect(page.locator('body')).toContainText(/Trading/);
@@ -58,9 +60,55 @@ for(const menu of menus){
    // Inspect original content, not only the new workspace's heading.
    await expect.poll(()=>page.evaluate(target=>[...document.querySelectorAll('#report [data-tab="'+target+'"]')].some(e=>e.getBoundingClientRect().height>0&&e.textContent.trim().length>10),target)).toBe(true);
   }
-  expect(errors).toEqual([]);
  });
 }
 test('voice starts muted and can be stopped without requesting a microphone',async({page})=>{
  await boot(page);await expect(page.locator('#ws-voice-toggle')).toHaveAttribute('aria-pressed','false');await page.locator('#ws-voice-toggle').click();await expect(page.locator('#ws-voice-toggle')).toHaveAttribute('aria-pressed','true');await page.locator('#ws-voice-toggle').click();await expect(page.locator('#ws-voice-toggle')).toHaveAttribute('aria-pressed','false');
+});
+
+test('homepage keeps secondary quick controls collapsed',async({page})=>{
+ await boot(page);
+ await expect(page.locator('#ws-quick-controls')).toHaveJSProperty('open',false);
+ await expect(page.locator('#ws-search')).toBeHidden();
+ await expect(page.locator('#ws-account #btn')).toBeVisible();
+});
+for(const mode of ['trading','options']){
+ test(mode+' sidebar opens its quick controls',async({page})=>{
+  await boot(page);
+  await page.locator('#ws-sidebar [data-ws-mode="'+mode+'"]').click();
+  await expect(page.locator('#ws-quick-controls')).toHaveJSProperty('open',true);
+  await expect(page.locator('#ws-search')).toBeVisible();
+  await expect(page.locator('#ws-run')).toContainText(mode==='options'?'Load option chain':'Review setup');
+ });
+}
+test('stock task within quick controls stays expanded',async({page})=>{
+ await boot(page);
+ await page.locator('#ws-sidebar [data-ws-mode="trading"]').click();
+ await page.locator('#ws-quick-controls [data-ws-mode="stock"]').click();
+ await expect(page.locator('#ws-quick-controls')).toHaveJSProperty('open',true);
+ await expect(page.locator('#ws-search')).toBeVisible();
+ await expect(page.locator('#ws-run')).toContainText('Quick stock brief');
+});
+test('window focus loss does not blur the rendered report',async({page})=>{
+ await boot(page);await profile(page,'full');
+ await page.evaluate(stock=>window.displayReport({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}}),stock);
+ await expect(page.locator('#report')).toBeVisible();
+ await page.evaluate(async()=>{window.dispatchEvent(new Event('blur'));await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
+ const filters=await page.evaluate(()=>[...document.querySelectorAll('#report, #report .sc, #report .dc, #report .prem-section')].filter(el=>el.getBoundingClientRect().height>0&&getComputedStyle(el).display!=='none').map(el=>getComputedStyle(el).filter));
+ expect(filters.length).toBeGreaterThan(0);
+ expect(filters.filter(filter=>filter.includes('blur('))).toEqual([]);
+ await expect(page.locator('#report')).toBeVisible();
+});
+test('stock sidebar restores the loaded report without a fresh analysis request',async({page})=>{
+ await boot(page);await profile(page,'full');
+ await page.evaluate(stock=>window.displayReport({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}}),stock);
+ await expect(page.locator('#report')).toBeVisible();
+ const reportRequests=[];page.on('request',request=>{if(new URL(request.url()).pathname==='/api/generate-report')reportRequests.push(request.url());});
+ await page.locator('#ws-sidebar [data-ws-mode="trading"]').click();
+ await expect(page.locator('#report')).toBeHidden();
+ await page.locator('#ws-sidebar [data-ws-mode="stock"]').click();
+ await expect(page.locator('#report')).toBeVisible();
+ await expect(page.locator('#ws-quick-controls')).toHaveJSProperty('open',false);
+ expect(await page.evaluate(()=>window._stockData?.ticker)).toBe(stock.ticker);
+ expect(reportRequests).toEqual([]);
 });

@@ -10,6 +10,8 @@ from urllib.request import Request,urlopen
 from urllib.error import HTTPError
 from urllib.parse import urlsplit,urljoin
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from qa.gaps import track_gaps
 class Document(HTMLParser):
     def __init__(self):super().__init__();self.ids=[];self.assets=[];self.title=False
     def handle_starttag(self,tag,attrs):
@@ -57,7 +59,8 @@ def fetch(base,path):
         with urlopen(req,timeout=80) as r:return r.status,r.headers.get('Content-Type',''),r.read(12000000),round(time.monotonic()-start,2)
     except HTTPError as e:return e.code,e.headers.get('Content-Type',''),e.read(2000),round(time.monotonic()-start,2)
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--live');p.add_argument('--output',default='qa-output');p.add_argument('--skip-tests',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--live');p.add_argument('--output',default='qa-output');p.add_argument('--skip-tests',action='store_true');p.add_argument('--previous',help='Previous report.json from the same target, for regression memory');a=p.parse_args()
+    previous=json.loads(Path(a.previous).read_text()) if a.previous else None
     if a.live:
         u=urlsplit(a.live)
         if u.scheme not in ('http','https') or u.hostname not in ('celesys.ai','localhost','127.0.0.1') or u.query or u.username: p.error('Use the owned celesys.ai site or a local test server')
@@ -69,12 +72,14 @@ def main():
     menus=json.loads(subprocess.check_output(['node','qa/menu-inventory.cjs'],cwd=ROOT,text=True))
     if not a.skip_tests:
         suites=[['npm','run','build']]+[[sys.executable,'-m','unittest','discover','-s','tests','-p',pattern] for pattern in ['test_existing_engines.py','test_workspace_backend.py','test_discovery.py','test_trading_*.py','test_qa_audit.py','test_secure_trading.py']]
+        suites.append([sys.executable,'-m','unittest','discover','-s','qa','-p','test_*.py'])
         for i,cmd in enumerate(suites):
             try:
                 result=subprocess.run(cmd,cwd=ROOT,text=True,capture_output=True,timeout=180)
                 (out/f'suite-{i}.log').write_text(result.stdout+result.stderr)
                 record(' '.join(cmd[1:]),'PASS' if result.returncode==0 else 'FAIL',f'Full results: suite-{i}.log')
             except subprocess.TimeoutExpired:record(' '.join(cmd),'FAIL','Timed out after 180 seconds')
+    if a.skip_tests:record('Regression suites','UNVERIFIED','Skipped by --skip-tests; prior passing suites are not evidence for this run')
     assets=set()
     if a.live:
         base=a.live.rstrip('/')
@@ -118,9 +123,12 @@ def main():
         record(feature,'UNVERIFIED','Requires browser/authorized fixtures or independent data; not certified by document/schema checks')
     counts=dict(collections.Counter(c['status'] for c in checks))
     report={'created_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),'target':a.live or 'local','summary':counts,'checks':checks,'menus':menus,'routes':routes,'functions':functions,'limits':'PASS applies only to the stated check. Function inventory is not function coverage. No orders, private emails, or full API payloads are recorded.'}
+    report['gaps']=track_gaps(checks,previous,target=report['target'],observed_at=report['created_at'])
     (out/'report.json').write_text(json.dumps(report,indent=2))
     lines=['# Celesys QA report','',f"Target: {report['target']}",f"Checks: {counts}",'','PASS is scoped to each check. UNVERIFIED is not a pass.','','| Check | Result | Evidence |','|---|---|---|']
     lines += ['| '+c['name'].replace('|','/')+' | '+c['status']+' | '+c['detail'].replace('|','/')+' |' for c in checks]
+    lines += ['','## Tracked gaps','','A check closes only when the same check passes against the same target. Missing checks remain unverified.','','| Check | State | Evidence |','|---|---|---|']
+    lines += ['| '+g['check'].replace('|','/')+' | '+g['status']+' | '+g['evidence'].replace('|','/')+' |' for g in report['gaps']]
     lines += ['','## Every menu','', '| Tool | UI access profiles | Functional output |','|---|---|---|']
     lines += ['| '+m['label']+' | '+', '.join(k for k,v in m['access'].items() if v)+' | UNVERIFIED |' for m in menus]
     (out/'report.md').write_text('\n'.join(lines)+'\n');print(json.dumps({'summary':counts,'report':str(out/'report.md'),'menus':len(menus),'routes':len(routes),'functions':len(functions)}))

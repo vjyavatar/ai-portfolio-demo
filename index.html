@@ -991,21 +991,6 @@ nav{height:40px !important;padding:0 8px !important}
   letter-spacing: 2px;
   font-family: 'Sora', sans-serif;
 }
-/* Blur ALL report content when page is not visible (anti-screenshot) */
-.trades-blurred #report .sbody, .trades-blurred #report .mgrid, .trades-blurred #report .tab-bar, .trades-blurred #decisionResult {
-  filter: blur(20px) !important;
-  transition: filter 0.1s;
-}
-.trades-blurred #report .sbody::after, .trades-blurred #report .mgrid::after, .trades-blurred #decisionResult::after {
-  content: "Content hidden for security";
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--amber);
-  z-index: 100;
-}
 
 .algo-btn{display:inline-block;padding:6px 14px;font-size:11px;font-weight:600;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;transition:all .2s;font-family:'Plus Jakarta Sans',sans-serif;line-height:1.4}
 .algo-btn:hover{background:rgba(26,86,219,.05);color:var(--blue);border-color:var(--blue);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
@@ -1193,7 +1178,7 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 @keyframes tscroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 </style>
 <link rel="stylesheet" href="/static/premium-theme.css?v=1775315896">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Celesys Research and Trading Workspace","url":"https://celesys.ai/"}</script><link rel="stylesheet" href="/static/workspace.css?v=20261012-unified"></head>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Celesys Research and Trading Workspace","url":"https://celesys.ai/"}</script><link rel="stylesheet" href="/static/workspace.css?v=20261012-clarity"></head>
 <body class="ws-unified">
 <a class="ws-skip" href="#ws-main">Skip to workspace</a>
 <aside id="ws-sidebar" class="ws-sidebar" aria-label="Main navigation">
@@ -1210,9 +1195,9 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 <div class="ws-topbar"><button id="ws-menu-toggle" class="ws-icon-btn" aria-label="Toggle navigation" aria-expanded="false">☰</button><span id="ws-breadcrumb">Workspace / Overview</span><div class="ws-top-actions"><button data-ws-directory>Find a tool <kbd>/</kbd></button><button id="ws-voice-toggle" aria-pressed="false">Voice off</button><button id="ws-theme" aria-label="Switch color theme">◐</button><button id="ws-account-toggle" aria-expanded="true">Charts &amp; account</button></div></div>
 <main id="ws-main" class="ws-main">
   <section id="ws-welcome" class="ws-welcome"><div><p class="ws-eyebrow">YOUR MARKET WORKSPACE</p><h1>Research with clarity.<br><span>Trade with a plan.</span></h1><p class="ws-intro">Your Celesys engines. One place to understand a stock, examine a setup and review the evidence before you act.</p></div><div class="ws-method"><span>THE CELESYS REVIEW</span><ol><li>Assessment</li><li>Evidence</li><li>Counterargument</li><li>Missing data</li><li>Next check</li></ol></div></section>
-  <section id="ws-account" class="ws-panel ws-analysis-entry"><div class="ws-section-heading"><div><p class="ws-eyebrow">ORIGINAL CELESYS ANALYSIS</p><h2>Stock charts, market data &amp; full report</h2></div><button id="ws-return-report" hidden>Return to loaded charts ↓</button></div><p>Enter your email and stock symbol below, then select Analyze. Your existing charts, financials and permitted menus open together. Other emails retain basic access.</p><div id="ws-legacy-search"></div></section>
-  <section class="ws-command" aria-label="Research controls"><p class="ws-eyebrow">QUICK BRIEF &amp; OPTIONS LOOKUP</p><div class="ws-mode-tabs" role="group" aria-label="Choose a task"><button data-ws-mode="stock" class="active" aria-pressed="true">Stock research</button><button data-ws-mode="trading" aria-pressed="false">Trading setup</button><button data-ws-mode="options" aria-pressed="false">Options chain</button></div>
-  <form id="ws-search"><label>Market<select id="ws-region"><option value="US">United States · USD</option><option value="IN">India · INR</option></select></label><label class="ws-symbol-label">Symbol<input id="ws-symbol" value="AAPL" maxlength="20" required autocomplete="off" pattern="[A-Za-z][A-Za-z0-9.\-]{0,19}" placeholder="AAPL or RELIANCE"></label><button type="button" id="ws-dictate" class="ws-mic" aria-label="Speak a stock symbol">Mic</button><button id="ws-run" class="ws-primary">Quick stock brief <span>↗</span></button></form><div class="ws-examples" id="ws-examples"></div><p id="ws-status" class="ws-status" role="status" aria-live="polite">Choose a market and symbol. Research runs when you request it.</p></section>
+  <section id="ws-account" class="ws-panel ws-analysis-entry"><div class="ws-section-heading"><div><p class="ws-eyebrow">RESEARCH WORKSPACE</p><h2>Start with a stock. See the complete picture.</h2></div><button id="ws-return-report" hidden>Return to loaded charts ↓</button></div><p>Analyze a company to open its price charts, financials and research. Your account determines which advanced tools are available.</p><div id="ws-legacy-search"></div></section>
+  <details id="ws-quick-controls" class="ws-command"><summary><span><strong>Quick brief &amp; options lookup</strong><small>A focused five-step review, trading setup or option-chain snapshot</small></span></summary><div class="ws-command-body"><div class="ws-mode-tabs" role="group" aria-label="Choose a task"><button data-ws-mode="stock" class="active" aria-pressed="true">Stock research</button><button data-ws-mode="trading" aria-pressed="false">Trading setup</button><button data-ws-mode="options" aria-pressed="false">Options chain</button></div>
+  <form id="ws-search"><label>Market<select id="ws-region"><option value="US">United States · USD</option><option value="IN">India · INR</option></select></label><label class="ws-symbol-label">Symbol<input id="ws-symbol" value="AAPL" maxlength="20" required autocomplete="off" pattern="[A-Za-z][A-Za-z0-9.\-]{0,19}" placeholder="AAPL or RELIANCE"></label><button type="button" id="ws-dictate" class="ws-mic" aria-label="Speak a stock symbol">Mic</button><button id="ws-run" class="ws-primary">Quick stock brief <span>↗</span></button></form><div class="ws-examples" id="ws-examples"></div><p id="ws-status" class="ws-status" role="status" aria-live="polite">Choose a market and symbol. Research runs when you request it.</p></div></details>
 
   <section id="tw-panel" class="ws-panel"><details><summary><strong>Trading watchlist · five-minute scanner &amp; voice</strong></summary><p>Research candidates from the existing closed-bar strategy. Six symbols maximum; requests are paced. Scans run while this tab stays visible. No orders are placed.</p><div class="tw-controls"><label>Market<select id="tw-region"><option value="US">United States</option><option value="IN">India</option></select></label><label>Watchlist<input id="tw-symbols" value="SPY, QQQ, AAPL" maxlength="125"></label><button id="tw-once">Scan once</button><button id="tw-start" class="ws-primary">Start five-minute scans</button><button id="tw-stop">Stop</button><label><input type="checkbox" id="tw-voice"> Speak candidate changes</label></div><p id="tw-status" role="status">Choose your watchlist and start. No background scan is running.</p><div class="ws-table-wrap"><table><caption>Underlying research only. Option contracts need their own quote, liquidity, expiry and risk checks.</caption><thead><tr><th>Symbol</th><th>Price &amp; closed bars</th><th>Assessment &amp; evidence</th><th>Source time</th><th>Next check</th></tr></thead><tbody id="tw-rows"></tbody></table></div><details><summary>Strategy and validation limits</summary><p>EMA 9/20 + session VWAP, a close beyond the prior three bars, relative volume ≥ 1.2×, ATR extension and current-quote alignment. At least 21 closed five-minute bars are required, so this strategy does not cover the first 105 minutes. No audited win rate or verified event calendar is available. This is a research filter, not a proven “top strategy.”</p></details><details><summary>Verified access for protected provider connections</summary><p>Use the email entered in the original analysis form above. Codes are sent only after the operator configures email delivery.</p><div class="tw-controls"><button id="tw-send-code">Send sign-in code</button><label>Eight-digit code<input id="tw-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label><button id="tw-confirm-code">Verify code</button><button id="tw-signout">Sign out</button></div><p id="tw-auth-status" role="status">Checking sign-in availability…</p></details></details></section>
   <section id="ws-directory" class="ws-panel" hidden><div class="ws-section-heading"><div><p class="ws-eyebrow">EVERY ENGINE, WITH A PURPOSE</p><h2>Find the right tool</h2></div><button id="ws-directory-close">Close directory ×</button></div><label class="ws-filter">Search tools<input id="ws-tool-search" type="search" placeholder="Try valuation, journal, options, smart money…"></label><p id="ws-directory-count" class="ws-muted" role="status"></p><div id="ws-tool-grid" class="ws-tool-grid"></div></section>
@@ -1222,6 +1207,7 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
   <details id="ws-import"><summary>India feed unavailable? Inspect your own CSV snapshot</summary><p>Import an option-chain CSV you are permitted to use. It stays in this browser and is labelled as an imported snapshot, never live data.</p><div class="ws-import-fields"><label>Snapshot expiry<input id="ws-import-expiry" type="date"></label><label>Choose CSV<input id="ws-import-file" type="file" accept=".csv,text/csv"></label></div><p class="ws-muted">Supports the standard NSE calls / strike / puts CSV layout, or named columns: strike, ce_bid, ce_ask, ce_ltp, ce_oi, ce_iv, pe_bid, pe_ask, pe_ltp, pe_oi, pe_iv.</p></details></section>
   <section id="ws-plan" class="ws-panel" hidden><div class="ws-section-heading"><div><p class="ws-eyebrow">MANUAL PLAN · NO ORDERS SENT</p><h2>Know the size before the trade.</h2></div><span id="ws-plan-contract" class="ws-badge">Choose inputs</span></div><p>For a long stock or long option position. Enter your own current broker prices and verified contract multiplier. Options can lose the entire premium; a stop is not a guaranteed fill.</p><form id="ws-plan-form" class="ws-plan-fields"><label>Capital<input id="ws-capital" type="number" min="1" step="any" required></label><label>Risk budget %<input id="ws-risk" type="number" min="0.01" max="100" step="any" value="1" required></label><label>Entry per unit<input id="ws-entry" type="number" min="0.0001" step="any" required></label><label>Stop per unit<input id="ws-sl" type="number" min="0" step="any" required></label><label>Target per unit<input id="ws-target" type="number" min="0.0001" step="any" required></label><label>Units per lot / contract<input id="ws-multiplier" type="number" min="1" step="1" required></label><button class="ws-primary">Calculate plan</button></form><p id="ws-plan-result" role="status"></p><button id="ws-copy-plan" disabled>Copy plan for broker review</button><p class="ws-muted">Calculated sizing excludes fees, slippage, gaps and assignment. Full premium exposure is shown separately from the planned stop loss.</p></section>
   <section id="ws-start-cards" class="ws-start-grid"><button class="ws-start-card" data-ws-mode="stock"><span class="ws-card-icon">01 / INVESTIGATE</span><h2>Is the business worth a closer look?</h2><p>Quality, valuation, growth and the reasons your thesis could fail.</p><strong>Research a stock ↗</strong></button><button class="ws-start-card" data-ws-mode="trading"><span class="ws-card-icon">02 / PREPARE</span><h2>Understand the setup before the signal.</h2><p>Market structure, modelled levels and the checks still missing.</p><strong>Review a setup ↗</strong></button><button class="ws-start-card" data-ws-mode="options"><span class="ws-card-icon">03 / INSPECT</span><h2>See the contract behind the idea.</h2><p>Compare calls and puts. Review liquidity, expiry and position size.</p><strong>Open option chain ↗</strong></button></section>
+  <details id="ws-market-context" class="ws-panel" hidden><summary>Market context &amp; events</summary><div id="ws-event-mount"></div></details>
   <div id="ws-legacy-context" class="ws-legacy-context" hidden><div><p class="ws-eyebrow" id="ws-legacy-group"></p><h2 id="ws-legacy-title"></h2><p id="ws-legacy-help"></p></div><button data-ws-home>Back to overview</button></div>
   <p class="ws-footnote">Celesys is a research and planning workspace. Engine ratings are not calibrated win probabilities. Brokerage orders are not placed from this workspace.</p>
 </main>
@@ -3048,11 +3034,11 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <!-- BACK TO TOP -->
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666"><link rel="stylesheet" href="/static/workspace.css?v=20261012-unified">
-<script src="/static/app.min.js?v=20261012-unified"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666"><link rel="stylesheet" href="/static/workspace.css?v=20261012-clarity">
+<script src="/static/app.min.js?v=20261012-clarity"></script>
 <script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=20261002-validation" defer></script>
-<script src="/static/active-trading.js?v=20261012-unified" defer></script>
+<script src="/static/active-trading.js?v=20261012-clarity" defer></script>
 
 
 
@@ -3097,8 +3083,8 @@ function pwaInstall(){
   _deferredPrompt.userChoice.finally(function(){_deferredPrompt=null;document.getElementById('pwaInstallBanner')?.remove();});
 }
 </script>
-<script src="/static/workspace-core.js?v=20261012-unified" defer></script>
-<script src="/static/workspace.js?v=20261012-unified" defer></script>
+<script src="/static/workspace-core.js?v=20261012-clarity" defer></script>
+<script src="/static/workspace.js?v=20261012-clarity" defer></script>
 <script src="/static/trading-watch.js?v=20261012-watch" defer></script>
 </body>
 </html>

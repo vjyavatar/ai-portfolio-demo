@@ -1,11 +1,13 @@
 name: Celesys page and functionality audit
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
   push:
     branches: [main]
-    paths: ['api.py', 'start.py', 'index.html', 'static/**', 'discovery/**', 'trading/**', 'tests/**', 'qa/**', '.github/workflows/celesys-qa.yml']
+    paths: ['*.py', 'package.json', 'package-lock.json', 'index.html', 'static/**', 'discovery/**', 'trading/**', 'tests/**', 'qa/**', '.github/workflows/celesys-qa.yml']
   pull_request:
-    paths: ['api.py', 'start.py', 'index.html', 'static/**', 'tests/**', 'qa/**']
+    paths: ['*.py', 'package.json', 'package-lock.json', 'index.html', 'static/**', 'tests/**', 'qa/**']
 permissions:
   contents: read
 concurrency:
@@ -24,7 +26,28 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install fastapi==0.115.6 httpx==0.27.2 requests==2.32.3
-      - run: python qa/audit.py --output qa-output/local
+      - uses: actions/cache/restore@v4
+        with:
+          path: qa-history
+          key: celesys-qa-history-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: celesys-qa-history-${{ github.ref_name }}-
+      - name: Regression audit with previous evidence
+        run: |
+          if [ -f qa-history/report.json ]; then
+            python qa/audit.py --previous qa-history/report.json --output qa-output/local
+          else
+            python qa/audit.py --output qa-output/local
+          fi
+      - name: Retain regression evidence
+        if: always()
+        run: |
+          mkdir -p qa-history
+          if [ -f qa-output/local/report.json ]; then cp qa-output/local/report.json qa-history/report.json; fi
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: qa-history
+          key: celesys-qa-history-${{ github.ref_name }}-${{ github.run_id }}
       - name: Read-only production data and page checks
         if: github.event_name == 'workflow_dispatch'
         run: python qa/audit.py --skip-tests --live https://celesys.ai --output qa-output/live

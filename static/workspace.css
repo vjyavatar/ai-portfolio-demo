@@ -31,3 +31,56 @@ body.ws-unified{background:var(--ws-bg)!important;color:var(--ws-ink);font-famil
 .ws-unified #ws-start-cards{display:none}
 
 .tw-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin:16px 0}.tw-controls label{flex:1;min-width:120px}.tw-controls input[type=checkbox]{height:auto!important;width:auto!important}#tw-rows small{display:block;max-width:360px;color:var(--ws-muted);margin-top:6px}#tw-rows svg{display:block;width:140px;height:32px;color:var(--ws-accent)}#tw-panel summary{cursor:pointer;padding:8px 0}#tw-panel td{vertical-align:top;padding:16px 12px}#tw-panel table{min-width:750px;width:100%}
+
+/* Clear task hierarchy and readable original reports, without changing feature gates. */
+.ws-unified .ws-welcome{margin-bottom:24px;gap:32px}
+.ws-unified .ws-welcome h1{font-size:clamp(28px,3vw,42px)}
+.ws-unified .ws-analysis-entry{background:linear-gradient(120deg,var(--ws-card) 65%,var(--ws-soft));padding:26px}
+.ws-analysis-entry .ws-section-heading{margin-bottom:10px}
+.ws-unified #ws-legacy-search .icard{padding:18px 0 0;background:transparent!important;border:0;overflow:visible}
+.ws-unified #ws-legacy-search .irow{gap:12px;align-items:stretch}
+.ws-unified #ws-legacy-search .ipt{min-height:48px;font-size:14px;line-height:1.5}
+.ws-unified #ws-legacy-search #btn{min-height:48px;border-radius:9px;background:var(--ws-accent);font-size:14px;padding:12px 26px}
+.ws-unified #ws-legacy-search .search-help{font-size:12px!important;line-height:1.7}
+.ws-unified details.ws-command{padding:0;opacity:1;border-left:1px solid var(--ws-line)}
+.ws-command>summary{padding:20px 24px!important;background:var(--ws-card)!important;justify-content:space-between;font-family:inherit}
+.ws-command>summary strong{font-size:15px;color:var(--ws-ink)}
+.ws-command>summary small{display:block;font-size:12px;font-weight:400;color:var(--ws-muted);margin-top:4px;line-height:1.6}
+.ws-command>summary:after{content:'+';font-size:24px;font-weight:400;color:var(--ws-accent)}
+.ws-command[open]>summary:after{content:'−'}
+.ws-command-body{padding:20px 24px 24px}
+.ws-unified #groupSubNav{flex-wrap:nowrap!important;overflow-x:auto!important;gap:8px;scrollbar-width:thin;padding:12px 0!important;max-width:100%}
+.ws-unified #groupSubNav button{flex:0 0 auto;white-space:nowrap}
+.ws-unified #mainTabBar{gap:4px;padding:6px!important}
+.ws-unified #reportHeader{flex-wrap:wrap!important;gap:12px!important;padding:18px!important;border:1px solid var(--ws-line);border-radius:12px;margin-bottom:12px}
+.ws-unified #globalDecisionBar{position:relative!important;inset:auto!important;width:auto!important;z-index:1!important;margin:12px 0;border-radius:10px;flex-wrap:wrap!important;box-shadow:none!important}
+.ws-unified #report .sbody{padding:20px!important;line-height:1.7}
+.ws-unified #report .shead{padding:18px 20px!important}
+.ws-unified #report .shead h2,.ws-unified #report .shead h3{font-size:16px!important;line-height:1.5}
+.ws-unified #report .mgrid{gap:12px!important}
+.ws-unified #report .prem-section:hover{transform:none}
+.ws-unified #report .sub-nav{position:relative!important;top:auto!important;margin-left:0;margin-right:0}
+.ws-unified #report .chart-container{min-width:0;max-width:100%}
+.ws-unified #eventAlertArea{max-width:none!important;margin:0!important}
+#ws-market-context summary{font-size:14px}
+#ws-event-mount{padding:12px 0;overflow:hidden}
+.ws-unified .edu-bar{position:relative!important;inset:auto!important;width:auto!important;margin-left:var(--ws-sidebar);box-sizing:border-box}
+.ws-unified .ws-main button,.ws-unified .ws-topbar button{min-height:44px}
+.ws-unified .ws-main input,.ws-unified .ws-main select{font-size:16px}
+.ws-unified #ws-group-links .ws-nav{min-height:36px;line-height:1.5}
+@media(max-width:760px){
+ .ws-unified .ws-analysis-entry{padding:20px}
+ .ws-analysis-entry h2{font-size:22px;line-height:1.35}
+ .ws-command>summary{padding:18px!important}
+ .ws-command-body{padding:18px}
+ .ws-unified #ws-legacy-search .irow{display:flex;flex-direction:column}
+ .ws-unified #ws-legacy-search .irow>*{width:100%;box-sizing:border-box}
+ .ws-unified #reportHeader>div{max-width:100%;flex-wrap:wrap!important}
+ .ws-unified #report .sbody{padding:16px!important}
+ .ws-unified #mainTabBar{flex-wrap:nowrap!important;overflow-x:auto!important;scrollbar-width:thin}
+ .ws-unified #mainTabBar .tab-btn{flex-shrink:0;font-size:12px!important;min-height:44px!important}
+ .ws-unified .ws-topbar button{font-size:12px}
+ .ws-unified .ws-top-actions{gap:4px}
+ .ws-unified .ws-topbar [data-ws-directory]{display:none}
+ .ws-unified .ws-mode-tabs{flex-wrap:wrap;justify-content:flex-start}
+}
