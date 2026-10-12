@@ -133,3 +133,46 @@ class SecurityTests(unittest.TestCase):
   self.assertEqual(denied.status_code,403)
   failed=asyncio.run(scope['global_exception_handler'](request,Exception('SECRET_TOKEN')))
   self.assertEqual(failed.status_code,500);self.assertNotIn(b'SECRET_TOKEN',failed.body)
+
+class MiddlewareHeaderTests(unittest.TestCase):
+ def setUp(self):
+  from fastapi import HTTPException
+  self.env=patch.dict(os.environ,ENV,clear=True);self.env.start();self.today_calls=0
+  app=FastAPI()
+  @app.get('/today')
+  def today(deny:bool=False):
+   self.today_calls+=1
+   if deny:raise HTTPException(403,'Compatibility account denied')
+   return {'ok':True}
+  @app.get('/api/trading-desk/{operation}')
+  @app.get('/api/private-options/{operation}')
+  def data(operation:str,fail:bool=False):
+   if fail:raise HTTPException(503,'Provider unavailable')
+   return {'operation':operation}
+  auth.attach_access(app,lambda e:{'full':True},{'/today':'full','/api/private-options/chain':'full'})
+  self.client=TestClient(app,base_url='https://testserver')
+ def tearDown(self):self.client.close();self.env.stop()
+ def test_today_enforced_early_denial_is_noindex(self):
+  response=self.client.get('/today')
+  self.assertEqual(response.status_code,403);self.assertEqual(self.today_calls,0)
+  self.assertEqual(response.headers['x-robots-tag'],'noindex, nofollow')
+  self.assertEqual(response.headers['cache-control'],'no-store')
+ def test_today_compatibility_denial_is_noindex(self):
+  with patch.dict(os.environ,{'CELESYS_AUTH_ENFORCE':'false'}):response=self.client.get('/today?deny=true')
+  self.assertEqual(response.status_code,403);self.assertEqual(self.today_calls,1)
+  self.assertEqual(response.headers['x-robots-tag'],'noindex, nofollow')
+ def test_today_verified_success_is_noindex(self):
+  with patch('secure_access.session',return_value={'full':True}):response=self.client.get('/today')
+  self.assertEqual(response.status_code,200);self.assertEqual(self.today_calls,1)
+  self.assertEqual(response.headers['x-robots-tag'],'noindex, nofollow')
+  self.assertEqual(response.headers['cache-control'],'no-store')
+ def test_data_status_and_downstream_errors_are_never_cached(self):
+  for prefix in ('/api/trading-desk','/api/private-options'):
+   for suffix,status in (('/status',200),('/status?fail=true',503)):
+    with self.subTest(path=prefix+suffix):
+     response=self.client.get(prefix+suffix)
+     self.assertEqual(response.status_code,status)
+     self.assertEqual(response.headers['cache-control'],'no-store')
+ def test_private_options_early_denial_is_never_cached(self):
+  response=self.client.get('/api/private-options/chain')
+  self.assertEqual(response.status_code,403);self.assertEqual(response.headers['cache-control'],'no-store')

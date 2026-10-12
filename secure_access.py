@@ -141,6 +141,13 @@ def attach_access(app,roles,protected):
                 response=JSONResponse({'success':False,'error':'Verified account with this feature is required.'},status_code=403)
             else:response=await call_next(request)
             response.headers['X-Content-Type-Options']='nosniff';response.headers['Referrer-Policy']='same-origin';response.headers['X-Frame-Options']='SAMEORIGIN'
-            if request.url.path.startswith('/api/access/') or tier:response.headers['Cache-Control']='no-store'
+            path=request.url.path.rstrip('/')
+            data_endpoint=any(path==prefix or path.startswith(prefix+'/') for prefix in
+                              ('/api/trading-desk','/api/private-options'))
+            if request.url.path.startswith('/api/access/') or tier or data_endpoint:
+                response.headers['Cache-Control']='no-store'
+            # Apply after either the middleware gate or downstream route returns,
+            # so early denials cannot omit the private page's indexing policy.
+            if path=='/today':response.headers['X-Robots-Tag']='noindex, nofollow'
             return response
         finally:identity.reset(marker)

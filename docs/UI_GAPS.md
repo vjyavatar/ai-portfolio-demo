@@ -49,3 +49,11 @@ Confirmed fixes under rerun:
 - Production live checks have separate persistent evidence, and run during both markets' sessions in addition to nightly regression checks.
 
 Still requires configuration or independent verification: licensed India options credentials, US production provider entitlement, verified email delivery/enforcement, actual device voice playback, every input combination within each of 50 menus, financial strategy performance and Google Search Console ownership/submission.
+
+## Accepted release and production checks
+
+Runtime commit `1054fdf` deployed successfully on Render on 2026-10-12 at 05:34 UTC. GitHub Actions run 10 (`38208175150`) passed all 110 browser fixtures and 239 distinct code regression tests. The UI agent reviewed final screenshots: desktop width 1440px, mobile width 390px, all five populated report charts visible after normal tour dismissal. These are fixture results, not certification of all financial outputs.
+
+All five changed frontend assets matched the tested source in production. Anonymous private-options requests returned 401 and watchlist requests 403. The sitemap lists the canonical homepage without the duplicate research alias. Post-deployment probes observed fresh open-session RELIANCE evidence with WAIT, and closed-session SPY WAIT. An earlier provider429 was retained as a real availability finding; one successful check is not guaranteed continuity.
+
+India public options remained unavailable. Dhan/Tradier private-feed credentials and verified-email delivery/enforcement remained unconfigured. Do not treat existing email-tier compatibility mode as verified identity. Actual device voice playback and independent strategy performance remain unverified. Scheduled QA retains new failures; it does not silently rewrite or deploy code.
