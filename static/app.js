@@ -2180,6 +2180,7 @@ try{window._lastAnalysisData=data.live_data;
 setTimeout(function(){
   var _pqc=document.getElementById('premiumQualityContent');
   if(!_pqc||!window._lastAnalysisData)return;
+  try{
   var _d=window._lastAnalysisData;var _S=_d.currency==='INR'?'₹':'$';
   var _ih='';
   if(typeof _computeQualityScore==='function'){
@@ -2213,15 +2214,16 @@ setTimeout(function(){
   if(typeof _52weekGauge==='function')_ih+=_52weekGauge(_d,_S);
   if(typeof _peerCompBar==='function')_ih+=_peerCompBar(_d,_S);
   if(typeof _overviewGuide==='function')_ih=_overviewGuide()+_ih;
-  if(_ih)_pqc.innerHTML=_ih;
-},2000);}catch(e){}
+  _pqc.innerHTML=_ih||'<p>Supplementary analysis is unavailable. The stock report and source data remain available.</p>';
+  }catch(e){_pqc.textContent='Supplementary analysis could not be displayed. The stock report remains available.';console.warn('Supplementary analysis render failed');}
+},0);}catch(e){}
 try{
 const d=data.live_data,curr=d.currency==='INR'?'₹':'$',price=d.current_price;
 var _tt=document.getElementById('tickerTag');if(_tt)_tt.textContent=d.ticker;
 var _cn=document.getElementById('companyName');if(_cn)_cn.textContent=d.company_name||d.ticker;
 const scEl=document.getElementById('stickyCompany');if(scEl){scEl.textContent=(d.company_name||d.ticker)+' · '+curr+(price||0).toLocaleString();scEl.style.display='inline'}
 const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
-var _ts2=document.getElementById('timestamp');if(_ts2)_ts2.innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' · '+d.data_timestamp;
+var _ts2=document.getElementById('timestamp');if(_ts2){_ts2.textContent='Source timestamp'+srcLabel+' · '+(d.data_timestamp||'Unavailable');}
 
 // FORCE SHOW REPORT IMMEDIATELY — even before template renders
 var rpt=document.getElementById('report');
@@ -3212,6 +3214,7 @@ const firstVisible=document.querySelector('[data-tab="quick"][data-subtab="'+sub
 if(firstVisible)firstVisible.scrollIntoView({behavior:'instant',block:'start'});
 // Charts need resize after becoming visible
 if(sub==='technical'){setTimeout(function(){
+if(window._activeSubTab!=='technical'||window._activeGroup!=='overview')return;
 window.dispatchEvent(new Event('resize'));
 // Re-render charts if they were created while hidden (0x0 canvas)
 try{if(window._stockData)createCharts(window._stockData)}catch(e){console.warn('Chart re-render:',e)}
@@ -5444,8 +5447,9 @@ el.scrollIntoView({behavior:'smooth',block:'start'});
 function createCharts(d){
 // Ensure chart container is visible during rendering (Chart.js needs non-zero dimensions)
 var _chartsCard=document.getElementById('chartsCard');
-// Show chartsCard ONLY within its proper subtab — never make it globally visible
-if(_chartsCard)_chartsCard.style.display='none';
+// Keep active technical charts measurable; hidden charts otherwise initialize at 0×0.
+var _showCharts=window._activeGroup==='overview'&&window._activeSubTab==='technical';
+if(_chartsCard)_chartsCard.style.display=_showCharts?'block':'none';
 if(valChart)valChart.destroy();if(trendChart)trendChart.destroy();if(healthChart)healthChart.destroy();if(riskChart)riskChart.destroy();if(marginChart)marginChart.destroy();
 const gc='rgba(0,47,108,.06)';
 Chart.defaults.color='#94a3b8';Chart.defaults.font.family="'DM Sans',sans-serif";Chart.defaults.responsive=true;Chart.defaults.maintainAspectRatio=false;
@@ -5592,8 +5596,8 @@ const verdict=beatsCount===3?'<strong style="color:var(--green)">Outperforms ind
 mvI.innerHTML=`<strong style="color:#06b6d4">vs Peers:</strong> ${verdict}. ${pm>0?'Profit margin '+pm.toFixed(1)+'% '+(pmBeat?'&#10003;':'&#10007;')+' | ':''} ${om>0?'Op. margin '+om.toFixed(1)+'% '+(omBeat?'&#10003;':'&#10007;')+' | ':''} ${roe>0?'ROE '+roe.toFixed(1)+'% '+(roeBeat?'&#10003;':'&#10007;'):''} <span style="color:var(--text3)">(&#10003;=beats avg, &#10007;=below avg)</span>`;
 }
 }
-// Charts rendered into hidden container — show only when subtab activates
-if(_chartsCard)_chartsCard.style.display='none';
+// Preserve technical-tab visibility after chart creation.
+if(_chartsCard)_chartsCard.style.display=_showCharts?'block':'none';
 }
 
 // SMALL CAP DATABASE (ALL sectors)

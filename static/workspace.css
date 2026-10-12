@@ -93,3 +93,6 @@ body.ws-unified{background:var(--ws-bg)!important;color:var(--ws-ink);font-famil
 #tw-panel>details[open]>summary:after{content:'−'}
 .ws-unified footer,.ws-unified footer p,.ws-unified footer a{color:#b6c7d7!important}
 .ws-unified footer a:hover{color:#fff!important}
+
+/* Legacy decorative glow extended 20% beyond the document on every viewport. */
+.ws-unified .hero::before{display:none!important}

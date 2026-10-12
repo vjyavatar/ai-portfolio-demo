@@ -44,6 +44,48 @@ def validate_chain(data):
     if not data.get('expiry') or any(not isinstance(x,(int,float)) or not math.isfinite(x) or x<=0 for x in strikes):return 'FAIL','Invalid expiry or strike'
     if len(set(strikes))!=len(strikes):return 'FAIL','Duplicate strikes'
     return 'PASS',f'{len(rows)} strikes; snapshot structure only, quote freshness not certified'
+def validate_trading(data,symbol,region,now=None):
+    """Validate observed evidence, never profitability or upstream real-time entitlement."""
+    now=time.time() if now is None else now
+    def finite(x):return isinstance(x,(int,float)) and not isinstance(x,bool) and math.isfinite(x)
+    if not isinstance(data,dict) or data.get('symbol')!=symbol or data.get('region')!=region:
+        return 'FAIL','Trading response symbol/market mismatch'
+    if data.get('source')!='Yahoo Finance chart' or data.get('currency')!=('INR' if region=='IN' else 'USD'):
+        return 'FAIL','Trading source or currency is unverified'
+    verdict=data.get('verdict');candidate=verdict in ('LONG_RESEARCH','BEARISH_RESEARCH')
+    if verdict not in ('WAIT','LONG_RESEARCH','BEARISH_RESEARCH'):return 'FAIL','Unknown trading verdict'
+    start,end=data.get('session_start'),data.get('session_end')
+    known=finite(start) and finite(end) and 0<end-start<=86400
+    opened=known and start<=now<end
+    quote,bar=data.get('quote_time'),data.get('bar_close_time')
+    fresh=finite(quote) and finite(bar) and 0<=now-quote<=300 and 0<=now-bar<=300 and quote>=bar
+    price=data.get('price');price_ok=finite(price) and price>0
+    provider=data.get('provider_status') or {}
+    received=isinstance(provider,dict) and provider.get('code')=='RESPONSE_RECEIVED'
+    if candidate:
+        if not (received and opened and data.get('market_status')=='OPEN' and fresh and price_ok):
+            return 'FAIL','Candidate without verified open session, source response, price and fresh quote/closed bar'
+        bars=data.get('bars');stages=data.get('stages')
+        if not isinstance(bars,list) or len(bars)<21 or not isinstance(stages,list):
+            return 'FAIL','Candidate lacks closed-bar strategy evidence'
+        gates={s.get('name'):s.get('status') for s in stages if isinstance(s,dict)}
+        if any(gates.get(name)!='pass' for name in ('Data steward','Session guard','Trend analyst','Setup analyst','Risk critic','Quote guard')):
+            return 'FAIL','Candidate has missing or failed strategy guards'
+        return 'PASS','Open-session research candidate with fresh source quote and closed bar; performance not validated'
+    if not received:return 'UNVERIFIED','Provider unavailable or cooling down; WAIT is safe but live feed is not verified'
+    if not known:return 'UNVERIFIED','WAIT with unverified session; not classified as a closed market'
+    if not opened:
+        if data.get('market_status')=='OPEN':return 'FAIL','Response labels an ended or future session OPEN'
+        return 'PASS','Closed-session WAIT; live freshness is not certified outside the session'
+    if data.get('market_status')!='OPEN':return 'FAIL','Response session state contradicts its source session times'
+    if not (fresh and price_ok):return 'UNVERIFIED','Open-session WAIT; fresh quote/closed-bar evidence unavailable'
+    return 'PASS','Open-session WAIT with fresh source evidence; no aligned candidate is required'
+
+def trading_probes(regions):
+    return [(f'/api/trading-desk/research?symbol={symbol}&region={region}',
+             lambda data,symbol=symbol,region=region:validate_trading(data,symbol,region))
+            for region,symbol in [('IN','RELIANCE'),('US','SPY')] if region in regions]
+
 def source_inventory():
     routes=[];functions=[];pages={'/','/research','/today','/trading/','/options/india','/options/us'}
     for path in sorted(ROOT.glob('*.py')):
@@ -67,7 +109,9 @@ def fetch(base,path):
         with urlopen(req,timeout=80) as r:return r.status,r.headers.get('Content-Type',''),r.read(12000000),round(time.monotonic()-start,2)
     except HTTPError as e:return e.code,e.headers.get('Content-Type',''),e.read(2000),round(time.monotonic()-start,2)
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--live');p.add_argument('--output',default='qa-output');p.add_argument('--skip-tests',action='store_true');p.add_argument('--previous',help='Previous report.json from the same target, for regression memory');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--live');p.add_argument('--live-data-only',action='store_true',help='Bounded underlying probes only; no page crawl or test suites');p.add_argument('--region',choices=['IN','US','both'],default='both');p.add_argument('--output',default='qa-output');p.add_argument('--skip-tests',action='store_true');p.add_argument('--previous',help='Previous report.json from the same target, for regression memory');a=p.parse_args()
+    if a.live_data_only and not a.live:p.error('--live-data-only requires --live')
+    if a.live_data_only:a.skip_tests=True
     previous=json.loads(Path(a.previous).read_text()) if a.previous else None
     if a.live:
         u=urlsplit(a.live)
@@ -98,7 +142,7 @@ def main():
                 return path,doc,status,detail+f'; {elapsed}s',body
             except Exception as e:return path,None,'FAIL',type(e).__name__,b''
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            for path,doc,status,detail,body in pool.map(page_check,pages):
+            for path,doc,status,detail,body in pool.map(page_check,[] if a.live_data_only else pages):
                 record('Page '+path,status,detail,scope='Document response only; browser interactions separate')
                 if doc:
                     assets.update(doc.assets)
@@ -113,15 +157,17 @@ def main():
                 record('Asset '+path,'PASS' if code==200 and body and 'text/html' not in kind else 'FAIL',f'HTTP {code}; {len(body)} bytes')
             except Exception as e:record('Asset '+path,'FAIL',type(e).__name__)
         probes=[('/health',lambda d:('PASS','Service healthy') if d.get('status')=='healthy' else ('FAIL','Unhealthy service'))]
-        probes += [(f'/api/research-brief?mode={mode}&symbol={sym}&region={region}',validate_brief) for mode,sym,region in [('stock','AAPL','US'),('stock','RELIANCE','IN'),('trading','SPY','US'),('trading','NIFTY','IN')]]
-        probes += [(f'/api/existing-option-chain?symbol={sym}&region={region}',validate_chain) for sym,region in [('SPY','US'),('NIFTY','IN')]]
-        for path,validator in probes:
+        if not a.live_data_only:probes += [(f'/api/research-brief?mode={mode}&symbol={sym}&region={region}',validate_brief) for mode,sym,region in [('stock','AAPL','US'),('stock','RELIANCE','IN'),('trading','SPY','US'),('trading','NIFTY','IN')]]
+        if not a.live_data_only:probes += [(f'/api/existing-option-chain?symbol={sym}&region={region}',validate_chain) for sym,region in [('SPY','US'),('NIFTY','IN')]]
+        probes += trading_probes(['IN','US'] if a.region=='both' else [a.region])
+        for index,(path,validator) in enumerate(probes):
+            if index>0 and path.startswith('/api/'):time.sleep(20) # Respect shared upstream pacing; no immediate retries.
             try:
                 code,kind,body,elapsed=fetch(base,path)
                 status,detail=validator(json.loads(body)) if code==200 else ('FAIL',f'HTTP {code}')
                 record('Data '+path,status,detail,seconds=elapsed)
             except Exception as e:record('Data '+path,'FAIL',type(e).__name__)
-        for path in ['/api/upstox-login','/api/upstox-status']:
+        for path in ([] if a.live_data_only else ['/api/upstox-login','/api/upstox-status']):
             try:code,*_=fetch(base,path);record('Retired '+path,'PASS' if code==410 else 'FAIL',f'HTTP {code}, expected 410')
             except Exception as e:record('Retired '+path,'FAIL',type(e).__name__)
     else:

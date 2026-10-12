@@ -35,6 +35,8 @@ After setup: verify provider timestamps during a market session, test a permitte
 
 Canonical sitemap URLs are consistent; private Today’s Setups responses use noindex and no-store. Search Console verification/submission and actual ranking are separate from code changes.
 
-The nightly QA workflow tracks unresolved evidence. Browser fixture execution must be confirmed from CI artifacts; device audio, provider entitlements and financial correctness remain separate verification tasks.
+The nightly full QA workflow runs at 03:17 UTC (08:47 IST). Separate read-only production checks run on weekdays at 06:20 UTC (11:50 IST) for India and 16:20 UTC (11:20 EST / 12:20 EDT) for the US. GitHub may delay scheduled jobs. Live results and failure history are stored separately from fixtures, by market and scope. Missing or stale feeds remain UNVERIFIED; a closed-session WAIT is not certification of live freshness.
+
+Browser fixture execution must be confirmed from CI artifacts; device audio, provider entitlements and financial correctness remain separate verification tasks. The review loop retains failures and tests reviewed fixes; it does not silently rewrite strategies or repeatedly deploy without a verified code change.
 
 References: https://dhanhq.co/docs/v2/option-chain/ ; https://docs.tradier.com/docs/market-data ; https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls

@@ -50,6 +50,10 @@ async function profile(page,role){
 }
 test('desktop homepage exposes the original email, symbol and Analyze controls',async({page})=>{
  await boot(page);await expect(page.locator('#ws-account')).toBeVisible();await expect(page.locator('#ws-account #email')).toBeVisible();await expect(page.locator('#ws-account #btn')).toBeVisible();await page.screenshot({path:'qa-output/home-desktop.png',fullPage:true});
+ const width=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
+ expect(width.document<=width.viewport+2,JSON.stringify(width)).toBe(true);
+ await expect(page.locator('#ws-sidebar .ws-nav.active')).toHaveCount(1);
+ await expect(page.locator('#ws-sidebar .ws-nav.active')).toContainText('Overview');
 });
 test('mobile homepage keeps the original analysis form usable',async({page})=>{
  await page.setViewportSize({width:390,height:844});await boot(page);await expect(page.locator('#ws-account #btn')).toBeVisible();
@@ -57,14 +61,28 @@ test('mobile homepage keeps the original analysis form usable',async({page})=>{
  const overflow=await page.evaluate(()=>({viewport:innerWidth,width:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('body *')].filter(el=>{const r=el.getBoundingClientRect();const css=getComputedStyle(el);return r.height>0&&r.width>0&&css.visibility!=='hidden'&&css.display!=='none'&&r.right>innerWidth+2;}).slice(0,30).map(el=>({tag:el.tagName,id:el.id,class:typeof el.className==='string'?el.className:'',right:Math.round(el.getBoundingClientRect().right)}))}));
  expect(overflow.width<=overflow.viewport+2,JSON.stringify(overflow,null,2)).toBe(true);
 });
-test('original report renders real Chart.js instances from a deterministic fixture',async({page})=>{
+test('technical charts remain visible and plotted after delayed recreation',async({page})=>{
  await boot(page);await profile(page,'full');await page.evaluate(stock=>window.displayReport({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}}),stock);
  await page.evaluate(()=>window.switchTabGroup('overview'));
  await expect(page.locator('#report')).toBeVisible();
- await expect.poll(()=>page.evaluate(()=>Object.keys(window.Chart?.instances||{}).length)).toBeGreaterThan(0);
- const plotted=await page.evaluate(()=>Object.values(window.Chart.instances).some(c=>c.data.datasets.some(d=>d.data.length>0)));
- expect(plotted).toBe(true);await page.screenshot({path:'qa-output/original-charts.png',fullPage:true});
+ await expect(page.locator('#timestamp')).toContainText('Source timestamp');
+ await expect(page.locator('#timestamp')).not.toContainText('LIVE');
+ await expect(page.locator('#premiumQualityContent')).not.toContainText('Loading premium analysis');
+ await expect(page.locator('#premiumQualityContent')).toContainText('QUALITY SCORE');
+ const originalChartId=await page.evaluate(()=>window.Chart.getChart(document.getElementById('valChart'))?.id);
+ await page.locator('#stTechnical').click();
+ // Wait for the 300 ms recreation that previously hid all charts again.
+ await expect.poll(()=>page.evaluate(originalId=>{const chart=window.Chart.getChart(document.getElementById('valChart'));return !!chart&&chart.id!==originalId;},originalChartId)).toBe(true);
+ await expect(page.locator('#chartsCard')).toBeVisible();await expect(page.locator('#valChart')).toBeVisible();
+ await expect.poll(()=>page.evaluate(()=>{
+  const canvas=document.getElementById('valChart'),rect=canvas.getBoundingClientRect(),chart=window.Chart.getChart(canvas);
+  const bars=chart?.getDatasetMeta(0)?.data||[];
+  return rect.width>100&&rect.height>100&&chart.width>100&&chart.height>100&&bars.some(bar=>bar.height>0)&&chart.data.datasets[0].data.join(',')==='20,3,1';
+ })).toBe(true);
+ await page.screenshot({path:'qa-output/original-charts.png',fullPage:true});
+ await page.locator('#stOverview').click();await expect(page.locator('#chartsCard')).toBeHidden();
 });
+
 for(const menu of menus){
  test('menu '+menu.group+'/'+menu.tab+' respects basic access',async({page})=>{
   await boot(page);await profile(page,'public');
@@ -105,6 +123,8 @@ for(const mode of ['trading','options']){
  test(mode+' sidebar opens its quick controls',async({page})=>{
   await boot(page);
   await page.locator('#ws-sidebar [data-ws-mode="'+mode+'"]').click();
+  await expect(page.locator('#ws-sidebar .ws-nav.active')).toHaveCount(1);
+  await expect(page.locator('#ws-sidebar .ws-nav.active')).toHaveAttribute('data-ws-mode',mode);
   await expect(page.locator('#ws-quick-controls')).toHaveJSProperty('open',true);
   await expect(page.locator('#ws-search')).toBeVisible();
   await expect(page.locator('#ws-run')).toContainText(mode==='options'?'Load option chain':'Review setup');
