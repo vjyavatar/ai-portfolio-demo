@@ -3,8 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "node --check trading/desk.js && node --check trading/notifications-ui.js && npm run test:trading",
-    "test:trading": "node --test tests/trading-*.test.mjs"
+    "build": "node --check trading/desk.js && node --check trading/notifications-ui.js && npm run test:trading && node --check discovery/options.js && node --check discovery/agents.js && node --check discovery/home.js && node --check discovery/analytics.js && npm run test:discovery",
+    "test:trading": "node --test tests/trading-*.test.mjs",
+    "test:discovery": "node --test tests/discovery-ui.test.mjs"
   },
   "engines": {
     "node": ">=22.13.0 <23"
