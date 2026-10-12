@@ -1,0 +1,56 @@
+name: Celesys page and functionality audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['api.py', 'start.py', 'index.html', 'static/**', 'discovery/**', 'trading/**', 'tests/**', 'qa/**', '.github/workflows/celesys-qa.yml']
+  pull_request:
+    paths: ['api.py', 'start.py', 'index.html', 'static/**', 'tests/**', 'qa/**']
+permissions:
+  contents: read
+concurrency:
+  group: celesys-qa-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  code-and-live-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install fastapi==0.115.6 httpx==0.27.2 requests==2.32.3
+      - run: python qa/audit.py --output qa-output/local
+      - name: Read-only production data and page checks
+        if: github.event_name == 'workflow_dispatch'
+        run: python qa/audit.py --skip-tests --live https://celesys.ai --output qa-output/live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: celesys-audit-results
+          path: qa-output/
+  browser-fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm install --no-save --package-lock=false @playwright/test@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --config qa/playwright.config.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: celesys-browser-results
+          path: |
+            qa-output/
+            test-results/

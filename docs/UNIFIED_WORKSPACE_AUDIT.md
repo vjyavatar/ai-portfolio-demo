@@ -75,10 +75,12 @@ Every tool below is included in the searchable directory. The shared UI adds rea
 
 ## Verification
 
-106 focused Python/JavaScript checks pass (66 Python, 40 JavaScript). This includes prior trading regressions, adapters, all menu membership, permission boundaries, delayed responses, CSV formats, zero-lot sizing, voice controls, asset parity and broker removal. The final homepage ID uniqueness and generated-shell consistency checks pass. Browser-based visual QA and a live click-through of every permissioned financial engine were not available in this environment. API availability is checked after deployment; partial/missing fields are not represented as verified.
+161 focused Python/JavaScript checks pass (71 Python, 90 JavaScript). This includes prior trading regressions, adapters, all menu membership, permission boundaries, delayed responses, CSV formats, zero-lot sizing, voice controls, asset parity and broker removal. The final homepage ID uniqueness and generated-shell consistency checks pass. Browser-based visual QA and a live click-through of every permissioned financial engine were not available in this environment. API availability is checked after deployment; partial/missing fields are not represented as verified.
 
 Post-deploy verification exposed a positional startup-injection mismatch after removing the broker argument. Startup now injects all three engines by keyword. A regression executes the actual start.py attach call and verifies each public route receives its intended supplier.
 
 The live decision endpoint also exposed a NumPy boolean serialization defect. Decision outputs now pass through the existing numeric sanitizer before FastAPI encoding; NumPy 2 boolean names and nested array conversion are handled. The underlying trading calculations are unchanged.
 
 The original analysis form is visible before the optional brief. Loaded charts can be reopened without rebuilding the report. Email-role tests execute the original role resolver and verify actual menu visibility for public, trading, full and admin roles.
+
+Automated QA coordinator: `qa/audit.py`, with all 50 tools across six access profiles, declared route/function inventory, read-only live probes, Markdown/JSON evidence and CI browser fixtures. Browser fixture execution is tracked separately; see `qa/README.md`.

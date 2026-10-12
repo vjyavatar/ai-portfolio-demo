@@ -54,3 +54,20 @@ test('return to charts reveals an existing report without refetching or rebuildi
  await a.get('ws-return-report').emit('click');
  assert.equal(shown,true);assert.equal(scrolled,true);assert.deepEqual(a.get('report').children,['existing charts']);
 });
+// Exercise the actual workspace dispatcher for every catalogued tool in six permission profiles.
+for(const tool of setup().context.CelesysWorkspace.tools){
+ test('all-menu dispatcher: '+tool.group+'/'+tool.tab,()=>{
+  const profiles=[{role:'public'},{role:'trading'},{role:'full'},{role:'full',premium:true},{role:'full',premium:true,dream:true},{role:'admin',premium:true,dream:true}];
+  for(const profile of profiles){
+   const a=setup();Object.assign(a.context,{_userRole:profile.role,_isPremiumUser:profile.premium,_isDreamUser:profile.dream,_stockData:{ticker:'QA'},_verifiedEmail:'qa@example.invalid'});
+   let opened=false;
+   a.context.switchTabGroup=()=>{opened=true;};a.context.switchTab=()=>{};a.context.switchDEMode=()=>{opened=true;};
+   a.context.CelesysWorkspace.openTool(tool);
+   const groupAllowed=['overview','tools'].includes(tool.group)||(['trading','intradayopt'].includes(tool.group)?['trading','full','admin'].includes(profile.role):['full','admin'].includes(profile.role));
+   const permitted=groupAllowed&&(tool.group!=='dream'||!!profile.dream)&&(!['smarttrades','journal','aiassist','valreport','backtest','stockintel','pms','proscan'].includes(tool.tab)||!!profile.premium);
+   if(!permitted){assert.equal(opened,false);assert.match(a.get('ws-status').textContent,/account access/);}
+   else if(tool.tab==='_today'){assert.equal(a.get('ws-embedded').hidden,false);assert.match(a.get('ws-today-frame').src,/^\/today\?email=/);}
+   else assert.equal(opened,true,profile.role+' should reach '+tool.tab);
+  }
+ });
+}
