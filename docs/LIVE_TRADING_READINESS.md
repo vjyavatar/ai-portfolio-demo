@@ -40,3 +40,11 @@ The nightly full QA workflow runs at 03:17 UTC (08:47 IST). Separate read-only p
 Browser fixture execution must be confirmed from CI artifacts; device audio, provider entitlements and financial correctness remain separate verification tasks. The review loop retains failures and tests reviewed fixes; it does not silently rewrite strategies or repeatedly deploy without a verified code change.
 
 References: https://dhanhq.co/docs/v2/option-chain/ ; https://docs.tradier.com/docs/market-data ; https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls
+
+## Single-symbol market panel (2026-10-12)
+
+The trading brief now has a separate auto-updating market panel built on the existing protected watchlist research endpoint. It requests a source snapshot at a paced interval and respects provider cooldowns; it does not establish a streaming-data entitlement. The old engine brief remains explicitly timestamp-unverified and is not relabelled with the new quote's timestamp. The panel uses actual completed five-minute bars, source quote time, session bounds and data-quality gates. It stops on navigation or hidden tabs; manual pause is retained. Voice is opt-in and limited to meaningful state changes.
+
+Legacy counterarguments no longer repeat imperative stop instructions or claim a maximum loss. Modelled stop/target ordering is checked as evidence quality, without changing the existing strategy. A valid sequence is still unverified for execution.
+
+Authenticated options feeds, verified email delivery/enforcement, economic-event validation, calibrated probabilities, audited walk-forward performance and device audio remain separate unfinished requirements. This change does not certify an institutional trading strategy.

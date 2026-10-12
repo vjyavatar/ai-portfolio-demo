@@ -237,3 +237,92 @@ test('stock sidebar restores the loaded report without a fresh analysis request'
  expect(await page.evaluate(()=>window._stockData?.ticker)).toBe(stock.ticker);
  expect(reportRequests).toEqual([]);
 });
+
+// Closed-bar fixtures for the trading brief's protected market panel. These are
+// deterministic synthetic test inputs, never represented as live provider data.
+async function marketFixture(page,symbol='SPY',price=100,stale=false){
+ const now=await page.evaluate(()=>Math.floor(Date.now()/1000));
+ const close=now-10-(stale?600:0);
+ return {symbol,region:'US',currency:'USD',source:'QA deterministic market fixture',price,
+  quote_time:close+1,bar_close_time:close,session_start:now-10800,session_end:now+10800,
+  market_status:'OPEN',verdict:'LONG_RESEARCH',bias:'BULLISH',reason:'Fixture closed-bar breakout; not a real trade.',
+  fetched_at:now,stages:[{status:'pass'}],provider_status:{code:'RESPONSE_RECEIVED'},
+  bars:Array.from({length:24},(_,i)=>({time:close-(24-i)*300,open:price-1+i*.02,high:price-.7+i*.02,low:price-1.2+i*.02,close:price-.9+i*.02,volume:1000+i}))};
+}
+async function mockBrief(page){
+ await page.route('**/api/research-brief?**',async route=>{
+  const query=new URL(route.request().url()).searchParams;
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({symbol:query.get('symbol'),region:query.get('region'),engine:'QA FIXTURE',generated_at:Date.now()/1000,assessment:'Review fixture evidence',evidence:[{label:'fixture metric',value:1,source:'QA fixture'}],counterargument:'Synthetic test input only.',missing_data:['Real provider feed'],next_check:'Verify actual provider data.'})});
+ });
+}
+async function openTradingBrief(page,symbol='SPY'){
+ if(page.viewportSize().width<760)await page.locator('#ws-menu-toggle').click();
+ await page.locator('#ws-sidebar [data-ws-mode="trading"]').click();
+ await page.locator('#ws-symbol').fill(symbol);
+ await page.locator('#ws-run').click();
+ await expect(page.locator('#ws-result-title')).toContainText(symbol);
+}
+for(const width of [1440,390]){
+ test('trading brief displays a sourced closed-bar chart at '+width+'px',async({page})=>{
+  await page.setViewportSize({width,height:1000});await boot(page);await profile(page,'full');await mockBrief(page);
+  let calls=0;await page.route('**/api/watchlist/research?**',async route=>{calls++;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(await marketFixture(page))});});
+  await openTradingBrief(page);
+  await expect(page.locator('#bm-panel')).toBeVisible();await expect(page.locator('#bm-price')).toContainText('100.00');
+  await expect(page.locator('#bm-freshness')).toContainText('Recent source quote');
+  await expect(page.locator('#bm-source-time')).not.toHaveText('');
+  await expect(page.locator('#bm-chart svg')).toBeVisible();
+  const points=(await page.locator('#bm-chart svg polyline').getAttribute('points')).trim().split(/\s+/).map(pair=>pair.split(',').map(Number));
+  expect(points).toHaveLength(24);expect(points.every(pair=>pair.length===2&&pair.every(Number.isFinite))).toBe(true);
+  expect(points.at(-1)[1]).toBeLessThan(points[0][1]); // Supplied closes rise; drawn values must match their direction.
+  const rect=await page.locator('#bm-chart svg').boundingBox();expect(rect.width).toBeGreaterThan(200);expect(rect.height).toBeGreaterThan(70);
+  await expect(page.locator('#ws-brief-grid .ws-brief-card')).toHaveCount(5);
+  expect(calls).toBe(1);await expect(page.locator('#bm-voice')).not.toBeChecked();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBe(true);
+  await page.screenshot({path:'qa-output/brief-market-'+width+'.png',fullPage:true});
+ });
+}
+test('public trading brief never fetches the protected market panel',async({page})=>{
+ await boot(page);await profile(page,'public');await mockBrief(page);
+ const calls=[];page.on('request',request=>{if(new URL(request.url()).pathname==='/api/watchlist/research')calls.push(request.url());});
+ await openTradingBrief(page);await expect(page.locator('#bm-panel')).toBeVisible();
+ await expect(page.locator('#bm-status')).toContainText(/access|account|authorized/i);
+ await expect(page.locator('#bm-chart svg')).toHaveCount(0);expect(calls).toEqual([]);
+});
+test('trading brief refresh updates source evidence and suppresses stale or failed candidates',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-12T16:00:00Z')});await boot(page);await profile(page,'full');await mockBrief(page);
+ let calls=0;await page.route('**/api/watchlist/research?**',async route=>{
+  calls++;
+  if(calls>=4)return route.fulfill({status:503,headers:{'Retry-After':'120'},contentType:'application/json',body:JSON.stringify({detail:'QA unavailable'})});
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(await marketFixture(page,'SPY',99+calls,calls===3))});
+ });
+ await openTradingBrief(page);await expect(page.locator('#bm-price')).toContainText('100.00');
+ const firstStamp=await page.locator('#bm-source-time').textContent();
+ await page.clock.fastForward(61000);await expect(page.locator('#bm-price')).toContainText('101.00');
+ await expect(page.locator('#bm-source-time')).not.toHaveText(firstStamp);
+ await page.clock.fastForward(61000);await expect(page.locator('#bm-freshness')).toContainText('Stale source quote');
+ await expect(page.locator('#bm-readiness')).not.toContainText('Bullish research candidate');
+ await page.clock.fastForward(61000);await expect(page.locator('#bm-status')).toContainText(/unavailable|failed|retry/i);
+ await expect(page.locator('#bm-price')).toHaveText('Unavailable');await expect(page.locator('#bm-chart svg')).toHaveCount(0);
+ await expect(page.locator('#bm-readiness')).not.toContainText('Bullish research candidate');
+ expect(calls).toBe(4);
+ await page.locator('#bm-refresh').click();await page.clock.fastForward(61000);expect(calls).toBe(4); // Manual refresh cannot bypass provider cooldown.
+ await page.locator('#bm-pause').click();await page.clock.fastForward(121000);expect(calls).toBe(4);
+ await expect(page.locator('#bm-pause')).toContainText('Resume');
+});
+test('changed brief symbol rejects an old response and navigation stops quote polling',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-12T16:00:00Z')});await boot(page);await profile(page,'full');await mockBrief(page);
+ let release,calls=0;
+ await page.route('**/api/watchlist/research?**',async route=>{
+  calls++;const symbol=new URL(route.request().url()).searchParams.get('symbol');
+  const body=JSON.stringify(await marketFixture(page,symbol,symbol==='MSFT'?202:100));
+  if(symbol==='SPY')await new Promise(resolve=>{release=resolve;});
+  await route.fulfill({status:200,contentType:'application/json',body}).catch(error=>{if(symbol!=='SPY')throw error;}); // SPY is intentionally aborted by navigation.
+ });
+ await openTradingBrief(page);await expect.poll(()=>typeof release).toBe('function');
+ await page.locator('#ws-symbol').fill('MSFT');await page.locator('#ws-run').click();
+ await expect(page.locator('#bm-title')).toContainText('MSFT');await expect(page.locator('#bm-price')).toContainText('202.00');
+ release();await page.clock.fastForward(1000);
+ await expect(page.locator('#bm-title')).toContainText('MSFT');await expect(page.locator('#bm-price')).toContainText('202.00');
+ await page.locator('#ws-sidebar [data-ws-mode="options"]').click();await expect(page.locator('#bm-panel')).toBeHidden();
+ const stopped=calls;await page.clock.fastForward(121000);expect(calls).toBe(stopped);
+});

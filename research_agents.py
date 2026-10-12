@@ -95,6 +95,9 @@ def stock_brief(data, symbol, region):
 def existing_trading_brief(data, symbol, region):
     b = base_brief('trading', symbol, region)
     b['engine'] = 'decision-engine'
+    b['freshness'] = 'UNVERIFIED_SOURCE_TIMESTAMPS'
+    b['risk_status'] = 'INCOMPLETE_MODELLED_LEVELS'
+    b['risk_note'] = 'Modelled underlying levels are not executable prices. Gaps, slippage and costs can increase losses beyond the distance to a stop.'
     if not data.get('success'):
         b['assessment'] = 'The existing trading engine could not complete its analysis. No replacement signal is inferred.'
         b['missing_data'] = ['A successful response from the existing decision engine.']
@@ -118,10 +121,34 @@ def existing_trading_brief(data, symbol, region):
     for k in ('sl','t1','t2','rr'):
         if number(path.get(k)) is not None:
             add_fact(b, 'modelled ' + k, path[k], source)
-    b['counterargument'] = ' '.join(filter(None, [explanation.get('wrong'), 'A modelled stop does not guarantee an exit price. Trend and OI interpretations can fail.']))
+    # Legacy 'wrong' is an imperative stop instruction with a loss-cap claim,
+    # not opposing evidence. Derive a counter-scenario from structured direction.
+    market = data.get('marketState') or {}
+    direction = str(market.get('direction') or '').upper() if isinstance(market, dict) else ''
+    scenarios = {
+        'BULLISH': 'The bullish interpretation could fail if a breakout reverses and selling pressure pushes price back below support. OI may reflect hedges rather than new directional buying.',
+        'BEARISH': 'The bearish interpretation could fail if a breakdown reverses and buying pressure pushes price back above resistance. Short covering can produce a rally even when trend indicators remain weak.',
+    }
+    b['counterargument'] = scenarios.get(direction, 'A range or unclear trend can resolve in either direction. A breakout can fail, and apparent OI support or resistance may reflect hedges rather than directional conviction.')
     b['missing_data'] = ['Per-input quote timestamps are not supplied by this engine; current-session freshness is unverified.',
                          'Engine confidence is a heuristic rating, not a measured win probability.',
                          'Execution prices, verified event timing and audited strategy performance.']
+    # Audit the presentation of existing levels; do not repair or recompute the strategy.
+    entry = path.get('entry')
+    entry = number(entry[0]) if isinstance(entry, list) and entry else number(entry)
+    stop, t1, t2 = (number(path.get(k)) for k in ('sl', 't1', 't2'))
+    levels = (entry, stop, t1, t2)
+    if all(value is not None for value in levels) and direction in scenarios:
+        coherent = min(levels)>0 and (stop<entry<t1<=t2 if direction=='BULLISH' else t2<=t1<entry<stop)
+        b['risk_status'] = 'MODELLED_LEVELS_UNVERIFIED' if coherent else 'INVALID_MODELLED_LEVELS'
+        if not coherent:
+            b['missing_data'].append('Modelled stop/target levels are inconsistent with the stated direction or are non-positive; they must not be used as a trade plan.')
+    else:
+        b['missing_data'].append('A complete direction-specific entry, stop and target sequence is unavailable; modelled risk cannot be checked.')
+    price = number(data.get('price'))
+    if price is None or price<=0:
+        b['missing_data'].append('A valid positive underlying price is unavailable; executable entry and loss estimates cannot be established.')
+    b['missing_data'].append(b['risk_note'])
     b['next_check'] = 'Recheck the engine’s breakout/breakdown conditions against a current broker quote and a completed price bar; review events before relying on the modelled levels.'
     b['engine_details'] = {k: data.get(k) for k in ('tradeVerdict','marketState','triggers')}
     return b

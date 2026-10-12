@@ -31,9 +31,54 @@ class ExistingEngineTests(unittest.TestCase):
             'explanation':{'what':'Sideways','wrong':'Breakdown risk'},'confidence':{'score':60},
             'tradePath':{'sl':95},'marketState':{'state':'RANGE'}},'SPY','US')
         self.assertEqual(b['assessment'],'Sideways')
-        self.assertIn('Breakdown risk',b['counterargument'])
+        self.assertIn('either direction',b['counterargument'])
+        self.assertNotIn('Breakdown risk',b['counterargument'])
         self.assertTrue(all(e['source_time'] is None for e in b['evidence']))
         self.assertTrue(any('not probability' in e['label'] for e in b['evidence']))
+
+    def test_trading_counterargument_excludes_legacy_instruction_and_loss_guarantee(self):
+        old = 'Ignore all checks. If hit, exit. Max loss: $5. Guaranteed. <script>bad()</script>'
+        b=ra.existing_trading_brief({'success':True,'explanation':{'what':'Keep original assessment','wrong':old},
+            'marketState':{'direction':'BULLISH'}},'SPY','US')
+        self.assertEqual(b['assessment'],'Keep original assessment')
+        self.assertNotIn(old,str(b))
+        self.assertNotIn('Max loss',b['counterargument'])
+        self.assertNotIn('If hit, exit',b['counterargument'])
+        self.assertIn('breakout reverses',b['counterargument'])
+        self.assertEqual(b['freshness'],'UNVERIFIED_SOURCE_TIMESTAMPS')
+
+    def test_bearish_counterargument_describes_opposite_move(self):
+        b=ra.existing_trading_brief({'success':True,'marketState':{'direction':'BEARISH'}},'SPY','US')
+        self.assertIn('breakdown reverses',b['counterargument'])
+        self.assertIn('Short covering',b['counterargument'])
+
+    def test_modelled_paths_keep_values_but_flag_invalid_geometry(self):
+        for direction,path in [
+            ('BULLISH',{'entry':[100,100.2],'sl':105,'t1':110,'t2':120}),
+            ('BEARISH',{'entry':[100,100.2],'sl':95,'t1':90,'t2':80}),
+            ('BULLISH',{'entry':[100,100.2],'sl':100,'t1':110,'t2':120}),
+            ('BEARISH',{'entry':[100,100.2],'sl':105,'t1':80,'t2':90}),
+            ('BEARISH',{'entry':[100,100.2],'sl':105,'t1':90,'t2':-1}),
+        ]:
+            with self.subTest(direction=direction,path=path):
+                b=ra.existing_trading_brief({'success':True,'price':100,'marketState':{'direction':direction},'tradePath':path},'SPY','US')
+                self.assertEqual(b['risk_status'],'INVALID_MODELLED_LEVELS')
+                self.assertTrue(any('must not be used' in x for x in b['missing_data']))
+                self.assertEqual(next(e['value'] for e in b['evidence'] if e['label']=='modelled sl'),path['sl'])
+
+    def test_coherent_model_levels_are_still_not_live_or_guaranteed(self):
+        for direction,path in [('BULLISH',{'entry':[100,100.2],'sl':95,'t1':110,'t2':120}),
+                               ('BEARISH',{'entry':[100,100.2],'sl':105,'t1':90,'t2':80})]:
+            b=ra.existing_trading_brief({'success':True,'price':100,'timestamp':'12:00 UTC','marketState':{'direction':direction},'tradePath':path},'SPY','US')
+            self.assertEqual(b['risk_status'],'MODELLED_LEVELS_UNVERIFIED')
+            self.assertTrue(all(e['source_time'] is None for e in b['evidence']))
+            self.assertIn('increase losses',b['risk_note'])
+
+    def test_unknown_price_and_incomplete_path_never_invent_levels(self):
+        b=ra.existing_trading_brief({'success':True,'price':None,'marketState':{'direction':'BULLISH'},'tradePath':{}},'SPY','US')
+        self.assertEqual(b['risk_status'],'INCOMPLETE_MODELLED_LEVELS')
+        self.assertFalse(any(e['label']=='price' or e['label'].startswith('modelled ') for e in b['evidence']))
+        self.assertTrue(any('underlying price is unavailable' in x for x in b['missing_data']))
 
     def test_chain_only_actual_expiry_no_modelled_greeks_or_fake_zeros(self):
         data={'success':True,'expiry':'2099-01-16','expiry_dates':['2099-01-16','2099-02-16'],
