@@ -62,7 +62,14 @@ test('mobile homepage keeps the original analysis form usable',async({page})=>{
  expect(overflow.width<=overflow.viewport+2,JSON.stringify(overflow,null,2)).toBe(true);
 });
 test('technical charts remain visible and plotted after delayed recreation',async({page})=>{
- await boot(page);await profile(page,'full');await page.evaluate(stock=>window.displayReport({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}}),stock);
+ await boot(page);
+ // First-visit onboarding is a real modal interaction, not an element to bypass.
+ const skipTour=page.getByRole('button',{name:'Skip tour',exact:true});
+ await expect(skipTour).toBeVisible({timeout:10000});
+ await skipTour.click();
+ await expect(page.locator('#onboardingOverlay')).toBeHidden();
+ expect(await page.evaluate(()=>localStorage.getItem('celesys-onboarded'))).toBe('1');
+ await profile(page,'full');await page.evaluate(stock=>window.displayReport({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}}),stock);
  await page.evaluate(()=>window.switchTabGroup('overview'));
  await expect(page.locator('#report')).toBeVisible();
  await expect(page.locator('#timestamp')).toContainText('Source timestamp');
