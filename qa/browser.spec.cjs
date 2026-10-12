@@ -49,26 +49,32 @@ async function profile(page,role){
  await expect.poll(()=>page.evaluate(()=>window._userRole)).toBe(role);
 }
 test('desktop homepage exposes the original email, symbol and Analyze controls',async({page})=>{
- await boot(page);await expect(page.locator('#ws-account')).toBeVisible();await expect(page.locator('#ws-account #email')).toBeVisible();await expect(page.locator('#ws-account #btn')).toBeVisible();await page.screenshot({path:'qa-output/home-desktop.png',fullPage:true});
+ await boot(page);await expect(page.locator('#ws-account')).toBeVisible();await expect(page.locator('#ws-account #email')).toBeVisible();await expect(page.locator('#ws-account #btn')).toBeVisible();const tickerBox=await page.locator('#ticker').boundingBox();const actionBox=await page.locator('#btn').boundingBox();expect(tickerBox.width).toBeGreaterThan(240);expect(tickerBox.width).toBeGreaterThan(actionBox.width);await page.screenshot({path:'qa-output/home-desktop.png',fullPage:true});
  const width=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
  expect(width.document<=width.viewport+2,JSON.stringify(width)).toBe(true);
  await expect(page.locator('#ws-sidebar .ws-nav.active')).toHaveCount(1);
  await expect(page.locator('#ws-sidebar .ws-nav.active')).toContainText('Overview');
+ await expect(page.locator('#ws-start-cards .ws-start-card')).toHaveCount(3);
+ for(const card of await page.locator('#ws-start-cards .ws-start-card').all())await expect(card).toBeVisible();
+ for(const id of ['ws-quick-controls','tw-panel','ws-options','ws-plan'])await expect(page.locator('#'+id)).toBeHidden();
 });
 test('mobile homepage keeps the original analysis form usable',async({page})=>{
  await page.setViewportSize({width:390,height:844});await boot(page);await expect(page.locator('#ws-account #btn')).toBeVisible();
+ await expect(page.locator('#tw-panel')).toBeHidden();await expect(page.locator('#ws-quick-controls')).toBeHidden();
+ for(const card of await page.locator('#ws-start-cards .ws-start-card').all())await expect(card).toBeVisible();
  await page.screenshot({path:'qa-output/home-mobile.png',fullPage:true});
  const overflow=await page.evaluate(()=>({viewport:innerWidth,width:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('body *')].filter(el=>{const r=el.getBoundingClientRect();const css=getComputedStyle(el);return r.height>0&&r.width>0&&css.visibility!=='hidden'&&css.display!=='none'&&r.right>innerWidth+2;}).slice(0,30).map(el=>({tag:el.tagName,id:el.id,class:typeof el.className==='string'?el.className:'',right:Math.round(el.getBoundingClientRect().right)}))}));
  expect(overflow.width<=overflow.viewport+2,JSON.stringify(overflow,null,2)).toBe(true);
 });
 test('technical charts remain visible and plotted after delayed recreation',async({page})=>{
  await boot(page);
- // First-visit onboarding is a real modal interaction, not an element to bypass.
- const skipTour=page.getByRole('button',{name:'Skip tour',exact:true});
- await expect(skipTour).toBeVisible({timeout:10000});
- await skipTour.click();
+ // Help is user-initiated; the unified workspace must not launch an obstructing tour.
+ await expect(page.locator('#ws-help')).toBeHidden();
+ await page.locator('#ws-help-toggle').click();
+ await expect(page.locator('#ws-help')).toBeVisible();
+ await page.locator('#ws-help-close').click();
+ await expect(page.locator('#ws-help')).toBeHidden();
  await expect(page.locator('#onboardingOverlay')).toBeHidden();
- expect(await page.evaluate(()=>localStorage.getItem('celesys-onboarded'))).toBe('1');
  await profile(page,'full');await page.evaluate(stock=>window.displayReport({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}}),stock);
  await page.evaluate(()=>window.switchTabGroup('overview'));
  await expect(page.locator('#report')).toBeVisible();
@@ -95,7 +101,7 @@ for(const menu of menus){
   await boot(page);await profile(page,'public');
   // This calls the same dispatcher as the actual directory button; renderer requests stay mocked.
   await page.evaluate(tab=>{const t=window.CelesysWorkspace.tools.find(t=>t.tab===tab);window.CelesysWorkspace.openTool(t);},menu.tab);
-  if(!menu.access.public){await expect(page.locator('#ws-account')).toBeVisible();await expect(page.locator('#ws-status')).toContainText('account access');}
+  if(!menu.access.public){await expect(page.locator('#ws-account')).toBeVisible();await expect(page.locator('#ws-status')).toContainText('account access');await expect(page.locator('#ws-notice')).toBeVisible();}
   else if(menu.tab==='quick'){await expect(page.locator('#ws-status')).toContainText('full report first');}
   else {await expect(page.locator('#ws-legacy-title')).toContainText(menu.label);await expect(page.locator('#report')).toBeVisible();}
  });
@@ -125,6 +131,15 @@ test('homepage keeps secondary quick controls collapsed',async({page})=>{
  await expect(page.locator('#ws-quick-controls')).toHaveJSProperty('open',false);
  await expect(page.locator('#ws-search')).toBeHidden();
  await expect(page.locator('#ws-account #btn')).toBeVisible();
+ await expect(page.locator('#ws-quick-controls')).toBeHidden();
+ await expect(page.locator('#tw-panel')).toBeHidden();
+ await page.locator('#ws-sidebar [data-ws-directory]').click();
+ await expect(page.locator('#ws-directory')).toBeVisible();
+ await expect(page.locator('#ws-tool-grid .ws-tool')).toHaveCount(50);
+ await page.screenshot({path:'qa-output/tool-library.png',fullPage:true});
+ await expect(page.locator('#ws-sidebar .ws-nav.active')).toHaveCount(1);
+ await expect(page.locator('#ws-sidebar .ws-nav.active')).toHaveAttribute('data-ws-directory','');
+ for(const id of ['ws-account','ws-quick-controls','tw-panel','ws-options','ws-plan','ws-start-cards'])await expect(page.locator('#'+id)).toBeHidden();
 });
 for(const mode of ['trading','options']){
  test(mode+' sidebar opens its quick controls',async({page})=>{
@@ -135,12 +150,34 @@ for(const mode of ['trading','options']){
   await expect(page.locator('#ws-quick-controls')).toHaveJSProperty('open',true);
   await expect(page.locator('#ws-search')).toBeVisible();
   await expect(page.locator('#ws-run')).toContainText(mode==='options'?'Load option chain':'Review setup');
+  await expect(page.locator('#ws-account')).toBeHidden();
+  await expect(page.locator('#ws-start-cards')).toBeHidden();
+  await expect(page.locator('#ws-plan')).toBeHidden();
+  await page.screenshot({path:'qa-output/workspace-'+mode+'.png',fullPage:true});
+  if(mode==='trading'){
+   await expect(page.locator('#tw-panel')).toBeVisible();
+   await expect(page.locator('#tw-disclosure')).toHaveJSProperty('open',true);
+   await expect(page.locator('#ws-options')).toBeHidden();
+   await page.locator('#ws-account-toggle').click();await expect(page.locator('#ws-account #email')).toBeVisible();
+   await page.locator('#ws-sidebar [data-ws-mode="trading"]').click();await expect(page.locator('#ws-account')).toBeHidden();
+   const scans=[];page.on('request',request=>{if(new URL(request.url()).pathname==='/api/watchlist/research')scans.push(request.url());});
+   await page.locator('#tw-once').click();
+   await expect(page.locator('#ws-account #email')).toBeVisible();
+   await expect(page.locator('#tw-status')).toContainText('authorized email');
+   expect(scans).toEqual([]);
+  }else{
+   await expect(page.locator('#tw-panel')).toBeHidden();
+   await expect(page.locator('#ws-options')).toBeVisible();
+   await page.locator('#ws-manual-plan').click();await expect(page.locator('#ws-plan')).toBeVisible();
+  }
  });
 }
 test('stock task within quick controls stays expanded',async({page})=>{
  await boot(page);
- await page.locator('#ws-sidebar [data-ws-mode="trading"]').click();
- await page.locator('#ws-quick-controls [data-ws-mode="stock"]').click();
+ await page.locator('#ws-sidebar [data-ws-mode="stock"]').click();
+ await expect(page.locator('#ws-account #btn')).toBeVisible();
+ await expect(page.locator('#tw-panel')).toBeHidden();
+ await page.locator('#ws-quick-controls > summary').click();
  await expect(page.locator('#ws-quick-controls')).toHaveJSProperty('open',true);
  await expect(page.locator('#ws-search')).toBeVisible();
  await expect(page.locator('#ws-run')).toContainText('Quick stock brief');
