@@ -20,6 +20,14 @@ class Document(HTMLParser):
         if tag=='title':self.title=True
         url=a.get('src') if tag=='script' else a.get('href') if tag=='link' and a.get('rel')=='stylesheet' else None
         if url and url.startswith('/') and not url.startswith('//'):self.assets.append(url)
+def validate_document(path,code,kind,body,doc):
+    # Known gated document: denial is expected without an authorized account.
+    if path=='/today' and code in (401,403):
+        return 'UNVERIFIED',f'HTTP {code}; expected anonymous denial; signed-in document requires authorized verification'
+    verification=path.startswith('/google') and body.decode('utf-8','replace').strip()=='google-site-verification: '+path[1:]
+    ok=code==200 and 'text/html' in kind and (doc.title or verification)
+    return ('PASS' if ok else 'FAIL'),f'HTTP {code}; '+('verified search-engine ownership resource' if verification else f'HTML title {doc.title}')
+
 def validate_brief(data):
     required=['assessment','evidence','counterargument','missing_data','next_check']
     if not isinstance(data,dict) or any(k not in data for k in required):return 'FAIL','Five-part brief schema missing'
@@ -86,9 +94,8 @@ def main():
         def page_check(path):
             try:
                 code,kind,body,elapsed=fetch(base,path);doc=Document();doc.feed(body.decode('utf-8','replace'))
-                verification=path.startswith('/google') and body.decode('utf-8','replace').strip()=='google-site-verification: '+path[1:]
-                ok=code==200 and 'text/html' in kind and (doc.title or verification)
-                return path,doc,('PASS' if ok else 'FAIL'),f'HTTP {code}; '+('verified search-engine ownership resource' if verification else f'HTML title {doc.title}')+f'; {elapsed}s',body
+                status,detail=validate_document(path,code,kind,body,doc)
+                return path,doc,status,detail+f'; {elapsed}s',body
             except Exception as e:return path,None,'FAIL',type(e).__name__,b''
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             for path,doc,status,detail,body in pool.map(page_check,pages):

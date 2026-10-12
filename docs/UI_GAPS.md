@@ -32,3 +32,5 @@ This is regression memory and a review process. It does not autonomously rewrite
 - Five added workspace regression tests pass. Rendering and device voice remain unverified until browser artifacts are reviewed.
 
 Validation: all eight coordinator suites passed (193 distinct regression tests; the build repeats eight scanner tests). The coordinator inventories 50 menus, 260 routes and 1,158 functions; this inventory is not execution coverage. The 110 browser fixtures are defined but were not executed in this environment.
+
+Production recheck: all 18 public HTML documents passed. `/today` correctly denied the anonymous audit (403); the auditor now marks its signed-in view UNVERIFIED instead of treating that denial as a page failure. Three regression tests cover this distinction, taking distinct local tests to 196. US/India stock and trading briefs returned source-labelled evidence; US options returned 51 strikes. India live options remained unavailable. Live UI assets matched the tested source byte for byte; protected option/scanner endpoints retained 401/403 denials.

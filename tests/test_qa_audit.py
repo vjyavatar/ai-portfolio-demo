@@ -1,5 +1,5 @@
 import unittest
-from qa.audit import validate_brief,validate_chain
+from qa.audit import validate_brief,validate_chain,validate_document,Document
 class AuditTests(unittest.TestCase):
  def test_empty_success_is_failure(self):
   self.assertEqual(validate_brief(dict(assessment='x',evidence=[],counterargument='x',missing_data=[],next_check='x'))[0],'FAIL')
@@ -11,3 +11,11 @@ class AuditTests(unittest.TestCase):
   self.assertEqual(validate_chain({'status':'SNAPSHOT','expiry':'2099-01-01','rows':[{'strike':100},{'strike':100}]})[0],'FAIL')
  def test_sourced_evidence_is_structurally_valid(self):
   self.assertEqual(validate_brief(dict(assessment='x',evidence=[{'source':'fixture','value':1}],counterargument='x',missing_data=[],next_check='x'))[0],'PASS')
+
+ def test_protected_document_denial_is_not_a_page_failure_or_functional_pass(self):
+  for code in (401,403):
+   self.assertEqual(validate_document('/today',code,'text/html',b'',Document())[0],'UNVERIFIED')
+ def test_public_document_denial_still_fails(self):
+  self.assertEqual(validate_document('/',403,'text/html',b'',Document())[0],'FAIL')
+ def test_protected_document_server_error_still_fails(self):
+  self.assertEqual(validate_document('/today',500,'text/html',b'',Document())[0],'FAIL')
