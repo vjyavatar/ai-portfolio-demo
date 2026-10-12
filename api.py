@@ -73,6 +73,8 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 logging.getLogger('peewee').setLevel(logging.CRITICAL)
 
+from market_request_cache import legacy_cache as _legacy_market_cache
+
 class _SafeTicker:
     """Wraps yf.Ticker to silently handle Yahoo 401 errors"""
     def __init__(self, ticker, *args, **kwargs):
@@ -82,46 +84,32 @@ class _SafeTicker:
             self._obj = _yf_original.Ticker(ticker, *args, **kwargs)
         except:
             pass
+    def _cached(self, name, *args, **kwargs):
+        if not self._obj: return {} if name == 'info' else () if name == 'options' else None
+        defaults = {'info': {}, 'options': ()}
+        ttl = 60 if name == 'history' else 30 if name in ('options', 'option_chain') else 180 if name == 'info' else 1800
+        # Arguments include period, interval and adjustments: never mix histories.
+        key = (str(self._ticker).strip().upper(), name, repr(args), repr(sorted(kwargs.items())))
+        def load():
+            attr = getattr(self._obj, name)
+            return attr(*args, **kwargs) if callable(attr) else attr
+        return _legacy_market_cache.get(key, load, ttl=ttl, default=defaults.get(name))
     def history(self, *args, **kwargs):
-        if not self._obj: return None
-        try: return self._obj.history(*args, **kwargs)
-        except Exception as e:
-            if '401' in str(e) or 'Unauthorized' in str(e) or 'Crumb' in str(e): pass
-            return None
+        return self._cached('history', *args, **kwargs)
     @property
-    def info(self):
-        if not self._obj: return {}
-        try: return self._obj.info or {}
-        except: return {}
+    def info(self): return self._cached('info')
     @property
-    def income_stmt(self):
-        if not self._obj: return None
-        try: return self._obj.income_stmt
-        except: return None
+    def income_stmt(self): return self._cached('income_stmt')
     @property
-    def balance_sheet(self):
-        if not self._obj: return None
-        try: return self._obj.balance_sheet
-        except: return None
+    def balance_sheet(self): return self._cached('balance_sheet')
     @property
-    def cashflow(self):
-        if not self._obj: return None
-        try: return self._obj.cashflow
-        except: return None
+    def cashflow(self): return self._cached('cashflow')
     @property
-    def financials(self):
-        if not self._obj: return None
-        try: return self._obj.financials
-        except: return None
+    def financials(self): return self._cached('financials')
     @property
-    def options(self):
-        if not self._obj: return ()
-        try: return self._obj.options
-        except: return ()
+    def options(self): return self._cached('options')
     def option_chain(self, *args, **kwargs):
-        if not self._obj: return None
-        try: return self._obj.option_chain(*args, **kwargs)
-        except: return None
+        return self._cached('option_chain', *args, **kwargs)
     def __getattr__(self, name):
         if self._obj:
             try: return getattr(self._obj, name)
@@ -716,7 +704,7 @@ def _dd_disk_cache_stats():
 # 4. SHARED THREAD POOL — for all blocking IO (yfinance, HTTP scrapes)
 _thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="celesys")
 
-# 5. POPULAR TICKER PRE-FETCH — background refresh every 90 seconds
+# 5. OPTIONAL POPULAR TICKER PRE-FETCH — disabled by default; on-demand data remains available
 _POPULAR_TICKERS_IN = [
     'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS',
     'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS', 'LT.NS', 'BAJFINANCE.NS',
@@ -729,7 +717,9 @@ _POPULAR_TICKERS_US = [
 ]
 
 def _prefetch_popular():
-    """Background pre-fetch — LIGHT first pass, heavier later."""
+    """Optional cache warming; never consume provider quota without operator opt-in."""
+    if os.getenv("CELESYS_YAHOO_PREFETCH", "").lower() != "true":
+        return
     all_tickers = _POPULAR_TICKERS_IN + _POPULAR_TICKERS_US
     
     # ═══ LIGHT PASS: Only critical indices + top 8 stocks ═══
@@ -759,6 +749,9 @@ def _prefetch_popular():
     # ═══ BATCH yfinance for ticker strip only ═══
     def _fetch_one(tk):
         try:
+            if _smart_cache_get(f"price:{tk}") is not None:
+                return tk, True
+            _yahoo_rate_wait()
             t = yf.Ticker(tk)
             info = t.info
             price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
@@ -803,7 +796,9 @@ def _prefetch_popular():
         pass
 
 async def _start_prefetch_loop():
-    """Run prefetch in background — server already started, this is just refresh."""
+    """No speculative network requests unless explicitly enabled by the operator."""
+    if os.getenv("CELESYS_YAHOO_PREFETCH", "").lower() != "true":
+        return
     await asyncio.sleep(8)  # Let server fully warm up before any network
     print("📦 Background prefetch starting (light)...")
     while True:
@@ -2303,15 +2298,24 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # ═══ YAHOO RATE LIMITER ═══
 import time as _time
-_yahoo_last_call = 0
-_yahoo_min_delay = 1.5  # seconds between Yahoo calls
+import threading as _yahoo_threading
+_yahoo_rate_lock = _yahoo_threading.Lock()
+_yahoo_next_call = 0.0
+_yahoo_min_delay = 1.5  # legacy reservation spacing, not a provider quota guarantee
+_yahoo_max_wait = 5.0  # fail fast instead of accumulating sleeping request workers
 
 def _yahoo_rate_wait():
-    global _yahoo_last_call
-    elapsed = _time.time() - _yahoo_last_call
-    if elapsed < _yahoo_min_delay:
-        _time.sleep(_yahoo_min_delay - elapsed)
-    _yahoo_last_call = _time.time()
+    global _yahoo_next_call
+    with _yahoo_rate_lock:
+        now = _time.monotonic()
+        scheduled = max(now, _yahoo_next_call)
+        delay = scheduled - now
+        if delay > _yahoo_max_wait:
+            raise RuntimeError("Yahoo request queue busy; retry later")
+        _yahoo_next_call = scheduled + _yahoo_min_delay
+    # Reserve atomically, but never hold the lock while sleeping or doing IO.
+    if delay > 0:
+        _time.sleep(delay)
 
 
 def _resolve_instrument(symbol, region="IN"):

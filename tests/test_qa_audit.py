@@ -19,3 +19,10 @@ class AuditTests(unittest.TestCase):
   self.assertEqual(validate_document('/',403,'text/html',b'',Document())[0],'FAIL')
  def test_protected_document_server_error_still_fails(self):
   self.assertEqual(validate_document('/today',500,'text/html',b'',Document())[0],'FAIL')
+
+ def test_outage_snapshot_never_passes_as_live(self):
+  from qa.audit import validate_trading
+  data=dict(symbol='SPY',region='US',currency='USD',source='Yahoo Finance chart',verdict='WAIT',stale_cache=True)
+  self.assertEqual(validate_trading(data,'SPY','US')[0],'UNVERIFIED')
+  for extra in ({'verdict':'LONG_RESEARCH'},{'paper_eligible':True},{'scenario':{'entry':10}}):
+   self.assertEqual(validate_trading(dict(data,**extra),'SPY','US')[0],'FAIL')

@@ -326,3 +326,71 @@ test('changed brief symbol rejects an old response and navigation stops quote po
  await page.locator('#ws-sidebar [data-ws-mode="options"]').click();await expect(page.locator('#bm-panel')).toBeHidden();
  const stopped=calls;await page.clock.fastForward(121000);expect(calls).toBe(stopped);
 });
+
+// Audio is replaced before application startup: these verify opt-in and event
+// scheduling without producing sound or claiming device-speaker validation.
+async function stubMarketAudio(page){
+ await page.addInitScript(()=>{
+  window.__qaAudio={created:0,resumes:0,starts:0};
+  window.AudioContext=class{
+   constructor(){window.__qaAudio.created++;this.state='suspended';this.currentTime=0;this.destination={};}
+   async resume(){window.__qaAudio.resumes++;this.state='running';}
+   createOscillator(){return {frequency:{setValueAtTime(){}},connect(){},disconnect(){},start(){window.__qaAudio.starts++;},stop(){this.onended?.();}};}
+   createGain(){return {gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}};}
+  };
+ });
+}
+test('market sound requires explicit enable and test clicks, and mute suppresses later chimes',async({page})=>{
+ await stubMarketAudio(page);await boot(page);await profile(page,'full');await mockBrief(page);
+ let bearish=false;
+ await page.route('**/api/watchlist/research?**',async route=>{
+  const data=await marketFixture(page,'SPY',bearish?99:100);
+  data.verdict=bearish?'BEARISH_RESEARCH':'LONG_RESEARCH';data.bias=bearish?'BEARISH':'BULLISH';
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+ });
+ await openTradingBrief(page);await expect(page.locator('#bm-price')).toContainText('100.00');
+ await expect(page.locator('#bm-notification-list li')).toHaveCount(0);
+ expect(await page.evaluate(()=>window.__qaAudio)).toEqual({created:0,resumes:0,starts:0});
+ await page.locator('#bm-sound-test').click();await expect(page.locator('#bm-sound-status')).toContainText('Enable sound first');
+ expect(await page.evaluate(()=>window.__qaAudio.starts)).toBe(0);
+ await page.locator('#bm-sound').click();await expect(page.locator('#bm-sound')).toHaveAttribute('aria-pressed','true');
+ expect(await page.evaluate(()=>window.__qaAudio)).toEqual({created:1,resumes:1,starts:0});
+ await page.locator('#bm-sound-test').click();await expect(page.locator('#bm-sound-status')).toContainText('Test sound played');
+ expect(await page.evaluate(()=>window.__qaAudio.starts)).toBe(1);
+ bearish=true;await page.locator('#bm-refresh').click();await expect(page.locator('#bm-price')).toContainText('99.00');
+ await expect(page.locator('#bm-notification-list li')).toHaveCount(1);
+ await expect(page.locator('#bm-notification-list li')).toContainText('SPY · US');
+ await expect.poll(()=>page.evaluate(()=>window.__qaAudio.starts)).toBe(2);
+ await page.locator('#bm-sound').click();await expect(page.locator('#bm-sound')).toHaveAttribute('aria-pressed','false');
+ bearish=false;await page.locator('#bm-refresh').click();await expect(page.locator('#bm-price')).toContainText('100.00');
+ await expect(page.locator('#bm-notification-list li')).toHaveCount(2);
+ await page.locator('#bm-sound-test').click();await expect(page.locator('#bm-sound-status')).toContainText('Enable sound first');
+ expect(await page.evaluate(()=>window.__qaAudio.starts)).toBe(2);
+});
+test('market notifications identify the symbol and deduplicate repeated outage and recovery responses',async({page})=>{
+ await stubMarketAudio(page);await boot(page);await profile(page,'full');await mockBrief(page);
+ let unavailable=false,calls=0;
+ await page.route('**/api/watchlist/research?**',async route=>{
+  calls++;
+  if(unavailable)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'QA provider outage'})});
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(await marketFixture(page,'MSFT',202))});
+ });
+ await openTradingBrief(page,'MSFT');await expect(page.locator('#bm-price')).toContainText('202.00');
+ await expect(page.locator('#bm-notification-list li')).toHaveCount(0);
+ unavailable=true;await page.locator('#bm-refresh').click();await expect(page.locator('#bm-price')).toHaveText('Unavailable');
+ await expect(page.locator('#bm-notification-list li')).toHaveCount(1);
+ await expect(page.locator('#bm-notification-list li')).toContainText('MSFT · US');
+ await expect(page.locator('#bm-notification-list li')).toContainText('Market provider unavailable');
+ const firstOutage=await page.locator('#bm-notification-list').textContent();
+ await page.locator('#bm-refresh').click();await expect.poll(()=>calls).toBe(3);await expect(page.locator('#bm-refresh')).toBeEnabled();
+ await expect(page.locator('#bm-notification-list')).toHaveText(firstOutage);
+ unavailable=false;await page.locator('#bm-refresh').click();await expect(page.locator('#bm-price')).toContainText('202.00');
+ await expect(page.locator('#bm-notification-list li')).toHaveCount(2);
+ await expect(page.locator('#bm-notification-list li').first()).toContainText('MSFT · US');
+ await expect(page.locator('#bm-notification-list li').first()).toContainText('Market provider response recovered');
+ const recovered=await page.locator('#bm-notification-list').textContent();
+ await page.locator('#bm-refresh').click();await expect.poll(()=>calls).toBe(5);await expect(page.locator('#bm-refresh')).toBeEnabled();
+ await expect(page.locator('#bm-notification-list')).toHaveText(recovered);
+ expect(await page.evaluate(()=>window.__qaAudio)).toEqual({created:0,resumes:0,starts:0});
+ await page.locator('#bm-notifications').screenshot({path:'qa-output/brief-market-notifications.png'});
+});

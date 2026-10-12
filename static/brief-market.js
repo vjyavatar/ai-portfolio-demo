@@ -6,6 +6,8 @@ if (!grid || document.getElementById('bm-panel')) return;
 const PERIOD = 60000, TIMEOUT = 25000;
 let context = null, generation = 0, paused = false, denied = false;
 let timer = null, flight = null, report = null, retryAt = 0, lastSignal = null, requestError = ''; 
+let notificationState=null, providerFailed=false, audioContext=null, soundEnabled=false, soundGeneration=0;
+const notificationEntries=[];
 const nodes = {};
 function make(tag, id, text) {
   const n = document.createElement(tag);
@@ -33,6 +35,15 @@ panel.append(facts, make('p', 'bm-reason', 'Waiting for source evidence.'), make
 const times = make('div'); times.className = 'bm-times';
 times.append(make('p', 'bm-source-time'), make('p', 'bm-fetch-time')); panel.append(times);
 const status = make('p', 'bm-status'); status.setAttribute('role','status'); status.setAttribute('aria-live','polite'); panel.append(status);
+const notifications=make('section','bm-notifications'); notifications.setAttribute('aria-label','Market update notifications');
+notifications.append(make('h4',null,'Market notifications'));
+const soundControls=make('div'); soundControls.className='bm-controls';
+const soundToggle=make('button','bm-sound','Enable sound'); soundToggle.type='button'; soundToggle.setAttribute('aria-pressed','false');
+const soundTest=make('button','bm-sound-test','Test sound'); soundTest.type='button';
+const soundStatus=make('span','bm-sound-status','Sound off. Enable it to hear future changes while this brief is active.');
+soundControls.append(soundToggle,soundTest); notifications.append(soundControls,soundStatus);
+const noticeList=make('ol','bm-notification-list'); noticeList.setAttribute('aria-live','polite'); noticeList.setAttribute('aria-relevant','additions');
+notifications.append(make('p','bm-notification-empty','No changes yet. Initial data loads do not trigger a candidate alert.'),noticeList); panel.append(notifications);
 panel.append(make('small', null, 'Underlying research only. No option contract, broker execution or guaranteed outcome is implied.'));
 grid.parentNode.insertBefore(panel, grid);
 const now = () => Date.now() / 1000;
@@ -41,6 +52,7 @@ const active = () => !!context && !paused && !denied && !document.hidden && allo
 function email() { const field=document.getElementById('email'); return String(window._verifiedEmail || field?.dataset.real || '').trim(); }
 function message(text) { status.textContent = text; }
 function stopRequest() {
+  soundGeneration++;
   generation++; clearTimeout(timer); timer=null;
   if (flight) { clearTimeout(flight.timeout); flight.controller.abort(); }
   refresh.disabled = false;
@@ -69,11 +81,54 @@ function state(r) {
   const closed=session && t>=r.session_end;
   const bars=!!r && r.bars.length>=21 && Number.isFinite(r.bar_close_time) && t>=r.bar_close_time && t-r.bar_close_time<=300;
   const aligned=recent && bars && r.quote_time>=r.bar_close_time && r.bar_close_time>=r.session_start;
-  const ready=open && aligned && ['LONG_RESEARCH','BEARISH_RESEARCH'].includes(r.verdict) &&
+  const ready=!r?.stale_cache && !r?.provider_status?.stale_cache && !providerFailed && open && aligned && ['LONG_RESEARCH','BEARISH_RESEARCH'].includes(r.verdict) &&
     !(Array.isArray(r.stages) && r.stages.some(s=>s.status==='blocked'));
   return {recent,open,closed,ready,bars,aligned,signal:ready?r.verdict:'WAIT',
     freshness:!quote?'Timestamp unavailable':t<r.quote_time?'Future timestamp — unverified':recent?'Recent source quote':'Stale source quote'};
 }
+function notification(s) {
+  if(!context || !allowed() || (!report&&!providerFailed))return;
+  const next={signal:s.signal,failed:providerFailed||!!report?.stale_cache||!!report?.provider_status?.stale_cache||!report||!Number.isFinite(report.price)};
+  const previous=notificationState; notificationState=next;
+  let text='';
+  if(next.failed && (!previous||!previous.failed))text='Market provider unavailable. Entry readiness is WAIT; any retained prices are a historical snapshot.';
+  else if(previous?.failed && !next.failed)text='Market provider response recovered. '+(s.ready?'Research conditions are confirmed again; review current quotes and risk.':'Entry readiness remains WAIT / REVIEW.');
+  else if(previous && !next.failed && previous.signal!==next.signal)text=s.ready?(s.signal==='LONG_RESEARCH'?'Bullish':'Bearish')+' underlying research conditions changed. Review current quotes and risk before considering a trade.':'Previous research candidate is no longer confirmed. Entry readiness is WAIT / REVIEW.';
+  if(!text)return;
+  const entry=make('li');entry.dataset.symbol=context.symbol;entry.dataset.region=context.region;
+  entry.append(make('strong',null,context.symbol+' · '+context.region+' · '+stamp(now())),make('span',null,text),make('small',null,'Quote source time: '+stamp(report?.quote_time)));
+  notificationEntries.unshift(entry);if(notificationEntries.length>12)notificationEntries.pop();
+  noticeList.replaceChildren(...notificationEntries);nodes['bm-notification-empty'].hidden=true;
+  if(active()&&soundEnabled)playSound(false);
+}
+async function enableAudio() {
+  const Audio=window.AudioContext||window.webkitAudioContext;
+  if(!Audio)throw Error('Sound is unsupported in this browser. Visible notifications remain available.');
+  if(!audioContext)audioContext=new Audio();
+  if(audioContext.state==='suspended')await audioContext.resume();
+  if(audioContext.state!=='running')throw Error('Browser blocked audio. Try Test sound after enabling sound.');
+}
+function soundFailure(error) {soundEnabled=false;soundToggle.textContent='Enable sound';soundToggle.setAttribute('aria-pressed','false');soundStatus.textContent=error.message||'Sound unavailable. Visible notifications remain available.';}
+async function playSound(test) {
+  const token=soundGeneration;
+  if(!allowed()||!soundEnabled||(!test&&!active()))return;
+  try {
+    await enableAudio();
+    if(token!==soundGeneration||!soundEnabled||!allowed()||(!test&&!active()))return;
+    const oscillator=audioContext.createOscillator(),gain=audioContext.createGain(),start=audioContext.currentTime;
+    oscillator.type='sine';oscillator.frequency.setValueAtTime(660,start);
+    gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(0.12,start+0.02);gain.gain.exponentialRampToValueAtTime(0.001,start+0.24);
+    oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};oscillator.start(start);oscillator.stop(start+0.25);
+    if(test)soundStatus.textContent='Test sound played. Future meaningful changes will chime while this brief is active.';
+  }catch(error){if(token===soundGeneration)soundFailure(error);}
+}
+soundToggle.addEventListener('click',async()=>{
+  const token=++soundGeneration;
+  if(soundEnabled){soundEnabled=false;soundToggle.textContent='Enable sound';soundToggle.setAttribute('aria-pressed','false');soundStatus.textContent='Sound off. Visible notifications remain available.';return;}
+  if(!allowed()){soundStatus.textContent='Sound alerts require an authorized trading account.';return;}
+  try{await enableAudio();if(token!==soundGeneration)return;soundEnabled=true;soundToggle.textContent='Mute sound';soundToggle.setAttribute('aria-pressed','true');soundStatus.textContent='Sound enabled for future changes. Use Test sound to check your speaker.';}catch(error){if(token===soundGeneration)soundFailure(error);}
+});
+soundTest.addEventListener('click',()=>{if(!soundEnabled){soundStatus.textContent='Enable sound first, then test your speaker.';return;}playSound(true);});
 function speakChange(s) {
   const previous=lastSignal; lastSignal=s.signal;
   if (previous===null || previous===s.signal || !active() || !voice.checked || !window._voiceEnabled || !report) return;
@@ -97,14 +152,15 @@ function chart() {
 function render() {
   const s=state(report);
   nodes['bm-price'].textContent=report && Number.isFinite(report.price)?new Intl.NumberFormat('en-US',{style:'currency',currency:report.currency}).format(report.price):'Unavailable';
-  nodes['bm-freshness'].textContent=s.freshness;
+  nodes['bm-freshness'].textContent=report?.stale_cache||report?.provider_status?.stale_cache?'Last known snapshot / feed unavailable':s.freshness;
   nodes['bm-session'].textContent=s.open?'Regular session open':s.closed?'Market closed':'Closed or session unverified';
   nodes['bm-direction'].textContent=report && ['BULLISH','BEARISH','MIXED'].includes(report.bias)?report.bias+' · source assessment':'Unavailable';
   nodes['bm-readiness'].textContent=s.ready?(s.signal==='LONG_RESEARCH'?'Bullish research candidate':'Bearish research candidate'):'WAIT / REVIEW';
-  nodes['bm-reason'].textContent=report?(s.ready?report.reason||'Review the source checks.':!s.open?'Entry readiness blocked: market closed or regular session unverified.':!s.recent?'Entry readiness blocked: quote is stale or its timestamp is unverified.':!s.bars?'Entry readiness blocked: closed five-minute history is stale, missing or insufficient.':!s.aligned?'Entry readiness blocked: source quote predates the signal bar or session alignment is unverified.':report.reason||'Source conditions do not confirm an entry.'):'No usable source evidence returned.';
+  nodes['bm-reason'].textContent=report?(report.stale_cache||report.provider_status?.stale_cache?'Entry readiness blocked: market feed unavailable. Last known snapshot only; source timestamps have not been refreshed.':s.ready?report.reason||'Review the source checks.':!s.open?'Entry readiness blocked: market closed or regular session unverified.':!s.recent?'Entry readiness blocked: quote is stale or its timestamp is unverified.':!s.bars?'Entry readiness blocked: closed five-minute history is stale, missing or insufficient.':!s.aligned?'Entry readiness blocked: source quote predates the signal bar or session alignment is unverified.':report.reason||'Source conditions do not confirm an entry.'):'No usable source evidence returned.';
   nodes['bm-source-time'].textContent='Quote source time: '+stamp(report?.quote_time);
   nodes['bm-fetch-time'].textContent='Provider response fetched: '+stamp(report?.fetched_at)+' (not quote time)';
-  panel.dataset.ready=String(s.ready); panel.dataset.state=!report?'unavailable':s.recent?'recent':'stale'; speakChange(s);
+  notification(s);
+  panel.dataset.ready=String(s.ready); panel.dataset.state=!report?'unavailable':report.stale_cache||report.provider_status?.stale_cache?'stale':s.recent?'recent':'stale'; speakChange(s);
 }
 function schedule() {
   clearTimeout(timer); timer=null;
@@ -130,16 +186,17 @@ async function request() {
       {credentials:'same-origin',headers:{'X-Celesys-Email':email()},signal:current.controller.signal});
     if (id!==generation || current.controller.signal.aborted) return;
     retryHeader(response);
-    if (response.status===401 || response.status===403) { denied=true; report=null; chart();render();message('Access denied. Verify an authorized account, then resume.');return; }
+    if (response.status===401 || response.status===403) { denied=true; report=null;providerFailed=false; chart();render();message('Access denied. Verify an authorized account, then resume.');return; }
     if (!response.ok) { if(response.status===429)retryAt=Math.max(retryAt,Date.now()+PERIOD);throw Error('Market source unavailable (HTTP '+response.status+').'); }
     const data=await response.json();
     if (id!==generation || current.controller.signal.aborted) return;
-    report=validate(data,expected);
+    report=validate(data,expected);providerFailed=false;
+    if (Number.isFinite(data.next_refresh_at)) retryAt=Math.max(retryAt,data.next_refresh_at*1000);
     if (Number.isFinite(data.provider_status?.retry_after)) retryAt=Math.max(retryAt,data.provider_status.retry_after*1000);
     chart();render();
   } catch(error) {
     if (id!==generation) return;
-    report=null; chart();render();
+    report=null;providerFailed=true; chart();render();
     requestError=current.controller.signal.aborted?'Market request timed out. No substitute quote is shown.':error.message; message(requestError);
   } finally {
     clearTimeout(current.timeout);
@@ -150,7 +207,7 @@ async function request() {
   }
 }
 document.addEventListener('celesys:brief-context',event=>{
-  stopRequest(); report=null;lastSignal=null;paused=false;denied=false;requestError='';
+  stopRequest(); report=null;lastSignal=null;paused=false;denied=false;requestError='';providerFailed=false;notificationState=null;notificationEntries.length=0;noticeList.replaceChildren();nodes['bm-notification-empty'].hidden=false;
   const d=event.detail;
   if (!d || !d.active || d.mode!=='trading' || !['US','IN'].includes(d.region) || typeof d.symbol!=='string' || !/^[A-Z][A-Z0-9.\-]{0,19}$/.test(d.symbol)) { context=null;panel.hidden=true;return; }
   context={symbol:d.symbol,region:d.region};panel.hidden=false;pause.textContent='Pause updates';

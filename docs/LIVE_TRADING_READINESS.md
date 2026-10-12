@@ -48,3 +48,15 @@ The trading brief now has a separate auto-updating market panel built on the exi
 Legacy counterarguments no longer repeat imperative stop instructions or claim a maximum loss. Modelled stop/target ordering is checked as evidence quality, without changing the existing strategy. A valid sequence is still unverified for execution.
 
 Authenticated options feeds, verified email delivery/enforcement, economic-event validation, calibrated probabilities, audited walk-forward performance and device audio remain separate unfinished requirements. This change does not certify an institutional trading strategy.
+
+
+## Rate-limit resilience and symbol notifications — 12 October 2026
+
+- Disabled speculative 36-ticker/two-minute cache warming by default. Operators can explicitly opt in with `CELESYS_YAHOO_PREFETCH=true`; even then cache hits skip fetching and requests use bounded, thread-safe pacing.
+- Main legacy SafeTicker history/info/fundamentals/options calls share a bounded per-process cache and single-flight work. Original source timestamps are retained. Repeated provider failures are briefly cached, and detected 429 exceptions pause this adapter for five minutes. This does not intercept every raw yfinance import or direct HTTP request elsewhere in the large legacy engine.
+- Trading Desk retains at most 15 minutes of previously validated history during an outage. It labels the snapshot, removes scenarios, blocks candidates and never restamps old quotes as live. All responses provide next-refresh guidance; cooldowns remain provider-wide within the Trading Desk process.
+- Market notifications show symbol, region, observation time and quote time. Meaningful readiness changes, outages and recovery are deduplicated. Sound is opt-in, with a Test sound control. Voice remains independently opt-in. These foreground notifications do not run with a closed/hidden browser tab; physical speaker playback requires user verification.
+- Existing scheduled QA retains failure evidence between runs. Added regressions cover cache concurrency, stale snapshot trade suppression, prefetch opt-in, notifications and audio consent. This is regression memory, not self-trained trading profitability or unattended strategy rewriting.
+- Remaining live-data dependency: authorized Dhan/Tradier credentials, instrument mapping and display entitlement, plus verified-email authentication. Polling public Yahoo cannot guarantee real-time delivery or eliminate provider/IP quotas. A production authenticated streaming feed is the intended next step; none is claimed connected by these changes.
+
+Official references: https://docs.tradier.com/docs/rate-limiting , https://docs.tradier.com/docs/streaming-data , https://dhanhq.co/docs/v2/live-market-feed/ , https://dhanhq.co/docs/v2/market-quote/ .
