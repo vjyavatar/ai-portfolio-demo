@@ -29,8 +29,23 @@ window.mountDecideOptions=function(container,context){
   for(const [key,label]of [['type','Contract side'],['strike','Strike'],['expiry','Expiry'],['entry','Entry range / limit'],['stop','Premium stop'],['target','Premium target'],['invalidation','Underlying invalidation'],['underlyingTarget','Underlying target'],['loss','Maximum contract loss']]){const item=node('div'),v=node('dd','Unavailable');v.id='de-options-'+key;values[key]=v;item.append(node('dt',label),v);fields.append(item);}
   const source=node('p');source.id='de-options-source';const ranking=node('p');ranking.id='de-options-ranking';
   root.append(title,reason,direction,confidence,fields,source,ranking,node('small','Candidate only. Reconfirm broker quotes, liquidity and events. Stops are not guaranteed; the full premium plus costs can be lost. Exercise may create separate underlying exposure. Greeks are hourly provider estimates, not live ticks.'));
+  const chainWrap=node('section');chainWrap.id='de-option-chain';
+  chainWrap.append(node('h4','Private option chain'));
+  const chainControls=node('div');chainControls.className='do-controls';
+  const chainButton=node('button','View option chain');chainButton.id='de-chain-load';chainButton.type='button';
+  const expiryLabel=node('label','Expiry '),expirySelect=node('select');expirySelect.id='de-chain-expiry';expirySelect.disabled=true;expiryLabel.append(expirySelect);
+  chainControls.append(chainButton,expiryLabel);chainWrap.append(chainControls);
+  const chainStatus=node('p','Source not checked. View the chain to request an authorized provider snapshot.');chainStatus.id='de-chain-status';chainStatus.setAttribute('role','status');
+  const chainSource=node('p');chainSource.id='de-chain-source';
+  const chainScroll=node('div');chainScroll.style.overflowX='auto';chainScroll.setAttribute('tabindex','0');chainScroll.setAttribute('aria-label','Scrollable option chain');
+  const chainTable=node('table');chainTable.id='de-chain-table';chainTable.hidden=true;chainTable.style.cssText='width:100%;min-width:850px;border-collapse:collapse;font-size:12px;text-align:right';
+  const caption=node('caption','Call / put quotes — snapshot research only, no automatic buy recommendation');chainTable.append(caption);
+  const head=node('thead'),header=node('tr');for(const label of ['Call bid / ask','Call OI / volume','Call quote time','Strike','Put bid / ask','Put OI / volume','Put quote time']){const th=node('th',label);th.setAttribute('scope','col');th.style.padding='10px';header.append(th);}head.append(header);chainTable.append(head);
+  const chainBody=node('tbody');chainTable.append(chainBody);chainScroll.append(chainTable);chainWrap.append(chainStatus,chainSource,chainScroll);root.append(chainWrap);
   container.hidden=false;container.append(root);
   let live=true,sequence=0,controller=null,timeout=null,result=null,retryAt=0;
+  let chainController=null,chainTimeout=null,chainSequence=0,chainResult=null,chainRetryAt=0;
+  const chainCache=new Map();
   const supported=region==='US'&&['SPY','QQQ'].includes(symbol);
   const connected=()=>live&&root.isConnected!==false;
   const allowed=()=>roles.includes(window._userRole);
@@ -66,7 +81,7 @@ window.mountDecideOptions=function(container,context){
     ranking.textContent=(Array.isArray(conf?.basis)?'Evidence: '+conf.basis.filter(v=>typeof v==='string').join(' · ')+'. ':'')+(typeof c.ranking?.method==='string'?'Selection: '+c.ranking.method+' ':'')+(typeof c.ranking?.note==='string'?c.ranking.note+' ':'')+'Coverage: nearest non-0DTE expiry in the returned provider chain only; not a market-wide best trade.';
     source.textContent=c.contract+' · '+String(result.source||'Provider')+' · Bid '+money(c.bid)+' at '+new Date(c.bid_time*1000).toLocaleString()+' · Ask '+money(c.ask)+' at '+new Date(c.ask_time*1000).toLocaleString()+'. Evidence expires '+new Date(c.expires_at*1000).toLocaleTimeString()+'.';
   }
-  function abort(){sequence++;if(controller)controller.abort();controller=null;clearTimeout(timeout);timeout=null;scan.disabled=false;}
+  function abort(){abortChain();sequence++;if(controller)controller.abort();controller=null;clearTimeout(timeout);timeout=null;scan.disabled=false;}
   async function load(){
     if(!connected()||document.hidden||controller)return;
     if(!allowed()){result={reason:'An authorized trading account is required.'};show();return;}
@@ -84,6 +99,80 @@ window.mountDecideOptions=function(container,context){
     }catch(error){if(connected()&&id===sequence){result={reason:current.signal.aborted?'Option request timed out. No buy ticket.':error.message};show();}}
     finally{if(id===sequence){clearTimeout(timeout);controller=null;scan.disabled=false;}}
   }
+  function clearChain(text){chainResult=null;chainBody.replaceChildren();chainTable.hidden=true;chainSource.textContent='';if(text)chainStatus.textContent=text;}
+  function abortChain(){chainSequence++;if(chainController)chainController.abort();chainController=null;clearTimeout(chainTimeout);chainTimeout=null;chainButton.disabled=false;}
+  function chainValid(data,expiry){
+    if(!data||data.symbol!==symbol||data.region!==region||data.currency!==(region==='IN'?'INR':'USD')||typeof data.source!=='string'||!Array.isArray(data.rows)||data.rows.length>2000)throw Error('Chain source identity or schema could not be verified.');
+    if(data.status!=='SNAPSHOT')return data;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(data.expiry||'')||(expiry&&data.expiry!==expiry)||!Array.isArray(data.expiries)||!data.expiries.includes(data.expiry))throw Error('Chain expiry could not be verified.');
+    const strikes=new Set();for(const row of data.rows){if(!row||!Number.isFinite(row.strike)||row.strike<=0||strikes.has(row.strike))throw Error('Invalid or duplicate chain strikes.');strikes.add(row.strike);for(const side of [row.call,row.put]){if(side!=null&&typeof side!=='object')throw Error('Invalid chain quote.');}}
+    return data;
+  }
+  function quoteTimes(side){
+    if(!side)return '—';
+    const bid=Number.isFinite(side.bid_time)&&side.bid_time>0?new Date(side.bid_time*1000).toLocaleString():'unknown';
+    const ask=Number.isFinite(side.ask_time)&&side.ask_time>0?new Date(side.ask_time*1000).toLocaleString():'unknown';
+    const feed=side.feed_time_kind==='EXCHANGE_FEED_SNAPSHOT_IST_NOT_SIDE_SPECIFIC'&&Number.isFinite(side.feed_time)&&side.feed_time>0?' · Exchange feed snapshot '+new Date(side.feed_time*1000).toLocaleString()+' (not side-specific)':'';
+    return 'Bid '+bid+' / Ask '+ask+feed;
+  }
+  function chainFreshness(){
+    if(!chainResult)return;
+    if(!allowed()){chainCache.clear();clearChain('Verified sign-in with full access is required. View the chain again after signing in.');return;}
+    const quotes=chainResult.rows.flatMap(r=>[r.call,r.put]).filter(Boolean);
+    const verified=quotes.length>0&&quotes.every(q=>recent(q.bid_time,300)&&recent(q.ask_time,300)&&Number.isFinite(q.bid)&&Number.isFinite(q.ask)&&q.bid>0&&q.ask>=q.bid);
+    chainStatus.textContent=(verified?'Recent source quotes (session not verified). ':'Snapshot / quote timing unverified or stale. ')+String(chainResult.message||'')+' Chain data alone does not qualify a buy ticket.';
+  }
+  function showChain(data){
+    if(!connected()||!allowed())return;
+    clearChain();chainResult=data;
+    if(data.status!=='SNAPSHOT'||!data.rows.length){chainResult=null;chainSource.textContent=data.source+' · '+symbol+' · No usable chain returned.';chainStatus.textContent=data.message||'No chain quotes available.';return;}
+    const expiryOptions=data.expiries.filter(d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d));
+    expirySelect.replaceChildren(...expiryOptions.map(d=>{const option=node('option',d);option.value=d;return option;}));expirySelect.value=data.expiry;expirySelect.disabled=false;
+    const number=value=>Number.isFinite(value)&&value>=0?String(value):'—';
+    const price=value=>Number.isFinite(value)&&value>=0?new Intl.NumberFormat('en-US',{style:'currency',currency:data.currency}).format(value):'—';
+    for(const row of data.rows.slice().sort((a,b)=>a.strike-b.strike)){
+      const tr=node('tr');
+      const columns=[];for(const side of [row.call,row.put]){
+        const crossed=side&&Number.isFinite(side.bid)&&Number.isFinite(side.ask)&&side.bid>side.ask;
+        columns.push(crossed?'Invalid crossed quote':price(side?.bid)+' / '+price(side?.ask),number(side?.oi)+' / '+number(side?.volume)+(Number.isInteger(side?.lot_size)&&side.lot_size>0?' · Lot '+side.lot_size:''),quoteTimes(side));
+      }
+      columns.splice(3,0,price(row.strike));for(const value of columns){const cell=node('td',value);cell.style.cssText='padding:10px;border-top:1px solid var(--border,#e2e5ea);white-space:nowrap';tr.append(cell);}chainBody.append(tr);
+    }
+    chainTable.hidden=false;
+    const fetched=Number.isFinite(data.fetched_at)?new Date(data.fetched_at*1000).toLocaleString():'Not supplied';
+    chainSource.textContent=data.source+' · '+symbol+' · '+data.expiry+' · '+data.rows.length+' strikes · Fetched '+fetched+' (not quote time). OI and volume are provider snapshots; unknown bid / ask times remain unknown.';
+    if(data.coverage?.scope==='BOUNDED_NEAR_SPOT_WINDOW_NOT_FULL_CHAIN'){
+      const coverage=data.coverage;
+      chainSource.textContent+=' Partial coverage: at most 25 strikes near the underlying price, not the full chain.'+
+        (Number.isInteger(coverage.returned_strikes)&&Number.isInteger(coverage.available_paired_strikes)?' Returned '+coverage.returned_strikes+' of '+coverage.available_paired_strikes+' available paired strikes.':'')+
+        (Number.isInteger(coverage.returned_contracts)&&Number.isInteger(coverage.requested_contracts)?' Returned '+coverage.returned_contracts+' of '+coverage.requested_contracts+' requested contracts.':'');
+    }
+    chainFreshness();
+  }
+  async function loadChain(expiry){
+    expiry=typeof expiry==='string'?expiry:'';
+    if(!connected()||document.hidden||chainController)return;
+    if(!allowed()){clearChain('Verified sign-in with full access is required to view the private chain.');return;}
+    if(region==='IN'&&!['NIFTY','BANKNIFTY'].includes(symbol)){clearChain('This India chain viewer currently supports NIFTY and BANKNIFTY.');return;}
+    if(chainResult&&expiry&&chainResult.expiry!==expiry)clearChain('Checking selected expiry…');
+    const cached=chainCache.get(expiry);if(cached&&Date.now()-cached.receivedAt<60000){showChain(cached.data);return;}
+    if(Date.now()<chainRetryAt){chainStatus.textContent='Provider cooldown active. Retry after '+new Date(chainRetryAt).toLocaleTimeString()+'.';return;}
+    const id=++chainSequence,current=new AbortController();chainController=current;chainButton.disabled=true;clearChain('Fetching authorized option-chain snapshot…');
+    chainTimeout=setTimeout(()=>current.abort(),30000);
+    try{
+      const response=await fetch('/api/private-options/chain?'+new URLSearchParams({region,symbol,expiry}),{credentials:'same-origin',signal:current.signal});
+      if(!connected()||id!==chainSequence||current.signal.aborted)return;
+      const header=response.headers?.get?.('Retry-After');if(header){const until=/^\d+$/.test(header)?Date.now()+Number(header)*1000:Date.parse(header);if(Number.isFinite(until))chainRetryAt=Math.max(chainRetryAt,until);}
+      if(!response.ok)throw Error([401,403].includes(response.status)?'Verified sign-in with full access is required.':'Option chain unavailable (HTTP '+response.status+').');
+      const data=await response.json();if(!connected()||id!==chainSequence||current.signal.aborted)return;
+      const checked=chainValid(data,expiry);if(Number.isFinite(checked.retry_after))chainRetryAt=Math.max(chainRetryAt,checked.retry_after*1000);
+      if(checked.status==='SNAPSHOT'){chainCache.set(expiry,{data:checked,receivedAt:Date.now()});chainCache.set(checked.expiry,{data:checked,receivedAt:Date.now()});}
+      showChain(checked);
+    }catch(error){if(connected()&&id===chainSequence)clearChain(current.signal.aborted?'Option chain request timed out. No substitute quotes shown.':error.message);}
+    finally{if(id===chainSequence){clearTimeout(chainTimeout);chainController=null;chainButton.disabled=false;}}
+  }
+  chainButton.addEventListener('click',()=>loadChain(expirySelect.value||''));
+  expirySelect.addEventListener('change',()=>{abortChain();loadChain(expirySelect.value);});
   function readTicket(){
     if(!connected())return;
     if(!voice.checked||window._voiceEnabled!==true){reason.textContent='Enable spoken readout and the workspace Voice control first.';return;}
@@ -100,9 +189,9 @@ window.mountDecideOptions=function(container,context){
     }
     window._speak?.(text,false);
   }
-  function visibility(){if(document.hidden){abort();result={reason:'Page was hidden. Scan again to verify current account access and contract evidence.'};}else show();}
+  function visibility(){if(document.hidden){abort();chainCache.clear();clearChain('Page was hidden. View the chain again to verify current access and source quotes.');result={reason:'Page was hidden. Scan again to verify current account access and contract evidence.'};}else show();}
   scan.addEventListener('click',load);read.addEventListener('click',readTicket);document.addEventListener('visibilitychange',visibility);
-  const interval=setInterval(()=>{if(connected()&&!document.hidden&&result?.candidate)show();else if(!connected())dispose();},1000);
+  const interval=setInterval(()=>{if(connected()&&!document.hidden&&chainResult)chainFreshness();if(connected()&&!document.hidden&&result?.candidate)show();else if(!connected())dispose();},1000);
   function dispose(){if(!live)return;live=false;abort();clearInterval(interval);document.removeEventListener('visibilitychange',visibility);root.remove();container.hidden=true;if(disposeCurrent===dispose)disposeCurrent=null;}
   disposeCurrent=dispose;show();return dispose;
 };

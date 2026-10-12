@@ -1,5 +1,7 @@
 # India and US options feeds: verified alternatives
 
+Implementation update, 13 October 2026 (India): `angel_options.py` now supplies a bounded, authenticated SmartAPI India snapshot through the existing private chain route. The original Decide page can display both that chain and Tradier US chains. Instrument identity/strike scaling were checked against the official public master; credentialed quote responses remain unverified. See `FREE_CHAIN_SETUP.md` for configuration, audience restrictions and partial-chain coverage. The original research findings below describe pricing and feed limitations, not live activation.
+
 Research date: 12 October 2026. Scope: official provider material, no paid activation, credentials, order submission or scraping implementation. Upstox is excluded at the owner's request.
 
 **Finding:** this review did not identify a documented, genuinely free, unauthenticated API supplying actual real-time option quotes for both India and the US with permission to display them publicly. This is a finding about the reviewed providers, not proof that no alternative exists. Free API access, brokerage-account access and public redistribution rights are different things.
