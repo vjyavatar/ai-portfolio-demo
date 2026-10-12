@@ -208,12 +208,9 @@
 //   tickets. User must size + risk-manage independently.
 //   NSE constraint: Render IP still blocked. Brief now surfaces honest per-index
 //   errors when NSE returns no chain. Fix needs paid feed/proxy (separate project).
-// r63.99.30: UPSTOX-FIRST OPTION CHAIN — finally fixes the NSE-blocked OI gap.
 //   Vijay's screenshot at r99.29 showed all three indices returning "no chain"
 //   from NSE. Root cause: NSE blocks the Render outbound IP (72.180.65.28).
-//   Fix: Codebase already had _upstox_get_option_chain() (line 321) — wired it
 //   into the brief endpoint as FIRST-CHOICE source, with NSE direct as fallback.
-//   Upstox uses Vijay's OAuth token (no IP-block possible). When connected, the
 //   brief will get live chains for NIFTY, BANKNIFTY, SENSEX → projected range +
 //   PE/CE recommendations all populate.
 //   ADDED:
@@ -221,18 +218,9 @@
 //       raw chain rows (any source) and computes PCR, max_pain, top walls,
 //       ATM IV, simplified GEX regime. Simpler than nse_options' full Greek
 //       surface; honest about that simplification.
-//   (2) _fetch_index_chain_with_fallback(symbol) — tries Upstox first (if
-//       _upstox_is_connected()), then NSE direct. Returns unified shape so brief
 //       OI loop doesn't care which source provided the data.
 //   (3) Brief OI loop refactored to use the fallback fetcher. data_sources tag
-//       now shows "chain (upstox, live or 15min cache)" or similar.
-//   (4) Warnings text updated: when both sources fail, surfaces Upstox connection
-//       status explicitly ("Upstox is NOT connected") and points to /api/upstox-login.
-//   (5) Frontend: detects Upstox-not-connected warning string and renders a
-//       prominent amber "🔗 Connect Upstox" CTA banner above the caveats, so user
 //       can fix the OI-empty case in one click.
-//   HONEST: if Upstox is not connected AND NSE is blocked (production state),
-//   OI is still empty. The fix is one Upstox-OAuth click — but it requires the
 //   user to actually click it. The new UI makes that path obvious.
 // r63.99.31: COMPETITIVE ADVANTAGES MATRIX in Moat tab.
 //   Vijay's screenshot showed the canonical Morningstar-style moat grid with
@@ -3359,6 +3347,8 @@ var TAB_GROUPS = {
 window._activeGroup = 'overview';
 
 function switchTabGroup(group) {
+  var isolated=document.getElementById('tradingOnlyView');if(isolated)isolated.style.display='none';
+  if(window._tradingRefreshTimer){clearInterval(window._tradingRefreshTimer);window._tradingRefreshTimer=null;}
   var g = TAB_GROUPS[group];
   if (!g) return;
   
@@ -11646,23 +11636,8 @@ window._renderTomorrowBrief = function(d) {
   }
 
   // ─── Warnings / data freshness ───
-  // r63.99.30: detect Upstox-not-connected warning and surface a clickable CTA
-  // so the user can fix the OI-empty case in one click.
+  // Keep data-availability warnings next to the result.
   if (d.warnings && d.warnings.length) {
-    // Check for the Upstox connection hint in warnings
-    var needsUpstox = d.warnings.some(function(w){ return typeof w === 'string' && w.indexOf('Upstox is NOT connected') >= 0; });
-    if (needsUpstox) {
-      h += '<div style="background:linear-gradient(180deg,#fef3c7,#fde68a);border:2px solid #f59e0b;border-radius:10px;padding:12px 14px;margin-bottom:10px">';
-      h += '<div style="display:flex;align-items:start;gap:10px;flex-wrap:wrap">';
-      h += '<div style="font-size:22px">⚡</div>';
-      h += '<div style="flex:1;min-width:200px">';
-      h += '<div style="font-size:12px;font-weight:800;color:#92400e;font-family:Sora,sans-serif;margin-bottom:4px">Connect Upstox to unlock live OI data</div>';
-      h += '<div style="font-size:10px;color:#78350f;line-height:1.55;margin-bottom:8px">NSE blocks direct API requests from our hosting IP. Upstox bypasses this via your authenticated session — you\'ll see live NIFTY / BANKNIFTY / SENSEX option chains, projected ranges, and PE/CE recommendations once connected.</div>';
-      h += '<a href="/api/upstox-login" style="display:inline-block;padding:7px 14px;background:#d97706;color:#fff;text-decoration:none;border-radius:6px;font-size:11px;font-weight:700;font-family:Sora,sans-serif">🔗 Connect Upstox</a>';
-      h += '</div>';
-      h += '</div>';
-      h += '</div>';
-    }
     h += '<div style="background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:10px 12px;font-size:10px;color:#854d0e;line-height:1.6">';
     h += '<div style="font-weight:800;margin-bottom:4px">⚠ Honest Caveats</div>';
     d.warnings.forEach(function(w){ h += '<div>• ' + w + '</div>'; });
@@ -22687,7 +22662,6 @@ fetch('/api/high-prob-setups?email='+encodeURIComponent(email)+'&region='+reg+'&
 // OPTIONS PULSE (r52 — UI)
 // Backend: /api/options-setup-detector?region=X
 // Surfaces stocks with unusual options activity — candidates for short-term
-// options trades. HONEST: 15-min delayed data (US), India requires Upstox
 // F&O or Kite Connect for real options data.
 // ═══════════════════════════════════════════════════════════════════════
 function loadOptionsPulse(forceReg){
@@ -22726,20 +22700,6 @@ fetch('/api/options-setup-detector?email='+encodeURIComponent(email)+'&region='+
   var h='';
   var csym=reg==='US'?'$':'₹';
   var fmt=function(n){return (n||0).toLocaleString('en-US',{maximumFractionDigits:2});};
-  
-  // India broker-needed state
-  if(d.broker_status_needed){
-    h+='<div style="padding:40px 20px;text-align:center;border:2px dashed #d97706;border-radius:12px;background:#fef3c7">';
-    h+='<div style="font-size:48px;margin-bottom:12px">🔌</div>';
-    h+='<div style="font-size:18px;font-weight:900;color:#78350f;font-family:Sora,sans-serif;margin-bottom:8px">Broker Connection Required for India Options</div>';
-    h+='<div style="font-size:11px;color:var(--text);max-width:500px;margin:0 auto;line-height:1.6">'+d.honest_disclaimer+'</div>';
-    h+='<div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">';
-    h+='<a href="/api/upstox-login" style="padding:10px 20px;background:#059669;color:#fff;border-radius:8px;text-decoration:none;font-size:11px;font-weight:700;font-family:Sora,sans-serif">🔗 Connect Upstox (Free)</a>';
-    h+='<a href="https://kite.trade/connect/login" target="_blank" style="padding:10px 20px;background:#6b7280;color:#fff;border-radius:8px;text-decoration:none;font-size:11px;font-weight:700;font-family:Sora,sans-serif">💳 Kite Connect (₹2000/mo)</a>';
-    h+='</div></div>';
-    el.innerHTML=_opRegBar+h;
-    return;
-  }
   
   // Hero
   h+='<div class="dc" style="border:1px solid #7c3aed20;box-shadow:0 20px 60px #7c3aed08;margin-bottom:20px">';
@@ -22921,7 +22881,7 @@ function renderForm(prefilled){
   html += '<div style="display:flex;align-items:center;gap:14px">';
   html += '<div style="font-size:36px">🎫</div>';
   html += '<div><div style="font-size:24px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Trade Ticket Generator</div>';
-  html += '<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px">Institutional-grade options trade plan · '+(reg==='US'?'US (15-min delayed)':'India (Upstox real-time if connected)')+'</div></div>';
+  html += '<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px">Institutional-grade options trade plan · '+(reg==='US'?'US (15-min delayed)':'India (exchange snapshot; freshness unverified)')+'</div></div>';
   html += '</div></div></div>';
   
   // Input form
@@ -22977,7 +22937,7 @@ function renderForm(prefilled){
   // Tips
   html += '<div style="padding:12px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:10px;color:#78350f;line-height:1.5">';
   html += '<strong>💡 Tips for best results:</strong> Use <strong>ATM (0.50 delta)</strong> for most trades. Pick <strong>14-21 DTE</strong> — sweet spot for theta/gamma. Risk <strong>0.5-1%</strong> per trade. ';
-  html += 'For India: ensure Upstox F&O is connected for real-time data.';
+  html += 'For India: verify exchange data availability and current contract details.';
   html += '</div>';
   
   html += '</div>'; // close max-width
@@ -23025,9 +22985,6 @@ window._ttGenerate = function(){
       var errBox = document.createElement('div');
       errBox.style.cssText = 'max-width:720px;margin:14px auto 0;padding:14px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#dc2626;font-size:11px;font-weight:600;text-align:center';
       errBox.textContent = '❌ '+(d.error||'Unknown error');
-      if(d.broker_status_needed){
-        errBox.innerHTML += '<br><a href="/api/upstox-login" style="color:#fff;background:#059669;padding:6px 14px;border-radius:6px;text-decoration:none;display:inline-block;margin-top:8px;font-weight:800">🔗 Connect Upstox Now</a>';
-      }
       el.appendChild(errBox);
       return;
     }
@@ -26695,7 +26652,6 @@ var _nameMap={
 // ═══ UNIVERSAL SMART PARSER — works with ANY format ═══
 function _smartExtract(text){
 // UNIVERSAL PARSER — handles ALL broker formats:
-// Sharekhan, Zerodha, Groww, Angel One, ICICI Direct, HDFC Sec, Kotak, Upstox
 // Supports: NSE tickers, BSE codes, ISIN, company names, trading symbols
 var _blacklist={'NAME':1,'STOCK':1,'SYMBOL':1,'TICKER':1,'QUANTITY':1,'QTY':1,'PRICE':1,'VALUE':1,'MARKET':1,'TOTAL':1,'HOLDING':1,'COST':1,'GAIN':1,'LOSS':1,'REALIZED':1,'UNREALIZED':1,'PERCENT':1,'AVERAGE':1,'AVG':1,'CURRENT':1,'CMP':1,'BUY':1,'SELL':1,'DATE':1,'CUSTOMER':1,'LOGIN':1,'EQUITY':1,'TRADE':1,'FOLDER':1,'SKSCRIPCODE':1,'LTD':1,'LIMITED':1,'INDUSTRIES':1,'TECHNOLOGIES':1,'SERVICES':1,'COMPANY':1,'CORPORATION':1,'ENTERPRISES':1,'SR':1,'NO':1,'ID':1,'TRADING':1,'INSTRUMENT':1,'EXCHANGE':1,'SEGMENT':1,'SERIES':1,'ISIN':1,'DEMAT':1,'DP':1,'CLIENT':1,'FOLIO':1,'SCHEME':1,'NAV':1,'UNITS':1,'ACCOUNT':1,'BROKER':1,'SETTLEMENT':1,'ORDER':1,'EXECUTED':1,'PENDING':1,'CANCELLED':1,'REJECTED':1,'NSE':1,'BSE':1,'MCX':1,'NFO':1,'CDS':1};
 // ISIN to NSE ticker mapping (top 200 Indian stocks)
@@ -36725,7 +36681,7 @@ if(id==='vwap'){el.innerHTML='<div style="padding:12px;border-radius:10px;backgr
 if(id==='oi'){el.innerHTML='<div style="padding:12px;border-radius:10px;background:#f1f5f9;font-size:10px;color:var(--text2);line-height:1.8">📊 <strong>Open Interest (OI)</strong> = total option/future contracts that exist right now.<br><br>Think of it like parking spaces occupied in a mall:<br>• <strong>Rising OI + Rising Price</strong> = New buyers entering. Strong trend. ✅<br>• <strong>Rising OI + Falling Price</strong> = New shorts entering. Bearish. ❌<br>• <strong>Falling OI + Rising Price</strong> = Short covering rally. Weak. ⚠️<br>• <strong>Falling OI + Falling Price</strong> = Long liquidation. Capitulation. 💀</div>'+_jbVerdict('OI is the ultimate smart money indicator. Rising OI = new money. Falling OI = money leaving. Always check OI direction with price direction.','good')}
 if(id==='fii'){el.innerHTML='<div style="padding:12px;border-radius:10px;background:#f1f5f9;font-size:10px;color:var(--text2);line-height:1.8">🏦 <strong>FII</strong> = Foreign Institutional Investors (Goldman, BlackRock, etc)<br>🏦 <strong>DII</strong> = Domestic Institutional Investors (LIC, SBI MF, etc)<br><br>• <strong style="color:#10b981">FII Buying</strong> = Global confidence in India. Bullish. 🐂<br>• <strong style="color:#ef4444">FII Selling</strong> = Pulling money out. USD strengthening or global risk-off. 🐻<br>• <strong>DII Buying when FII Selling</strong> = Domestic funds supporting. Less panic.</div>'+_jbVerdict('When both FII+DII buy together = STRONGEST signal. When FII sells heavily but DII absorbs = temporary dip, usually recovers.','good')}
 if(id==='sector'){el.innerHTML='<div style="padding:12px;border-radius:10px;background:#f1f5f9;font-size:10px;color:var(--text2);line-height:1.8">🏭 <strong>Sector Rotation</strong> = Money flows between sectors in cycles:<br><br>1️⃣ <strong>Early Recovery:</strong> Banks, Real Estate, Auto (rate-sensitive)<br>2️⃣ <strong>Mid Cycle:</strong> IT, Capital Goods, Infrastructure<br>3️⃣ <strong>Late Cycle:</strong> FMCG, Pharma, Utilities (defensive)<br>4️⃣ <strong>Recession:</strong> Gold, Cash, Bonds<br><br>The trick is to identify WHICH stage we are in and position AHEAD of the rotation.</div>'+_jbVerdict('Follow the money. When IT stocks start falling and bank stocks rise with high volume, thats sector rotation in action. Be early, not late.','good')}
-if(id==='demat'){el.innerHTML='<div style="padding:12px;border-radius:10px;background:#f1f5f9;font-size:10px;color:var(--text2);line-height:1.8">📋 <strong>Demat Account</strong> = Digital locker for your shares.<br><br>Old days: Physical paper certificates (could be stolen, forged, damaged).<br>Now: Electronic entries in NSDL/CDSL (like money in bank account).<br><br>You need: <strong>Demat</strong> (holds shares) + <strong>Trading Account</strong> (to buy/sell) + <strong>Bank Account</strong> (money in/out).<br><br>Popular brokers: Zerodha, Groww, Angel One, Upstox.</div>'+_jbVerdict('Opening a Demat is free. Choose a discount broker (Zerodha/Groww) for low brokerage. Avoid high-brokerage traditional brokers.','good')}
+if(id==='demat'){el.innerHTML='<div style="padding:12px;border-radius:10px;background:#f1f5f9;font-size:10px;color:var(--text2);line-height:1.8">📋 <strong>Demat Account</strong> = Digital locker for your shares.<br><br>Old days: Physical paper certificates (could be stolen, forged, damaged).<br>Now: Electronic entries in NSDL/CDSL (like money in bank account).<br><br>You need: <strong>Demat</strong> (holds shares) + <strong>Trading Account</strong> (to buy/sell) + <strong>Bank Account</strong> (money in/out).<br><br>Popular brokers: Zerodha, Groww, Angel One.</div>'+_jbVerdict('Opening a Demat is free. Choose a discount broker (Zerodha/Groww) for low brokerage. Avoid high-brokerage traditional brokers.','good')}
 if(id==='ipo'){el.innerHTML='<div style="padding:12px;border-radius:10px;background:#f1f5f9;font-size:10px;color:var(--text2);line-height:1.8">🎪 <strong>IPO</strong> = Initial Public Offering. Company sells shares to public for the first time.<br><br>Like a restaurant opening night:<br>• 🔥 Some are instant hits (listing at 50%+ premium)<br>• 💀 Some flop (list below issue price)<br><br><strong>GMP</strong> = Grey Market Premium. Unofficial price before listing.<br><br>⚠️ <strong>Dont blindly apply to every IPO.</strong> Check: profitability, growth, valuations vs peers, promoter track record.</div>'+_jbVerdict('80% of IPOs underperform the index after 1 year. The FOMO is real but the data says: wait 6 months post-listing for a better entry.','warn')}
 
 }
@@ -36868,7 +36824,7 @@ if(!window._speak){
   });
   
   window._speak=function(text,urgent){
-    if(!text)return;
+    if(window._voiceEnabled===false||!text)return;
     if(!window.speechSynthesis)return;
     
     // Cancel current if urgent
@@ -36972,6 +36928,10 @@ window._loadTradingView=function(symbol,region){
   var rpt=document.getElementById('report');
   if(!rpt)return;
   
+  var host=rpt;
+  rpt=document.getElementById('tradingOnlyView');
+  if(!rpt){rpt=document.createElement('div');rpt.id='tradingOnlyView';host.appendChild(rpt);}
+  rpt.style.display='block';
   // Clear old timer
   if(window._tradingRefreshTimer){clearInterval(window._tradingRefreshTimer);window._tradingRefreshTimer=null}
   

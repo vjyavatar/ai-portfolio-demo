@@ -31,9 +31,7 @@ async def fetch(supplier, symbol, region):
 
 
 def option_snapshot(data, symbol, region):
-    source = {'upstox': 'Upstox via existing Celesys options engine'}.get(
-        data.get('_chain_source'), 'Existing Celesys options engine (NSE)' if region == 'IN'
-        else 'Yahoo Finance via existing Celesys options engine')
+    source = 'NSE via existing Celesys options engine' if region == 'IN' else 'Yahoo Finance via existing Celesys options engine'
     expiry = data.get('expiry')
     rows = []
     valid_expiry = False

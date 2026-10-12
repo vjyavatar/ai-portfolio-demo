@@ -3,9 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "node --check trading/desk.js && node --check trading/notifications-ui.js && npm run test:trading && node --check discovery/options.js && node --check discovery/agents.js && node --check discovery/home.js && node --check discovery/analytics.js && npm run test:discovery",
+    "build": "node --check trading/desk.js && node --check trading/notifications-ui.js && npm run test:trading && node --check discovery/options.js && node --check discovery/agents.js && node --check discovery/home.js && node --check discovery/analytics.js && npm run test:discovery && node --check static/app.js && node --check static/active-trading.js && node --check static/workspace.js && node --check static/workspace-core.js && node --check sw.js && npm run test:workspace",
     "test:trading": "node --test tests/trading-*.test.mjs",
-    "test:discovery": "node --test tests/discovery-ui.test.mjs"
+    "test:discovery": "node --test tests/discovery-ui.test.mjs",
+    "test:workspace": "node --test tests/workspace.test.mjs"
   },
   "engines": {
     "node": ">=22.13.0 <23"

@@ -91,7 +91,7 @@ def normalize(payload, region, symbol, expiry):
 
 
 def get_json(region, path, params, token):
-    base = 'https://api.upstox.com/v2/' if region == 'IN' else 'https://api.tradier.com/v1/markets/'
+    base = 'https://api.tradier.com/v1/markets/'
     req = Request(base + path + '?' + urlencode(params), headers={'Accept': 'application/json', 'Authorization': 'Bearer '+token})
     with urlopen(req, timeout=10) as response:
         raw = response.read(4_000_001)
@@ -123,11 +123,13 @@ def chain(region: str = 'IN', symbol: str = 'NIFTY', expiry: str = ''):
         try:
             if date.fromisoformat(expiry).isoformat() != expiry: raise ValueError()
         except ValueError: raise HTTPException(422, 'Expiry must be YYYY-MM-DD.')
-    base = dict(region=region, symbol=symbol, source='Upstox' if region == 'IN' else 'Tradier',
+    base = dict(region=region, symbol=symbol, source='NSE' if region == 'IN' else 'Tradier',
                 currency='INR' if region == 'IN' else 'USD', rows=[], expiries=[], execution_enabled=False,
                 message='', status='UNAVAILABLE', freshness='UNVERIFIED',
                 limitations='Snapshot research only. OI and Greeks have separate update schedules. Quote recency does not verify market hours. No trade recommendation.')
     def response(data): return JSONResponse(data, headers={'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex'})
+    if region == 'IN':
+        return response(dict(base, message='Use Options in the main Celesys workspace for India exchange snapshots.'))
     # A brokerage token alone is not permission to redistribute its data publicly.
     if os.getenv('CELESYS_PUBLIC_OPTIONS_'+region) != 'true':
         return response(dict(base, message='This market feed is not enabled for public display. Explore the guide below while the operator connects an authorized feed.'))

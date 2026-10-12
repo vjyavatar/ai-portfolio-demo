@@ -169,319 +169,22 @@ _http_pool.mount('https://', _pool_adapter)
 _http_pool.mount('http://', _pool_adapter)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# UPSTOX OAUTH + OPTION CHAIN ADAPTER (r37)
-#
-# Purpose: permanent fix for India option chain data. Uses your personal
-# Upstox account's data entitlement — no shared-IP ban, no rate limit
-# tricks, real institutional-grade data from NSE direct via broker.
-#
-# Credentials (set in Render env vars, NOT hardcoded):
-#   UPSTOX_API_KEY       — public client ID
-#   UPSTOX_API_SECRET    — server-only, used to exchange code for token
-#   UPSTOX_REDIRECT_URI  — defaults to https://celesys.ai/api/upstox-callback
-#
-# OAuth flow:
-#   1. User clicks "Connect Upstox" → GET /api/upstox-login
-#   2. Server redirects to Upstox authorization URL
-#   3. User logs in on Upstox, authorizes app
-#   4. Upstox redirects back to /api/upstox-callback?code=XXX
-#   5. Server exchanges code for access token, stores on disk
-#   6. All future option chain calls use the stored token
-#
-# Token lifecycle:
-#   Upstox tokens expire at 3:30 AM IST daily (fixed policy).
-#   When a call returns 401, we mark token expired and UI shows
-#   "Reconnect Upstox" banner. User clicks once → re-authorizes → done.
-# ═══════════════════════════════════════════════════════════════════════
-
-UPSTOX_API_KEY = os.getenv("UPSTOX_API_KEY", "").strip()
-UPSTOX_API_SECRET = os.getenv("UPSTOX_API_SECRET", "").strip()
-UPSTOX_REDIRECT_URI = os.getenv("UPSTOX_REDIRECT_URI", "https://celesys.ai/api/upstox-callback").strip()
-
-_UPSTOX_TOKEN_FILE = os.getenv("UPSTOX_TOKEN_FILE", "/tmp/upstox_token.json")
-_upstox_token_cache = None  # in-memory mirror of disk file
-
-def _upstox_configured():
-    """True iff all required env vars are set."""
-    return bool(UPSTOX_API_KEY and UPSTOX_API_SECRET)
-
-def _upstox_load_token():
-    """Load token from disk into memory. Returns dict or None."""
-    global _upstox_token_cache
-    if _upstox_token_cache is not None:
-        return _upstox_token_cache
-    try:
-        if os.path.exists(_UPSTOX_TOKEN_FILE):
-            import json as _j
-            with open(_UPSTOX_TOKEN_FILE, "r") as f:
-                _upstox_token_cache = _j.load(f)
-                return _upstox_token_cache
-    except Exception as e:
-        print(f"[UPSTOX] Failed to load token: {type(e).__name__}: {e}")
-    return None
-
-def _upstox_save_token(tok):
-    """Persist token dict to disk + cache."""
-    global _upstox_token_cache
-    try:
-        import json as _j
-        with open(_UPSTOX_TOKEN_FILE, "w") as f:
-            _j.dump(tok, f)
-        _upstox_token_cache = tok
-        # Restrict permissions — owner read/write only
-        try:
-            os.chmod(_UPSTOX_TOKEN_FILE, 0o600)
-        except Exception: pass
-    except Exception as e:
-        print(f"[UPSTOX] Failed to save token: {type(e).__name__}: {e}")
-
-def _upstox_clear_token():
-    """Delete token from disk + memory (user-initiated disconnect)."""
-    global _upstox_token_cache
-    _upstox_token_cache = None
-    try:
-        if os.path.exists(_UPSTOX_TOKEN_FILE):
-            os.remove(_UPSTOX_TOKEN_FILE)
-    except Exception: pass
-
-def _upstox_access_token():
-    """Return valid access token or None if not connected / expired."""
-    tok = _upstox_load_token()
-    if not tok: return None
-    # Check explicit expiry if stored
-    exp = tok.get("expires_at_ts", 0)
-    if exp and time.time() > exp:
+# Broker-independent cache for synchronous legacy scoring consumers.
+def _india_cached_chain(symbol):
+    cached = _nse_cache.get(symbol.upper())
+    stamp = _nse_cache_ts.get(symbol.upper())
+    if not cached or not stamp or (datetime.utcnow()-stamp).total_seconds() >= 120:
         return None
-    return tok.get("access_token")
-
-def _upstox_is_connected():
-    """UI-level status: do we have a usable token right now?"""
-    return _upstox_access_token() is not None
-
-def _upstox_authorize_url():
-    """Build Upstox OAuth authorization URL for redirect."""
-    import urllib.parse as _up
-    params = {
-        "client_id": UPSTOX_API_KEY,
-        "redirect_uri": UPSTOX_REDIRECT_URI,
-        "response_type": "code",
-    }
-    return "https://api.upstox.com/v2/login/authorization/dialog?" + _up.urlencode(params)
-
-def _upstox_exchange_code(code):
-    """Exchange authorization code for access token. Returns dict or raises."""
-    if not _upstox_configured():
-        raise RuntimeError("Upstox not configured — missing UPSTOX_API_KEY or UPSTOX_API_SECRET env vars")
-    r = requests.post(
-        "https://api.upstox.com/v2/login/authorization/token",
-        headers={
-            "accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        data={
-            "code": code,
-            "client_id": UPSTOX_API_KEY,
-            "client_secret": UPSTOX_API_SECRET,
-            "redirect_uri": UPSTOX_REDIRECT_URI,
-            "grant_type": "authorization_code",
-        },
-        timeout=10,
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"Upstox token exchange failed: {r.status_code} {r.text[:200]}")
-    resp = r.json()
-    # Upstox returns: access_token, token_type, expires_in (seconds), etc.
-    # Tokens expire at 3:30 AM IST regardless of expires_in — we track both.
-    tok = {
-        "access_token": resp.get("access_token"),
-        "token_type": resp.get("token_type", "Bearer"),
-        "user_id": resp.get("user_id"),
-        "user_name": resp.get("user_name"),
-        "email": resp.get("email"),
-        "issued_ts": time.time(),
-        # Upstox tokens expire at 3:30 AM IST daily. Compute that timestamp.
-        # Doing this as a safety floor — whichever is sooner (daily expiry or
-        # explicit expires_in) is treated as the expiry.
-        "expires_at_ts": _upstox_compute_daily_expiry(),
-    }
-    return tok
-
-def _upstox_compute_daily_expiry():
-    """Return epoch timestamp for next 3:30 AM IST (Upstox token daily reset)."""
-    from datetime import datetime, timedelta, timezone
-    IST = timezone(timedelta(hours=5, minutes=30))
-    now_ist = datetime.now(IST)
-    # Next 3:30 AM IST
-    expiry = now_ist.replace(hour=3, minute=30, second=0, microsecond=0)
-    if expiry <= now_ist:
-        expiry = expiry + timedelta(days=1)
-    return expiry.timestamp()
-
-def _upstox_get_option_chain(symbol):
-    """Fetch option chain from Upstox for given symbol.
-    Returns dict compatible with our internal chain shape, or None on failure.
-    
-    Upstox API: GET /v2/option/chain?instrument_key=NSE_INDEX|Nifty%2050&expiry_date=YYYY-MM-DD
-    
-    We need:
-      1. Map our symbol → Upstox instrument_key
-      2. Find nearest expiry
-      3. Fetch chain, transform to our internal shape
-    """
-    if not _upstox_is_connected(): return None
-    access_token = _upstox_access_token()
-    if not access_token: return None
-    
-    # Map symbol to Upstox instrument key
-    inst_key = _upstox_instrument_key(symbol)
-    if not inst_key:
-        try:
-            diag_log("FALLBACK", "upstox_unsupported_symbol", {"sym": symbol})
-        except Exception: pass
+    if not cached.get("success"):
         return None
-    
-    try:
-        # Step 1: get expiries for this instrument
-        exp_resp = requests.get(
-            "https://api.upstox.com/v2/option/contract",
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {access_token}",
-            },
-            params={"instrument_key": inst_key},
-            timeout=10,
-        )
-        if exp_resp.status_code == 401:
-            # Token expired mid-day (shouldn't happen but handle gracefully)
-            _upstox_clear_token()
-            try: diag_log("FALLBACK", "upstox_token_expired", {"sym": symbol})
-            except Exception: pass
-            return None
-        if exp_resp.status_code != 200:
-            try: diag_log("FALLBACK", "upstox_expiry_fetch_failed", {
-                "sym": symbol, "status": exp_resp.status_code,
-            })
-            except Exception: pass
-            return None
-        
-        exp_data = exp_resp.json() or {}
-        contracts = exp_data.get("data") or []
-        if not contracts:
-            return None
-        
-        # Extract unique expiry dates, pick nearest
-        from datetime import datetime as _dt
-        expiries = sorted(set(c.get("expiry") for c in contracts if c.get("expiry")))
-        if not expiries: return None
-        current_expiry = expiries[0]  # nearest
-        
-        # Step 2: fetch chain for current expiry
-        chain_resp = requests.get(
-            "https://api.upstox.com/v2/option/chain",
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {access_token}",
-            },
-            params={"instrument_key": inst_key, "expiry_date": current_expiry},
-            timeout=10,
-        )
-        if chain_resp.status_code != 200:
-            try: diag_log("FALLBACK", "upstox_chain_fetch_failed", {
-                "sym": symbol, "status": chain_resp.status_code,
-            })
-            except Exception: pass
-            return None
-        
-        chain_data = chain_resp.json() or {}
-        rows = chain_data.get("data") or []
-        if not rows: return None
-        
-        # Step 3: transform to our internal shape
-        # Upstox row structure (per docs):
-        # {
-        #   "strike_price": 24500,
-        #   "underlying_spot_price": 24450.3,
-        #   "call_options": {market_data: {ltp, oi, iv, volume}, ...},
-        #   "put_options": {market_data: {ltp, oi, iv, volume}, ...},
-        # }
-        chain_near_atm = []
-        spot = 0
-        total_ce_oi = 0
-        total_pe_oi = 0
-        for r in rows:
-            try:
-                strike = float(r.get("strike_price") or 0)
-                if not spot:
-                    spot = float(r.get("underlying_spot_price") or 0)
-                ce = (r.get("call_options") or {}).get("market_data") or {}
-                pe = (r.get("put_options") or {}).get("market_data") or {}
-                ce_oi = int(ce.get("oi") or 0)
-                pe_oi = int(pe.get("oi") or 0)
-                total_ce_oi += ce_oi
-                total_pe_oi += pe_oi
-                chain_near_atm.append({
-                    "strike": strike,
-                    "ce_ltp": float(ce.get("ltp") or 0),
-                    "pe_ltp": float(pe.get("ltp") or 0),
-                    "ce_oi": ce_oi,
-                    "pe_oi": pe_oi,
-                    "ce_iv": float(ce.get("iv") or 0),
-                    "pe_iv": float(pe.get("iv") or 0),
-                    "ce_volume": int(ce.get("volume") or 0),
-                    "pe_volume": int(pe.get("volume") or 0),
-                    "ce_chg": int(ce.get("oi") or 0) - int(ce.get("prev_oi") or 0),
-                    "pe_chg": int(pe.get("oi") or 0) - int(pe.get("prev_oi") or 0),
-                })
-            except Exception: continue
-        
-        if not chain_near_atm or spot <= 0:
-            return None
-        
-        # Filter to ATM ± 10 strikes (match our existing filtering)
-        chain_near_atm.sort(key=lambda x: abs(x["strike"] - spot))
-        chain_near_atm = sorted(chain_near_atm[:21], key=lambda x: x["strike"])
-        
-        pcr = (total_pe_oi / total_ce_oi) if total_ce_oi > 0 else 1.0
-        
-        return {
-            "success": True,
-            "symbol": symbol,
-            "spot": round(spot, 2),
-            "expiry": current_expiry,
-            "chain_near_atm": chain_near_atm,
-            "total_ce_oi": total_ce_oi,
-            "total_pe_oi": total_pe_oi,
-            "pcr": round(pcr, 2),
-            "_spot_source": "upstox",
-            "_chain_source": "upstox",
+    # Existing scoring consumers expect per-strike market_data objects.
+    out = {"call_options": True}
+    for row in cached.get("chain_near_atm", []):
+        out[str(row["strike"])] = {
+            "call_options": {"market_data": {"oi": row.get("ce_oi"), "oi_change": row.get("ce_chg")}},
+            "put_options": {"market_data": {"oi": row.get("pe_oi"), "oi_change": row.get("pe_chg")}},
         }
-    except Exception as e:
-        try: diag_log("FALLBACK", "upstox_exception", {
-            "sym": symbol, "err": f"{type(e).__name__}: {str(e)[:120]}",
-        })
-        except Exception: pass
-        return None
-
-def _upstox_instrument_key(symbol):
-    """Map our internal symbol → Upstox instrument_key.
-    Upstox uses specific identifiers; see https://upstox.com/developer/api-documentation/
-    """
-    # Indices
-    INDEX_MAP = {
-        "NIFTY":       "NSE_INDEX|Nifty 50",
-        "NIFTY 50":    "NSE_INDEX|Nifty 50",
-        "BANKNIFTY":   "NSE_INDEX|Nifty Bank",
-        "NIFTY BANK":  "NSE_INDEX|Nifty Bank",
-        "FINNIFTY":    "NSE_INDEX|Nifty Fin Service",
-        "MIDCPNIFTY":  "NSE_INDEX|Nifty Midcap 50",
-        "SENSEX":      "BSE_INDEX|SENSEX",
-    }
-    if symbol.upper() in INDEX_MAP:
-        return INDEX_MAP[symbol.upper()]
-    # Stocks — use NSE_EQ|ISIN format. We don't store ISINs, so use NSE symbol format
-    # that Upstox also accepts: NSE_EQ|<symbol>
-    return f"NSE_EQ|{symbol.upper()}"
+    return out
 
 
 # ═══════════════════════════════════════════════════════════
@@ -3823,8 +3526,7 @@ app.add_middleware(DomainRedirectMiddleware)
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    from discovery_site import home_page
-    return home_page()
+    return await legacy_research()
 
 
 @app.get("/research", response_class=HTMLResponse)
@@ -7901,7 +7603,7 @@ async def _smart_etf_builder_impl(risk_profile, region):
 #   ✓ Analyst recommendations summary (from yf.recommendations)
 #   ✓ Analyst price target consensus (from yf.analyst_price_targets)
 #   ✓ Historical surprise pattern (4-quarter beat/miss history)
-#   ⚠ Options flow direction — needs put/call ratio from Upstox/Yahoo options
+
 #   ⚠ IV expansion — needs options chain IV data
 #   ⚠ Insider buying — r99.41 Form 4 integration
 #
@@ -8174,7 +7876,7 @@ async def _earnings_pred_impl(symbol, region, refresh):
         out["color"] = "red"
 
     out["_future_inputs"] = [
-        "Options put/call ratio (sentiment) — needs Upstox / Yahoo options chain wiring",
+        "Options put/call ratio (sentiment) — needs exchange / Yahoo options chain wiring",
         "IV expansion (implied move) — r99.41 options-IV time-series",
         "Form 4 insider transactions (US) / SEBI insider (IN) — r99.41",
         "Pre-earnings news sentiment NLP — r99.42",
@@ -8783,7 +8485,7 @@ async def _inst_picks_impl(region, top_n, refresh):
 #
 # Output: ranked CE BUY list + ranked PE BUY list for both US and IN.
 # r99.43 SCAFFOLD: trend/RS/volume/ADX from yfinance OHLCV only. Real options
-# Greeks (delta, IV, IV rank) need F&O feed (Upstox for IN, alternative for US)
+
 # — flagged in _data_quality field per-row.
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -9124,7 +8826,7 @@ def _price_vix_combined_signal(price_change_pct, vix_trend_pct):
 # ═══ STRIKE INTELLIGENCE ENGINE (SIE, r63.110.51) ═══════════════════════════════
 # Scores every candidate strike and picks the best contract. Greeks (Delta/Gamma) and
 # POP are Black-Scholes; IV/OI/liquidity are read LIVE from the option chain when reachable
-# (US: yfinance; IN: Upstox/NSE) — flagged source="live" — and MODELED (IV proxy = VIX,
+
 # liquidity by moneyness, OI-flow neutral) when the chain is unavailable, flagged
 # source="model". Per-strike OI direction is NEVER invented; absent a live chain it is "verify".
 
@@ -9165,7 +8867,7 @@ def _sie_chain_map(symbol, yf_sym, region, dte, direction):
             if out:
                 src = "live"
         else:
-            # IN: indices via Upstox/NSE fallback; equities usually N/A on this host.
+
             rows = None
             try:
                 rows = _fetch_index_chain_with_fallback(symbol)
@@ -10095,7 +9797,7 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
                 "delta_target_pe": "-0.45 to -0.65",
                 "dte_target": "20-45 days",
                 "iv_rank_target": "< 50",
-                "_note": "r99.43 SCAFFOLD — actual Greeks/IV/OI need F&O feed (Upstox for IN, alternative for US). Strikes are spot-based approximations.",
+                "_note": "r99.43 SCAFFOLD — actual Greeks/IV/OI need F&O feed (an authorized India feed, alternative for US). Strikes are spot-based approximations.",
             }
         out["data_quality"] = "ok"
         return out
@@ -11359,7 +11061,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
                           "(IV≈VIX, OI null). IN: OHLCV+VIX trend only."),
         "greek_thresholds": (_GREEK_THRESHOLDS if region == "US" else None),
         "_future_inputs": [
-            "Real options chain via Upstox (IN F&O) — Greek per strike, IV rank vs 1y, OI ∆",
+            "Verified exchange options chain (India F&O) — Greek per strike, IV rank vs 1y, OI ∆",
             "US options chain via tradier / polygon",
             "5m / 15m intraday confirmation (ORB, gap analysis)",
             "Sector strength filter — only show CE if sector also bullish",
@@ -14013,6 +13715,8 @@ async def nse_options(symbol: str = "NIFTY"):
     from datetime import datetime, timedelta
     
     symbol = symbol.upper().strip()
+    if symbol == "SENSEX":
+        return {"success": False, "symbol": symbol, "error": "BSE option-chain source is not configured."}
     cache_key = symbol
     now = datetime.utcnow()
     
@@ -19250,119 +18954,15 @@ async def diag_endpoint(channel: str = "", limit: int = 100):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# UPSTOX OAUTH ENDPOINTS (r37)
+
 # ═══════════════════════════════════════════════════════════════════════
 
-@app.get("/api/upstox-login")
-async def upstox_login():
-    """Redirects user to Upstox authorization page to begin OAuth flow."""
-    from fastapi.responses import RedirectResponse, JSONResponse
-    if not _upstox_configured():
-        return JSONResponse(
-            status_code=503,
-            content={"success": False, "error": "Upstox not configured. Set UPSTOX_API_KEY and UPSTOX_API_SECRET env vars."},
-        )
-    return RedirectResponse(url=_upstox_authorize_url())
-
-
-@app.get("/api/upstox-callback")
-async def upstox_callback(code: str = "", state: str = "", error: str = ""):
-    """Upstox redirects here with `code` after user authorizes.
-    We exchange code for access token and store it server-side.
-    """
-    from fastapi.responses import HTMLResponse
-    if error:
-        return HTMLResponse(f"""
-<!DOCTYPE html>
-<html><body style="font-family:-apple-system,sans-serif;padding:40px;max-width:640px;margin:auto;">
-<h2 style="color:#b00020">Upstox authorization failed</h2>
-<p>Error: {error}</p>
-<p><a href="/active-trading">Return to Active Trading</a></p>
-</body></html>""")
-    if not code:
-        return HTMLResponse("""
-<!DOCTYPE html>
-<html><body style="font-family:-apple-system,sans-serif;padding:40px;max-width:640px;margin:auto;">
-<h2 style="color:#b00020">Missing authorization code</h2>
-<p>Upstox did not return an authorization code. Please try again.</p>
-<p><a href="/active-trading">Return to Active Trading</a></p>
-</body></html>""")
-    try:
-        tok = _upstox_exchange_code(code)
-        _upstox_save_token(tok)
-        try:
-            diag_log("SYSTEM", "upstox_connected", {
-                "user_id": tok.get("user_id"),
-                "user_name": tok.get("user_name"),
-                "expires_at_ts": tok.get("expires_at_ts"),
-            })
-        except Exception: pass
-        # Compute hours until expiry for UI display
-        hrs_left = max(0, int((tok.get("expires_at_ts", 0) - time.time()) / 3600))
-        return HTMLResponse(f"""
-<!DOCTYPE html>
-<html><body style="font-family:-apple-system,sans-serif;padding:40px;max-width:640px;margin:auto;text-align:center;">
-<h2 style="color:#0b8a4a">✓ Upstox Connected</h2>
-<p>Welcome <b>{tok.get('user_name', tok.get('user_id', ''))}</b>.</p>
-<p>Access token stored. Token expires at 3:30 AM IST (in ~{hrs_left} hours).</p>
-<p style="margin-top:30px"><a href="/active-trading" style="background:#0b4ea8;color:white;padding:10px 20px;text-decoration:none;border-radius:4px;">Go to Active Trading</a></p>
-</body></html>""")
-    except Exception as e:
-        print(f"[UPSTOX-CALLBACK] Exchange failed: {type(e).__name__}: {e}")
-        return HTMLResponse(f"""
-<!DOCTYPE html>
-<html><body style="font-family:-apple-system,sans-serif;padding:40px;max-width:640px;margin:auto;">
-<h2 style="color:#b00020">Token exchange failed</h2>
-<p>{type(e).__name__}: {str(e)[:200]}</p>
-<p><a href="/api/upstox-login">Try again</a> · <a href="/active-trading">Back to app</a></p>
-</body></html>""")
-
-
-@app.get("/api/upstox-status")
-async def upstox_status():
-    """Returns current Upstox connection state for UI badge."""
-    if not _upstox_configured():
-        return {
-            "success": True,
-            "configured": False,
-            "connected": False,
-            "message": "Upstox API not configured on server (missing env vars)",
-        }
-    tok = _upstox_load_token()
-    if not tok:
-        return {
-            "success": True,
-            "configured": True,
-            "connected": False,
-            "message": "Not connected — click Connect Upstox",
-        }
-    exp_ts = tok.get("expires_at_ts", 0)
-    now = time.time()
-    expired = exp_ts and now > exp_ts
-    hrs_left = max(0, int((exp_ts - now) / 3600)) if exp_ts else 0
-    mins_left = max(0, int((exp_ts - now) / 60)) if exp_ts else 0
-    return {
-        "success": True,
-        "configured": True,
-        "connected": not expired,
-        "user_name": tok.get("user_name"),
-        "user_id": tok.get("user_id"),
-        "expires_at_ts": exp_ts,
-        "hours_until_expiry": hrs_left,
-        "minutes_until_expiry": mins_left,
-        "message": ("Expired — please reconnect" if expired
-                    else f"Connected ({hrs_left}h left until 3:30 AM IST reset)"),
-    }
-
-
-@app.post("/api/upstox-disconnect")
-async def upstox_disconnect():
-    """User-initiated disconnect. Clears stored token."""
-    _upstox_clear_token()
-    try:
-        diag_log("SYSTEM", "upstox_disconnected", {})
-    except Exception: pass
-    return {"success": True, "message": "Upstox disconnected"}
+@app.get("/api/upstox-login", status_code=410)
+@app.get("/api/upstox-callback", status_code=410)
+@app.get("/api/upstox-status", status_code=410)
+@app.post("/api/upstox-disconnect", status_code=410)
+async def retired_broker_connection():
+    return {"success": False, "connected": False, "message": "This broker integration has been removed. Use Options in the main workspace."}
 
 
 @app.get("/api/paper-journal")
@@ -19998,12 +19598,12 @@ async def tomorrow_ai_impact(region: str = "IN", refresh: int = 0):
 
 
 # ═══════════════════════════════════════════════════════════
-# r63.99.30: UPSTOX-FIRST OPTION CHAIN with NSE fallback
+
 # ═══════════════════════════════════════════════════════════
 # Problem: nse_options() hits NSE direct, which blocks the Render IP (72.180.65.28).
 # Result: Tomorrow's Brief OI section was always empty in production.
-# Fix: try Upstox (OAuth-authenticated, no IP block) first, then fall back to NSE.
-# Upstox returns raw chain rows; we derive max_pain / walls / GEX / ATM IV here
+
+
 # so the rest of the brief pipeline doesn't care which source provided the data.
 
 def _compute_derived_metrics_from_chain(chain_rows, spot, expiry, symbol):
@@ -20086,34 +19686,11 @@ def _compute_derived_metrics_from_chain(chain_rows, spot, expiry, symbol):
 
 
 async def _fetch_index_chain_with_fallback(symbol):
-    """Try Upstox first (no IP block), then NSE direct (blocked from Render).
+    """Use the existing NSE exchange feed; no personal broker connection.
     
     Returns dict {success, spot, expiry, chain, source} or {success: False, errors}.
     """
     errors = []
-    
-    # Try Upstox first
-    if _upstox_is_connected():
-        try:
-            up_resp = _upstox_get_option_chain(symbol)
-            if up_resp and up_resp.get("success"):
-                derived = _compute_derived_metrics_from_chain(
-                    up_resp.get("chain_near_atm") or [],
-                    up_resp.get("spot") or 0,
-                    up_resp.get("expiry"),
-                    symbol,
-                )
-                if derived:
-                    derived["_chain_source"] = "upstox"
-                    return {"success": True, **derived}
-                else:
-                    errors.append(f"upstox returned chain but derive failed")
-            else:
-                errors.append(f"upstox returned no chain")
-        except Exception as e:
-            errors.append(f"upstox: {type(e).__name__}: {str(e)[:80]}")
-    else:
-        errors.append("upstox: not connected (token missing or expired)")
     
     # Fallback: NSE direct (likely blocked from Render IP)
     try:
@@ -20249,8 +19826,8 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
         out["warnings"].append(f"Pre-market data partial: {str(_pe)[:80]}")
 
     # ─── 2. OI levels (support/resistance from option chain) ───
-    # r63.99.30: Upstox-first with NSE direct fallback. Upstox uses OAuth auth and
-    # is NOT IP-blocked from Render. If Upstox isn't connected, falls back to NSE
+
+
     # direct (which IS blocked from Render — will likely return no chain).
     # If both fail, surface honest diagnostic naming both attempted sources.
     try:
@@ -20272,7 +19849,7 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
                 oi_data[_idx] = _cached["data"]
                 oi_data[_idx]["_source"] = "brief_cache (15min)"
                 continue
-            # r63.99.30: Upstox-first, then NSE direct
+
             try:
                 oi_resp = await _fetch_index_chain_with_fallback(_idx)
                 if oi_resp and oi_resp.get("success"):
@@ -20365,7 +19942,7 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
                     oi_data[_idx] = entry
                     globals()[_oi_cache_key] = {"data": entry, "ts": _now}
                 else:
-                    # Both Upstox and NSE failed — collect per-source errors
+
                     src_errs = (oi_resp or {}).get("errors", []) if isinstance(oi_resp, dict) else []
                     oi_warnings.append(f"{_idx}: {'; '.join(src_errs) if src_errs else 'no chain from any source'}")
             except Exception as _idx_e:
@@ -20375,13 +19952,7 @@ async def tomorrow_open_brief(region: str = "IN", refresh: int = 0):
             src_str = " + ".join(sorted(chain_sources_used)) if chain_sources_used else "unknown"
             out["data_sources"].append(f"chain ({src_str}, live or 15min cache)")
         if not oi_data and region == "IN":
-            # r63.99.30: clearer guidance — point to Upstox connect path
-            upstox_status = "connected" if _upstox_is_connected() else "NOT connected"
-            out["warnings"].append(
-                f"OI levels unavailable. Upstox is {upstox_status}; NSE direct is IP-blocked from Render. "
-                + (f"Connect Upstox via /api/upstox-login to get live OI in this brief. " if not _upstox_is_connected() else "")
-                + ("Errors: " + "; ".join(oi_warnings) if oi_warnings else "No diagnostic.")
-            )
+            out["warnings"].append("India option-chain data is unavailable from the exchange feed. Open Options in the main workspace to review availability or import a snapshot.")
     except Exception as _oe:
         out["warnings"].append(f"OI levels partial: {str(_oe)[:80]}")
 
@@ -46653,7 +46224,7 @@ async def high_prob_setups(email: str = "", region: str = "US", mode: str = "bal
 # HARD HONEST LIMITATIONS (repeated in every response):
 #   - Yahoo options data is 15-MIN DELAYED
 #   - This is a SCREENER, not a live trade feed
-#   - For 10-minute trades, use broker real-time data (Kite/Upstox/Polygon)
+
 #   - Retail options slippage is 0.5-1.5% — assume worst case
 #   - 90%+ of retail 0DTE traders lose money long-term
 #
@@ -46850,24 +46421,14 @@ def _detect_options_setup(sym, region, info, hist_df, options_chain_data):
     }
 
 
-async def _options_setup_india_upstox(email: str):
-    """r52-option3: India Options Pulse using Upstox real-time F&O data.
-    
-    This function is invoked automatically when:
-      1. User requests /api/options-setup-detector?region=IN
-      2. _upstox_is_connected() returns True (user has activated F&O + OAuth'd)
-    
-    Unlike the Yahoo US path (15-min delayed), Upstox provides LIVE tick data
-    so this scan is actually usable for 10-30 minute trades.
-    
-    Universe: NSE F&O underlyings — NIFTY, BANKNIFTY, SENSEX, FINNIFTY + top stocks
-    """
+async def _options_setup_india_nse(email: str):
+    """Existing India options scan using exchange snapshots; availability is not guaranteed."""
     # Check cache
     cache = _options_setup_cache.get("IN", {})
     if cache.get("data") and time.time() - cache.get("ts", 0) < 180:  # 3-min cache for real-time
         return cache["data"]
     
-    print(f"\n⚡ Options Setup India [UPSTOX REAL-TIME] scanning...")
+    print(f"\n⚡ Options Setup India [NSE SNAPSHOT] scanning...")
     t0 = time.time()
     
     # India F&O universe — only symbols that have active options chains on NSE
@@ -46881,14 +46442,12 @@ async def _options_setup_india_upstox(email: str):
     candidates = []
     for sym in universe:
         try:
-            # Use existing _upstox_get_option_chain (built in r37)
-            upstox_result = await asyncio.get_event_loop().run_in_executor(
-                None, _upstox_get_option_chain, sym
-            )
-            if not upstox_result or not upstox_result.get("success"):
+
+            india_chain_result = await nse_options(sym)
+            if not india_chain_result or not india_chain_result.get("success"):
                 continue
-            chain = upstox_result.get("chain") or []
-            spot = float(upstox_result.get("underlying") or 0)
+            chain = india_chain_result.get("chain_near_atm") or []
+            spot = float(india_chain_result.get("spot") or 0)
             if not chain or spot <= 0:
                 continue
             
@@ -46898,6 +46457,8 @@ async def _options_setup_india_upstox(email: str):
             total_call_oi = sum(int(r.get("ce_oi") or 0) for r in chain)
             total_put_oi = sum(int(r.get("pe_oi") or 0) for r in chain)
             total_vol = total_call_vol + total_put_vol
+            if total_vol <= 0:
+                continue  # Missing volume cannot become bearish flow evidence.
             
             if total_vol < 1000:  # India F&O has much higher volumes than US
                 continue
@@ -46995,9 +46556,9 @@ async def _options_setup_india_upstox(email: str):
     bearish = [c for c in candidates if c["direction"] == "BEARISH"]
     
     elapsed = round(time.time() - t0, 1)
-    print(f"  ✅ India Options Pulse [UPSTOX]: {len(bullish)} BULL + {len(bearish)} BEAR in {elapsed}s")
+    print(f"  ✅ India Options Pulse [NSE]: {len(bullish)} BULL + {len(bearish)} BEAR in {elapsed}s")
     try:
-        diag_log("SCAN", "options_setup_india_upstox_completed", {
+        diag_log("SCAN", "options_setup_india_nse_completed", {
             "bullish": len(bullish), "bearish": len(bearish),
             "universe": len(universe), "elapsed_sec": elapsed,
         })
@@ -47011,15 +46572,14 @@ async def _options_setup_india_upstox(email: str):
         "bullish": bullish,
         "bearish": bearish,
         "total_candidates": len(candidates),
-        "data_freshness": "REAL-TIME (Upstox F&O)",
-        "data_source": "upstox",
+        "data_freshness": "Exchange snapshot; quote times unverified",
+        "data_source": "NSE",
         "honest_disclaimer": (
-            "✅ REAL-TIME DATA via Upstox F&O connection. Data is live — same quality "
-            "you'd see in Upstox trading app. Still: always verify prices in your broker "
+            "Exchange snapshots can be unavailable or delayed. Verify current prices in your broker "
             "before placing orders. Max 1-2% portfolio per options trade."
         ),
         "how_to_use": [
-            "1. Open Upstox app in parallel — keep market watch of these symbols",
+            "1. Verify the contract and current quote with your broker",
             "2. Verify bid-ask spread is tight (< 2% of premium)",
             "3. Set profit target +25% on premium, stop at -30%",
             "4. Max hold: 4 hours. Most India F&O weekly ideas close same day or next",
@@ -47028,7 +46588,7 @@ async def _options_setup_india_upstox(email: str):
         ],
         "risk_warnings": [
             "Options can lose 100% of premium quickly",
-            "Weekly expiry Thursday: theta decay accelerates Wed-Thu",
+            "Verify the actual contract expiry; time decay accelerates near expiry",
             "India F&O requires significant margin — ensure sufficient capital",
             "STT/GST/brokerage eats 0.3-0.5% per round trip",
             "Never hold through earnings/major events — IV crush",
@@ -47044,7 +46604,7 @@ async def options_setup_detector(email: str = "", region: str = "US"):
     
     Auto-selects data source:
       - US: Yahoo (15-min delayed) — always available
-      - IN: Upstox real-time if F&O connected; otherwise prompts user to connect
+      - IN: Existing NSE snapshot feed, when available
     """
     email = email.strip().lower()
     # r63.5: replaced duplicated premium-gate boilerplate
@@ -47056,31 +46616,9 @@ async def options_setup_detector(email: str = "", region: str = "US"):
     if region not in ("US", "IN"):
         return {"success": False, "error": "region must be US or IN"}
     
-    # Options data is only reliable for US via Yahoo; India options through Yahoo are sparse.
-    # r52-option3: Auto-detect Upstox connection for India real-time path.
     if region == "IN":
-        if _upstox_is_connected():
-            # Upstox F&O connected — use real-time data path for India options
-            return await _options_setup_india_upstox(email)
-        else:
-            return {
-                "success": True,
-                "region": "IN",
-                "candidates": [],
-                "bullish": [],
-                "bearish": [],
-                "total_candidates": 0,
-                "upstox_status": "not_connected",
-                "honest_disclaimer": (
-                    "India options data via free Yahoo feed is SPARSE and UNRELIABLE. "
-                    "For India options scanning, activate Upstox F&O (free, 1-2 days) — "
-                    "once connected, this feature auto-upgrades to real-time India scanning. "
-                    "Alternatively, Kite Connect (₹2000/mo) provides instant access."
-                ),
-                "broker_status_needed": True,
-                "upstox_login_url": "/api/upstox-login",
-            }
-    
+        return await _options_setup_india_nse(email)
+
     # 15-min cache (matches Yahoo delay)
     cache = _options_setup_cache.get(region, {})
     if cache.get("data") and time.time() - cache.get("ts", 0) < 900:
@@ -47207,7 +46745,7 @@ async def options_setup_detector(email: str = "", region: str = "US"):
         "data_freshness": "15-min delayed (Yahoo free tier)",
         "honest_disclaimer": (
             "⚠ CRITICAL: This uses 15-MIN DELAYED data. It is a SCREENER, NOT a live trade feed. "
-            "For actual execution: use your broker's real-time quotes (Kite/Upstox/IBKR). "
+            "For actual execution: use your broker's real-time quotes (your broker). "
             "Retail options slippage is 0.5-1.5% — always assume worst-case fills. "
             "90%+ of retail 0DTE traders lose money long-term. "
             "Max 1-2% portfolio per options trade. "
@@ -47253,7 +46791,7 @@ async def options_setup_detector(email: str = "", region: str = "US"):
 #
 # Honest scope:
 #   - US: yfinance options chain (15-min delayed). Premium estimates use mid-price.
-#   - IN: Upstox real-time IF connected; otherwise prompts to connect
+
 #   - Outputs are institutional QUALITY, not 99% guarantees. Win rate same as
 #     the underlying scanner (~55-65% for high-conviction setups).
 # ═══════════════════════════════════════════════════════════════════════
@@ -47275,7 +46813,7 @@ def _delta_to_strike(spot, calls_df, target_delta=0.50):
     try:
         # Yahoo provides 'inTheMoney' but not delta directly. Approximate using moneyness.
         # For practical purposes: closest-to-spot strike ≈ 0.50 delta for ATM-targeted trades.
-        # If delta column exists (e.g., from Upstox), use it.
+
         if 'delta' in calls_df.columns:
             calls_df = calls_df.copy()
             calls_df['delta_diff'] = (calls_df['delta'] - target_delta).abs()
@@ -47398,13 +46936,9 @@ async def trade_ticket(
     region = region.upper()
     if region not in ("US", "IN"):
         return {"success": False, "error": "region must be US or IN"}
-    if region == "IN" and not _upstox_is_connected():
-        return {
-            "success": False,
-            "error": "India options require Upstox F&O connection. Activate F&O on Upstox app + connect via /api/upstox-login",
-            "broker_status_needed": True,
-        }
-    
+    if region == "IN":
+        return {"success": False, "error": "An execution-ready India ticket needs verified contract multiplier and quote times. Use Options in the main workspace to inspect the chain and calculate a manual trade plan.", "data_required": True}
+
     # Cache key — short TTL (5 min) since live trade ticket
     cache_key = f"{symbol}_{region}_{int(capital)}_{risk_pct}_{delta_target}_{target_dte}_{direction}"
     cache = _trade_ticket_cache.get(cache_key)
@@ -47510,53 +47044,6 @@ async def trade_ticket(
             csym = "$"
             lot_size = 100  # US standard
             
-        else:
-            # India path via Upstox (real-time)
-            try:
-                upstox_result = await asyncio.get_event_loop().run_in_executor(
-                    None, _upstox_get_option_chain, symbol
-                )
-            except Exception as _ue:
-                return {"success": False, "error": f"Upstox fetch failed: {type(_ue).__name__}"}
-            if not upstox_result or not upstox_result.get("success"):
-                return {"success": False, "error": upstox_result.get("error") if upstox_result else "Upstox returned no data"}
-            
-            chain_rows = upstox_result.get("chain") or []
-            if not chain_rows:
-                return {"success": False, "error": f"Empty chain for {symbol}"}
-            
-            # Pick strike closest to spot (ATM default for India)
-            spot_up = float(upstox_result.get("underlying") or spot)
-            spot = spot_up if spot_up > 0 else spot
-            chain_sorted = sorted(chain_rows, key=lambda r: abs(float(r.get("strike") or 0) - spot))
-            chosen_row_dict = chain_sorted[0]
-            chosen_strike = float(chosen_row_dict.get("strike") or 0)
-            
-            if direction == "bullish":
-                premium_last = float(chosen_row_dict.get("ce_ltp") or 0)
-                premium_bid = float(chosen_row_dict.get("ce_bid") or premium_last * 0.98)
-                premium_ask = float(chosen_row_dict.get("ce_ask") or premium_last * 1.02)
-                volume_strike = int(chosen_row_dict.get("ce_volume") or 0)
-                oi_strike = int(chosen_row_dict.get("ce_oi") or 0)
-                iv = float(chosen_row_dict.get("ce_iv") or 0)
-            else:
-                premium_last = float(chosen_row_dict.get("pe_ltp") or 0)
-                premium_bid = float(chosen_row_dict.get("pe_bid") or premium_last * 0.98)
-                premium_ask = float(chosen_row_dict.get("pe_ask") or premium_last * 1.02)
-                volume_strike = int(chosen_row_dict.get("pe_volume") or 0)
-                oi_strike = int(chosen_row_dict.get("pe_oi") or 0)
-                iv = float(chosen_row_dict.get("pe_iv") or 0)
-            premium_mid = (premium_bid + premium_ask) / 2 if premium_bid > 0 else premium_last
-            spread_pct = ((premium_ask - premium_bid) / max(premium_mid, 0.01)) * 100 if premium_bid > 0 else 999
-            
-            chosen_expiry = upstox_result.get("expiry") or "weekly"
-            chosen_dte = 7  # weekly assumption for India
-            
-            csym = "₹"
-            # India F&O lot sizes
-            india_lots = {"NIFTY": 75, "BANKNIFTY": 30, "SENSEX": 20, "FINNIFTY": 65}
-            lot_size = india_lots.get(symbol, 1)
-        
         if premium_mid <= 0:
             return {"success": False, "error": "Could not determine valid premium price"}
         
@@ -47713,7 +47200,7 @@ async def trade_ticket(
                 "This is a TRADE PLAN, not a guaranteed winner. Win rates for directional "
                 "options trades typically 40-55%. The +R:R ratios make EV positive when discipline "
                 "is maintained — i.e., when stops are honored without averaging down. "
-                + ("Premium estimates use 15-min delayed data — verify on broker before entering. " if region == "US" else "Real-time via Upstox. ")
+                + ("Premium estimates use 15-min delayed data — verify on broker before entering. " if region == "US" else "Exchange snapshot; freshness unverified. ")
                 + "Max 1-2% portfolio per trade. No system is 99% accurate."
             ),
             
@@ -48525,9 +48012,9 @@ async def microcap_challenge_reset(email: str = "", region: str = "US"):
 # Tests whether NSE.com APIs are reachable from this Render instance.
 # Runs 4 representative endpoint tests and returns honest pass/fail per call.
 #
-# This is the answer to "can we use NSE instead of Upstox?" — if NSE blocks
+
 # this Render IP, we cannot. If it works, we can use NSE for option chains
-# without Upstox.
+
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.get("/api/nse-health")
@@ -48594,7 +48081,7 @@ async def nse_health_check():
             "render_outbound_ip_check": "Visit https://api.ipify.org to see this server's outbound IP",
             "results": results,
             "alternative": (
-                "Use Upstox API (real-time, requires user OAuth + F&O active) "
+                "Connect an authorized market-data vendor with appropriate display rights "
                 "OR Yahoo Finance NSE tickers with .NS suffix (works but no option chain data)."
             ),
             "tested_at": _dt.utcnow().isoformat(),
@@ -48694,10 +48181,10 @@ async def nse_health_check():
     total = len(results)
     
     if passed == total:
-        overall = "✅ NSE FULLY WORKING — can replace Upstox for option chains"
+        overall = "✅ NSE FULLY WORKING — option-chain endpoint available"
         recommendation = (
             "All NSE endpoints respond. You can use NSE directly for India options "
-            "without requiring users to connect Upstox. NSE is FREE and real-time. "
+            "without a personal broker login. Quote freshness and display permissions still need verification. "
             "Caveat: NSE rate-limits to ~30 calls/min — fine for occasional scans, not high-frequency."
         )
     elif passed >= 2:
@@ -48705,12 +48192,12 @@ async def nse_health_check():
         recommendation = (
             "Some NSE endpoints work but not all. Likely scenario: NSE allows lightweight "
             "calls but throttles option-chain endpoint. Use NSE where it works; fallback to "
-            "Upstox or Yahoo for the rest."
+            "an authorized vendor for missing option data."
         )
     else:
-        overall = "❌ NSE BLOCKED — Upstox or Yahoo required"
+        overall = "❌ NSE BLOCKED — authorized option data feed required"
         recommendation = (
-            "NSE is not reachable from this server. Use Upstox (requires user OAuth + F&O) "
+            "NSE is not reachable from this server. Use an authorized market-data vendor "
             "or Yahoo Finance (.NS suffix, no option chain data)."
         )
     
@@ -54369,7 +53856,7 @@ def _r6338_structure_score(price, hi52, lo52, sma50):
 
 
 def _r6338_options_score(symbol, region):
-    """Options component (0-15). Real data from yfinance (US) or Upstox/NSE (India).
+    """Options component (0-15). Real data from yfinance (US) or NSE snapshots (India).
     Returns score based on Call/Put OI ratio (PCR) and max OI strike positioning."""
     score = 0
     parts = []
@@ -54440,9 +53927,9 @@ def _r6338_options_score(symbol, region):
             }
         
         else:  # India
-            # Upstox/NSE options chain
+
             try:
-                chain_data = _upstox_get_option_chain(symbol)
+                chain_data = _india_cached_chain(symbol)
                 if not chain_data or not chain_data.get("call_options"):
                     return {"score": 0, "max": 15, "available": False,
                             "rationale": "NSE options chain unavailable"}
@@ -55118,7 +54605,7 @@ def _r6339_options_score(symbol, region, current_price=0):
             
         else:  # India
             try:
-                chain_data = _upstox_get_option_chain(symbol)
+                chain_data = _india_cached_chain(symbol)
                 if not chain_data:
                     return {"score": 0, "max": 20, "available": False,
                             "rationale": "NSE options chain unavailable"}
@@ -63651,38 +63138,10 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # calling it.
         # ══════════════════════════════════════════════════════════════════
         if is_india:
-            # r37: Upstox FIRST (if connected) — personal broker API, no
+
             # IP-ban issues, real-time NSE data entitlement. This is the
             # permanent fix for India option chains. Falls through to NSE
-            # scraping if Upstox is disconnected, token expired, or fails.
-            if _upstox_is_connected():
-                try:
-                    upstox_result = _upstox_get_option_chain(sym)
-                    if upstox_result and upstox_result.get("success") and upstox_result.get("spot", 0) > 0:
-                        try:
-                            diag_log("FALLBACK", "upstox_ok", {
-                                "sym": sym, "step": "upstox", "result": "success",
-                                "spot": upstox_result.get("spot"),
-                                "strikes": len(upstox_result.get("chain_near_atm", [])),
-                            })
-                        except Exception: pass
-                        # Need to fill in remaining fields expected downstream
-                        # (ohlc_bars, gex, etc.) — use empty/default values so
-                        # frontend doesn't crash on missing fields.
-                        upstox_result.setdefault("ohlc_bars", [])
-                        upstox_result.setdefault("ce_resistance", [])
-                        upstox_result.setdefault("pe_support", [])
-                        upstox_result.setdefault("gex", {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0})
-                        return upstox_result
-                    else:
-                        try: diag_log("FALLBACK", "upstox_returned_empty", {"sym": sym})
-                        except Exception: pass
-                except Exception as _uxe:
-                    print(f"[OPTIONS-QUICK] Upstox failed for {sym}: {type(_uxe).__name__}: {_uxe}")
-                    try: diag_log("FALLBACK", "upstox_exception_outer", {
-                        "sym": sym, "err": f"{type(_uxe).__name__}: {str(_uxe)[:120]}",
-                    })
-                    except Exception: pass
+
             
             print(f"[OPTIONS-QUICK] Trying NSE for {sym} (india)...")
             try:

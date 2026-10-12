@@ -1,0 +1,20 @@
+(function(root){
+'use strict';
+function numeric(v){if(v===null||v===undefined||String(v).trim()===''||String(v).trim()==='-')return null;const n=Number(String(v).replaceAll(',',''));return Number.isFinite(n)?n:null;}
+function parseCSV(text){
+ if(text.length>1000000)throw Error('Choose a CSV smaller than 1 MB.');
+ const lines=[];let row=[],field='',quoted=false;
+ for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){field+='"';i++;}else quoted=!quoted;}else if(c===','&&!quoted){row.push(field);field='';}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(field);if(row.some(x=>x.trim()))lines.push(row);row=[];field='';}else field+=c;}
+ if(quoted)throw Error('CSV has an unfinished quoted field.');row.push(field);if(row.some(x=>x.trim()))lines.push(row);
+ const h=lines.findIndex(r=>r.some(x=>/^strike(?: price)?$/i.test(x.trim())));if(h<0)throw Error('No strike column found. Use an option-chain CSV.');
+ const header=lines[h].map(x=>x.trim().toLowerCase().replaceAll(' ','_'));const named=header.includes('ce_bid')||header.includes('ce_ltp');const k=header.findIndex(x=>x==='strike'||x==='strike_price');
+ const map=named?Object.fromEntries(header.map((x,i)=>[x,i])):{strike:k,ce_oi:k-10,ce_iv:k-7,ce_ltp:k-6,ce_bid:k-3,ce_ask:k-2,pe_bid:k+2,pe_ask:k+3,pe_ltp:k+6,pe_iv:k+7,pe_oi:k+10};
+ const rows=[],seen=new Set();for(const r of lines.slice(h+1)){const strike=numeric(r[map.strike??map.strike_price]);if(!strike||strike<=0)continue;if(seen.has(strike))throw Error('Duplicate strike rows. Import a single expiry.');seen.add(strike);
+ const item={strike};for(const [kind,prefix] of [['call','ce'],['put','pe']]){const q={};for(const [field,key] of [['bid','bid'],['ask','ask'],['last','ltp'],['oi','oi'],['iv_pct','iv']]){const v=numeric(r[map[prefix+'_'+key]]);q[field]=v!==null&&v>=0?v:null;}q.bid_time=q.ask_time=null;item[kind]=Object.values(q).some(v=>v!==null)?q:null;}if(item.call||item.put)rows.push(item);if(rows.length>1000)throw Error('Import a single expiry with no more than 1,000 strikes.');}
+ if(!rows.length)throw Error('No usable call or put data found.');return rows.sort((a,b)=>a.strike-b.strike);
+}
+function sizePlan(v){const {capital,risk,entry,stop,target,multiplier}=v;if(!Object.values(v).every(Number.isFinite)||capital<=0||risk<=0||risk>100||entry<=0||stop<0||stop>=entry||target<=entry||!Number.isInteger(multiplier)||multiplier<1)throw Error('For a long position, use 0 ≤ stop < entry < target, positive capital and a whole-number multiplier.');const budget=capital*risk/100,unitRisk=entry-stop;const lots=Math.max(0,Math.floor(Math.min(budget/(unitRisk*multiplier),capital/(entry*multiplier))));return {lots,units:lots*multiplier,budget,cost:lots*multiplier*entry,plannedRisk:lots*multiplier*unitRisk,reward:lots*multiplier*(target-entry),rr:(target-entry)/unitRisk};}
+function canOpen(group,tab,user){const role=user.role||'public';if(!['overview','tools'].includes(group)){if(['trading','intradayopt'].includes(group)){if(!['admin','full','trading'].includes(role))return false;}else if(!['admin','full'].includes(role))return false;}if(group==='dream'&&!user.dream)return false;if(['smarttrades','journal','aiassist','valreport','backtest','stockintel','pms','proscan'].includes(tab)&&!user.premium)return false;return true;}
+function catalog(groups,details){const out=[];const seen=new Set();for(const [group,g]of Object.entries(groups)){g.tabs.forEach((tab,i)=>{if(seen.has(tab)){if(group==='tools'){const prior=out.find(x=>x.tab===tab);prior.group=group;prior.label=g.labels[i];}return;}seen.add(tab);out.push({group,tab,label:g.labels[i].replace(/^[^A-Za-z0-9]+/u,''),description:details[tab]||'Open the existing Celesys '+g.labels[i].replace(/^[^A-Za-z0-9]+/u,'')+' workspace.'});});}return out;}
+const core={numeric,parseCSV,sizePlan,canOpen,catalog};if(typeof module!=='undefined'&&module.exports)module.exports=core;else root.CelesysWorkspaceCore=core;
+})(typeof window!=='undefined'?window:globalThis);
