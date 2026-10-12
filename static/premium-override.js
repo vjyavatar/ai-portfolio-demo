@@ -2617,7 +2617,7 @@ window._startOnboarding=function(){
 };
 
 // Auto-start for first-time users
-if(!localStorage.getItem('celesys-onboarded')){
+if(!document.body.classList.contains('ws-unified')&&!localStorage.getItem('celesys-onboarded')){
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){setTimeout(_startOnboarding,2000)})}
   else{setTimeout(_startOnboarding,2000)}
 }
