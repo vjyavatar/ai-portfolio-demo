@@ -394,3 +394,72 @@ test('market notifications identify the symbol and deduplicate repeated outage a
  expect(await page.evaluate(()=>window.__qaAudio)).toEqual({created:0,resumes:0,starts:0});
  await page.locator('#bm-notifications').screenshot({path:'qa-output/brief-market-notifications.png'});
 });
+
+test('original Decide Trader direction alerts are keyed by market and symbol and sound starts off',async({page})=>{
+ await stubMarketAudio(page);await boot(page);await profile(page,'full');
+ expect(await page.evaluate(()=>window._soundEnabled)).toBe(false);
+ const notices=page.locator('[role="status"]').filter({hasText:'research direction:'});
+ await page.evaluate(()=>{
+  window._deMode='trader';window._deRegion='US';window._lastDESym='QATEST1';
+  window._checkDirectionChange('QATEST1','BULLISH');
+  window._checkDirectionChange('QATEST1','BULLISH');
+  window._checkDirectionChange('QATEST2','BEARISH');
+  window._deRegion='IN';window._checkDirectionChange('QATEST1','BEARISH');
+ });
+ await expect(notices).toHaveCount(0);
+ await page.evaluate(()=>{
+  window._deRegion='US';window._checkDirectionChange('QATEST1','BEARISH');
+  window._checkDirectionChange('QATEST1','BEARISH');
+ });
+ await expect(notices).toHaveCount(1);
+ await expect(notices).toContainText('QATEST1 · US');
+ await expect(notices).toContainText('BULLISH → BEARISH');
+ expect(await page.evaluate(()=>window.__qaAudio.starts)).toBe(0);
+ await page.evaluate(()=>{window._deMode='investor';window._checkDirectionChange('QATEST1','BULLISH');});
+ await expect(notices).toHaveCount(1);
+});
+test('original Decide Trader rejects obsolete responses and mismatched source symbols',async({page})=>{
+ await boot(page);await profile(page,'full');
+ let releaseOld;
+ await page.route('**/api/decision-engine?**',async route=>{
+  const symbol=new URL(route.request().url()).searchParams.get('symbol');
+  if(symbol==='SPY'){
+   await new Promise(resolve=>{releaseOld=resolve;});
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:false,error:'QA obsolete SPY response'})}).catch(()=>{}); // The older request is deliberately aborted.
+  }
+  const data=symbol==='MSFT'?{success:false,error:'QA current MSFT response'}:{success:true,symbol:'WRONG',region:'US'};
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+ });
+ await page.evaluate(()=>{window._deMode='trader';window._deRegion='US';window.loadDE('SPY');});
+ await expect.poll(()=>typeof releaseOld).toBe('function');
+ await page.evaluate(()=>window.loadDE('MSFT'));
+ await expect(page.locator('#deResult')).toHaveText('QA current MSFT response');
+ releaseOld();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ await expect(page.locator('#deResult')).toHaveText('QA current MSFT response');
+ expect(await page.evaluate(()=>window._lastDESym)).toBe('MSFT');
+ await page.evaluate(()=>window.loadDE('AAPL'));
+ await expect(page.locator('#deResult')).toContainText('Source symbol or market mismatch');
+ await expect(page.locator('#deResult')).not.toContainText('QA obsolete SPY response');
+});
+test('original Active Trading discards an unmounted scan and stops polling after exit',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-12T16:00:00Z')});await boot(page);await profile(page,'full');
+ await page.waitForFunction(()=>typeof window.mountActiveTrading==='function');
+ let releaseOld,calls=0;
+ await page.route('**/api/bottom-nav-scan?**',async route=>{
+  const order=++calls,region=new URL(route.request().url()).searchParams.get('region');
+  if(order===1)await new Promise(resolve=>{releaseOld=resolve;});
+  const data={success:true,region,tickers:[],ts:Date.now()/1000,_breaker_tripped:order===1,_breaker_provider:order===1?'nse_chain':null};
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)}).catch(error=>{if(order!==1)throw error;});
+ });
+ await page.evaluate(()=>window.mountActiveTrading());await expect(page.locator('#activeTradingOverlay')).toBeVisible();
+ await expect.poll(()=>typeof releaseOld).toBe('function');
+ await page.evaluate(()=>window.unmountActiveTrading());await expect(page.locator('#activeTradingOverlay')).toHaveCount(0);
+ await page.evaluate(()=>window.mountActiveTrading());await expect.poll(()=>calls).toBe(2);
+ await expect(page.locator('#activeTradingOverlay')).toBeVisible();releaseOld();await page.clock.fastForward(1000);
+ await expect(page.locator('#activeTradingMount')).not.toContainText('Circuit breaker auto-tripped');
+ expect(await page.evaluate(()=>window._atDebug().mounted_flag)).toBe(true);
+ await page.evaluate(()=>window.unmountActiveTrading());await expect(page.locator('#activeTradingOverlay')).toHaveCount(0);
+ const stopped=calls;await page.clock.fastForward(601000);expect(calls).toBe(stopped);
+ expect(await page.evaluate(()=>window._atDebug().mounted_flag)).toBe(false);
+ expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden');
+});

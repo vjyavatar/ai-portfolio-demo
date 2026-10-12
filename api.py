@@ -32794,6 +32794,46 @@ async def price_tick(symbol: str = "NIFTY", region: str = "IN"):
         return {"success": False, "error": str(e)[:200]}
 
 
+def _decision_research_guard(result):
+    """Preserve original Decide analysis; independently gate its final presentation.
+
+    Historical direction/strategy calculations must not consume a forced WAIT as
+    their input, but their output still cannot establish a current executable setup.
+    """
+    out = _legacy_algo_research_guard(result)
+    if not out.get("success"):
+        return out
+    out["execution_enabled"] = False
+    # Decide consumers expect a score/grade object, unlike algo's string label.
+    # Retain the heuristic object without turning it into a permission to trade.
+    if isinstance(out.get("research_confidence"), dict):
+        out["confidence"] = out["research_confidence"]
+        out["confidence"]["kind"] = "HEURISTIC_SCORE_NOT_WIN_PROBABILITY"
+    out["liveTag"] = {"tag": "RESEARCH ONLY — LIVE DATA UNVERIFIED", "color": "#f59e0b"}
+    verdict = out.get("tradeVerdict")
+    if isinstance(verdict, dict):
+        verdict.setdefault("research_verdict", verdict.get("verdict"))
+        verdict.setdefault("research_tradeType", verdict.get("tradeType"))
+        verdict.setdefault("research_probability_score", verdict.get("probability"))
+        verdict.update(verdict="WAIT — DATA UNVERIFIED", tradeType="WAIT", probability=None,
+            action="Review historical scenarios only. Current quote, completed candle, session and executable option prices must be verified before considering a trade.",
+            riskLevel="UNVERIFIED", color="#f59e0b", icon="🟡", tradeable=False,
+            execution_enabled=False, data_mode=out["data_mode"],
+            probability_kind="UNCALIBRATED_MODEL_SCORE_NOT_WIN_PROBABILITY")
+        warnings = verdict.get("warnings")
+        verdict["warnings"] = list(warnings) if isinstance(warnings, list) else []
+        if out["data_warning"] not in verdict["warnings"]:
+            verdict["warnings"].append(out["data_warning"])
+    explanation = out.get("explanation")
+    if isinstance(explanation, dict):
+        explanation["doNow"] = "Verify current source timestamps, session status and broker quotes; the displayed strategy is a historical research scenario."
+        explanation["wrong"] = "Modelled stops do not cap realized loss. Gaps, slippage and costs can produce a worse exit; direction and options assumptions can also fail."
+    for key in ("strategy", "tradePath", "tradeSpec", "recommendedTrade"):
+        if isinstance(out.get(key), dict):
+            out[key].update(data_mode=out["data_mode"], live_data_verified=False, tradeable=False)
+    return out
+
+
 @app.get("/api/decision-engine")
 async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
     """Premium Trader Decision Engine — Institutional options + technical framework"""
@@ -32815,7 +32855,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
         vi = algo.get("volIntelligence", {})
         eng = algo.get("engines", {})
         sc = algo.get("scalp", {})
-        sig = algo.get("signal", "HOLD / WAIT")
+        sig = algo.get("research_signal") or algo.get("signal", "HOLD / WAIT")
         direction = algo.get("direction", "NEUTRAL")
         tech = algo.get("technicals", {})
         nse = algo.get("options", {})
@@ -33235,7 +33275,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
         # ═══ 10B. TRADE VERDICT — ELITE ENGINE (Always gives a trade) ═══
         _elite = algo.get("engines", {})
         _tv_score = _safe_int(_elite.get("finalScore", _elite.get("adjustedScore", 0)))
-        _elite_decision = _elite.get("decision", "")
+        _elite_decision = _elite.get("research_decision") or _elite.get("decision", "")
         _elite_grade = _elite.get("grade", "D")
         _pop = _safe_int(_elite.get("probSuccess", 50), 50)
         _tv_flags = _elite.get("allReasons", [])
@@ -34091,7 +34131,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
             traceback.print_exc()
             print(f"  ⚠️ Variables at crash: _is_index={locals().get('_is_index','?')}, _dte_exp={locals().get('_dte_exp','?')}, _is_expiry_day={locals().get('_is_expiry_day','?')}")
         
-        return NaNSafeEncoder()._sanitize({
+        return _decision_research_guard(NaNSafeEncoder()._sanitize({
             "success": True, "symbol": symbol, "price": p, "csym": S, "region": region,
             "sector": tech.get("sector", "") or algo.get("sector", "") or "",
             "marketState": {"state": state, "strength": strength, "direction": direction, "adx": round(adx, 1), "regimeScore": regime_score},
@@ -34147,7 +34187,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
             "expiryIntel": expiry_intel,
             "engines": algo.get("engines", {}),
             "timestamp": (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%H:%M IST") if not is_us else datetime.utcnow().strftime("%H:%M UTC"),
-        })
+        }))
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"success": False, "error": str(e)[:200]}

@@ -4374,6 +4374,23 @@
   var timers = { countdown: null, soft90: null, candle5m: null };
   var mounted = false;
 
+  // A context owns every scan and continuation. Navigation never adopts an old response.
+  var activeGeneration = 0, scanSequence = 0, scanController = null;
+  function activeContext() { return { generation: activeGeneration, region: state.region }; }
+  function contextCurrent(ctx) { return mounted && !document.hidden && ctx.generation === activeGeneration && ctx.region === state.region; }
+  function invalidateActiveContext() {
+    activeGeneration++; scanSequence++;
+    if (scanController) { scanController.abort(); scanController = null; }
+  }
+  function verifiedTradeSource(t) {
+    var r = t && t._raw, now = Date.now() / 1000;
+    if (!r || state.dataStale || state.lastScanEmpty || r.stale_cache || r._stale || r.provider_status && r.provider_status.stale_cache) return false;
+    return r._region === state.region && Number.isFinite(r.quote_time) && Number.isFinite(r.bar_close_time) &&
+      now >= r.quote_time && now - r.quote_time <= 300 && now >= r.bar_close_time && now - r.bar_close_time <= 300 &&
+      r.quote_time >= r.bar_close_time && Number.isFinite(r.session_start) && Number.isFinite(r.session_end) &&
+      r.session_start <= r.bar_close_time && r.session_start <= now && now < r.session_end && r.market_status === 'OPEN';
+  }
+
   // ── DATA LAYER ──────────────────────────────────────────────────────────
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -6655,6 +6672,7 @@
       return el('button', {
         onClick: function () {
           if (state.region === reg) return;
+          invalidateActiveContext();
           state.region = reg;
           state.trades = []; state.scanner = []; state.selected = null;
           state.chain = []; state.lockedIds = {}; state.prevTradeIds = {};
@@ -11850,7 +11868,10 @@
     pushLog('Selected ' + t.symbol + ' ' + t.strike + ' — fetching fresh data…', C.blue);
     rerender();
 
-    refreshAll().then(function () {
+    var selectedContext = activeContext(), selectedId = t.id;
+    refreshAll().then(function (updated) {
+      if (!contextCurrent(selectedContext) || !state.selected || state.selected.id !== selectedId) return;
+      if (!updated) { onVoice(state.selected); return; }
       // After fresh scan, find the updated version of this ticker in the
       // new trades list (it may have different price/SL/trigger now).
       var refreshed = null;
@@ -11879,6 +11900,7 @@
       // Also refresh the option chain panel for this ticker
       var cur = state.selected;
       fetchOptionChain(cur.symbol, cur.strike, cur).then(function (rows) {
+        if (!contextCurrent(selectedContext) || state.selected !== cur) return;
         state.chain = rows;
         rerender();
       });
@@ -11946,6 +11968,7 @@
 
       rerender();
     }).catch(function () {
+      if (!contextCurrent(selectedContext)) return;
       // Network failure — still recompute locally and speak
       try {
         if (state.voiceOn) {
@@ -12111,14 +12134,18 @@
   }
 
   function onVoice(t) {
-    // Spec §4.6: speaks "NIFTY 24500 CE, confidence 84%, entry now"
-    // Phrase is fixed — not derived from state pill. Use "entry now" always.
-    speak(t.symbol + ' ' + t.strike + ', confidence ' + t.confidence + ' percent, entry now');
+    if (!t) return;
+    var text = t.symbol + ' ' + t.strike + '. ';
+    if (!verifiedTradeSource(t)) text += 'WAIT. Source quote, closed bar or regular-session evidence is stale or unverified. Review the chart as research only.';
+    else text += 'Research state ' + String(t.state || 'unavailable') + '. Model score ' + Math.round(t.confidence || 0) + ', not a win probability. Review current quotes and risk; this is not an instruction to enter.';
+    speak(text, true);
   }
 
-  function speak(text) {
-    if (!state.voiceOn || window._voiceEnabled === false) return;
+  function speak(text, manual) {
+    if (!mounted || document.hidden || !state.voiceOn || window._voiceEnabled !== true) return;
+    if (!manual && (!state.alertsOn || !verifiedTradeSource(state.selected))) return;
     try {
+      if (typeof window._speak === 'function') { window._speak(text, false); return; }
       if ('speechSynthesis' in window) {
         var u = new SpeechSynthesisUtterance(text);
         u.rate = 1.1; u.pitch = 1; u.volume = 0.8;
@@ -12145,15 +12172,24 @@
 
   // ── REFRESH CYCLES ──────────────────────────────────────────────────────
   function refreshTopTrades() {
+    var ctx = activeContext();
+    if (!contextCurrent(ctx)) return Promise.resolve(false);
+    if (scanController) scanController.abort();
+    var controller = new AbortController(), sequence = ++scanSequence;
+    scanController = controller;
+    function current() { return contextCurrent(ctx) && sequence === scanSequence && !controller.signal.aborted; }
     // Cache-buster ensures we never get a stale CDN/browser-cached response.
     // Backend has its own ~5min server-side cache TTL so this doesn't cause
     // N× actual recomputes — just N× cache lookups.
-    var url = '/api/bottom-nav-scan?region=' + state.region + '&_=' + Date.now();
-    return fetch(url, { cache: 'no-store' })
-      .then(function (r) { return r.json(); })
+    var url = '/api/bottom-nav-scan?region=' + ctx.region + '&_=' + Date.now();
+    return fetch(url, { cache: 'no-store', signal: controller.signal })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (d) {
+        if (!current()) return false;
+        if (d && d.region && d.region !== ctx.region) throw new Error('Scan region mismatch');
         state.loaded = true;
         if (!d || !d.success) {
+          state.dataStale = true;
           state.lastFetchMsg = 'API error — check /api/bottom-nav-scan';
           state.trades = []; state.scanner = [];
           rerender(); return;
@@ -12642,29 +12678,37 @@
           state.lastClose = top3[0].price;
           state.flash = null;
           fetchOptionChain(top3[0].symbol, top3[0].strike, top3[0]).then(function (rows) {
+            if (!current() || state.selected !== top3[0]) return;
             state.chain = rows;
             rerender();
           });
         }
         rerender();
+        return true;
       })
       .catch(function (e) {
+        if (!current()) return false;
+        state.dataStale = true;
         console.warn('[AT] bottom-nav fetch failed', e);
         state.loaded = true;
-        state.lastFetchMsg = 'Network error — backend unreachable';
+        state.lastFetchMsg = 'Network error — backend unreachable; displayed data is a research snapshot.';
         rerender();
-      });
+        return false;
+      }).finally(function () { if (scanController === controller) scanController = null; });
   }
 
   function refreshChain() {
-    if (!state.selected) return Promise.resolve();
-    return fetchOptionChain(state.selected.symbol, state.selected.strike, state.selected).then(function (rows) {
+    var ctx = activeContext(), selected = state.selected;
+    if (!selected || !contextCurrent(ctx)) return Promise.resolve();
+    return fetchOptionChain(selected.symbol, selected.strike, selected).then(function (rows) {
+      if (!contextCurrent(ctx) || state.selected !== selected) return;
       state.chain = rows;
       rerender();
     });
   }
 
   function refreshAll() {
+    if (!contextCurrent(activeContext())) return Promise.resolve(false);
     // TIER 1 fetch + full recompute. Called at:
     //   (a) initial mount (so user sees something)
     //   (b) every 5m wall-clock candle close
@@ -12679,7 +12723,7 @@
     } else {
       promises.push(externalFeeds.fetchUsPre().catch(function () { return null; }));
     }
-    return Promise.all(promises);
+    return Promise.all(promises).then(function (results) { return results[0] === true; });
   }
 
   function refreshTier2() {
@@ -12724,7 +12768,9 @@
     // invoked every 90 seconds via on90sRefresh, not every 5 minutes.
     state.lastFullRefreshAt = Date.now();
     state.fadeTick = (state.fadeTick || 0) + 1; // spec §8: crossfade Tier 1 values
-    refreshAll().then(function () {
+    var refreshContext = activeContext();
+    refreshAll().then(function (updated) {
+      if (!updated || !contextCurrent(refreshContext)) return;
       // Record the selected trade's close price for Entry Engine display
       if (state.selected) {
         var prev = state.lastClose != null ? state.lastClose : state.selected.price;
@@ -12900,6 +12946,8 @@
   }
 
   function startTimers() {
+    stopTimers();
+    if (!mounted || document.hidden) return;
     // Countdown: label-only update, no data fetch, no rerender of anything else
     timers.countdown = setInterval(function () {
       state.countdown = formatCountdown(msUntilNext90s());
@@ -13077,6 +13125,7 @@
     state._prevBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
+    invalidateActiveContext();
     mounted = true;
     render(mountDiv);
     refreshAll();
@@ -13114,8 +13163,15 @@
                 'color:#22C55E;font-weight:bold;background:#020617;padding:4px 8px');
   };
 
+  document.addEventListener('visibilitychange', function () {
+    if (!mounted) return;
+    invalidateActiveContext(); stopTimers();
+    if (!document.hidden) { refreshAll(); startTimers(); }
+  });
+
   window.unmountActiveTrading = function () {
     mounted = false;
+    invalidateActiveContext();
     stopTimers();
 
     // Stop any legacy MutationObserver / poll timer that may still be around
