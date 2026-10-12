@@ -169,12 +169,30 @@ class RouteTests(unittest.TestCase):
 
     def test_options_route_missing_feed_and_invalid_symbol(self):
         import os
-        with patch.dict(os.environ,{},clear=True), patch('trading_site.urlopen',side_effect=TimeoutError):
-            result=self.client.get('/api/trading-desk/options').json()
-        self.assertEqual(result['status'],'WAIT')
-        self.assertIsNone(result['candidate'])
-        self.assertFalse(result['execution_enabled'])
-        self.assertEqual(self.client.get('/api/trading-desk/options?symbol=SPX').status_code,422)
+        with patch('secure_access.identity') as identity:
+            identity.get.return_value={'email':'qa@example.invalid','full':True}
+            with patch.dict(os.environ,{},clear=True),patch('trading_site.urlopen',side_effect=TimeoutError):
+                response=self.client.get('/api/trading-desk/options');result=response.json()
+            self.assertEqual(result['status'],'WAIT')
+            self.assertIsNone(result['candidate']);self.assertFalse(result['execution_enabled'])
+            self.assertIn('next_refresh_at',result);self.assertIn('retry-after',response.headers)
+            self.assertEqual(self.client.get('/api/trading-desk/options?symbol=SPX').status_code,422)
+
+    def test_options_route_rejects_anonymous_and_spoofed_email_before_any_provider_call(self):
+        with patch('secure_access.identity') as identity,patch('trading_site.research') as underlying,patch('trading_options.option_research') as options:
+            identity.get.return_value=None
+            with patch.dict('os.environ',{'CELESYS_AUTH_ENFORCE':'false'}):
+                for headers in ({},{'X-Celesys-Email':'allowed@example.invalid','Cookie':'__Host-celesys_session=forged'}):
+                    response=self.client.get('/api/trading-desk/options?email=allowed@example.invalid',headers=headers)
+                    self.assertEqual(response.status_code,401)
+                    self.assertIn('Verified authorized sign-in',response.json()['detail'])
+            underlying.assert_not_called();options.assert_not_called()
+
+    def test_options_route_rejects_verified_non_full_account_before_any_provider_call(self):
+        with patch('secure_access.identity') as identity,patch('trading_site.research') as underlying,patch('trading_options.option_research') as options:
+            identity.get.return_value={'email':'qa@example.invalid','full':False,'trades':True}
+            self.assertEqual(self.client.get('/api/trading-desk/options').status_code,401)
+            underlying.assert_not_called();options.assert_not_called()
 
 class FeedStatusTests(unittest.TestCase):
     def test_readiness_exposes_only_configuration_and_never_claims_live_connection(self):

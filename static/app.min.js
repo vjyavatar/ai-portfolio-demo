@@ -19026,7 +19026,7 @@ g2.gain.value=0.12;o2.start();g2.gain.exponentialRampToValueAtTime(0.001,ctx.cur
 // dup removed
 
 var _deRequestSeq=0, _deController=null, _deAutoContext=null;
-function _cancelDERequest(){_deRequestSeq++;if(_deController)_deController.abort();_deController=null;}
+function _cancelDERequest(){_deRequestSeq++;if(_deController)_deController.abort();_deController=null;if(typeof window.unmountDecideOptions==='function')window.unmountDecideOptions();}
 function _deCurrent(seq,sym,reg){return seq===_deRequestSeq&&!document.hidden&&window._deMode==='trader'&&window._deRegion===reg&&window._lastDESym===sym;}
 function _deEscape(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
 function startAutoRefresh(sym){
@@ -19108,46 +19108,16 @@ var lot=lotMap[sym]||50;
 var isBull=ms.direction==='BULLISH';
 var price=d.price||0;
 
-// Compute strike price (round to nearest 100 for NIFTY/SENSEX, 100 for BANKNIFTY)
-var step=sym==='BANKNIFTY'?100:sym==='SENSEX'?100:50;
-var strikeATM=Math.round(price/step)*step;
-var strikeOTM=isBull?strikeATM+step:strikeATM-step;
-var optType=isBull?'CE':'PE';
-var strikeName=sym+' '+strikeOTM+' '+optType;
-
-// Estimate premium (rough: ATR-based)
-var atr=d.atr||Math.abs(price*0.01);
-var premEst=Math.round(atr*0.6);
-var premTarget=Math.round(premEst+atr*0.8);
-var premSL=Math.max(5,Math.round(premEst*0.4));
-var profitPerLot=Math.round((premTarget-premEst)*lot);
-
-// Build trade logic narrative
-var logic='';
-if(isBull){
-logic='<strong style="color:#10b981">Bullish Setup:</strong> ';
-if(ms.adx>25)logic+='Strong uptrend (ADX '+ms.adx.toFixed(0)+'). ';
-if(eng.supertrend&&eng.supertrend.signal==='BULLISH')logic+='Supertrend confirms bullish. ';
-if(eng.mtf&&eng.mtf.confirmed)logic+='All 4 timeframes aligned bullish. ';
-logic+='If price holds above '+S+Math.round(entry).toLocaleString()+', momentum will push through '+S+Math.round(t1).toLocaleString()+'.';
-logic+='<br><strong>Math:</strong> Capture ~'+(premTarget-premEst)+' premium points × '+lot+' qty = '+S+profitPerLot.toLocaleString()+'.';
-}else{
-logic='<strong style="color:#ef4444">Bearish Setup:</strong> ';
-if(ms.adx>25)logic+='Strong downtrend (ADX '+ms.adx.toFixed(0)+'). ';
-if(eng.supertrend&&eng.supertrend.signal==='BEARISH')logic+='Supertrend confirms bearish. ';
-if(eng.mtf&&eng.mtf.confirmed)logic+='All 4 timeframes aligned bearish. ';
-logic+='If price breaks below '+S+Math.round(sl).toLocaleString()+', panic selling accelerates toward '+S+Math.round(t1).toLocaleString()+'.';
-logic+='<br><strong>Math:</strong> Capture ~'+(premTarget-premEst)+' premium points × '+lot+' qty = '+S+profitPerLot.toLocaleString()+'.';
-}
+// Underlying comparison is not a verified options-contract selection.
+var logic='Modelled '+_deEscape(ms.direction||'NEUTRAL')+' underlying scenario. Verify completed bars, current quotes and the selected option contract before considering an entry.';
 
 return{
 symbol:sym,price:price,verdict:tv.tradeType||tv.verdict||'—',
 score:tv.score||0,grade:tv.grade||'—',color:tv.color||'#6b7280',
 direction:ms.direction||'NEUTRAL',isBull:isBull,
-strikeName:strikeName,optType:optType,
+
 entry:Math.round(entry),sl:Math.round(sl),t1:Math.round(t1),t2:Math.round(t2),
-premEst:premEst,premTarget:premTarget,premSL:premSL,
-lot:lot,profitPerLot:profitPerLot,
+
 logic:logic,stratName:strat.name||'—',
 adx:ms.adx||0,prob:tv.probability||0,
 supertrend:(eng.supertrend||{}).signal||'—',
@@ -19175,7 +19145,7 @@ h+='<div onclick="loadDE(\''+r.symbol+'\')" style="margin-bottom:6px;border-radi
 h+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:'+c+'06;border-bottom:1px solid '+c+'10">';
 h+='<div style="display:flex;align-items:center;gap:8px">';
 h+='<div style="width:24px;height:24px;border-radius:8px;background:'+c+'15;color:'+c+';font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center">#'+rank+'</div>';
-h+='<div><div style="font-size:12px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">'+r.strikeName+'</div>';
+h+='<div><div style="font-size:12px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">'+r.symbol+' · '+r.direction+'</div>';
 h+='<div style="font-size:8px;color:var(--text3)">'+r.stratName+' · Score '+r.score+' · Grade '+r.grade+'</div></div>';
 h+='</div>';
 h+='<div style="text-align:right">';
@@ -19204,19 +19174,8 @@ h+='<div style="padding:8px 14px;font-size:9px;color:var(--text2);line-height:1.
 h+='</div>';
 });
 
-// Execution rules
-h+='<div style="margin-top:8px;padding:10px 14px;border-radius:10px;background:#f59e0b08;border:1px solid #f59e0b15">';
-h+='<div style="font-size:9px;font-weight:800;color:#f59e0b;margin-bottom:4px">⚡ Execution Rules</div>';
-h+='<div style="font-size:8px;color:var(--text2);line-height:1.7">';
-h+='• Wait for 5-min candle close before entering — no wick trades<br>';
-h+='• Use strict SL — if SL hits, EXIT. No hoping, no averaging<br>';
-h+='• Book 50% at Target 1, trail stop to entry for the rest<br>';
-h+='<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:#3b82f606;border-left:3px solid #3b82f6;font-size:9px;color:var(--text);line-height:1.7"><strong style="color:#3b82f6">What this means:</strong> Entry = optimal buy price. Stop Loss (SL) = maximum loss you accept — EXIT immediately if price hits this. Target 1 = book 50% profit. Target 2 = book remaining. Risk:Reward = how much you gain vs how much you risk.<br><strong style="color:#3b82f6">Your action:</strong> NEVER enter without a stop loss. Calculate: if SL is 5% below entry and Target is 10% above → R:R is 2:1 (good). Below 1.5:1 → skip the trade. Always book partial profits at Target 1.</div>';
-h+='• Max 2 trades at a time — capital preservation first<br>';
-h+='• All trades are educational. Verify with your own analysis.</div></div>';
-h+='<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:#ef444406;border-left:3px solid #ef4444;font-size:9px;color:var(--text);line-height:1.7"><strong style="color:#ef4444">What this means:</strong> Position sizing = how much of your capital to risk on ONE trade. Kelly Criterion mathematically optimizes this. Rule of thumb: never risk more than 2% of total capital on a single trade.<br><strong style="color:#ef4444">Your action:</strong> If your portfolio is 10L, max risk per trade = 20K. If SL is 3% away from entry → max position = 20K/3% = ~6.7L. This keeps you alive even after 5 consecutive losses.</div>';
+h+='<p style="font-size:11px;line-height:1.6">These are modelled underlying levels, not option-premium entry or exit prices. Stops are exit triggers, not guaranteed loss limits. Open the call / put buy ticket to check an actual contract, expiry and bid/ask quote.</p>';
 
-h+='<p style="font-size:11px">Modelled research scenarios only. Option premiums and win probabilities are not verified market data.</p>';
 el.innerHTML=h;
 setTimeout(function(){_makeCollapsible('deResult',false)},100);
 });
@@ -19254,12 +19213,17 @@ if(window._deMode==='options'){
 }
 var el=document.getElementById('deResult');if(!el)return;
 var reg=window._deRegion||'IN';
-el.innerHTML='<div style="padding:24px;text-align:center"><div style="display:inline-block;width:16px;height:16px;border:2px solid #ea580c;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:#2d4373">Building decision graph for <strong>'+sym+'</strong>...</span></div>';
+if(typeof window.mountDecideOptions==='function'){
+var optionTicket=document.getElementById('decideOptionsTicket');
+if(!optionTicket){optionTicket=document.createElement('section');optionTicket.id='decideOptionsTicket';el.parentNode.insertBefore(optionTicket,el);}
+window.mountDecideOptions(optionTicket,{symbol:sym,region:reg,modelScore:null});
+}
+el.innerHTML='<div style="padding:24px;text-align:center"><div style="display:inline-block;width:16px;height:16px;border:2px solid #ea580c;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:#2d4373">Building decision graph for <strong>'+_deEscape(sym)+'</strong>...</span></div>';
 var requestSeq=_deRequestSeq;_deController=new AbortController();
 fetch('/api/decision-engine?symbol='+encodeURIComponent(sym)+'&region='+reg,{signal:_deController.signal}).then(function(r){if(!r.ok)throw new Error('API '+r.status);return r.json()}).then(function(d){
 if(!_deCurrent(requestSeq,sym,reg))return;
 if(d.success&&(d.symbol!==sym||d.region&&d.region!==reg))throw new Error('Source symbol or market mismatch');
-if(!d.success){el.innerHTML='<div style="color:var(--red);padding:16px;font-size:11px">'+d.error+'</div>';return}
+if(!d.success){el.innerHTML='<div style="color:var(--red);padding:16px;font-size:11px">'+_deEscape(d.error||'Trade data unavailable')+'</div>';return}
 var S=d.csym||'₹';var p=d.price||0;
 var ms=d.marketState||{state:'LOADING',strength:'—',direction:'NEUTRAL',adx:0};var z=d.zones||{};var pos=d.positioning||{};var vol=d.volatility||{};
 window._lastDESym=d.symbol;window._lastDERegion=reg;
@@ -19316,7 +19280,7 @@ var _ei=d.expiryIntel||{};
 h+='<div id="topIndexPanel" style="margin-bottom:10px;border-radius:16px;overflow:hidden;border:1px solid var(--border);background:var(--surface)">';
 h+='<div style="padding:10px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(59,130,246,.03),rgba(124,58,237,.02))">';
 h+='<div><div style="font-size:11px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">🏆 Top Index Trades</div>';
-h+='<div style="font-size:9px;color:var(--text2);margin-top:2px"><strong>Ranked by Elite Engine score — best opportunity first. Click any row to analyze.</strong></div></div>';
+h+='<div style="font-size:9px;color:var(--text2);margin-top:2px"><strong>Ranked by original model score, not validated return or win probability. Click a row to review.</strong></div></div>';
 h+='<button onclick="loadTopIndexTrades()" style="padding:3px 10px;border-radius:6px;background:#f1f5f9;border:1px solid var(--border);font-size:8px;font-weight:700;cursor:pointer;color:#2d4373">↻ Scan All</button>';
 h+='</div>';
 h+='<div id="topIndexList" style="padding:10px 14px">';
@@ -20292,7 +20256,8 @@ h+='<div data-dc-mode="pro" style="max-height:9999px;opacity:1;transition:all .5
 var _ts=d.tradeSpec||{};var _rt=d.recommendedTrade||{};var _ps=d.positionSizing||[];
 if(_ts.strike||_rt.strike||_rt.buyStrike){
 h+='<div style="margin-bottom:14px;border-radius:14px;background:var(--surface);border:1px solid var(--border);padding:14px">';
-h+='<div style="font-size:11px;font-weight:900;color:var(--text);margin-bottom:10px;font-family:Sora,sans-serif">🎰 Exact Trade Setup — Strike, Premium & Greeks</div>';
+h+='<div style="font-size:11px;font-weight:900;color:var(--text);margin-bottom:10px;font-family:Sora,sans-serif">Modelled strategy — unverified contract estimates</div>';
+h+='<p style="font-size:11px;color:var(--text2);margin-bottom:10px">These legacy strike, expiry, premium and Greek estimates are research only. Use the call / put buy ticket above for provider-verified contract evidence. These values are not executable quotes.</p>';
 // Primary recommendation
 var ts=_ts.strike?_ts:_rt;var tsType=ts.type||strat.name||'';
 h+='<div style="padding:12px 16px;border-radius:12px;background:linear-gradient(135deg,#3b82f608,#1A3A7806);border:1px solid #3b82f620;margin-bottom:10px">';
@@ -20302,7 +20267,7 @@ var stk=ts.strike||ts.buyStrike||'';var exp=ts.expiry||'';
 h+='<div style="font-size:10px;color:var(--text2);margin-top:2px">Strike: <strong>'+stk+'</strong>'+(exp?' · Expiry: <strong>'+exp+'</strong>':'')+'</div></div>';
 h+='<div style="text-align:right">';
 var prem=ts.premium||ts.netDebit||0;
-if(prem>0)h+='<div style="font-size:18px;font-weight:900;color:var(--text);font-family:var(--mono)">'+S+prem.toLocaleString()+'</div><div style="font-size:8px;color:var(--text3)">premium per unit</div>';
+if(prem>0)h+='<div style="font-size:18px;font-weight:900;color:var(--text);font-family:var(--mono)">'+S+prem.toLocaleString()+'</div><div style="font-size:8px;color:var(--text3)">estimated premium per unit — not a quote</div>';
 h+='</div></div>';
 
 // Greeks row
@@ -20310,11 +20275,11 @@ var hasDelta=_ts.delta!==undefined||_rt.delta!==undefined;
 if(hasDelta||_ts.theta||_ts.gamma){
 h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
 var gks=[
-{n:'Delta (Δ)',v:_ts.delta.toFixed(2),d:'Option moves '+S+(Math.abs(_ts.delta||0)*prem).toFixed(0)+' per '+S+'1 stock move',c:'#3b82f6'},
-{n:'Theta (Θ)',v:_ts.theta.toFixed(2),d:'Costs '+S+Math.abs(_ts.theta||0).toFixed(1)+'/day in time decay',c:'#ef4444'},
+{n:'Delta (Δ)',v:Number.isFinite(_ts.delta)?_ts.delta.toFixed(2):'Unavailable',d:'Approximate option-price change per '+S+'1 underlying move; other inputs held constant',c:'#3b82f6'},
+{n:'Theta (Θ)',v:Number.isFinite(_ts.theta)?_ts.theta.toFixed(2):'Unavailable',d:'Modelled daily time sensitivity; not a guaranteed loss',c:'#ef4444'},
 {n:'Gamma (Γ)',v:((_ts.gamma||0)*1000).toFixed(2),d:'Delta changes this much per '+S+'1 move (×1000)',c:'#1A3A78'},
-{n:'IV',v:_ts.iv.toFixed(1)+'%',d:'Implied volatility priced into this option',c:'#f59e0b'},
-{n:'DTE',v:(_ts.dte||7)+'d',d:'Days to expiration',c:'#6b7280'}
+{n:'IV',v:Number.isFinite(_ts.iv)?_ts.iv.toFixed(1)+'%':'Unavailable',d:'Modelled volatility assumption',c:'#f59e0b'},
+{n:'DTE',v:Number.isFinite(_ts.dte)?_ts.dte+'d':'Unavailable',d:'Modelled days to expiration; verify the actual contract',c:'#6b7280'}
 ];
 gks.forEach(function(g){
 h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+g.c+'06;border:1px solid '+g.c+'10;text-align:center">';
@@ -20332,19 +20297,8 @@ h+='</div>';
 if(ts.explain)h+='<div style="margin-top:8px;font-size:9px;color:var(--text2);line-height:1.5;padding:8px 10px;border-radius:6px;background:#f1f5f9">💡 '+ts.explain+'</div>';
 h+='</div>';
 
-// Position sizing table
-if(_ps.length>0){
-h+='<div style="margin-top:10px">';
-h+='<div style="font-size:9px;font-weight:800;color:var(--text3);margin-bottom:4px;letter-spacing:.5px">POSITION SIZING (2% risk per trade)</div>';
-h+='<div style="font-size:8px;color:var(--text3);margin-bottom:6px">Risk management rule: never risk more than 2% of capital on a single trade. Quantity is calculated from your stop-loss distance, not arbitrary lot sizes.</div>';
-h+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
-_ps.forEach(function(ps){
-h+='<div style="flex:1;min-width:100px;padding:8px 10px;border-radius:8px;background:#f1f5f9;text-align:center">';
-h+='<div style="font-size:7px;color:var(--text3)">Capital '+S+(ps.capital/1000).toFixed(0)+'K</div>';
-h+='<div style="font-size:12px;font-weight:900;color:var(--text);font-family:var(--mono)">'+ps.qty+' units</div>';
-h+='<div style="font-size:7px;color:var(--text3)">Risk '+S+ps.riskAmt.toLocaleString()+'</div></div>';});
-h+='</div></div>';
-}
+// Legacy quantity suggestions assume capital and can force one unaffordable lot.
+h+='<p style="font-size:11px;color:var(--text2);margin-top:10px">Position size unavailable: enter a risk budget and verify the actual contract multiplier before sizing a trade. An option stop does not cap the premium at risk.</p>';
 h+='</div>';}
 
 // ═══ OI CHANGE FLOW — Smart money tracking ═══
