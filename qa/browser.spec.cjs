@@ -66,6 +66,23 @@ test('mobile homepage keeps the original analysis form usable',async({page})=>{
  const overflow=await page.evaluate(()=>({viewport:innerWidth,width:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('body *')].filter(el=>{const r=el.getBoundingClientRect();const css=getComputedStyle(el);return r.height>0&&r.width>0&&css.visibility!=='hidden'&&css.display!=='none'&&r.right>innerWidth+2;}).slice(0,30).map(el=>({tag:el.tagName,id:el.id,class:typeof el.className==='string'?el.className:'',right:Math.round(el.getBoundingClientRect().right)}))}));
  expect(overflow.width<=overflow.viewport+2,JSON.stringify(overflow,null,2)).toBe(true);
 });
+for(const viewport of [{name:'desktop',width:1440,height:900},{name:'mobile',width:390,height:844}]){
+ test('completed stock analysis stays on results after delayed callbacks — '+viewport.name,async({page})=>{
+  await page.setViewportSize({width:viewport.width,height:viewport.height});await boot(page);await profile(page,'full');
+  await page.route('**/api/generate-report',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:true,live_data:stock,report:'QA fixture report',fund_holdings:{institutions:[],funds:[],summary:{}}})}));
+  await page.locator('#ticker').fill('AAPL');await page.locator('#btn').click();
+  await expect(page.locator('#report')).toBeVisible();
+  await expect(page.locator('#tickerTag')).toContainText('AAPL');
+  // The regression was a 200 ms page-top timer scheduled after results appeared.
+  // Let that timer and the 400 ms section animation complete before checking location.
+  await page.waitForTimeout(1000);
+  const location=await page.evaluate(()=>({scroll:window.scrollY,reportTop:document.getElementById('report').getBoundingClientRect().top,toolbarBottom:document.querySelector('.ws-topbar').getBoundingClientRect().bottom}));
+  expect(location.scroll,JSON.stringify(location)).toBeGreaterThan(0);
+  expect(location.reportTop,JSON.stringify(location)).toBeLessThanOrEqual(location.toolbarBottom+100);
+  expect(location.reportTop,JSON.stringify(location)).toBeGreaterThanOrEqual(-20);
+  await expect(page.locator('#report')).toBeVisible();
+ });
+}
 test('technical charts remain visible and plotted after delayed recreation',async({page})=>{
  await boot(page);
  // Help is user-initiated; the unified workspace must not launch an obstructing tour.

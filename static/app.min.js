@@ -2270,8 +2270,8 @@ try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:
 try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',e)}
 // Show all Summary tab content now that everything is populated
 switchTab('quick');
-// Scroll to tab bar so everything is cleanly inside tabs
-setTimeout(()=>{window.scrollTo({top:0,behavior:'smooth'})},200);
+// Keep the report selected by switchTab / the workspace observer in view.
+// A delayed page-top scroll would override that navigation and return users home.
 setTimeout(animSections,400)
 }catch(e){console.error('displayReport FATAL:',e);var rpt=document.getElementById('report');if(rpt){rpt.style.setProperty('display','block','important');rpt.classList.add('show');}
 // Overview enhancements triggered only on Overview tab click (in premium-override.js)
