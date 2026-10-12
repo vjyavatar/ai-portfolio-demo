@@ -37,11 +37,12 @@ window.mountDecideOptions=function(container,context){
   chainControls.append(chainButton,expiryLabel);chainWrap.append(chainControls);
   const chainStatus=node('p','Source not checked. View the chain to request an authorized provider snapshot.');chainStatus.id='de-chain-status';chainStatus.setAttribute('role','status');
   const chainSource=node('p');chainSource.id='de-chain-source';
+  const chainAnalytics=node('p');chainAnalytics.id='de-chain-analytics';chainAnalytics.hidden=true;
   const chainScroll=node('div');chainScroll.style.overflowX='auto';chainScroll.setAttribute('tabindex','0');chainScroll.setAttribute('aria-label','Scrollable option chain');
   const chainTable=node('table');chainTable.id='de-chain-table';chainTable.hidden=true;chainTable.style.cssText='width:100%;min-width:850px;border-collapse:collapse;font-size:12px;text-align:right';
   const caption=node('caption','Call / put quotes — snapshot research only, no automatic buy recommendation');chainTable.append(caption);
   const head=node('thead'),header=node('tr');for(const label of ['Call bid / ask','Call OI / volume','Call quote time','Strike','Put bid / ask','Put OI / volume','Put quote time']){const th=node('th',label);th.setAttribute('scope','col');th.style.padding='10px';header.append(th);}head.append(header);chainTable.append(head);
-  const chainBody=node('tbody');chainTable.append(chainBody);chainScroll.append(chainTable);chainWrap.append(chainStatus,chainSource,chainScroll);root.append(chainWrap);
+  const chainBody=node('tbody');chainTable.append(chainBody);chainScroll.append(chainTable);chainWrap.append(chainStatus,chainSource,chainAnalytics,chainScroll);root.append(chainWrap);
   container.hidden=false;container.append(root);
   let live=true,sequence=0,controller=null,timeout=null,result=null,retryAt=0;
   let chainController=null,chainTimeout=null,chainSequence=0,chainResult=null,chainRetryAt=0;
@@ -99,7 +100,7 @@ window.mountDecideOptions=function(container,context){
     }catch(error){if(connected()&&id===sequence){result={reason:current.signal.aborted?'Option request timed out. No buy ticket.':error.message};show();}}
     finally{if(id===sequence){clearTimeout(timeout);controller=null;scan.disabled=false;}}
   }
-  function clearChain(text){chainResult=null;chainBody.replaceChildren();chainTable.hidden=true;chainSource.textContent='';if(text)chainStatus.textContent=text;}
+  function clearChain(text){chainAnalytics.hidden=true;chainAnalytics.textContent='';chainResult=null;chainBody.replaceChildren();chainTable.hidden=true;chainSource.textContent='';if(text)chainStatus.textContent=text;}
   function abortChain(){chainSequence++;if(chainController)chainController.abort();chainController=null;clearTimeout(chainTimeout);chainTimeout=null;chainButton.disabled=false;}
   function chainValid(data,expiry){
     if(!data||data.symbol!==symbol||data.region!==region||data.currency!==(region==='IN'?'INR':'USD')||typeof data.source!=='string'||!Array.isArray(data.rows)||data.rows.length>2000)throw Error('Chain source identity or schema could not be verified.');
@@ -146,6 +147,19 @@ window.mountDecideOptions=function(container,context){
       chainSource.textContent+=' Partial coverage: at most 25 strikes near the underlying price, not the full chain.'+
         (Number.isInteger(coverage.returned_strikes)&&Number.isInteger(coverage.available_paired_strikes)?' Returned '+coverage.returned_strikes+' of '+coverage.available_paired_strikes+' available paired strikes.':'')+
         (Number.isInteger(coverage.returned_contracts)&&Number.isInteger(coverage.requested_contracts)?' Returned '+coverage.returned_contracts+' of '+coverage.requested_contracts+' requested contracts.':'');
+    }
+    const analytics=window.CelesysOptionsAnalytics;
+    if(analytics&&typeof analytics.analyze==='function'){
+      try{
+        const metrics=analytics.analyze(data.rows);
+        const ratio=x=>Number.isFinite(x)?x.toFixed(2):'Unavailable';
+        const pain=Number.isFinite(metrics.maxPain?.strike)?String(metrics.maxPain.strike):'Unavailable (missing, zero or tied evidence)';
+        chainAnalytics.textContent='Chain analytics v1 · Returned strikes only: OI put/call ratio '+ratio(metrics.pcr?.oi)+
+          ' · Volume put/call ratio '+ratio(metrics.pcr?.volume)+' · Minimum expiry payout strike '+pain+
+          '. Subset calculation, not a forecast, full-market max-pain level or buy recommendation. '+
+          'Uses the snapshot above; stale or incomplete data limits interpretation.';
+        chainAnalytics.hidden=false;
+      }catch(_){chainAnalytics.textContent='Chain analytics unavailable: source rows failed validation.';chainAnalytics.hidden=false;}
     }
     chainFreshness();
   }

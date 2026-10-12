@@ -1,7 +1,7 @@
 """Credentialed read-only Angel One/Dhan/Tradier adapters for verified accounts.
 Explicit licensed-display switches required. No broker order methods exist here.
 """
-import json,os,threading,time
+import hashlib,json,os,threading,time
 from datetime import date
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -24,8 +24,12 @@ def provider_name(region):
     if region=='US':return 'Tradier'
     return {'angelone':'Angel One SmartAPI','dhan':'Dhan'}.get(india_provider(),'Unsupported provider')
 
+def us_transport():
+    return os.getenv('CELESYS_TRADIER_TRANSPORT','rest').strip().lower()
+
 def ready(region):
     if region not in ('IN','US'):return False
+    if region=='US' and us_transport() not in ('rest','mcp'):return False
     if region=='IN' and india_provider()=='angelone':
         from angel_options import configured
         return os.getenv('CELESYS_LICENSED_OPTIONS_IN')=='true' and configured()
@@ -81,7 +85,7 @@ def chain(symbol:str='SPY',region:str='US',expiry:str=''):
         return angel_chain(symbol,expiry)
     if not _lock.acquire(False):return dict(base,message='Provider request in progress. Try shortly.')
     try:
-        now=time.time();key=(region,symbol,expiry);hit=_cache.get(key)
+        now=time.time();key=(region,symbol,expiry,us_transport() if region=='US' else india_provider(),hashlib.sha256(os.getenv('CELESYS_OPTIONS_DATA_TOKEN','').encode()).hexdigest() if region=='US' else '');hit=_cache.get(key)
         if hit and now-hit['fetched_at']<60:return snapshot(hit,now)
         if now<_next[region]:return dict(base,message='Provider cooldown active.',retry_after=_next[region])
         _next[region]=now+15
@@ -107,7 +111,12 @@ def chain(symbol:str='SPY',region:str='US',expiry:str=''):
             time.sleep(3.1) # Respect Dhan's documented option-chain pacing.
             data=request_json('https://api.dhan.co/v2/optionchain',headers,dict(payload,Expiry=selected));rows,spot=dhan_rows(data)
         else:
-            data=request_json('https://api.tradier.com/v1/markets/options/chains?'+urlencode({'symbol':symbol,'expiration':selected,'greeks':'true'}),headers);rows,spot=normalize(data,'US',symbol,selected)
+            if us_transport()=='mcp':
+                from tradier_mcp import options_chain
+                data=options_chain(os.environ['CELESYS_OPTIONS_DATA_TOKEN'],symbol,selected)
+            else:
+                data=request_json('https://api.tradier.com/v1/markets/options/chains?'+urlencode({'symbol':symbol,'expiration':selected,'greeks':'true'}),headers)
+            rows,spot=normalize(data,'US',symbol,selected)
         if not rows:return dict(base,message='No valid matching contracts from provider.')
         data=dict(base,rows=rows,spot=spot,expiry=selected,expiries=dates,status='SNAPSHOT',fetched_at=time.time(),message='Credentialed provider snapshot. Verify quote timestamps; no orders are sent.')
         if len(_cache)>=100:_cache.pop(next(iter(_cache)))
