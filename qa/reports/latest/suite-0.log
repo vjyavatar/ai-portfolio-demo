@@ -1,0 +1,134 @@
+
+> celesys-public-app-assets@1.0.0 build
+> node --check trading/desk.js && node --check trading/notifications-ui.js && npm run test:trading && node --check discovery/options.js && node --check discovery/agents.js && node --check discovery/home.js && node --check discovery/analytics.js && npm run test:discovery && node --check static/app.js && node --check static/active-trading.js && node --check static/workspace.js && node --check static/workspace-core.js && node --check sw.js && npm run test:workspace
+
+
+> celesys-public-app-assets@1.0.0 test:trading
+> node --test tests/trading-*.test.mjs
+
+✔ automatic paper entry deduplicates, exits at observed price and cannot reenter (3.038903ms)
+✔ sample, stale, blocked and closed-session scans do not enter (0.300606ms)
+✔ legacy validation panel makes no invented performance claim (10.454017ms)
+✔ fresh research alerts expire at quote TTL or session end (1.283078ms)
+✔ sample, stale, future, blocked, closed and WAIT never alert (0.21741ms)
+✔ repeat scans and reloads deduplicate the same directional session (0.492605ms)
+✔ new WAIT invalidates previous evidence without repeating alerts (0.212025ms)
+✔ sample and unrelated symbols do not invalidate an alert (0.395533ms)
+✔ failed request invalidates previous symbol evidence (0.234718ms)
+✔ CALL/PUT cards expire, reject future quotes and never infer a contract (1.252358ms)
+✔ cash, risk and fee-aware sizing (1.325278ms)
+✔ stale quote cannot open a paper position (0.488664ms)
+✔ duplicate symbol blocked (0.638214ms)
+✔ gap below stop realizes observed loss, not imaginary stop fill (0.301203ms)
+✔ cannot close with another symbol quote (0.217911ms)
+✔ round trip includes two fees and adverse price adjustment (0.147728ms)
+✔ missing evidence yields no sizing (0.097786ms)
+✔ daily realized loss guard blocks further entries (0.152404ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 162.329143
+
+> celesys-public-app-assets@1.0.0 test:discovery
+> node --test tests/discovery-ui.test.mjs
+
+✔ options discard out-of-order responses after selection changes (4.222041ms)
+✔ option rows render provider text safely and suppress PCR for missing OI (30.322388ms)
+✔ agents show all five sections, blocked AI and reset stale results (2.094116ms)
+✔ legacy shared links forward to research without external redirects (1.636318ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 161.367044
+
+> celesys-public-app-assets@1.0.0 test:workspace
+> node --test tests/workspace.test.mjs
+
+✔ all 48 original tools remain catalogued once with valid groups (3.59098ms)
+✔ menu directory respects public, trading, full and dream access (0.222052ms)
+✔ CSV preserves zero versus missing, comma-quoted numbers and both sides (0.639104ms)
+✔ standard NSE call / strike / put column layout parses correctly (0.454967ms)
+✔ ambiguous, oversized and malformed CSVs are rejected (0.859235ms)
+✔ position sizing never forces one lot beyond risk or capital (0.204127ms)
+✔ invalid direction, multiplier, risk or nonfinite inputs cannot form a plan (0.242893ms)
+✔ runtime frontend has no broker login/status calls (61.56307ms)
+✔ simplified trading view preserves the existing report DOM (4.042079ms)
+✔ changing symbols clears old evidence, contract and position plan (1.983385ms)
+✔ late response cannot overwrite a changed symbol (2.415703ms)
+✔ brief renders all five sections as literal text and preserves existing assessment (21.217844ms)
+✔ blocked original tool does not call its renderer (1.291475ms)
+✔ voice is opt-in and stop mutes the shared voice flag (2.721966ms)
+✔ unsupported microphone leaves a usable typed-input fallback (1.506577ms)
+✔ original email allowlist controls actual menu visibility for every role (14.20743ms)
+✔ original chart form is visible before the optional quick brief (1.223002ms)
+✔ return to charts reveals an existing report without refetching or rebuilding it (3.997843ms)
+✔ all-menu dispatcher: overview/quick (12.289744ms)
+✔ all-menu dispatcher: research/analysis (10.924504ms)
+✔ all-menu dispatcher: research/dcf (9.767793ms)
+✔ all-menu dispatcher: research/equity (8.452371ms)
+✔ all-menu dispatcher: tools/compare (6.101933ms)
+✔ all-menu dispatcher: decide/decision (5.865577ms)
+✔ all-menu dispatcher: decide/tomorrowbrief (10.765117ms)
+✔ all-menu dispatcher: decide/fundadashboard (6.9959ms)
+✔ all-menu dispatcher: decide/engines (8.399651ms)
+✔ all-menu dispatcher: decide/toptrades (6.719735ms)
+✔ all-menu dispatcher: decide/topinvest (6.352333ms)
+✔ all-menu dispatcher: decide/smv3 (14.219155ms)
+✔ all-menu dispatcher: decide/smartmoney (7.074143ms)
+✔ all-menu dispatcher: decide/mchunter (7.024323ms)
+✔ all-menu dispatcher: decide/intraday (5.871203ms)
+✔ all-menu dispatcher: decide/positioning (7.915467ms)
+✔ all-menu dispatcher: decide/diamond (7.294306ms)
+✔ all-menu dispatcher: decide/analyst (6.609218ms)
+✔ all-menu dispatcher: decide/proscan (7.236628ms)
+✔ all-menu dispatcher: decide/etfscanner (8.040503ms)
+✔ all-menu dispatcher: decide/reports (11.308329ms)
+✔ all-menu dispatcher: decide/pms (5.369046ms)
+✔ all-menu dispatcher: dream/dreamportfolio (4.360254ms)
+✔ all-menu dispatcher: dream/multibagger (4.682307ms)
+✔ all-menu dispatcher: dream/momentumradar (5.651589ms)
+✔ all-menu dispatcher: dream/highprob (5.192453ms)
+✔ all-menu dispatcher: dream/optionspulse (5.114921ms)
+✔ all-menu dispatcher: dream/tradeticket (5.179002ms)
+✔ all-menu dispatcher: dream/microcap (6.669677ms)
+✔ all-menu dispatcher: trading/trades (6.938834ms)
+✔ all-menu dispatcher: trading/smarttrades (9.982444ms)
+✔ all-menu dispatcher: trading/stockintel (9.543351ms)
+✔ all-menu dispatcher: trading/scanner (9.435971ms)
+✔ all-menu dispatcher: trading/valreport (6.26254ms)
+✔ all-menu dispatcher: trading/backtest (5.149827ms)
+✔ all-menu dispatcher: trading/journal (6.25728ms)
+✔ all-menu dispatcher: trading/aiassist (6.775429ms)
+✔ all-menu dispatcher: markets/indices (8.707357ms)
+✔ all-menu dispatcher: markets/daily (6.105316ms)
+✔ all-menu dispatcher: markets/newsimpact (6.269481ms)
+✔ all-menu dispatcher: markets/assets (5.297765ms)
+✔ all-menu dispatcher: movers/movers (9.040815ms)
+✔ all-menu dispatcher: moat/moat (6.771373ms)
+✔ all-menu dispatcher: structural/structural (5.137852ms)
+✔ all-menu dispatcher: intradayopt/intradayopt (6.244158ms)
+✔ all-menu dispatcher: scanner360/scanner360 (7.410942ms)
+✔ all-menu dispatcher: tools/finance (10.32677ms)
+✔ all-menu dispatcher: tools/education (16.610483ms)
+✔ all-menu dispatcher: decide/_active (6.662814ms)
+✔ all-menu dispatcher: dream/_today (7.109417ms)
+ℹ tests 68
+ℹ suites 0
+ℹ pass 68
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 708.425565
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.

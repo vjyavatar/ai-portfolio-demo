@@ -51,7 +51,13 @@ for(const menu of menus){
   await page.evaluate(tab=>{const t=window.CelesysWorkspace.tools.find(t=>t.tab===tab);window.CelesysWorkspace.openTool(t);},menu.tab);
   if(menu.tab==='_today')await expect(page.locator('#ws-embedded')).toBeVisible();
   else if(menu.tab==='_active')await expect(page.locator('body')).toContainText(/Trading/);
-  else {await expect(page.locator('#ws-legacy-title')).toContainText(menu.label);await expect(page.locator('#report')).toBeVisible();}
+  else {
+   await expect(page.locator('#ws-legacy-title')).toContainText(menu.label);await expect(page.locator('#report')).toBeVisible();
+   const shared=['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap','pms','mchunter','intraday','positioning','diamond','smartmoney','smv3'];
+   const target=shared.includes(menu.tab)?'decision':menu.tab;
+   // Inspect original content, not only the new workspace's heading.
+   await expect.poll(()=>page.evaluate(target=>[...document.querySelectorAll('#report [data-tab="'+target+'"]')].some(e=>e.getBoundingClientRect().height>0&&e.textContent.trim().length>10),target)).toBe(true);
+  }
   expect(errors).toEqual([]);
  });
 }

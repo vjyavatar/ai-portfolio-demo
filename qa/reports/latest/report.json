@@ -1,0 +1,1220 @@
+{
+  "created_at": "2026-10-12T04:12:26.314287+00:00",
+  "commit": "6dfa033244a21ec945d9dafecec757a41a79cc62",
+  "target": "https://celesys.ai",
+  "summary": {
+    "UNVERIFIED": 7,
+    "PASS": 68
+  },
+  "checks": [
+    {
+      "name": "Source INTRADAY_MCAP_BACKEND_REFERENCE.py",
+      "status": "UNVERIFIED",
+      "detail": "Python syntax error; may be a non-runtime snippet"
+    },
+    {
+      "name": "run build",
+      "status": "PASS",
+      "detail": "Full results: suite-0.log"
+    },
+    {
+      "name": "-m unittest discover -s tests -p test_existing_engines.py",
+      "status": "PASS",
+      "detail": "Full results: suite-1.log"
+    },
+    {
+      "name": "-m unittest discover -s tests -p test_workspace_backend.py",
+      "status": "PASS",
+      "detail": "Full results: suite-2.log"
+    },
+    {
+      "name": "-m unittest discover -s tests -p test_discovery.py",
+      "status": "PASS",
+      "detail": "Full results: suite-3.log"
+    },
+    {
+      "name": "-m unittest discover -s tests -p test_trading_*.py",
+      "status": "PASS",
+      "detail": "Full results: suite-4.log"
+    },
+    {
+      "name": "-m unittest discover -s tests -p test_qa_audit.py",
+      "status": "PASS",
+      "detail": "Full results: suite-5.log"
+    },
+    {
+      "name": "Page /",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 5.39s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Original chart entry visible",
+      "status": "PASS",
+      "detail": "Original report form must be exposed on homepage"
+    },
+    {
+      "name": "Page /about",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 5.31s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /about",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /agents",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 5.3s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /agents",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /contact",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 4.05s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /contact",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /disclaimer",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.67s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /disclaimer",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /faq",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.6s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /faq",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /googleb6e1e80f88761fcc.html",
+      "status": "PASS",
+      "detail": "HTTP 200; verified search-engine ownership resource; 4.09s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /googleb6e1e80f88761fcc.html",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /learn",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 4.1s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /learn",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /learn/how-to-read-option-chain",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.97s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /learn/how-to-read-option-chain",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /learn/open-interest-and-pcr",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.83s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /learn/open-interest-and-pcr",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /learn/paper-trading-checklist",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.77s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /learn/paper-trading-checklist",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /methodology",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.73s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /methodology",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /options/india",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 4.18s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /options/india",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /options/us",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 4.11s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /options/us",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /privacy",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.22s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /privacy",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /research",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.27s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /research",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /terms",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 5.63s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /terms",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /today",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 5.64s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /today",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Page /trading/",
+      "status": "PASS",
+      "detail": "HTTP 200; HTML title True; 3.68s",
+      "scope": "Document response only; browser interactions separate"
+    },
+    {
+      "name": "Unique IDs /trading/",
+      "status": "PASS",
+      "detail": "No duplicate IDs"
+    },
+    {
+      "name": "Asset /discovery/agents.js",
+      "status": "PASS",
+      "detail": "HTTP 200; 4977 bytes"
+    },
+    {
+      "name": "Asset /discovery/analytics.js",
+      "status": "PASS",
+      "detail": "HTTP 200; 850 bytes"
+    },
+    {
+      "name": "Asset /discovery/options.js",
+      "status": "PASS",
+      "detail": "HTTP 200; 5158 bytes"
+    },
+    {
+      "name": "Asset /discovery/site.css",
+      "status": "PASS",
+      "detail": "HTTP 200; 7694 bytes"
+    },
+    {
+      "name": "Asset /static/active-trading.js?v=20261012-unified",
+      "status": "PASS",
+      "detail": "HTTP 200; 568922 bytes"
+    },
+    {
+      "name": "Asset /static/app.min.js?v=20261012-unified",
+      "status": "PASS",
+      "detail": "HTTP 200; 3645242 bytes"
+    },
+    {
+      "name": "Asset /static/celesys-ds.css?v=1778612666",
+      "status": "PASS",
+      "detail": "HTTP 200; 35163 bytes"
+    },
+    {
+      "name": "Asset /static/options-engine.js?v=20261002-validation",
+      "status": "PASS",
+      "detail": "HTTP 200; 745506 bytes"
+    },
+    {
+      "name": "Asset /static/premium-override.js?v=1778612666",
+      "status": "PASS",
+      "detail": "HTTP 200; 615142 bytes"
+    },
+    {
+      "name": "Asset /static/premium-theme.css?v=1775315896",
+      "status": "PASS",
+      "detail": "HTTP 200; 29518 bytes"
+    },
+    {
+      "name": "Asset /static/workspace-core.js?v=20261012-unified",
+      "status": "PASS",
+      "detail": "HTTP 200; 4018 bytes"
+    },
+    {
+      "name": "Asset /static/workspace.css?v=20261012-unified",
+      "status": "PASS",
+      "detail": "HTTP 200; 15172 bytes"
+    },
+    {
+      "name": "Asset /static/workspace.js?v=20261012-unified",
+      "status": "PASS",
+      "detail": "HTTP 200; 23118 bytes"
+    },
+    {
+      "name": "Asset /trading/desk.css",
+      "status": "PASS",
+      "detail": "HTTP 200; 15492 bytes"
+    },
+    {
+      "name": "Asset /trading/desk.js",
+      "status": "PASS",
+      "detail": "HTTP 200; 19992 bytes"
+    },
+    {
+      "name": "Data /health",
+      "status": "PASS",
+      "detail": "Service healthy",
+      "seconds": 4.66
+    },
+    {
+      "name": "Data /api/research-brief?mode=stock&symbol=AAPL&region=US",
+      "status": "PASS",
+      "detail": "24 source-labelled facts; financial correctness and freshness require separate verification",
+      "seconds": 3.38
+    },
+    {
+      "name": "Data /api/research-brief?mode=stock&symbol=RELIANCE&region=IN",
+      "status": "PASS",
+      "detail": "20 source-labelled facts; financial correctness and freshness require separate verification",
+      "seconds": 3.67
+    },
+    {
+      "name": "Data /api/research-brief?mode=trading&symbol=SPY&region=US",
+      "status": "PASS",
+      "detail": "15 source-labelled facts; financial correctness and freshness require separate verification",
+      "seconds": 4.94
+    },
+    {
+      "name": "Data /api/research-brief?mode=trading&symbol=NIFTY&region=IN",
+      "status": "PASS",
+      "detail": "15 source-labelled facts; financial correctness and freshness require separate verification",
+      "seconds": 3.76
+    },
+    {
+      "name": "Data /api/existing-option-chain?symbol=SPY&region=US",
+      "status": "PASS",
+      "detail": "51 strikes; snapshot structure only, quote freshness not certified",
+      "seconds": 9.57
+    },
+    {
+      "name": "Data /api/existing-option-chain?symbol=NIFTY&region=IN",
+      "status": "UNVERIFIED",
+      "detail": "Feed unavailable; no working live option chain verified",
+      "seconds": 4.06
+    },
+    {
+      "name": "Retired /api/upstox-login",
+      "status": "PASS",
+      "detail": "HTTP 410, expected 410"
+    },
+    {
+      "name": "Retired /api/upstox-status",
+      "status": "PASS",
+      "detail": "HTTP 410, expected 410"
+    },
+    {
+      "name": "Actual chart canvases rendered",
+      "status": "UNVERIFIED",
+      "detail": "Requires browser/authorized fixtures or independent data; not certified by document/schema checks"
+    },
+    {
+      "name": "All 50 menu output correctness",
+      "status": "UNVERIFIED",
+      "detail": "Requires browser/authorized fixtures or independent data; not certified by document/schema checks"
+    },
+    {
+      "name": "Authorized-user server identity",
+      "status": "UNVERIFIED",
+      "detail": "Requires browser/authorized fixtures or independent data; not certified by document/schema checks"
+    },
+    {
+      "name": "Voice microphone and audible playback",
+      "status": "UNVERIFIED",
+      "detail": "Requires browser/authorized fixtures or independent data; not certified by document/schema checks"
+    },
+    {
+      "name": "Independent financial calculation reconciliation",
+      "status": "UNVERIFIED",
+      "detail": "Requires browser/authorized fixtures or independent data; not certified by document/schema checks"
+    }
+  ],
+  "menus": [
+    {
+      "group": "overview",
+      "tab": "quick",
+      "label": "Summary",
+      "description": "Open the existing Celesys Summary workspace.",
+      "access": {
+        "public": true,
+        "trading": true,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "research",
+      "tab": "analysis",
+      "label": "AI Analysis",
+      "description": "Open the existing Celesys AI Analysis workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "research",
+      "tab": "dcf",
+      "label": "DCF Valuation",
+      "description": "Open the existing Celesys DCF Valuation workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "research",
+      "tab": "equity",
+      "label": "Research",
+      "description": "Open the existing Celesys Research workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "tools",
+      "tab": "compare",
+      "label": "Compare Stocks",
+      "description": "Open the existing Celesys Compare workspace.",
+      "access": {
+        "public": true,
+        "trading": true,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "decision",
+      "label": "Analyze Stock",
+      "description": "Open the existing Celesys Analyze Stock workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "tomorrowbrief",
+      "label": "Tomorrow's Open",
+      "description": "Open the existing Celesys Tomorrow's Open workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "fundadashboard",
+      "label": "Dashboard",
+      "description": "Open the existing Celesys Dashboard workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "engines",
+      "label": "Engines",
+      "description": "Open the existing Celesys Engines workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "toptrades",
+      "label": "Top Trades",
+      "description": "Open the existing Celesys Top Trades workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "topinvest",
+      "label": "Top Investments",
+      "description": "Open the existing Celesys Top Investments workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "smv3",
+      "label": "Smart Money v3",
+      "description": "Open the existing Celesys Smart Money v3 workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "smartmoney",
+      "label": "Smart Money",
+      "description": "Open the existing Celesys Smart Money workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "mchunter",
+      "label": "Micro-Cap Hunter",
+      "description": "Open the existing Celesys Micro-Cap Hunter workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "intraday",
+      "label": "Intraday Setups",
+      "description": "Open the existing Celesys Intraday Setups workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "positioning",
+      "label": "Positioning",
+      "description": "Open the existing Celesys Positioning workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "diamond",
+      "label": "Diamond Hunter",
+      "description": "Open the existing Celesys Diamond Hunter workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "analyst",
+      "label": "Analyst Coverage",
+      "description": "Open the existing Celesys Analyst Coverage workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "proscan",
+      "label": "Pro Scan",
+      "description": "Open the existing Celesys Pro Scan workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "etfscanner",
+      "label": "ETF Scanner",
+      "description": "Open the existing Celesys ETF Scanner workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "reports",
+      "label": "Reports",
+      "description": "Open the existing Celesys Reports workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "pms",
+      "label": "PMS",
+      "description": "Open the existing Celesys PMS workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "dream",
+      "tab": "dreamportfolio",
+      "label": "Dream Portfolio",
+      "description": "Open the existing Celesys Dream Portfolio workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": false,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "dream",
+      "tab": "multibagger",
+      "label": "Multibagger Hunter",
+      "description": "Open the existing Celesys Multibagger Hunter workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": false,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "dream",
+      "tab": "momentumradar",
+      "label": "Momentum Radar",
+      "description": "Open the existing Celesys Momentum Radar workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": false,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "dream",
+      "tab": "highprob",
+      "label": "High-Prob Setups",
+      "description": "Open the existing Celesys High-Prob Setups workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": false,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "dream",
+      "tab": "optionspulse",
+      "label": "Options Pulse",
+      "description": "Open the existing Celesys Options Pulse workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": false,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "dream",
+      "tab": "tradeticket",
+      "label": "Trade Ticket",
+      "description": "Open the existing Celesys Trade Ticket workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": false,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "dream",
+      "tab": "microcap",
+      "label": "Micro-Cap Challenge",
+      "description": "Open the existing Celesys Micro-Cap Challenge workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": false,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "trading",
+      "tab": "trades",
+      "label": "Algo Trades",
+      "description": "Open the existing Celesys Algo Trades workspace.",
+      "access": {
+        "public": false,
+        "trading": true,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "trading",
+      "tab": "smarttrades",
+      "label": "Smart Trades",
+      "description": "Open the existing Celesys Smart Trades workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "trading",
+      "tab": "stockintel",
+      "label": "Stock Intel",
+      "description": "Open the existing Celesys Stock Intel workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "trading",
+      "tab": "scanner",
+      "label": "Scanner",
+      "description": "Open the existing Celesys Scanner workspace.",
+      "access": {
+        "public": false,
+        "trading": true,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "trading",
+      "tab": "valreport",
+      "label": "Valuation",
+      "description": "Open the existing Celesys Valuation workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "trading",
+      "tab": "backtest",
+      "label": "Backtest",
+      "description": "Open the existing Celesys Backtest workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "trading",
+      "tab": "journal",
+      "label": "Journal",
+      "description": "Open the existing Celesys Journal workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "trading",
+      "tab": "aiassist",
+      "label": "AI Assistant",
+      "description": "Open the existing Celesys AI Assistant workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "markets",
+      "tab": "indices",
+      "label": "Top Performers",
+      "description": "Open the existing Celesys Top Performers workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "markets",
+      "tab": "daily",
+      "label": "Market Daily",
+      "description": "Open the existing Celesys Market Daily workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "markets",
+      "tab": "newsimpact",
+      "label": "News Impact",
+      "description": "Open the existing Celesys News Impact workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "markets",
+      "tab": "assets",
+      "label": "Global Assets",
+      "description": "Open the existing Celesys Global Assets workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "movers",
+      "tab": "movers",
+      "label": "Top Movers",
+      "description": "Open the existing Celesys Top Movers workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "moat",
+      "tab": "moat",
+      "label": "Moat Analysis",
+      "description": "Open the existing Celesys Moat Analysis workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "structural",
+      "tab": "structural",
+      "label": "Structural Change",
+      "description": "Open the existing Celesys Structural Change workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "intradayopt",
+      "tab": "intradayopt",
+      "label": "Intraday Options",
+      "description": "Open the existing Celesys Intraday Options workspace.",
+      "access": {
+        "public": false,
+        "trading": true,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "scanner360",
+      "tab": "scanner360",
+      "label": "360\u00b0 Scanner",
+      "description": "Open the existing Celesys 360\u00b0 Scanner workspace.",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "tools",
+      "tab": "finance",
+      "label": "Finance Tools",
+      "description": "Open the existing Celesys Finance Tools workspace.",
+      "access": {
+        "public": true,
+        "trading": true,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "tools",
+      "tab": "education",
+      "label": "Education",
+      "description": "Open the existing Celesys Education workspace.",
+      "access": {
+        "public": true,
+        "trading": true,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "decide",
+      "tab": "_active",
+      "label": "Active Trading",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": true,
+        "premium": true,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    },
+    {
+      "group": "dream",
+      "tab": "_today",
+      "label": "Today\u2019s Setups",
+      "access": {
+        "public": false,
+        "trading": false,
+        "full": false,
+        "premium": false,
+        "dream": true,
+        "admin": true
+      },
+      "functional_status": "UNVERIFIED",
+      "reason": "Menu inventory is not proof of rendered output or financial accuracy."
+    }
+  ],
+  "limits": "PASS applies only to the stated check. Function inventory is not function coverage. No orders, private emails, or full API payloads are recorded.",
+  "browser_execution": "UNVERIFIED: workflow committed but no GitHub run observed",
+  "deployed_application_commit": "e3c5a408813a87fd97162ca569d3b250fc92f7b7",
+  "inventory_counts": {
+    "menus": 50,
+    "routes": 253,
+    "functions": 1134
+  }
+}
