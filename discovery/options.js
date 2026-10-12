@@ -65,10 +65,10 @@ $('chain-form').addEventListener('submit', async event => {
   const aborter = controller;
   const expiry = $('expiry').value;
   clear(); $('load-chain').disabled = true; $('chain-status').textContent = 'Checking provider connection and contract evidence…';
-  const timer = setTimeout(()=>aborter.abort(),25000);
+  const timer = setTimeout(()=>aborter.abort(),65000);
   try {
     const query = new URLSearchParams({region, symbol:(region === 'IN' ? $('india-symbol').value : $('us-symbol').value).trim().toUpperCase(),expiry});
-    const response = await fetch('/api/option-chain?'+query,{signal:aborter.signal});
+    const response = await fetch('/api/existing-option-chain?'+query,{signal:aborter.signal});
     if (!response.ok) throw Error(response.status === 422 ? 'Check the symbol and expiry, then try again.' : 'The chain service is unavailable. Try again later.');
     const data = await response.json(); if (id !== sequence) return; render(data);
   } catch(error) {

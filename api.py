@@ -22469,7 +22469,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             "ema9": ema9, "ema21": ema21, "ema50": ema50,
             "rsi": rsi, "macd_hist": macd_hist, "macd_bullish": macd_bullish,
             "supertrend_buy": supertrend_buy, "atr14": atr14,
-            "vol_ratio": vol_ratio, "last_volume": _safe__safe_int(volumes[-1]) if volumes else 0, "avg_volume": _safe_int(avg_vol) if avg_vol else 0, "w52h": w52h, "w52l": w52l, "w52pos": w52pos,
+            "vol_ratio": vol_ratio, "last_volume": _safe_int(volumes[-1]) if len(volumes) else 0, "avg_volume": _safe_int(avg_vol) if avg_vol else 0, "w52h": w52h, "w52l": w52l, "w52pos": w52pos,
             "hh_hl": hh_hl, "lh_ll": lh_ll,
             "pe": pe, "roe": roe, "margin": margin, "de": de, "beta": beta_val,
             "adx": 0,  # Placeholder — computed later in trend engine, patched back here

@@ -1,15 +1,15 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let controller,version=0,report=null;
-const labels={NOT_ENABLED:'AI interpretation is not enabled. Showing calculated evidence and rules-based review.',BLOCKED_NO_EVIDENCE:'AI blocked: no usable evidence.',BLOCKED_STALE_EVIDENCE:'AI blocked: stale trading evidence.',BLOCKED_UNVERIFIED_QUOTE_TIMES:'AI blocked: option quote times are not verified.',BUSY:'AI reviewer busy. Showing rules-based review.',PILOT_BUDGET_OR_COOLDOWN:'AI pilot limit reached or cooling down. Showing rules-based review.',CRITIC_WITHHELD:'The critic withheld the AI draft. Showing rules-based review.',AI_UNAVAILABLE:'AI unavailable. Showing rules-based review.',AI_REVIEWED:'AI interpretation completed with a separate critic review. Check the evidence yourself.'};
+const labels={NOT_ENABLED:'Showing your existing Celesys engine results. Additional AI interpretation is not enabled.',BLOCKED_NO_EVIDENCE:'AI blocked: no usable evidence.',BLOCKED_STALE_EVIDENCE:'AI blocked: stale trading evidence.',BLOCKED_UNVERIFIED_QUOTE_TIMES:'AI blocked: option quote times are not verified.',BUSY:'AI reviewer busy. Showing rules-based review.',PILOT_BUDGET_OR_COOLDOWN:'AI pilot limit reached or cooling down. Showing rules-based review.',CRITIC_WITHHELD:'The critic withheld the AI draft. Showing rules-based review.',AI_UNAVAILABLE:'AI unavailable. Showing rules-based review.',AI_REVIEWED:'AI interpretation completed with a separate critic review. Check the evidence yourself.'};
 function reset(){version++;controller?.abort();report=null;$('brief-output').hidden=true;$('agent-trace').replaceChildren();$('brief-run').disabled=false;$('brief-status').textContent='Selection changed. Build a new brief.';}
 for(const id of ['brief-mode','brief-region','brief-symbol']) $(id).addEventListener('input',reset);
 $('brief-region').addEventListener('change',()=>{$('brief-symbol').value=$('brief-region').value==='IN'?($('brief-mode').value==='options'?'NIFTY':'RELIANCE'):($('brief-mode').value==='stock'?'AAPL':'SPY');});
 $('brief-mode').addEventListener('change',()=>{if($('brief-mode').value==='options')$('brief-symbol').value=$('brief-region').value==='IN'?'NIFTY':'SPY';});
 function render(b){
-  report=b;$('brief-output').hidden=false;$('brief-status').textContent=labels[b.ai_status]||'Rules-based review.';
+  report=b;$('brief-output').hidden=false;$('brief-status').textContent=(labels[b.ai_status]||'Existing engine review.')+(b.generated_at?' · Retrieved '+new Date(b.generated_at*1000).toLocaleString()+'. Retrieval time is not quote time.':'');
   $('brief-assessment').textContent=b.assessment;$('brief-counter').textContent=b.counterargument;$('brief-next').textContent=b.next_check;
-  $('brief-workspace').href=b.mode==='stock'?'/research':b.mode==='trading'?'/trading/':b.region==='IN'?'/options/india':'/options/us';
+  $('brief-workspace').href=b.mode==='stock'?'/research?sym='+encodeURIComponent(b.symbol||'')+'&region='+b.region:b.mode==='trading'?'/research?sym='+encodeURIComponent(b.symbol||'')+'&region='+b.region:b.region==='IN'?'/options/india':'/options/us';
   $('brief-missing').replaceChildren(...b.missing_data.map(t=>{const li=document.createElement('li');li.textContent=t;return li;}));
   $('brief-evidence').replaceChildren();
   if(!b.evidence.length)$('brief-evidence').textContent='No usable source evidence returned.';

@@ -44,8 +44,9 @@ except Exception:
 # Search-friendly discovery and read-only India/US option snapshots.
 from discovery_site import attach_discovery
 try:
-    from api import _upstox_access_token, stock_dashboard
+    from api import _upstox_access_token, stock_dashboard, decision_engine, options_quick
 except ImportError:
     _upstox_access_token = None
     stock_dashboard = None
-attach_discovery(app, _upstox_access_token, stock_dashboard)
+    decision_engine = options_quick = None
+attach_discovery(app, _upstox_access_token, stock_dashboard, decision_engine, options_quick)

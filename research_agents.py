@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from trading_research import number
 from trading_site import market_symbol, research
-from option_chain import chain
+import existing_engines as engines
 
 router = APIRouter()
 _dashboard = None
@@ -54,22 +54,82 @@ def trading_brief(report, symbol, region):
 
 
 def stock_brief(data, symbol, region):
-    b = base_brief('stock',symbol,region)
-    summary = data.get('summary') or {} if data.get('success') else {}
-    fields = ('market_cap','trailing_pe','forward_pe','price_to_book','revenue_ttm','fcf_ttm','fcf_yield_pct','roe_latest_pct','roic_latest_pct','debt_to_equity_latest_pct','latest_year')
-    for k in fields:
-        v=number(summary.get(k))
-        if v is not None: add_fact(b,k,v,'Existing stock dashboard; mixed reporting periods; verify filings')
-        else: b['missing_data'].append(k.replace('_',' ')+' unavailable')
-    if b['evidence']: b['assessment'] = 'Fundamental inputs are available for review. No investment verdict is inferred from incomplete or unverified reporting periods.'
-    b['missing_data'] += ['Original filing citations and per-field update timestamps are not attached to this adapter.', 'Portfolio suitability, full valuation assumptions and current catalysts are not evaluated.']
-    b['counterargument'] = 'Low valuation multiples can reflect business deterioration. Strong historical profitability does not guarantee future growth.'
-    b['next_check'] = 'Compare these inputs with the latest company filing, accounting period and cash-flow statement; then review the full stock dashboard.'
+    b = base_brief('stock', symbol, region)
+    b['engine'] = 'stock-dashboard'
+    valid = data if data.get('success') else {}
+    decision = valid.get('decision') or {}
+    summary = valid.get('summary') or {}
+    source = 'Existing stock dashboard / ' + ', '.join(valid.get('data_sources') or ['source not supplied'])
+    b['assessment'] = decision.get('summary_one_liner') or 'The existing stock engine has not returned a complete assessment.'
+    b['engine_verdict'] = decision.get('verdict')
+    if decision.get('verdict'):
+        b['assessment'] = decision['verdict'].replace('_', ' ') + ' · ' + b['assessment']
+    for k in ('quality_score','valuation_score','composite_score'):
+        if number(decision.get(k)) is not None:
+            add_fact(b, k + ' (engine score, not probability)', decision[k], source)
+    for k in ('price','market_cap','trailing_pe','forward_pe','price_to_book','revenue_ttm','fcf_ttm','fcf_yield_pct','roe_latest_pct','roic_latest_pct','debt_to_equity_latest_pct'):
+        v = number(summary.get(k))
+        if v is not None: add_fact(b, k, v, source)
+        else: b['missing_data'].append(k.replace('_', ' ') + ' unavailable')
+    if summary.get('latest_year'):
+        add_fact(b, 'latest reporting year', summary['latest_year'], source)
+    for k, v in (valid.get('cagrs') or {}).items():
+        if number(v) is not None: add_fact(b, k, v, source + ' / historical calculation')
+    for k, v in (valid.get('analysis') or {}).items():
+        if isinstance(v, dict) and v.get('verdict'):
+            add_fact(b, k, v['verdict'], source + ' / engine interpretation')
+    risks = [x for x in decision.get('key_risks', []) if isinstance(x, str)]
+    invalidation = [x for x in decision.get('invalidation_signals', []) if isinstance(x, str)]
+    b['counterargument'] = ' '.join(risks + invalidation) or 'Strong historical profitability does not establish an attractive valuation or guarantee future growth.'
+    b['missing_data'] += [x for x in valid.get('warnings', []) if isinstance(x, str)]
+    b['missing_data'] += ['Per-field source timestamps and original filing citations are not attached. Engine scores are not calibrated probabilities.']
+    if decision.get('catalyst_calendar_note'):
+        b['missing_data'].append(decision['catalyst_calendar_note'])
+    steps = [x for x in decision.get('decision_tree', []) if isinstance(x, str)]
+    b['next_check'] = ' '.join(steps) or 'Check the latest filing, current valuation inputs and the original engine’s invalidation conditions in the full stock workspace.'
+    b['engine_details'] = {k: decision.get(k) for k in ('horizons','invalidation_signals','key_risks')}
+    b['source_cache_age_seconds'] = valid.get('_cache_age_sec')
+    return b
+
+
+def existing_trading_brief(data, symbol, region):
+    b = base_brief('trading', symbol, region)
+    b['engine'] = 'decision-engine'
+    if not data.get('success'):
+        b['assessment'] = 'The existing trading engine could not complete its analysis. No replacement signal is inferred.'
+        b['missing_data'] = ['A successful response from the existing decision engine.']
+        return b
+    explanation = data.get('explanation') or {}
+    b['assessment'] = explanation.get('what') or 'Review the existing engine’s market assessment below.'
+    source = 'Existing Celesys decision engine / calculated output, source time not supplied'
+    for k in ('signal','price','atr'):
+        if isinstance(data.get(k), (str, int, float)):
+            add_fact(b, k, data[k], source)
+    for group, keys in [('marketState', ('state','strength','direction','adx')),
+                        ('confidence', ('score','grade')),
+                        ('triggers', ('breakout','breakdown'))]:
+        values = data.get(group) or {}
+        for k in keys:
+            if isinstance(values.get(k), (str, int, float)):
+                label = group + ' ' + k
+                if group == 'confidence': label += ' (engine rating, not probability)'
+                add_fact(b, label, values[k], source)
+    path = data.get('tradePath') or {}
+    for k in ('sl','t1','t2','rr'):
+        if number(path.get(k)) is not None:
+            add_fact(b, 'modelled ' + k, path[k], source)
+    b['counterargument'] = ' '.join(filter(None, [explanation.get('wrong'), 'A modelled stop does not guarantee an exit price. Trend and OI interpretations can fail.']))
+    b['missing_data'] = ['Per-input quote timestamps are not supplied by this engine; current-session freshness is unverified.',
+                         'Engine confidence is a heuristic rating, not a measured win probability.',
+                         'Execution prices, verified event timing and audited strategy performance.']
+    b['next_check'] = 'Recheck the engine’s breakout/breakdown conditions against a current broker quote and a completed price bar; review events before relying on the modelled levels.'
+    b['engine_details'] = {k: data.get(k) for k in ('tradeVerdict','marketState','triggers')}
     return b
 
 
 def options_brief(data, symbol, region):
     b = base_brief('options',symbol,region)
+    b['engine'] = data.get('engine', 'options-quick')
     b['assessment'] = data.get('message') or b['assessment']
     rows=data.get('rows') or []
     if rows:
@@ -160,13 +220,13 @@ async def brief(mode: str='trading',symbol: str='SPY',region: str='US'):
             except Exception:pass
         b=stock_brief(data,symbol,region)
     elif mode=='options':
-        result=await run_in_threadpool(chain,region,symbol,'')
-        b=options_brief(json.loads(result.body),symbol,region)
+        data=await engines.fetch(engines._options,symbol,region)
+        b=options_brief(engines.option_snapshot(data,symbol,region),symbol,region)
     else:
-        result=await run_in_threadpool(research,symbol,region)
-        b=trading_brief(json.loads(result.body),symbol,region)
+        data=await engines.fetch(engines._trading,symbol,region)
+        b=existing_trading_brief(data,symbol,region)
     b=await run_in_threadpool(ai_review,b)
-    b['agents']=[dict(name='Data steward',kind='code',status='EVIDENCE_COLLECTED' if b['evidence'] else 'BLOCKED'),
+    b['agents']=[dict(name='Existing Celesys engine',kind='code',status='EVIDENCE_COLLECTED' if b['evidence'] else 'BLOCKED'),
                  dict(name='Research analyst',kind='model',status=b['ai_status']),
                  dict(name='Skeptical critic',kind='model',status='REVIEWED' if b['ai'] else 'NO_PUBLISHED_AI'),
                  dict(name='Coordinator',kind='code',status='RESEARCH_ONLY')]
