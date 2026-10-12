@@ -58,3 +58,17 @@ class SecurityTests(unittest.TestCase):
  def test_stock_intelligence_does_not_randomize_historical_bars(self):
   tree=ast.parse(Path('api.py').read_text());n=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name=='_run_stock_intel')
   self.assertNotIn('random.uniform',ast.get_source_segment(Path('api.py').read_text(),n))
+
+ def test_actual_global_handlers_preserve_denials_and_hide_internal_errors(self):
+  from fastapi import Request,HTTPException
+  from fastapi.responses import JSONResponse
+  tree=ast.parse(Path('api.py').read_text());scope={'Request':Request,'HTTPException':HTTPException,'JSONResponse':JSONResponse}
+  for name in ['http_exception_handler','global_exception_handler']:
+   n=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name==name);n.decorator_list=[]
+   exec(compile(ast.Module(body=[n],type_ignores=[]),'handlers','exec'),scope)
+  import asyncio
+  request=Request({'type':'http','method':'GET','path':'/private','headers':[],'query_string':b''})
+  denied=asyncio.run(scope['http_exception_handler'](request,HTTPException(403,'Denied')))
+  self.assertEqual(denied.status_code,403)
+  failed=asyncio.run(scope['global_exception_handler'](request,Exception('SECRET_TOKEN')))
+  self.assertEqual(failed.status_code,500);self.assertNotIn(b'SECRET_TOKEN',failed.body)

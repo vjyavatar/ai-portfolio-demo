@@ -54,6 +54,8 @@ The licensed-display switches are an operator confirmation that the configured f
 
 ## Validation
 
-181 focused regressions, including 12 new security/provider checks and eight scanner checks. These test OTP replay/attempt limits, cookie tampering, logout, wrong-origin requests, supplied-email bypass under enforcement, cross-user session isolation, missing-versus-zero data, removal of synthetic history, sequential scans, five-minute cadence, hidden-tab cancellation and voice opt-in/freshness.
+182 focused regressions, including 13 new security/provider checks and eight scanner checks. These test OTP replay/attempt limits, cookie tampering, logout, wrong-origin requests, supplied-email bypass under enforcement, cross-user session isolation, missing-versus-zero data, removal of synthetic history, sequential scans, five-minute cadence, hidden-tab cancellation and voice opt-in/freshness.
 
 Browser visual/audio execution, actual email delivery, credentialed provider calls and independent reconciliation/backtesting remain unverified. This is targeted source review and regression coverage, not a claim that every line or financial output has been certified.
+
+Live release checks exposed a legacy exception handler that converted HTTP denials into 200 responses. HTTP error status codes are now preserved; unhandled errors return 500 with a generic response and avoid logging exception messages that may contain provider secrets. Protected data was denied before this correction as well.

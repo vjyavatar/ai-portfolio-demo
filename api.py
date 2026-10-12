@@ -1549,22 +1549,20 @@ print("[STARTUP] ✅ FastAPI app created successfully")
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Catch ANY unhandled exception and return JSON instead of HTML 500"""
-    import traceback
-    tb = traceback.format_exc()
+    # Log only safe context; provider exception messages may contain credentials.
     path = str(request.url.path)
-    print(f"🔴 UNHANDLED ERROR on {path}: {exc}\n{tb[:500]}")
-    # Return 200 with error JSON so frontend .json() parsing works
-    return JSONResponse(
-        status_code=200,
-        content={"success": False, "error": f"Server error: {str(exc)[:200]}", "path": path}
-    )
+    print(f"Unhandled {type(exc).__name__} on {path}")
+    return JSONResponse(status_code=500,
+        content={"success": False, "error": "The service could not complete this request. Please retry.", "path": path})
+
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Return HTTP exceptions as JSON too — no HTML error pages"""
     return JSONResponse(
-        status_code=200,
-        content={"success": False, "error": str(exc.detail)[:200], "status": exc.status_code}
+        status_code=exc.status_code,
+        headers=exc.headers,
+        content={"success": False, "error": str(exc.detail)[:200], "detail": str(exc.detail)[:200], "status": exc.status_code}
     )
 
 # ═══ STARTUP: launch background pre-fetch for popular tickers ═══
