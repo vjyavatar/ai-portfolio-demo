@@ -2171,7 +2171,10 @@ if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_dat
 clearInterval(_timerIv);
 showStatus(e.message==='Failed to fetch'?'Cannot connect to server.':e.message,'error');
 }
-btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}
+btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();
+// Navigate only after the loading controls have stopped changing page height.
+if(rpt.classList.contains('show'))document.dispatchEvent(new Event('celesys:report-ready'));
+}
 
 function displayReport(data){
 console.log('displayReport START',data?.live_data?.ticker);
