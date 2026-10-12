@@ -49,7 +49,7 @@ async function profile(page,role){
  await expect.poll(()=>page.evaluate(()=>window._userRole)).toBe(role);
 }
 test('desktop homepage exposes the original email, symbol and Analyze controls',async({page})=>{
- await boot(page);await expect(page.locator('#ws-account')).toBeVisible();await expect(page.locator('#ws-account #email')).toBeVisible();await expect(page.locator('#ws-account #btn')).toBeVisible();await page.screenshot({path:'qa-output/home-desktop.png',fullPage:true});
+ await boot(page);await expect(page.locator('#ws-account')).toBeVisible();await expect(page.locator('#ws-account #email')).toBeVisible();await expect(page.locator('#ws-account #btn')).toBeVisible();const tickerBox=await page.locator('#ticker').boundingBox();const actionBox=await page.locator('#btn').boundingBox();expect(tickerBox.width).toBeGreaterThan(240);expect(tickerBox.width).toBeGreaterThan(actionBox.width);await page.screenshot({path:'qa-output/home-desktop.png',fullPage:true});
  const width=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
  expect(width.document<=width.viewport+2,JSON.stringify(width)).toBe(true);
  await expect(page.locator('#ws-sidebar .ws-nav.active')).toHaveCount(1);
