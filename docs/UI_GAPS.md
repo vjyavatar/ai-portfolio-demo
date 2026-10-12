@@ -34,3 +34,18 @@ This is regression memory and a review process. It does not autonomously rewrite
 Validation: all eight coordinator suites passed (193 distinct regression tests; the build repeats eight scanner tests). The coordinator inventories 50 menus, 260 routes and 1,158 functions; this inventory is not execution coverage. The 110 browser fixtures are defined but were not executed in this environment.
 
 Production recheck: all 18 public HTML documents passed. `/today` correctly denied the anonymous audit (403); the auditor now marks its signed-in view UNVERIFIED instead of treating that denial as a page failure. Three regression tests cover this distinction, taking distinct local tests to 196. US/India stock and trading briefs returned source-labelled evidence; US options returned 51 strikes. India live options remained unavailable. Live UI assets matched the tested source byte for byte; protected option/scanner endpoints retained 401/403 denials.
+
+## Follow-up review: data honesty and actual browser execution
+
+GitHub Actions run 7 executed all 110 browser fixtures: 98 passed, 12 failed. Failures included a shared Analyst container defect, mobile overflow and synthetic account setup that did not survive the original role resolver. These are distinguished from live-provider and real-account verification.
+
+Confirmed fixes under rerun:
+
+- Legacy daily-history algo results now remain historical research with WAIT; computation time cannot masquerade as quote time. Removed price-point-to-OHLC and invented-volume fallbacks.
+- Candidate guards check exact symbol/currency/interval, source quote and closed-bar age, session bounds and quote-after-signal ordering. Voice Stop prevents later expiry announcements.
+- A decorative hero gradient caused exactly 242px of desktop horizontal overflow; its scoped removal preserves content.
+- Overview and Stock research no longer highlight simultaneously. Scanner disclosure and footer contrast are clearer.
+- Technical charts were created and immediately hidden by a delayed redraw; visible populated canvases now require browser acceptance evidence.
+- Production live checks have separate persistent evidence, and run during both markets' sessions in addition to nightly regression checks.
+
+Still requires configuration or independent verification: licensed India options credentials, US production provider entitlement, verified email delivery/enforcement, actual device voice playback, every input combination within each of 50 menus, financial strategy performance and Google Search Console ownership/submission.

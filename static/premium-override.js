@@ -6610,75 +6610,38 @@ window._topStocksReport=function(region,category){
 
 // ━━━ OVERVIEW: Earnings Trend Sparkline ━━━
 window._earningsSparkline=function(d,S){
-  if(!d||!d.price)return'';
-  S=S||'$';
-  var eps=parseFloat(d.eps||d.earnings_per_share||0);
-  var eg=parseFloat(d.earnings_growth||d.eg||0);
-  if(!eps)return'';
-  // Generate 8 quarters of estimated EPS
-  var pts=[];var base=eps/(1+eg/100);
-  for(var i=0;i<8;i++){
-    var q=base*Math.pow(1+eg/400,i)*(1+Math.sin(i*0.5)*0.05);
-    pts.push(Math.max(0,q));
-  }
-  var mn=Math.min.apply(null,pts);var mx=Math.max.apply(null,pts);var rng=mx-mn||1;
-  var w=280;var h2=50;var pad=4;
-  var points=pts.map(function(v,i){
-    return Math.round(pad+i/(pts.length-1)*(w-pad*2))+','+Math.round(h2-pad-(v-mn)/rng*(h2-pad*2));
-  }).join(' ');
-  var trend=eg>10?'ACCELERATING':eg>0?'GROWING':eg>-5?'FLAT':'DECLINING';
-  var tC=eg>10?'#059669':eg>0?'#059669':eg>-5?'#d97706':'#dc2626';
-
-  var h='<div style="padding:12px 14px;border-radius:10px;background:#fff;border:1px solid #e2e5ea;margin:8px 0">';
-  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px">EARNINGS TREND (8Q)</span><span style="font-size:9px;font-weight:800;color:'+tC+'">'+trend+' · '+(eg>0?'+':'')+eg.toFixed(0)+'% YoY</span></div>';
-  h+='<svg width="100%" viewBox="0 0 '+w+' '+h2+'" style="display:block"><defs><linearGradient id="egFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+tC+'" stop-opacity=".15"/><stop offset="100%" stop-color="'+tC+'" stop-opacity="0"/></linearGradient></defs>';
-  h+='<polygon points="'+pad+','+h2+' '+points+' '+(w-pad)+','+h2+'" fill="url(#egFill)"/>';
-  h+='<polyline points="'+points+'" fill="none" stroke="'+tC+'" stroke-width="2" stroke-linecap="round"/>';
-  // Dot on latest
-  var lastPt=points.split(' ').pop().split(',');
-  h+='<circle cx="'+lastPt[0]+'" cy="'+lastPt[1]+'" r="3" fill="'+tC+'"/>';
-  h+='</svg>';
-  h+='<div style="display:flex;justify-content:space-between;font-size:7px;color:#94a3b8"><span>8Q ago</span><span>Current EPS: '+S+eps.toFixed(2)+'</span></div>';
-  h+='</div>';
+  if(!d)return'';
+  function esc(v){return String(v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  var h='<div class="reported-earnings-card" style="padding:14px;border-radius:10px;background:#fff;border:1px solid #e2e5ea;margin:8px 0"><div style="font-size:12px;font-weight:800;color:#475569;margin-bottom:8px">Reported quarterly EPS</div>';
+  var history=d.earnings_history;
+  var rows=history&&Array.isArray(history.quarters)?history.quarters:[];
+  var source=history&&typeof history.source==='string'?history.source.trim():'';
+  var seen={};var valid=!!source&&rows.length>=2&&rows.length<=100;
+  rows.forEach(function(q){
+    var period=q&&q.quarter;
+    if(!q||typeof q.eps_actual!=='number'||!Number.isFinite(q.eps_actual)||typeof period!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(period)||seen[period]){valid=false;return;}
+    var date=new Date(period+'T00:00:00Z');
+    if(!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==period){valid=false;return;}
+    seen[period]=true;
+  });
+  if(!valid)return h+'<p style="font-size:12px;color:#64748b;margin:0">Quarterly EPS history is unavailable with a verified source. Current EPS and growth cannot reconstruct past quarters.</p></div>';
+  rows=rows.slice().sort(function(a,b){return a.quarter.localeCompare(b.quarter);}).slice(-8);
+  var values=rows.map(function(q){return q.eps_actual;});
+  var lo=Math.min.apply(null,values),hi=Math.max.apply(null,values),range=hi-lo||1;
+  var points=values.map(function(v,i){return (4+i/(values.length-1)*272).toFixed(2)+','+(46-(v-lo)/range*42).toFixed(2);}).join(' ');
+  h+='<svg width="100%" viewBox="0 0 280 50" role="img" aria-label="Reported quarterly EPS from available source records"><polyline points="'+points+'" fill="none" stroke="#087b68" stroke-width="2"/></svg>';
+  h+='<div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b"><span>'+esc(rows[0].quarter)+'</span><span>'+esc(rows[rows.length-1].quarter)+'</span></div>';
+  h+='<p style="font-size:12px;color:#475569;margin:8px 0 0">'+rows.length+' reported periods · Latest reported EPS: '+esc(S||'$')+values[values.length-1].toFixed(2)+'</p>';
+  h+='<p style="font-size:11px;color:#64748b;margin:4px 0 0">Source: '+esc(source)+'. Available records only; missing quarters are not estimated.</p></div>';
   return h;
 };
 
-// ━━━ INVESTOR: Sector Relative Strength Map ━━━
+// ━━━ INVESTOR: Sector comparison availability ━━━
 window._sectorStrengthMap=function(d,S){
-  if(!d||!d.price)return'';
-  var sector=d.sector||'Unknown';
-  var rsi=parseFloat(d.rsi||0);var beta=parseFloat(d.beta||0);
-  var roe=parseFloat(d.roe||0);var fS=d.fScore||0;
-  // Simulate sector comparison
-  var sectors=[
-    {n:'Technology',str:rsi>55?85:65,alloc:sector==='Technology'?'YOUR STOCK':''},
-    {n:'Financials',str:70,alloc:sector==='Financials'?'YOUR STOCK':''},
-    {n:'Healthcare',str:60,alloc:sector==='Healthcare'?'YOUR STOCK':''},
-    {n:'Consumer',str:55,alloc:sector==='Consumer Cyclical'||sector==='Consumer Defensive'?'YOUR STOCK':''},
-    {n:'Industrials',str:65,alloc:sector==='Industrials'?'YOUR STOCK':''},
-    {n:'Energy',str:45,alloc:sector==='Energy'?'YOUR STOCK':''},
-    {n:'Materials',str:50,alloc:sector==='Basic Materials'?'YOUR STOCK':''},
-    {n:'Utilities',str:40,alloc:sector==='Utilities'?'YOUR STOCK':''}
-  ];
-  sectors.sort(function(a,b){return b.str-a.str});
-
-  var h='<div style="padding:14px 16px;border-radius:12px;background:#fff;border:1px solid #e2e5ea;margin:10px 0">';
-  h+='<div style="font-size:10px;font-weight:800;color:#0A1628;margin-bottom:8px">📊 Sector Relative Strength</div>';
-  sectors.forEach(function(s){
-    var c=s.str>=70?'#059669':s.str>=50?'#d97706':'#dc2626';
-    var isYours=s.alloc==='YOUR STOCK';
-    h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px'+(isYours?';background:#1A3A7806;border-radius:4px;padding:2px 4px':'')+'">';
-    h+='<div style="width:70px;font-size:8px;font-weight:'+(isYours?'900':'600')+';color:'+(isYours?'#1A3A78':'#6b7280')+';text-align:right">'+s.n+'</div>';
-    h+='<div style="flex:1;height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden"><div style="width:'+s.str+'%;height:100%;background:'+c+';border-radius:4px"></div></div>';
-    h+='<div style="width:28px;font-size:8px;font-weight:800;color:'+c+';text-align:right">'+s.str+'</div>';
-    if(isYours)h+='<span style="font-size:6px;font-weight:800;color:#1A3A78;background:#1A3A7810;padding:1px 4px;border-radius:2px">YOU</span>';
-    h+='</div>';
-  });
-  var yourSec=sectors.find(function(s){return s.alloc==='YOUR STOCK'});
-  var rank=yourSec?sectors.indexOf(yourSec)+1:0;
-  h+='<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:'+(rank<=3?'#05966906':'#d9770606')+';font-size:9px;color:#374151"><strong style="color:'+(rank<=3?'#059669':'#d97706')+'">📋 DECISION:</strong> '+sector+' ranks #'+rank+'/'+sectors.length+'. '+(rank<=3?'Sector strength supports your position. Hold/Add.':'Sector is underperforming. Be cautious — even good stocks struggle in weak sectors.')+'</div>';
-  h+='</div>';
-  return h;
+  if(!d)return'';
+  // A stock's RSI/beta is not a measured cross-sector performance universe.
+  // No source-backed sector comparison series is supplied to this renderer.
+  return '<div class="sector-comparison-card" style="padding:14px 16px;border-radius:12px;background:#fff;border:1px solid #e2e5ea;margin:10px 0"><div style="font-size:12px;font-weight:800;color:#475569;margin-bottom:8px">Sector relative strength</div><p style="font-size:12px;color:#64748b;margin:0">Sector comparison is unavailable. Comparable sector returns, a shared observation period and source timestamps are required before ranking sectors.</p></div>';
 };
 
 // ━━━ TRADER: Signal Strength Dashboard ━━━

@@ -3,11 +3,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '17 3 * * *'
+    - cron: '20 6 * * 1-5' # India: 11:50 IST
+    - cron: '20 16 * * 1-5' # US: 11:20 EST / 12:20 EDT
   push:
     branches: [main]
     paths: ['*.py', 'package.json', 'package-lock.json', 'index.html', 'static/**', 'discovery/**', 'trading/**', 'tests/**', 'qa/**', '.github/workflows/celesys-qa.yml']
   pull_request:
-    paths: ['*.py', 'package.json', 'package-lock.json', 'index.html', 'static/**', 'tests/**', 'qa/**']
+    paths: ['*.py', 'package.json', 'package-lock.json', 'index.html', 'static/**', 'discovery/**', 'trading/**', 'tests/**', 'qa/**']
 permissions:
   contents: read
 concurrency:
@@ -15,6 +17,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   code-and-live-audit:
+    if: github.event_name != 'schedule' || github.event.schedule == '17 3 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -48,15 +51,13 @@ jobs:
         with:
           path: qa-history
           key: celesys-qa-history-${{ github.ref_name }}-${{ github.run_id }}
-      - name: Read-only production data and page checks
-        if: github.event_name == 'workflow_dispatch'
-        run: python qa/audit.py --skip-tests --live https://celesys.ai --output qa-output/live
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: celesys-audit-results
           path: qa-output/
   browser-fixtures:
+    if: github.event_name != 'schedule' || github.event.schedule == '17 3 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -77,3 +78,45 @@ jobs:
           path: |
             qa-output/
             test-results/
+  live-data-monitor:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      QA_REGION: ${{ github.event.schedule == '20 6 * * 1-5' && 'IN' || github.event.schedule == '20 16 * * 1-5' && 'US' || 'both' }}
+      QA_SCOPE: ${{ github.event_name == 'workflow_dispatch' && 'full' || 'data' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache/restore@v4
+        with:
+          path: qa-live-history
+          key: celesys-live-history-${{ github.ref_name }}-${{ env.QA_SCOPE }}-${{ env.QA_REGION }}-${{ github.run_id }}
+          restore-keys: celesys-live-history-${{ github.ref_name }}-${{ env.QA_SCOPE }}-${{ env.QA_REGION }}-
+      - name: Paced read-only production checks
+        shell: bash
+        run: |
+          args=(--skip-tests --live https://celesys.ai --region "$QA_REGION" --output qa-output/live)
+          if [ "$QA_SCOPE" = data ]; then args+=(--live-data-only); fi
+          if [ -f qa-live-history/report.json ]; then args+=(--previous qa-live-history/report.json); fi
+          python qa/audit.py "${args[@]}"
+      - name: Preserve production evidence separately
+        if: always()
+        run: |
+          mkdir -p qa-live-history
+          if [ -f qa-output/live/report.json ]; then cp qa-output/live/report.json qa-live-history/report.json; fi
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: qa-live-history
+          key: celesys-live-history-${{ github.ref_name }}-${{ env.QA_SCOPE }}-${{ env.QA_REGION }}-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: celesys-live-results-${{ env.QA_SCOPE }}-${{ env.QA_REGION }}
+          path: qa-output/live/

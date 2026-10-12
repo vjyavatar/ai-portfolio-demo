@@ -2,7 +2,15 @@
 from datetime import datetime, timezone
 import math
 
-VERSION = 'trading-desk-1.3'
+VERSION = 'trading-desk-1.4'
+
+def source_symbol(symbol, region):
+    """Expected chart identity, including the adapter's supported index aliases."""
+    aliases = {'NIFTY':'^NSEI', 'BANKNIFTY':'^NSEBANK', 'SENSEX':'^BSESN',
+               'SPX':'^GSPC', 'NDX':'^NDX'}
+    if symbol in aliases:
+        return aliases[symbol]
+    return symbol + '.NS' if region == 'IN' and not symbol.endswith(('.NS', '.BO')) else symbol
 
 def number(value):
     if isinstance(value, bool): return None
@@ -32,9 +40,10 @@ def analyze_chart(payload, symbol, region, now):
         stage('Data steward','blocked','Provider returned no usable chart data.')
         return out
     raw=result[0];meta=raw.get('meta') or {}
-    if not isinstance(meta,dict) or meta.get('currency') != out['currency'] or meta.get('dataGranularity') != '5m':
-        stage('Data steward','blocked','Source currency or five-minute interval is unverified or mismatched.')
-        out['reason']='Source metadata does not match the selected market and interval.'
+    if (not isinstance(meta,dict) or meta.get('symbol') != source_symbol(symbol, region)
+            or meta.get('currency') != out['currency'] or meta.get('dataGranularity') != '5m'):
+        stage('Data steward','blocked','Source symbol, currency or five-minute interval is unverified or mismatched.')
+        out['reason']='Source metadata does not match the selected symbol, market and interval.'
         return out
     regular=((meta.get('currentTradingPeriod') or {}).get('regular') or {})
     start,end=number(regular.get('start')),number(regular.get('end'))
@@ -70,11 +79,14 @@ def analyze_chart(payload, symbol, region, now):
         stage('Data steward','blocked','Invalid, duplicated or missing session bars. No signal issued.');return out
     out['bars']=bars
     out['bar_close_time']=bars[-1]['time']+300 if bars else None
-    freshness=bool(quote_time and price and price>0 and 0<=now-quote_time<=300 and bars and 0<=now-out['bar_close_time']<=600)
+    # A quote from before the signal candle closed cannot confirm that breakout.
+    # Do not reuse a signal after another complete five-minute candle is missing.
+    freshness=bool(quote_time and price and price>0 and 0<=now-quote_time<=300 and bars
+        and 0<=now-out['bar_close_time']<=300 and quote_time>=out['bar_close_time'])
     enough=len(bars)>=21
     full_session=bool(bars and bars[0]['time']==start)
     stage('Data steward','pass' if freshness and enough and full_session else 'blocked',
-          f'{len(bars)} closed five-minute bars. '+('Recent source timestamps.' if freshness else 'Source timestamps missing or stale.')+('' if full_session else ' Session opening bars unavailable.'))
+          f'{len(bars)} closed five-minute bars. '+('Recent source timestamps.' if freshness else 'Source timestamps missing, stale or quote predates the signal close.')+('' if full_session else ' Session opening bars unavailable.'))
     stage('Session guard','pass' if market_open else 'blocked','Inside provider-reported regular session.' if market_open else 'Market closed or regular session could not be verified.')
     if not enough:
         out['reason']='Wait for at least 21 closed five-minute bars.'
@@ -99,12 +111,13 @@ def analyze_chart(payload, symbol, region, now):
     stage('Setup analyst','pass' if breakout and volume_ok else 'watch','Closed-bar breakout and volume confirmed.' if breakout and volume_ok else 'Needs a close beyond the prior three bars and relative volume ≥ 1.2×.')
     stage('Risk critic','pass' if not_extended else 'blocked','Within three ATR of VWAP.' if not_extended else 'Extended entry or missing volatility evidence; wait for a better location.')
     # A closed-bar setup is no longer usable if the current quote has reversed or run away.
-    quote_aligned=bool(price and atr>0 and (
+    quote_aligned=bool(freshness and price and atr>0 and (
         (direction=='BULLISH' and price>max(prior_high,vwap or 0) and price<=last['close']+0.75*atr) or
         (direction=='BEARISH' and price<min(prior_low,vwap or float('inf')) and price>=last['close']-0.75*atr)))
     stage('Quote guard','pass' if quote_aligned else 'blocked',
         'Current quote still supports the closed-bar setup, within 0.75 ATR of its close.' if quote_aligned else
-        'Current quote invalidated the breakout or moved too far beyond the signal close.')
+        ('Source quote or closed-bar timing is unverified; alignment cannot be confirmed.' if not freshness else
+         'Current quote invalidated the breakout or moved too far beyond the signal close.'))
     eligible=all((freshness,enough,full_session,market_open,breakout,volume_ok,not_extended,quote_aligned,atr>0))
     if eligible:
         out['verdict']='LONG_RESEARCH' if direction=='BULLISH' else 'BEARISH_RESEARCH'

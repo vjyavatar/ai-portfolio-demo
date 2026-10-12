@@ -20,6 +20,17 @@ def blocked(reason, direction=None):
 def fresh_timestamp(value, now):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= now-value <= 300
 
+def greek_timestamp(value, now):
+    """Require an explicit source timezone; never guess a naive timestamp's zone."""
+    if not isinstance(value, str): return None
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None or parsed.utcoffset() is None: return None
+        stamp = parsed.timestamp()
+        return stamp if 0 <= now-stamp <= 3600 else None
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+
 def assess(report, quotes, now):
     """quotes must originate in the server adapter, never a client-supplied report."""
     direction = {'LONG_RESEARCH':'CALL', 'BEARISH_RESEARCH':'PUT'}.get(report.get('verdict'))
@@ -54,15 +65,18 @@ def assess(report, quotes, now):
             if spread>0.10 or ask-bid>0.50: continue
             if any(number(q.get(k)) is None or number(q[k])<v for k,v in [('volume',100),('open_interest',500),('bidsize',1),('asksize',1)]): continue
             g=q.get('greeks') or {}
+            if not isinstance(g,dict): continue
             delta,iv=number(g.get('delta')),number(g.get('mid_iv'))
-            # Provider documents hourly estimates. Retain raw timestamp; don't infer its timezone.
-            if delta is None or iv is None or not 0<iv<=5 or not isinstance(g.get('updated_at'),str) or not g['updated_at'].startswith(today.isoformat()): continue
+            # Hourly provider estimates are not live Greeks. Ambiguous timing blocks candidates.
+            gt=greek_timestamp(g.get('updated_at'),now)
+            if delta is None or iv is None or not 0<iv<=5 or gt is None: continue
             if not (0.4<=delta<=0.65 if direction=='CALL' else -0.65<=delta<=-0.4): continue
             accepted.append(dict(contract=occ,expiry=expiry.isoformat(),strike=strike,bid=bid,ask=ask,
                 bid_time=bt/1000,ask_time=at/1000,spread_pct=spread*100,volume=q['volume'],
                 open_interest=q['open_interest'],delta=delta,iv=iv,greeks_updated_at=g['updated_at'],
+                greeks_source_time=gt,greeks_kind='HOURLY_PROVIDER_ESTIMATE_NOT_LIVE',
                 maximum_premium=ask,premium_at_risk=ask*100,expires_at=min(bt/1000+300,at/1000+300,
-                    report['quote_time']+300,report['bar_close_time']+300,report['session_end']),
+                    report['quote_time']+300,report['bar_close_time']+300,report['session_end'],gt+3600),
                 underlying_invalidation=scenario['stop'],underlying_target=scenario['target']))
         except (KeyError,ValueError,TypeError,OverflowError): continue
     if not accepted:

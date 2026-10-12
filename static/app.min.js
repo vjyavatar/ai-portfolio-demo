@@ -2180,6 +2180,7 @@ try{window._lastAnalysisData=data.live_data;
 setTimeout(function(){
   var _pqc=document.getElementById('premiumQualityContent');
   if(!_pqc||!window._lastAnalysisData)return;
+  try{
   var _d=window._lastAnalysisData;var _S=_d.currency==='INR'?'₹':'$';
   var _ih='';
   if(typeof _computeQualityScore==='function'){
@@ -2213,15 +2214,16 @@ setTimeout(function(){
   if(typeof _52weekGauge==='function')_ih+=_52weekGauge(_d,_S);
   if(typeof _peerCompBar==='function')_ih+=_peerCompBar(_d,_S);
   if(typeof _overviewGuide==='function')_ih=_overviewGuide()+_ih;
-  if(_ih)_pqc.innerHTML=_ih;
-},2000);}catch(e){}
+  _pqc.innerHTML=_ih||'<p>Supplementary analysis is unavailable. The stock report and source data remain available.</p>';
+  }catch(e){_pqc.textContent='Supplementary analysis could not be displayed. The stock report remains available.';console.warn('Supplementary analysis render failed');}
+},0);}catch(e){}
 try{
 const d=data.live_data,curr=d.currency==='INR'?'₹':'$',price=d.current_price;
 var _tt=document.getElementById('tickerTag');if(_tt)_tt.textContent=d.ticker;
 var _cn=document.getElementById('companyName');if(_cn)_cn.textContent=d.company_name||d.ticker;
 const scEl=document.getElementById('stickyCompany');if(scEl){scEl.textContent=(d.company_name||d.ticker)+' · '+curr+(price||0).toLocaleString();scEl.style.display='inline'}
 const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
-var _ts2=document.getElementById('timestamp');if(_ts2)_ts2.innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' · '+d.data_timestamp;
+var _ts2=document.getElementById('timestamp');if(_ts2){_ts2.textContent='Source timestamp'+srcLabel+' · '+(d.data_timestamp||'Unavailable');}
 
 // FORCE SHOW REPORT IMMEDIATELY — even before template renders
 var rpt=document.getElementById('report');
@@ -3212,6 +3214,7 @@ const firstVisible=document.querySelector('[data-tab="quick"][data-subtab="'+sub
 if(firstVisible)firstVisible.scrollIntoView({behavior:'instant',block:'start'});
 // Charts need resize after becoming visible
 if(sub==='technical'){setTimeout(function(){
+if(window._activeSubTab!=='technical'||window._activeGroup!=='overview')return;
 window.dispatchEvent(new Event('resize'));
 // Re-render charts if they were created while hidden (0x0 canvas)
 try{if(window._stockData)createCharts(window._stockData)}catch(e){console.warn('Chart re-render:',e)}
@@ -3473,7 +3476,7 @@ b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(-
 // 2) Show matching tab content (sections + inline data-tab elements)
 // dreamportfolio and multibagger render into the decision section's deResult
 var _showTab = tab;
-if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday'||tab==='positioning'||tab==='diamond'||tab==='smartmoney'||tab==='smv3') _showTab='decision';
+if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday'||tab==='positioning'||tab==='diamond'||tab==='smartmoney'||tab==='smv3'||tab==='analyst') _showTab='decision';
 // Show tab sections with animation
 document.querySelectorAll('.sc[data-tab="'+_showTab+'"]').forEach(function(s,idx){
 if(_showTab==='quick' && s.dataset.subtab) return;
@@ -5444,8 +5447,9 @@ el.scrollIntoView({behavior:'smooth',block:'start'});
 function createCharts(d){
 // Ensure chart container is visible during rendering (Chart.js needs non-zero dimensions)
 var _chartsCard=document.getElementById('chartsCard');
-// Show chartsCard ONLY within its proper subtab — never make it globally visible
-if(_chartsCard)_chartsCard.style.display='none';
+// Keep active technical charts measurable; hidden charts otherwise initialize at 0×0.
+var _showCharts=window._activeGroup==='overview'&&window._activeSubTab==='technical';
+if(_chartsCard)_chartsCard.style.display=_showCharts?'block':'none';
 if(valChart)valChart.destroy();if(trendChart)trendChart.destroy();if(healthChart)healthChart.destroy();if(riskChart)riskChart.destroy();if(marginChart)marginChart.destroy();
 const gc='rgba(0,47,108,.06)';
 Chart.defaults.color='#94a3b8';Chart.defaults.font.family="'DM Sans',sans-serif";Chart.defaults.responsive=true;Chart.defaults.maintainAspectRatio=false;
@@ -5592,8 +5596,8 @@ const verdict=beatsCount===3?'<strong style="color:var(--green)">Outperforms ind
 mvI.innerHTML=`<strong style="color:#06b6d4">vs Peers:</strong> ${verdict}. ${pm>0?'Profit margin '+pm.toFixed(1)+'% '+(pmBeat?'&#10003;':'&#10007;')+' | ':''} ${om>0?'Op. margin '+om.toFixed(1)+'% '+(omBeat?'&#10003;':'&#10007;')+' | ':''} ${roe>0?'ROE '+roe.toFixed(1)+'% '+(roeBeat?'&#10003;':'&#10007;'):''} <span style="color:var(--text3)">(&#10003;=beats avg, &#10007;=below avg)</span>`;
 }
 }
-// Charts rendered into hidden container — show only when subtab activates
-if(_chartsCard)_chartsCard.style.display='none';
+// Preserve technical-tab visibility after chart creation.
+if(_chartsCard)_chartsCard.style.display=_showCharts?'block':'none';
 }
 
 // SMALL CAP DATABASE (ALL sectors)
@@ -9587,6 +9591,10 @@ window._topTradesLoaded=true;
 }
 
 function _updateGamePlan(d,S){
+if(d.live_data_verified===false){
+[['gpMarketMode','HISTORICAL RESEARCH'],['gpStrategy','WAIT — current market data not verified'],['gpTip','Daily-history scenarios are not live entry prices. Use the timestamp-checked watchlist for current research.'],['gpDiscipline','No actionable trade is confirmed.']].forEach(function(pair){var node=document.getElementById(pair[0]);if(node)node.textContent=pair[1];});return;
+}
+
 var vi=d.volIntelligence||{};var oi=d.options_intel||{};
 var mode=document.getElementById('gpMarketMode');
 var strat=document.getElementById('gpStrategy');
@@ -9630,6 +9638,7 @@ var isUS=reg==='US';
 
 var h='<div style="padding:0;border-radius:12px;border:2px solid '+winC+'30;background:var(--surface);overflow:hidden;cursor:pointer;transition:transform .15s" onmouseover="this.style.transform=\'scale(1.01)\'" onmouseout="this.style.transform=\'scale(1)\'" onclick="algoSelect(\''+d.symbol+'\',null)">';
 
+if(d.live_data_verified===false)h+='<div class="ws-data-warning">Historical research · current quote and session not verified. No live trade confirmed.</div>';
 // Header bar
 h+='<div style="padding:10px 14px;background:'+dC+'08;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
 h+='<div style="display:flex;align-items:center;gap:8px">';
@@ -30215,6 +30224,7 @@ var _trd=d.trend||{};var _vix=Number(nse.vix||0);
 var _tPct=_trd.pct||0;
 var _grC=_grade.startsWith('A')?'#059669':_grade.startsWith('B')?'#1a56db':'#d97706';
 var h='';
+if(d.live_data_verified===false)h+='<div class="ws-data-warning" role="status">Historical research only. Daily-history prices and model scores are not verified live quotes or win probabilities. Use the five-minute watchlist for timestamp-checked research.</div>';
 
 // ═══ 🆕 MDO GUARDRAIL — Global decision authority ═══
 if(window._mdoState){var _ms=window._mdoState;
@@ -30257,7 +30267,7 @@ h+='<div style="text-align:center"><svg width="56" height="56" viewBox="0 0 56 5
 var _cl=2*3.14159*23;var _co=_cl*(1-_win/100);
 h+='<circle cx="28" cy="28" r="23" fill="none" stroke="'+(_win>=65?'#059669':_win>=50?'#d97706':'#dc2626')+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+_cl+'" stroke-dashoffset="'+_co+'" transform="rotate(-90 28 28)"/>';
 h+='<text x="28" y="26" text-anchor="middle" font-size="15" font-weight="900" fill="var(--text)" font-family="var(--mono)">'+_win+'</text>';
-h+='<text x="28" y="36" text-anchor="middle" font-size="6" fill="var(--text3)">%WIN</text></svg></div>';
+h+='<text x="28" y="36" text-anchor="middle" font-size="6" fill="var(--text3)">SCORE</text></svg></div>';
 h+='<div style="width:36px;height:36px;border-radius:50%;background:'+_grC+';display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px '+_grC+'40"><span style="font-size:14px;font-weight:900;color:#fff">'+_grade+'</span></div>';
 // GAUGE: Signal Strength
 try{if(typeof _riskGauge==='function'&&_win>0){h+=_riskGauge(_win,'SIGNAL',90);}}catch(e){}

@@ -33,7 +33,8 @@ GUIDES = {
 <h2>Review the process as well as the outcome</h2><p>Ask whether the evidence was available at the decision time, whether you followed your own rules, and whether a result depended on a favorable fill assumption. Track losses and periods without trades alongside winners. A short profitable sample is not a calibrated win probability.</p>
 <h2>Know the workspace's limits</h2><p>The desk does not send broker orders. Its stock paper journal does not simulate option fills. Research checks are deterministic rules, and the strategy has no independently audited out-of-sample performance. A WAIT result is a valid outcome when evidence is incomplete.</p>
 <p><a href="/trading/">Open the paper-trading desk</a> · <a href="/methodology">Read the data and methodology notes</a></p>''')}
-SEO_PATHS = ['/agents', '/', '/research', '/trading/', '/options/india', '/options/us', '/learn', '/methodology'] + ['/learn/'+s for s in GUIDES]
+# /research serves the homepage and canonicalizes to /; keep aliases out of the sitemap.
+SEO_PATHS = ['/agents', '/', '/trading/', '/options/india', '/options/us', '/learn', '/methodology'] + ['/learn/'+s for s in GUIDES]
 NAV = '<a class="brand" href="/">C<span>CELESYS<small>MARKET INTELLIGENCE</small></span></a><nav aria-label="Main navigation"><a href="/agents">Research agents</a><a href="/trading/">Trading desk</a><a href="/research">Stock research</a><a href="/options/india">Option chains</a><a href="/learn">Learn</a></nav>'
 
 

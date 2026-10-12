@@ -84,3 +84,15 @@ body.ws-unified{background:var(--ws-bg)!important;color:var(--ws-ink);font-famil
  .ws-unified .ws-topbar [data-ws-directory]{display:none}
  .ws-unified .ws-mode-tabs{flex-wrap:wrap;justify-content:flex-start}
 }
+
+.ws-data-warning{padding:14px 18px;margin-bottom:12px;border:1px solid #caa760;border-left:4px solid #a06d17;border-radius:8px;background:var(--ws-card);color:var(--ws-ink);font-size:13px;line-height:1.6}
+
+/* Scoped scanner disclosure and footer contrast. */
+#tw-panel>details>summary{display:flex!important;align-items:center;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;white-space:normal!important;color:var(--ws-ink)!important;font-size:15px!important;line-height:1.6!important}
+#tw-panel>details>summary:after{content:'+';margin-left:auto;padding-left:12px;color:var(--ws-accent);font-size:24px}
+#tw-panel>details[open]>summary:after{content:'−'}
+.ws-unified footer,.ws-unified footer p,.ws-unified footer a{color:#b6c7d7!important}
+.ws-unified footer a:hover{color:#fff!important}
+
+/* Legacy decorative glow extended 20% beyond the document on every viewport. */
+.ws-unified .hero::before{display:none!important}

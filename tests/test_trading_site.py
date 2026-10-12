@@ -109,3 +109,14 @@ class RouteTests(unittest.TestCase):
         self.assertIsNone(result['candidate'])
         self.assertFalse(result['execution_enabled'])
         self.assertEqual(self.client.get('/api/trading-desk/options?symbol=SPX').status_code,422)
+
+class FeedStatusTests(unittest.TestCase):
+    def test_readiness_exposes_only_configuration_and_never_claims_live_connection(self):
+        from trading_site import status
+        with patch('private_options.ready',return_value=True),patch('secure_access.configured',return_value=False):
+            d=status()
+        self.assertTrue(d['options_accounts']['IN']['configured'])
+        self.assertFalse(d['options_accounts']['IN']['connection_verified'])
+        self.assertFalse(d['authentication']['configured'])
+        self.assertFalse(d['live_latency_guaranteed'])
+        self.assertNotIn('token',str(d).lower())

@@ -12983,7 +12983,7 @@ Trading Desk monitoring requires an open visible browser tab. Option-chain publi
 async def sitemap():
     from discovery_site import SEO_PATHS
     pages = [
-        ("https://celesys.ai", "daily", "1.0"),
+        ("https://celesys.ai/", "daily", "1.0"),
         ("https://celesys.ai/about", "monthly", "0.8"),
         ("https://celesys.ai/faq", "monthly", "0.9"),
         ("https://celesys.ai/privacy", "monthly", "0.5"),
@@ -21525,18 +21525,59 @@ async def health_check():
     return {"sources": results, "working": working, "count": len(working), "fix": fix}
 
 
+def _legacy_algo_research_guard(result):
+    """Legacy daily-history calculations do not prove a live trading opportunity.
+
+    Reapply to cached responses too. This adapter has no independently verified
+    quote/session timestamps, so a response's own flags cannot enable execution.
+    """
+    from copy import deepcopy
+    if not isinstance(result, dict):
+        return {"success": False, "error": "Legacy research response is invalid."}
+    out = deepcopy(result)
+    if not out.get("success"):
+        return out
+    warning = ("Historical research only. Current quote, closed-bar timing and market session "
+               "are not verified in this legacy engine. Calculated levels and model option "
+               "premiums are illustrative; no current trade candidate is confirmed.")
+    out.setdefault("research_signal", out.get("signal"))
+    out.setdefault("research_confidence", out.get("confidence"))
+    out.update(signal="HOLD / WAIT", confidence="UNVERIFIED", tradeable=False,
+               live_data_verified=False, data_mode="HISTORICAL_RESEARCH_ONLY",
+               data_warning=warning, timestamp_kind="COMPUTATION_TIME_NOT_QUOTE_TIME")
+    # Preserve analytical fields and chart data while disabling actionable flags
+    # throughout nested plans, including pre-guard cached payloads.
+    def mark_research(value):
+        if isinstance(value, dict):
+            for key in ("tradeable", "tradable"):
+                if key in value: value[key] = False
+            for child in value.values(): mark_research(child)
+        elif isinstance(value, list):
+            for child in value: mark_research(child)
+    mark_research(out)
+    if isinstance(out.get("trade"), dict):
+        out["trade"].update(tradeable=False, data_mode=out["data_mode"], data_warning=warning)
+    if isinstance(out.get("engines"), dict):
+        engines = out["engines"]
+        engines.setdefault("research_decision", engines.get("decision"))
+        engines.setdefault("research_decision_reason", engines.get("decisionReason"))
+        engines.update(decision="WAIT", decisionReason=warning, data_mode=out["data_mode"],
+                       live_data_verified=False)
+    return out
+
+
 @app.get("/api/algo-signal")
 async def algo_signal_safe(symbol: str = "NIFTY", region: str = ""):
-    """Wrapper that guarantees JSON response even on crash. 3-min cache."""
+    """Historical research response with a 10-minute calculation cache; never a live quote."""
     from datetime import datetime, timedelta
     symbol = symbol.upper().strip().replace(".NS","").replace(".BO","").replace("^NSEI","NIFTY").replace("^NSEBANK","BANKNIFTY").replace("^BSESN","SENSEX")
     now = datetime.utcnow()
     cache_key = f"{symbol}_{region}"
     if cache_key in _algo_cache and cache_key in _algo_cache_ts:
         if (now - _algo_cache_ts[cache_key]).total_seconds() < 600:
-            return _algo_cache[cache_key]
+            return _legacy_algo_research_guard(_algo_cache[cache_key])
     try:
-        result = await asyncio.wait_for(_algo_signal_impl(symbol, region), timeout=25)
+        result = _legacy_algo_research_guard(await asyncio.wait_for(_algo_signal_impl(symbol, region), timeout=25))
         _algo_cache[cache_key] = result
         _algo_cache_ts[cache_key] = now
         return result
@@ -21636,62 +21677,14 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     _loop = asyncio.get_event_loop()
     
     if not is_us:
-        # ═══ INDIA: NSE → Google Finance → yfinance (last resort) ═══
+        # Price-only NSE chart points do not supply OHLCV candles. The legacy
+        # conversion invented highs/lows and one-million-unit volumes, and the
+        # historical index conversion discarded dates and invented volume too.
+        # Use genuine timestamped history until a validated NSE OHLCV adapter exists.
         import pandas as pd
-        _nse_idx_map = {"NIFTY": "NIFTY 50", "BANKNIFTY": "NIFTY BANK", "FINNIFTY": "NIFTY FIN SERVICE",
-                        "MIDCPNIFTY": "NIFTY MIDCAP SELECT", "NIFTYIT": "NIFTY IT", "SENSEX": "SENSEX", "BANKEX": "BSE BANKEX"}
-        _is_nse_index = symbol in _nse_idx_map
-        
-        # ── SOURCE 1: NSE Chart Data API (intraday + daily history) ──
-        try:
-            if _is_nse_index:
-                _nse_chart = await _loop.run_in_executor(None, lambda: _nse_get(f"https://www.nseindia.com/api/chart-databyindex?index={_nse_idx_map[symbol]}&indices=true"))
-            else:
-                _nse_chart = await _loop.run_in_executor(None, lambda: _nse_get(f"https://www.nseindia.com/api/chart-databyindex?index={symbol}EQN"))
-            if _nse_chart and _nse_chart.get("gpiData"):
-                _gpi = _nse_chart["gpiData"]
-                # gpiData = [[timestamp_ms, price], ...] — intraday/recent
-                if len(_gpi) >= 20:
-                    _prices = [float(x[1]) for x in _gpi if x[1] is not None]
-                    if len(_prices) >= 20:
-                        daily = pd.DataFrame({
-                            "Close": _prices,
-                            "Open": _prices,
-                            "High": [p * 1.002 for p in _prices],
-                            "Low": [p * 0.998 for p in _prices],
-                            "Volume": [1000000] * len(_prices),
-                        })
-                        print(f"  ✅ NSE chart API: {len(daily)} points for {symbol}")
-        except Exception as _nc_err:
-            print(f"  ⚠️ NSE chart API: {_nc_err}")
-        
-        # ── SOURCE 2: NSE Historical Index Data (better for indices) ──
-        if (daily is None or len(daily) < 30) and _is_nse_index:
-            try:
-                from datetime import datetime as _hdt, timedelta as _htd
-                _to = _hdt.utcnow() + _htd(hours=5, minutes=30)
-                _from = _to - _htd(days=365)
-                _hist_url = f"https://www.nseindia.com/api/historical/indicesHistory?indexType={_nse_idx_map[symbol].replace(' ','%20')}&from={_from.strftime('%d-%m-%Y')}&to={_to.strftime('%d-%m-%Y')}"
-                _hist = await _loop.run_in_executor(None, lambda: _nse_get(_hist_url))
-                if _hist and _hist.get("data"):
-                    _hdata = _hist["data"]
-                    if len(_hdata) >= 20:
-                        _cls = [float(d.get("CLOSE", d.get("close", 0))) for d in _hdata if d.get("CLOSE") or d.get("close")]
-                        _opn = [float(d.get("OPEN", d.get("open", 0))) for d in _hdata if d.get("CLOSE") or d.get("close")]
-                        _hi = [float(d.get("HIGH", d.get("high", 0))) for d in _hdata if d.get("CLOSE") or d.get("close")]
-                        _lo = [float(d.get("LOW", d.get("low", 0))) for d in _hdata if d.get("CLOSE") or d.get("close")]
-                        if len(_cls) >= 20:
-                            daily = pd.DataFrame({"Close": _cls, "Open": _opn, "High": _hi, "Low": _lo, "Volume": [1000000]*len(_cls)})
-                            print(f"  ✅ NSE historical: {len(daily)} days for {symbol}")
-            except Exception as _nh_err:
-                print(f"  ⚠️ NSE historical: {_nh_err}")
-        
-        # Spot-only quotes cannot reconstruct historical OHLCV. Never manufacture bars.
-        # Continue to the genuine historical provider; fail closed if history is unavailable.
-        # ── SOURCE 6: yfinance as LAST RESORT for India (cache was cleared at startup) ──
         if daily is None or len(daily) < 5:
             try:
-                print(f"  🔄 Last resort: yfinance for {yf_sym} (cache cleared at startup)")
+                print(f"  🔄 Genuine OHLCV history: yfinance for {yf_sym}")
                 _yahoo_rate_wait()
 
                 tk = yf.Ticker(yf_sym)
@@ -25119,7 +25112,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         print(f"  ⚠️ priceHistory error: {ph_err}")
     
     print(f"🎯 Algo Signal: {symbol} → {result.get('signal','')} ({result.get('supports',0)}/{result.get('totalFactors',0)}) {result.get('direction','')}")
-    return result
+    return _legacy_algo_research_guard(result)
 
 
 
@@ -57482,7 +57475,7 @@ async def today_page(email: str = ""):
 </div>
 </body>
 </html>"""
-        return HTMLResponse(content=locked_html, status_code=403)
+        return HTMLResponse(content=locked_html, status_code=403, headers={"X-Robots-Tag": "noindex, nofollow", "Cache-Control": "no-store"})
     
     html = r"""<!DOCTYPE html>
 <html lang="en">
@@ -58324,7 +58317,7 @@ setInterval(celesysToday.refresh, 5 * 60 * 1000);
 </script>
 </body>
 </html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, headers={"X-Robots-Tag": "noindex, nofollow", "Cache-Control": "no-store"})
 
 
 

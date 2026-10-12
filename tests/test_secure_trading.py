@@ -55,9 +55,70 @@ class SecurityTests(unittest.TestCase):
   tree=ast.parse(Path('api.py').read_text());n=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name=='_algo_signal_impl')
   self.assertNotIn('_prices_syn',ast.get_source_segment(Path('api.py').read_text(),n))
 
+ def test_algo_rejects_price_only_nse_points_and_fabricated_volumes(self):
+  source=Path('api.py').read_text();tree=ast.parse(source)
+  function=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name=='_algo_signal_impl')
+  segment=ast.get_source_segment(source,function)
+  # These endpoints supplied price points or date-less index rows, not validated OHLCV.
+  for endpoint in ('chart-databyindex','indicesHistory','gpiData'):
+   self.assertNotIn(endpoint,segment)
+  history_assignments=[]
+  for node in ast.walk(function):
+   if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='daily' for t in node.targets):
+    self.assertFalse(any(isinstance(c,ast.Call) and isinstance(c.func,ast.Attribute) and c.func.attr=='DataFrame' for c in ast.walk(node.value)), 'Daily history must not be reconstructed from substitute OHLCV fields')
+    if isinstance(node.value,ast.Await):history_assignments.append(node.value)
+  self.assertEqual(len(history_assignments),2, 'Both India and US must retain their genuine-history provider path')
+  for assignment in history_assignments:
+   calls=[n for n in ast.walk(assignment) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='history']
+   self.assertEqual(len(calls),1)
+   self.assertEqual({k.arg:ast.literal_eval(k.value) for k in calls[0].keywords},{'period':'1y','interval':'1d'})
+  self.assertIn('Genuine historical data is unavailable',segment)
+
  def test_stock_intelligence_does_not_randomize_historical_bars(self):
   tree=ast.parse(Path('api.py').read_text());n=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name=='_run_stock_intel')
   self.assertNotIn('random.uniform',ast.get_source_segment(Path('api.py').read_text(),n))
+
+ def legacy_guard_scope(self):
+  import asyncio
+  tree=ast.parse(Path('api.py').read_text());scope={'asyncio':asyncio,'_algo_cache':{},'_algo_cache_ts':{}}
+  for name in ('_legacy_algo_research_guard','algo_signal_safe'):
+   node=next(n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name==name)
+   node.decorator_list=[];exec(compile(ast.Module(body=[node],type_ignores=[]),'legacy-guard','exec'),scope)
+  return scope
+
+ def test_legacy_guard_preserves_research_and_is_idempotent(self):
+  guard=self.legacy_guard_scope()['_legacy_algo_research_guard']
+  raw={'success':True,'signal':'STRONG BUY','confidence':'HIGH','timestamp':'10:30 AM IST',
+       'live_data_verified':True,'trade':{'tradeable':True,'entry':100},'priceHistory':[98,99,100],
+       'engines':{'decision':'BUY','decisionReason':'Weighted factors','finalScore':82},
+       'plans':[{'tradable':True,'entry':2.5}]}
+  out=guard(raw)
+  self.assertEqual(out['research_signal'],'STRONG BUY');self.assertEqual(out['research_confidence'],'HIGH')
+  self.assertEqual(out['signal'],'HOLD / WAIT');self.assertEqual(out['confidence'],'UNVERIFIED')
+  self.assertFalse(out['trade']['tradeable']);self.assertFalse(out['plans'][0]['tradable']);self.assertFalse(out['live_data_verified'])
+  self.assertEqual(out['engines']['research_decision'],'BUY');self.assertEqual(out['engines']['decision'],'WAIT')
+  self.assertEqual(out['engines']['finalScore'],82);self.assertEqual(out['trade']['entry'],100)
+  self.assertEqual(out['priceHistory'],raw['priceHistory']);self.assertNotIn('quote_time',out)
+  self.assertEqual(out['data_mode'],'HISTORICAL_RESEARCH_ONLY')
+  self.assertEqual(out['timestamp_kind'],'COMPUTATION_TIME_NOT_QUOTE_TIME')
+  self.assertEqual(guard(out),out);self.assertTrue(raw['trade']['tradeable']);self.assertEqual(raw['signal'],'STRONG BUY')
+
+ def test_legacy_wrapper_guards_fresh_and_preexisting_cached_results(self):
+  import asyncio
+  from datetime import datetime
+  from unittest.mock import AsyncMock
+  scope=self.legacy_guard_scope();raw={'success':True,'signal':'BUY','confidence':'HIGH','trade':{'tradeable':True}}
+  upstream=AsyncMock(return_value=raw);scope['_algo_signal_impl']=upstream
+  fresh=asyncio.run(scope['algo_signal_safe']('SPY','US'))
+  self.assertFalse(fresh['trade']['tradeable']);self.assertEqual(fresh['research_signal'],'BUY')
+  scope['_algo_cache']['SPY_US']=raw;scope['_algo_cache_ts']['SPY_US']=datetime.utcnow()
+  cached=asyncio.run(scope['algo_signal_safe']('SPY','US'))
+  self.assertEqual(cached,fresh);self.assertEqual(upstream.await_count,1)
+  self.assertTrue(raw['trade']['tradeable'])
+
+ def test_legacy_guard_does_not_turn_provider_failures_into_research(self):
+  guard=self.legacy_guard_scope()['_legacy_algo_research_guard'];failure={'success':False,'error':'History unavailable'}
+  self.assertEqual(guard(failure),failure);self.assertFalse(guard(None)['success'])
 
  def test_actual_global_handlers_preserve_denials_and_hide_internal_errors(self):
   from fastapi import Request,HTTPException
