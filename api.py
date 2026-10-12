@@ -12983,7 +12983,7 @@ Trading Desk monitoring requires an open visible browser tab. Option-chain publi
 async def sitemap():
     from discovery_site import SEO_PATHS
     pages = [
-        ("https://celesys.ai", "daily", "1.0"),
+        ("https://celesys.ai/", "daily", "1.0"),
         ("https://celesys.ai/about", "monthly", "0.8"),
         ("https://celesys.ai/faq", "monthly", "0.9"),
         ("https://celesys.ai/privacy", "monthly", "0.5"),
@@ -57482,7 +57482,7 @@ async def today_page(email: str = ""):
 </div>
 </body>
 </html>"""
-        return HTMLResponse(content=locked_html, status_code=403)
+        return HTMLResponse(content=locked_html, status_code=403, headers={"X-Robots-Tag": "noindex, nofollow", "Cache-Control": "no-store"})
     
     html = r"""<!DOCTYPE html>
 <html lang="en">
@@ -58324,7 +58324,7 @@ setInterval(celesysToday.refresh, 5 * 60 * 1000);
 </script>
 </body>
 </html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, headers={"X-Robots-Tag": "noindex, nofollow", "Cache-Control": "no-store"})
 
 
 

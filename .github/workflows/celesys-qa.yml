@@ -7,7 +7,7 @@ on:
     branches: [main]
     paths: ['*.py', 'package.json', 'package-lock.json', 'index.html', 'static/**', 'discovery/**', 'trading/**', 'tests/**', 'qa/**', '.github/workflows/celesys-qa.yml']
   pull_request:
-    paths: ['*.py', 'package.json', 'package-lock.json', 'index.html', 'static/**', 'tests/**', 'qa/**']
+    paths: ['*.py', 'package.json', 'package-lock.json', 'index.html', 'static/**', 'discovery/**', 'trading/**', 'tests/**', 'qa/**']
 permissions:
   contents: read
 concurrency:

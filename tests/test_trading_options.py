@@ -14,7 +14,7 @@ class OptionsTests(unittest.TestCase):
             option_type='call',contract_size=100,expiration_date='2026-10-05',strike=700,
             bid=3,ask=3.1,bid_date=(self.now-1)*1000,ask_date=(self.now-1)*1000,
             volume=500,open_interest=1000,bidsize=10,asksize=10,
-            greeks=dict(delta=.55,mid_iv=.25,updated_at='2026-10-02 15:59:00'))
+            greeks=dict(delta=.55,mid_iv=.25,updated_at='2026-10-02T15:59:00+00:00'))
         o._cache.clear();o._retry_at=0
     def test_call_and_put(self):
         for direction,verdict,sign in [('call','LONG_RESEARCH',1),('put','BEARISH_RESEARCH',-1)]:
@@ -42,6 +42,28 @@ class OptionsTests(unittest.TestCase):
                 self.assertEqual(o.assess(r,[self.q],self.now)['status'],'WAIT')
     def test_cache_never_renews_quote(self):
         self.assertEqual(o.assess(self.r,[self.q],self.now+301)['status'],'WAIT')
+    def test_future_greek_timestamp_blocks(self):
+        q=deepcopy(self.q);q['greeks']['updated_at']='2026-10-02T16:00:01Z'
+        self.assertEqual(o.assess(self.r,[q],self.now)['status'],'WAIT')
+    def test_malformed_greek_timestamp_blocks(self):
+        for value in ('2026-10-02garbage','2026-10-02T99:99:00Z',None,123):
+            q=deepcopy(self.q);q['greeks']['updated_at']=value
+            self.assertEqual(o.assess(self.r,[q],self.now)['status'],'WAIT')
+    def test_old_greek_timestamp_blocks(self):
+        q=deepcopy(self.q);q['greeks']['updated_at']='2026-10-02T14:59:59+00:00'
+        self.assertEqual(o.assess(self.r,[q],self.now)['status'],'WAIT')
+    def test_naive_greek_timestamp_blocks_without_timezone_guess(self):
+        for value in ('2026-10-02 15:59:00','2026-10-02'):
+            q=deepcopy(self.q);q['greeks']['updated_at']=value
+            self.assertEqual(o.assess(self.r,[q],self.now)['status'],'WAIT')
+    def test_explicit_offsets_and_hourly_estimate_expiration(self):
+        for value in ('2026-10-02T15:00:10Z','2026-10-02T11:00:10-04:00','2026-10-02T20:30:10+05:30'):
+            q=deepcopy(self.q);q['greeks']['updated_at']=value
+            d=o.assess(self.r,[q],self.now)
+            self.assertEqual(d['status'],'BUY_CALL_CANDIDATE')
+            self.assertEqual(d['candidate']['expires_at'],self.now+10)
+            self.assertEqual(d['candidate']['greeks_kind'],'HOURLY_PROVIDER_ESTIMATE_NOT_LIVE')
+            self.assertEqual(o.assess(self.r,[q],self.now+11)['status'],'WAIT')
     def test_disabled_never_networks(self):
         with patch.dict(os.environ,{},clear=True),patch('trading_options._get') as get:
             self.assertEqual(o.option_research(self.r)['status'],'WAIT');get.assert_not_called()

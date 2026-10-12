@@ -28,6 +28,36 @@ class DiscoveryTests(unittest.TestCase):
             self.assertEqual(r.text.count('<h1>'),1,path)
         self.assertIn('Less noise.',home_page())
         self.assertEqual(self.client.get('/learn/not-a-guide').status_code,404)
+    def seo_function(self, name):
+        # Execute just the route under test: importing the full legacy API starts integrations.
+        import ast
+        from pathlib import Path
+        from fastapi.responses import Response
+        node=next(n for n in ast.parse(Path('api.py').read_text()).body if isinstance(n,ast.AsyncFunctionDef) and n.name==name)
+        node.decorator_list=[]
+        scope={'Response':Response,'check_premium_gate':lambda email,tier:(False,email)}
+        exec(compile(ast.Module(body=[node],type_ignores=[]),'seo-route','exec'),scope)
+        return scope
+    def test_sitemap_lists_canonicals_without_private_or_duplicate_research_alias(self):
+        import asyncio
+        import xml.etree.ElementTree as ET
+        response=asyncio.run(self.seo_function('sitemap')['sitemap']())
+        locs=[n.text for n in ET.fromstring(response.body).iter('{http://www.sitemaps.org/schemas/sitemap/0.9}loc')]
+        self.assertEqual(len(locs),len(set(locs)))
+        self.assertIn('https://celesys.ai/',locs)
+        for excluded in ['https://celesys.ai','https://celesys.ai/research','https://celesys.ai/today']:
+            self.assertNotIn(excluded,locs)
+        for path in SEO_PATHS:self.assertIn('https://celesys.ai'+path,locs)
+    def test_private_today_page_and_denial_are_not_indexable_or_cached(self):
+        import asyncio
+        scope=self.seo_function('today_page')
+        for allowed in (False,True):
+            scope['check_premium_gate']=lambda email,tier:(allowed,email)
+            response=asyncio.run(scope['today_page']('fixture@example.invalid'))
+            self.assertEqual(response.status_code,200 if allowed else 403)
+            self.assertEqual(response.headers['x-robots-tag'],'noindex, nofollow')
+            self.assertEqual(response.headers['cache-control'],'no-store')
+
     def test_public_feed_disabled_without_network(self):
         with patch.dict(os.environ,{},clear=True),patch('option_chain.urlopen') as call:
             r=self.client.get('/api/option-chain');self.assertEqual(r.json()['status'],'UNAVAILABLE')

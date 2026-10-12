@@ -2,7 +2,16 @@
 export function fresh(report, now = Date.now() / 1000) {
   return (
     !!report &&
+    report.market_status === "OPEN" &&
+    Number.isFinite(report.session_start) &&
+    Number.isFinite(report.session_end) &&
+    report.session_start <= now && now < report.session_end &&
     Number.isFinite(report.quote_time) &&
+    Number.isFinite(report.bar_close_time) &&
+    report.bar_close_time >= report.session_start &&
+    report.quote_time >= report.bar_close_time &&
+    now >= report.bar_close_time &&
+    now - report.bar_close_time <= 300 &&
     now >= report.quote_time &&
     now - report.quote_time <= 300
   );

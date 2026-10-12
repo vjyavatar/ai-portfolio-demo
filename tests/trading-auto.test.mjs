@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { account, autoPaper } from "../trading/paper.mjs";
-const r={symbol:"SPY",region:"US",source:"test fixture",mode:"RESEARCH_ONLY",quote_time:1000,market_status:"OPEN",session_start:500,session_end:2000,price:100,scenario:{entry:100,stop:99,target:102},verdict:"LONG_RESEARCH",paper_eligible:true,stages:[{status:"pass"}]};
+const r={symbol:"SPY",region:"US",source:"test fixture",mode:"RESEARCH_ONLY",quote_time:1000,bar_close_time:1000,market_status:"OPEN",session_start:500,session_end:2000,price:100,scenario:{entry:100,stop:99,target:102},verdict:"LONG_RESEARCH",paper_eligible:true,stages:[{status:"pass"}]};
 test("automatic paper entry deduplicates, exits at observed price and cannot reenter",()=>{
  const a=account(2000);
  assert.match(autoPaper(a,r,.5,1001),/Opened/);

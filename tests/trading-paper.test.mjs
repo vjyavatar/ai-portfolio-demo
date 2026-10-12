@@ -6,12 +6,16 @@ import {
   openPaper,
   closePaper,
   observedExits,
+  fresh,
 } from "../trading/paper.mjs";
 const report = () => ({
   symbol: "SPY",
   region: "US",
   market_status: "OPEN",
   quote_time: 1000,
+  bar_close_time: 1000,
+  session_start: 500,
+  session_end: 2000,
   price: 100,
   paper_eligible: true,
   source: "TEST",
@@ -68,4 +72,26 @@ test("daily realized loss guard blocks further entries", () => {
   const a = account();
   a.closed.push({ closedAt: 1000, pnl: -20 });
   assert.throws(() => openPaper(report(), a, 0.5, 1000), /loss guard/);
+});
+test("freshness requires the session and closed-bar evidence, not only a recent quote", () => {
+  for (const patch of [
+    { session_start: undefined }, { session_end: undefined },
+    { session_start: 1002 }, { session_end: 1001 },
+    { bar_close_time: undefined }, { bar_close_time: 700 },
+    { bar_close_time: 1002 }, { quote_time: 999 },
+    { market_status: "CLOSED_OR_UNVERIFIED" },
+  ]) {
+    const r = { ...report(), ...patch };
+    assert.equal(fresh(r, 1001), false);
+    assert.throws(() => openPaper(r, account(), 0.5, 1001));
+  }
+});
+test("stale bars and elapsed session cannot fabricate observed exits", () => {
+  for (const patch of [{bar_close_time: 700}, {session_end: 1001}]) {
+    const a = account(); openPaper(report(), a, 0.5, 1000);
+    const r = {...report(), price: 90, ...patch};
+    assert.equal(observedExits(a, r, 1001), 0);
+    assert.throws(() => closePaper(a, a.positions[0].id, r, "MANUAL", 1001));
+    assert.equal(a.positions.length, 1);
+  }
 });

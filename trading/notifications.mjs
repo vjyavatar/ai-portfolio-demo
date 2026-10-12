@@ -11,7 +11,7 @@ export function candidate(report, now = Date.now() / 1000) {
   return {
     id: [report.region, report.symbol, report.verdict, report.session_start].join(":"),
     symbol: report.symbol, region: report.region, verdict: report.verdict,
-    created: now, expires: Math.min(report.quote_time + 300, report.session_end),
+    created: now, expires: Math.min(report.quote_time + 300, report.bar_close_time + 300, report.session_end),
     sourceTime: report.quote_time, reason: report.reason,
   };
 }
