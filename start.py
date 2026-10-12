@@ -40,3 +40,12 @@ try:
 except Exception:
     import logging
     logging.getLogger(__name__).exception("Trading Desk unavailable; existing routes remain active")
+
+# Search-friendly discovery and read-only India/US option snapshots.
+from discovery_site import attach_discovery
+try:
+    from api import _upstox_access_token, stock_dashboard
+except ImportError:
+    _upstox_access_token = None
+    stock_dashboard = None
+attach_discovery(app, _upstox_access_token, stock_dashboard)

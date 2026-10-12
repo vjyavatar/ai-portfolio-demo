@@ -3823,6 +3823,12 @@ app.add_middleware(DomainRedirectMiddleware)
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
+    from discovery_site import home_page
+    return home_page()
+
+
+@app.get("/research", response_class=HTMLResponse)
+async def legacy_research():
     try:
         with open("index.html", "r") as f:
             return f.read()
@@ -13117,7 +13123,6 @@ async def health():
         "reports_generated": report_counter["count"],
         "version": "1.0-VERIFIED-REALTIME",
         "api_key_set": bool(ANTHROPIC_API_KEY),
-        "api_key_preview": (ANTHROPIC_API_KEY[:8] + "...") if ANTHROPIC_API_KEY else "NOT SET",
         "active_rate_limits": len(email_rate_limiter),
         "global_requests_last_min": len(global_request_log),
         "stock_cache_entries": len(stock_data_cache),
@@ -13257,51 +13262,26 @@ Sitemap: https://celesys.ai/nextstep/sitemap.xml
 
 @app.get("/llms.txt", response_class=PlainTextResponse)
 async def llms_txt():
-    return """# Celesys AI — llms.txt
-# https://celesys.ai
+    return """# Celesys AI
+Educational stock research, deterministic trading checks and option-chain exploration for India and the US. Availability and timeliness vary by source. Scores are not calibrated probabilities. No guaranteed returns.
 
-## About
-Celesys AI is a free, AI-powered stock analysis platform for retail investors.
-It generates institutional-grade research reports in 60 seconds for US (NYSE, NASDAQ)
-and Indian (NSE, BSE) stock markets. No signup required.
+- Home: https://celesys.ai/
+- Three-mode research agents: https://celesys.ai/agents
+- Stock research: https://celesys.ai/research
+- Trading and browser-local paper journal: https://celesys.ai/trading/
+- India option chains: https://celesys.ai/options/india
+- US option chains: https://celesys.ai/options/us
+- Learning guides: https://celesys.ai/learn
+- Data and methodology: https://celesys.ai/methodology
+- Risk disclosure: https://celesys.ai/disclaimer
 
-## Core Features
-- Real-time stock price data and live market indicators
-- 8-factor deterministic stock verdict engine (Strong Buy / Buy / Hold / Sell / Strong Sell)
-- Intrinsic value calculations: Graham Number, DCF growth model, Peter Lynch fair value, earnings yield vs bond
-- AI-generated buy/sell price targets with entry and exit levels
-- Quarterly earnings analysis with QoQ and YoY growth trends
-- Management tone and CEO/CFO confidence assessment
-- Financial health radar: profit margin, ROE, current ratio, operating margin, debt-to-equity
-- Risk profile scoring: volatility (beta), debt, liquidity, valuation risk, sector risk
-- Valuation metrics: P/E ratio, P/B ratio, dividend yield, forward P/E
-- 6-month historical price trend chart with real monthly close data
-- Margin vs industry comparison benchmarking
-- Hidden small-cap and micro-cap stock recommendations with growth potential ratings
-- Smart Trades: daily AI-generated index and stock trade ideas using 10-factor scoring with NSE option chain data
-- Curated stock picks across 6 categories: large-cap, mid-cap, small-cap, niche/moat, micro-cap multibagger, best indices
-- Global market indices live ticker: S&P 500, NASDAQ, Dow Jones, Nifty 50, Sensex, FTSE 100, DAX, Nikkei 225
-
-## Pages
-- Home: https://celesys.ai — Main stock analysis tool
-- About: https://celesys.ai/about — Company mission and how it works
-- FAQ: https://celesys.ai/faq — Frequently asked questions
-- Privacy: https://celesys.ai/privacy — Privacy policy
-- Terms: https://celesys.ai/terms — Terms of service
-- Disclaimer: https://celesys.ai/disclaimer — Investment disclaimer
-
-## Data Sources
-Real-time market data sourced from Yahoo Finance, Google Finance, NSE India, and Screener.in.
-AI analysis powered by Anthropic Claude. All data is for educational purposes only.
-
-## Contact
-Email: contact@celesys.ai
-Website: https://celesys.ai
+Trading Desk monitoring requires an open visible browser tab. Option-chain public display requires operator-enabled authorized feeds. Fetch time is not quote time. Missing inputs remain unavailable. No real-money orders are placed by these workspaces.
 """
+
 
 @app.get("/sitemap.xml", response_class=Response)
 async def sitemap():
-    today = datetime.now().strftime('%Y-%m-%d')
+    from discovery_site import SEO_PATHS
     pages = [
         ("https://celesys.ai", "daily", "1.0"),
         ("https://celesys.ai/about", "monthly", "0.8"),
@@ -13311,9 +13291,10 @@ async def sitemap():
         ("https://celesys.ai/disclaimer", "monthly", "0.5"),
         ("https://celesys.ai/contact", "monthly", "0.6"),
     ]
+    known = {loc.rstrip("/") for loc, _, _ in pages}
+    pages.extend(("https://celesys.ai"+path, "weekly", "0.8") for path in SEO_PATHS if ("https://celesys.ai"+path).rstrip("/") not in known)
     urls = "\n".join([f"""  <url>
     <loc>{loc}</loc>
-    <lastmod>{today}</lastmod>
     <changefreq>{freq}</changefreq>
     <priority>{pri}</priority>
   </url>""" for loc, freq, pri in pages])
