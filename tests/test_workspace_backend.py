@@ -53,4 +53,11 @@ class WorkspaceBackendTests(unittest.TestCase):
         converted=scope['NaNSafeEncoder']()._sanitize({'flag':NumBool(),'rows':Array()})
         self.assertEqual(json.dumps(converted,allow_nan=False),'{'+'"flag": true, "rows": [true, null]'+'}')
         fn=self.function('decision_engine')
-        self.assertTrue(any(isinstance(n,ast.Return) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Attribute) and n.value.func.attr=='_sanitize' for n in ast.walk(fn)))
+        returns=[n.value for n in ast.walk(fn) if isinstance(n,ast.Return)]
+        guarded=next(n for n in returns if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='_decision_research_guard')
+        self.assertEqual(len(guarded.args),1)
+        sanitized=guarded.args[0]
+        self.assertIsInstance(sanitized,ast.Call)
+        self.assertIsInstance(sanitized.func,ast.Attribute)
+        self.assertEqual(sanitized.func.attr,'_sanitize')
+        self.assertEqual(sanitized.func.value.func.id,'NaNSafeEncoder')

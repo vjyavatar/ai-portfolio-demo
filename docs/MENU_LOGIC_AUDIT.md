@@ -128,6 +128,18 @@ Remaining concrete cases:
 
 ## Reproducible next checks
 
+## Original Decide / Active Trading follow-up
+
+This review also adds three browser fixtures for original direction alerts, obsolete Decide responses, and Active Trading mount/unmount request ownership. These supplement the broad menu checks; they do not verify all chart outputs or device audio.
+
+- Fixed: the safety-forced WAIT was suppressing original bullish analytical strategies. Decide now consumes preserved research signals and applies a separate final execution guard. Eight regression tests cover preserved branches and final guard behaviour.
+- Fixed: late original trading responses, duplicate direction alerts, orphan refresh timers, and unconditional manual “entry now” speech. Original scoring and charts remain.
+- Open: low volume, high IV, theta and wide CPR can count as bearish direction votes. Separate directional evidence from risk penalties only after dedicated strategy fixtures and independent backtest validation.
+- Open: the original paper-execution path lacks source-timestamp validation; Quick Trade has separate stale-response and market-hours paths requiring review.
+- Unverified: account-backed live options, verified-email login configuration, physical microphone/playback, and independent financial reconciliation across every menu.
+
+### Commands
+
 ```sh
 node qa/menu-inventory.cjs
 node --test tests/workspace.test.mjs tests/trading-legacy-validation.test.mjs
