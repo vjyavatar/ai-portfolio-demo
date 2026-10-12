@@ -36729,6 +36729,7 @@ if(!window._speak){
   window._audioUnlocked=false;
   ['click','touchstart','keydown'].forEach(function(evt){
     document.addEventListener(evt,function(){
+      if(window._voiceEnabled!==true)return;
       if(!window._audioUnlocked){
         window._audioUnlocked=true;
         // Create and resume AudioContext to unlock

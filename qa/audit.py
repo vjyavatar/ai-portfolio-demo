@@ -62,6 +62,11 @@ def validate_trading(data,symbol,region,now=None):
     price=data.get('price');price_ok=finite(price) and price>0
     provider=data.get('provider_status') or {}
     received=isinstance(provider,dict) and provider.get('code')=='RESPONSE_RECEIVED'
+    stale_cache=bool(data.get('stale_cache') or provider.get('stale_cache'))
+    if stale_cache:
+        if candidate or data.get('paper_eligible') or data.get('scenario'):
+            return 'FAIL','Last-known outage snapshot improperly offers a trading candidate or scenario'
+        return 'UNVERIFIED','Last-known cached chart retained; current feed and trading readiness are not verified'
     if candidate:
         if not (received and opened and data.get('market_status')=='OPEN' and fresh and price_ok):
             return 'FAIL','Candidate without verified open session, source response, price and fresh quote/closed bar'
