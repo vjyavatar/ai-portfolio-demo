@@ -173,6 +173,8 @@ def research(symbol: str='SPY',region: str='US'):
 
 @router.get('/api/trading-desk/options')
 def options(symbol: str='SPY', region: str='US'):
+    from secure_access import require_user
+    require_user()  # Credential-backed contract tickets always require verified full access.
     from trading_options import option_research
     if region != 'US' or symbol not in ('SPY', 'QQQ'):
         raise HTTPException(422, 'Options research supports SPY and QQQ in US only.')

@@ -463,3 +463,63 @@ test('original Active Trading discards an unmounted scan and stops polling after
  expect(await page.evaluate(()=>window._atDebug().mounted_flag)).toBe(false);
  expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden');
 });
+
+async function openOriginalDecideTicket(page){
+ // Exercise the original dispatcher and loadDE integration, not a direct module mount.
+ // The legacy report is deliberately unavailable; the separately verified ticket must still work.
+ await page.route('**/api/decision-engine?**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({success:false,error:'QA legacy report unavailable; independent contract evidence follows.'})}));
+ await page.evaluate(()=>{
+  window.CelesysWorkspace.openTool(window.CelesysWorkspace.tools.find(t=>t.group==='decide'&&t.tab==='decision'));
+  window._deMode='trader';window._deRegion='US';window.loadDE('SPY');
+ });
+ await expect(page.locator('#de-options-ticket')).toBeVisible();
+ await expect(page.locator('#deResult')).toContainText('QA legacy report unavailable');
+}
+function decideOptionFixture(now,side){
+ return {status:'BUY_'+side+'_CANDIDATE',direction:side,source:'QA source-backed contract fixture — not live data',reason:'Conditional review candidate from mocked verified source evidence.',execution_enabled:false,candidate:{
+  contract:'SPY261015'+side[0]+'00600000',expiry:'2026-10-15',strike:600,bid:2,ask:2.1,bid_time:now-2,ask_time:now-1,greeks_source_time:now-100,expires_at:now+200,contract_multiplier:100,
+  entry:{kind:'QUOTED_BID_ASK_RANGE',low:2,high:2.1,limit_cap:2.1,currency:'USD',unit:'PREMIUM_PER_SHARE',fill_guaranteed:false},
+  premium_risk:{maximum_loss_per_contract:210,currency:'USD',scope:'LONG_OPTION_PREMIUM_ONLY',excludes_fees:true},
+  underlying_invalidation:side==='CALL'?598:602,underlying_target:side==='CALL'?605:595,
+  confidence:{status:'UNCALIBRATED',success_probability:null,basis:['Fresh source timestamps','Liquidity filters passed']},
+  ranking:{method:'Lowest relative spread, then delta proximity.',note:'Not a profit forecast.'},
+  exit_policy:{kind:'ILLUSTRATIVE_POLICY_NOT_FORECAST',basis:'ASK_CAP_NOT_ACTUAL_FILL',stop_premium:1.58,target_premium:3.15}
+ }};
+}
+for(const side of ['CALL','PUT'])test('original Decide Trader mounts a visible '+side+' contract ticket with entry, exits and uncalibrated confidence',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await page.clock.install({time:new Date('2026-10-12T16:00:00Z')});await boot(page);await profile(page,'full');
+ await page.waitForFunction(()=>typeof window.mountDecideOptions==='function');
+ let calls=0;
+ await page.route('**/api/trading-desk/options?**',async route=>{
+  calls++;const url=new URL(route.request().url());expect(url.searchParams.get('symbol')).toBe('SPY');expect(url.searchParams.get('region')).toBe('US');
+  expect(route.request().headers()['x-celesys-email']).toBeUndefined();
+  const now=await page.evaluate(()=>Date.now()/1000);
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(decideOptionFixture(now,side))});
+ });
+ await openOriginalDecideTicket(page);await page.clock.fastForward(1000);expect(calls).toBe(0);
+ await expect(page.locator('#de-options-voice')).not.toBeChecked();
+ await page.locator('#de-options-scan').click();await expect(page.locator('#de-options-ticket')).toHaveAttribute('data-state','candidate');expect(calls).toBe(1);
+ const fields={type:'BUY '+side,strike:'$600.00',expiry:'2026-10-15',entry:'$2.00 – $2.10 · Limit cap $2.10',stop:'$1.58 · illustrative policy, not guaranteed',target:'$3.15 · illustrative policy, not a forecast',invalidation:side==='CALL'?'$598.00':'$602.00',underlyingTarget:side==='CALL'?'$605.00':'$595.00',loss:'$210.00 + costs (100 units)'};
+ for(const [key,value]of Object.entries(fields)){await expect(page.locator('#de-options-'+key)).toBeVisible();await expect(page.locator('#de-options-'+key)).toContainText(value);}
+ await expect(page.locator('#de-options-entry')).toContainText('fill not guaranteed');
+ await expect(page.locator('#de-options-confidence')).toContainText('uncalibrated; no success probability');
+ await expect(page.locator('#de-options-source')).toContainText('SPY261015'+side[0]+'00600000');await expect(page.locator('#de-options-source')).toContainText('Evidence expires');
+ await expect(page.locator('#de-options-ranking')).toContainText('not a market-wide best trade');
+ await page.screenshot({path:'qa-output/original-decide-'+side.toLowerCase()+'-mobile.png',fullPage:true});
+ const width=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));expect(width.document<=width.viewport+2,JSON.stringify(width)).toBe(true);
+ await page.clock.fastForward(202000);await expect(page.locator('#de-options-ticket')).toHaveAttribute('data-state','wait');
+ await expect(page.locator('#de-options-entry')).toHaveText('Unavailable');expect(calls).toBe(1);
+});
+test('original Decide Trader treats server 401 as WAIT without quotes or automatic option requests',async({page})=>{
+ await page.clock.install({time:new Date('2026-10-12T16:00:00Z')});await boot(page);await profile(page,'full');
+ await page.waitForFunction(()=>typeof window.mountDecideOptions==='function');
+ // A full-looking UI profile is intentionally insufficient when the server rejects its session.
+ let calls=0;await page.route('**/api/trading-desk/options?**',route=>{calls++;return route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({detail:'Verified authorized sign-in required.'})});});
+ await openOriginalDecideTicket(page);await page.clock.fastForward(61000);expect(calls).toBe(0);
+ await page.locator('#de-options-scan').click();await expect(page.locator('#de-options-reason')).toContainText('Verified sign-in with full trading access is required');
+ await expect(page.locator('#de-options-ticket')).toHaveAttribute('data-state','wait');await expect(page.locator('#de-options-verdict')).toContainText('WAIT');
+ for(const key of ['type','strike','expiry','entry','stop','target','invalidation','underlyingTarget','loss'])await expect(page.locator('#de-options-'+key)).toHaveText('Unavailable');
+ await expect(page.locator('#de-options-source')).toHaveText('No current contract quote verified.');
+ await page.clock.fastForward(121000);expect(calls).toBe(1);
+});
