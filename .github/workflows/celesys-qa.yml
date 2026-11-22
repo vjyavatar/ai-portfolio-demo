@@ -68,7 +68,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: npm install --no-save --package-lock=false @playwright/test@1.56.1
+      - run: npm install --no-save --package-lock=false @playwright/test@1.65.1
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --config qa/playwright.config.cjs
       - uses: actions/upload-artifact@v4
