@@ -210,19 +210,83 @@ class SafetyTests(unittest.TestCase):
         def request_json(url, payload=None, headers=None, timeout=15):
             angel_calls.append((url, timeout))
             return {"data": [["2026-11-20T09:15:00+05:30", 100, 110, 90, 105, 1000]]}
-        saved = (angel_options.configured, angel_options._nse_key, angel_options._load_nse_book, angel_options._headers, angel_session.request_json)
+        saved = (
+            angel_options.configured, angel_options._nse_key, angel_options._load_nse_book,
+            angel_options._headers, angel_session.request_json, getattr(angel_options, "_nse_book", None),
+        )
         angel_options.configured = lambda: True
         angel_options._nse_key = lambda symbol: "RELIANCE"
-        angel_options._load_nse_book = lambda now: {"RELIANCE": {"token": "2885", "symbol": "RELIANCE-EQ"}}
+        angel_options._nse_book = {"RELIANCE": {"token": "2885", "symbol": "RELIANCE-EQ"}}
+        angel_options._load_nse_book = lambda now: angel_options._nse_book
         angel_options._headers = lambda: {"Authorization": "Bearer test"}
         angel_session.request_json = request_json
         try:
             bars = layer._angel_bars("RELIANCE.NS", "1d")
         finally:
-            angel_options.configured, angel_options._nse_key, angel_options._load_nse_book, angel_options._headers, angel_session.request_json = saved
+            (
+                angel_options.configured, angel_options._nse_key, angel_options._load_nse_book,
+                angel_options._headers, angel_session.request_json, angel_options._nse_book,
+            ) = saved
         self.assertEqual(bars["source"], "angel")
         self.assertEqual(angel_calls[0][0], layer._ANGEL_CANDLE)
-        self.assertEqual(angel_calls[0][1], layer.CANDLE_TIMEOUT)
+        self.assertEqual(angel_calls[0][1], layer.ANGEL_CANDLE_TIMEOUT)
+
+    def test_chain_retries_once_and_does_not_cache_a_miss(self):
+        layer._cache.clear()
+        calls = []
+        original = (layer._finnhub_bars, layer._nasdaq_bars, layer._tradingview_bars)
+        def miss(name):
+            def inner(*args, **kwargs):
+                calls.append(name)
+                return None
+            return inner
+        def nasdaq(symbol):
+            calls.append("nasdaq")
+            if calls.count("nasdaq") >= 2:
+                return self._bars("nasdaq")
+            return None
+        layer._finnhub_bars = miss("finnhub")
+        layer._nasdaq_bars = nasdaq
+        layer._tradingview_bars = miss("tradingview")
+        try:
+            env = layer.candles("MU", region="US")
+            self.assertTrue(env["ok"])
+            self.assertEqual(env["source"], "nasdaq")
+            self.assertEqual(calls, ["finnhub", "nasdaq", "tradingview", "finnhub", "nasdaq"])
+            calls.clear()
+            cached = layer.candles("MU", region="US")
+            self.assertEqual(calls, [])
+            self.assertEqual(cached["source"], "nasdaq")
+            layer._cache.clear()
+            calls.clear()
+            layer._nasdaq_bars = miss("nasdaq")
+            missed = layer.candles("AAPL", region="US")
+            self.assertFalse(missed["ok"])
+            first = len(calls)
+            self.assertEqual(first, 6)
+            layer.candles("AAPL", region="US")
+            self.assertEqual(len(calls), 12)
+        finally:
+            layer._finnhub_bars, layer._nasdaq_bars, layer._tradingview_bars = original
+            layer._cache.clear()
+
+    def test_cold_angel_book_does_not_block_screener(self):
+        import angel_options
+        saved_book = getattr(angel_options, "_nse_book", None)
+        saved_load = angel_options._load_nse_book
+        saved_configured = angel_options.configured
+        angel_options._nse_book = None
+        angel_options.configured = lambda: True
+        angel_options._load_nse_book = lambda now: None
+        started = time.perf_counter()
+        try:
+            bars = layer._angel_bars("RELIANCE.NS", "1d")
+        finally:
+            angel_options._nse_book = saved_book
+            angel_options._load_nse_book = saved_load
+            angel_options.configured = saved_configured
+        self.assertIsNone(bars)
+        self.assertLess(time.perf_counter() - started, 0.5)
 
     def test_tradingview_packets_keep_bar_rows(self):
         body = '{"m":"series_loading","p":[]}'
