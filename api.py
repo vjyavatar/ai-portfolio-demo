@@ -1376,11 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.118"
+APP_VERSION = "v4.63.119"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.118: Background scans run in a second worker. The web process only waits, including on the first call. "
+    "v4.63.119: Market pulse and the global ticker no longer block the web loop. A failed price is not cached. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -14220,17 +14220,30 @@ async def global_ticker():
         return None
     
     if len(results) < 4:
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = {executor.submit(_fetch_index, tk, meta): meta for tk, meta in tickers_map.items()}
-            for f in as_completed(futures, timeout=10):
+        def _load_missing():
+            found = []
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                futures = [executor.submit(_fetch_index, tk, meta) for tk, meta in tickers_map.items()]
                 try:
-                    r = f.result(timeout=3)
-                    if r:
-                        results.append(r)
-                        if r["name"] == "GOLD/OZ": gold_price = r["price"]
-                        if r["name"] == "SILVER/OZ": silver_price = r["price"]
-                except:
+                    for one in as_completed(futures, timeout=8):
+                        try:
+                            row = one.result(timeout=3)
+                            if row:
+                                found.append(row)
+                        except Exception:
+                            pass
+                except Exception:
                     pass
+            return found
+        try:
+            results.extend(await asyncio.wait_for(asyncio.to_thread(_load_missing), timeout=8))
+        except Exception:
+            pass
+        for row in results:
+            if row.get("name") == "GOLD/OZ":
+                gold_price = row.get("price")
+            if row.get("name") == "SILVER/OZ":
+                silver_price = row.get("price")
     
     # Sort in original order
     name_order = [m["name"] for m in tickers_map.values()]
@@ -20452,7 +20465,6 @@ _pulse_cache_ts = None
 _ticker_cache = None
 _ticker_cache_ts = None
 
-@app.get("/api/market-pulse")
 def _market_pulse_fetch():
     """Commodity quotes. Runs in the background process, not on the web loop."""
     import re as _re
@@ -20492,17 +20504,45 @@ def _market_pulse_fetch():
     snapshot = {}
     with ThreadPoolExecutor(max_workers=6) as executor:
         futures = [executor.submit(fetch_ticker, ticker, name) for ticker, name in names.items()]
-        for fut in as_completed(futures, timeout=7):
-            try:
-                name, data = fut.result(timeout=2)
-                if data:
-                    snapshot[name] = data
-            except Exception:
-                pass
+        try:
+            for fut in as_completed(futures, timeout=7):
+                try:
+                    name, data = fut.result(timeout=2)
+                    if data:
+                        snapshot[name] = data
+                except Exception:
+                    pass
+        except Exception:
+            pass
     return snapshot
 
 
+@app.get("/api/market-pulse")
 async def market_pulse():
+    """The page is built in the background process. This loop only waits."""
+    from datetime import datetime
+    global _pulse_cache, _pulse_cache_ts
+    now_ts = datetime.utcnow()
+    if _pulse_cache and _pulse_cache_ts and (now_ts - _pulse_cache_ts).total_seconds() < 1800:
+        return _pulse_cache
+    try:
+        result = await asyncio.wait_for(
+            asyncio.wrap_future(_background_pool().submit(_background_job, "pulse-page", None)),
+            timeout=12,
+        )
+    except Exception as exc:
+        print(f"market pulse page skipped: {type(exc).__name__}", flush=True)
+        result = None
+    if isinstance(result, dict) and result.get("success") is not False:
+        _pulse_cache = result
+        _pulse_cache_ts = now_ts
+        return result
+    if _pulse_cache:
+        return _pulse_cache
+    return {"success": False, "error": "Market pulse is still loading."}
+
+
+async def _market_pulse_page():
     """Lightweight market events — cached 5min, parallel fetches."""
     # yfinance imported globally with 401 wrapper
     from datetime import datetime, timedelta
@@ -20551,11 +20591,13 @@ async def market_pulse():
     quick_tickers = {"BZ=F": "Brent Crude", "CL=F": "WTI Crude", "GC=F": "Gold", "SI=F": "Silver", "DX-Y.NYB": "US Dollar", "^GSPC": "S&P 500", "INR=X": "USD/INR"}
     
     try:
-        # Quotes are fetched in the background process. This loop only waits.
-        fetched = await asyncio.wait_for(
-            asyncio.wrap_future(_background_pool().submit(_background_job, "pulse", None)),
-            timeout=8,
-        )
+        # Already inside the background process. Fetch here instead of queueing ourselves.
+        fetched = _market_pulse_fetch() if os.environ.get("CELESYS_BACKGROUND_WORKER") == "1" else None
+        if fetched is None:
+            fetched = await asyncio.wait_for(
+                asyncio.wrap_future(_background_pool().submit(_background_job, "pulse", None)),
+                timeout=8,
+            )
         if isinstance(fetched, dict):
             global_snapshot.update(fetched)
     except Exception as _pulse_exc:
@@ -21600,7 +21642,7 @@ async def algo_signal_safe(symbol: str = "NIFTY", region: str = ""):
                 full = done.result()
             except Exception:
                 return
-            if isinstance(full, dict) and full.get("success"):
+            if isinstance(full, dict) and full.get("success") and full.get("data_status") != "partial":
                 _algo_cache[cache_key] = _legacy_algo_research_guard(full)
                 _algo_cache_ts[cache_key] = datetime.utcnow()
         fut.add_done_callback(_cache_when_ready)
@@ -21610,8 +21652,9 @@ async def algo_signal_safe(symbol: str = "NIFTY", region: str = ""):
         traceback.print_exc()
         return {"success": False, "error": f"Algo error: {str(e)}", "symbol": symbol}
     guarded = _legacy_algo_research_guard(result)
-    _algo_cache[cache_key] = guarded
-    _algo_cache_ts[cache_key] = now
+    if guarded.get("success") and guarded.get("data_status") != "partial":
+        _algo_cache[cache_key] = guarded
+        _algo_cache_ts[cache_key] = now
     return guarded
 
 @app.get("/api/algo-batch")
@@ -33040,16 +33083,17 @@ def _background_job(kind, arg):
         return {"IN": _bottom_nav_cache.get("IN"), "US": _bottom_nav_cache.get("US")}
     if kind == "pulse":
         return _market_pulse_fetch()
+    if kind == "pulse-page":
+        return asyncio.run(_market_pulse_page())
     if kind == "prefetch":
         _prefetch_popular()
         return "ok"
     if kind == "hydrate":
         _dd_disk_cache_load()
-        return {key: value for key, value in _smart_cache.items() if str(key).startswith("dd_")}
+        return "ok"
     if kind == "preseed":
         asyncio.run(_run_dd_preseed())
-        _dd_disk_cache_save()
-        return {key: value for key, value in _smart_cache.items() if str(key).startswith("dd_")}
+        return "ok"
     if kind == "cds":
         region, email = arg
         return asyncio.run(cds_daily_scan(region=region, email=email, threshold=70))
@@ -33067,6 +33111,7 @@ def _spawn_background(kind, arg):
         return None
 
     def _apply(done, kind=kind, arg=arg):
+        import threading
         try:
             payload = done.result()
         except Exception as exc:
@@ -33084,9 +33129,9 @@ def _spawn_background(kind, arg):
             for reg, slot in payload.items():
                 if isinstance(slot, dict):
                     _bottom_nav_cache[reg] = slot
-        elif kind in ("hydrate", "preseed") and isinstance(payload, dict) and payload:
-            _smart_cache.update(payload)
-            print(f"[DD-DISK] parent stored {len(payload)} entries from {kind}", flush=True)
+        elif kind in ("hydrate", "preseed"):
+            # The file is the handoff. Do not unpickle the reports into this process.
+            threading.Thread(target=_dd_disk_cache_load, name=f"dd-{kind}", daemon=True).start()
 
     fut.add_done_callback(_apply)
     return fut
