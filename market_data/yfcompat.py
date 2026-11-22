@@ -73,9 +73,17 @@ class Ticker:
 
     def history(self, period="1mo", interval="1d", start=None, end=None, **kwargs) -> pd.DataFrame:
         period_name, interval_name = _period_interval(str(period or "1y"), str(interval or "1d"))
-        env = layer.candles(self.ticker, period=period_name, interval=interval_name)
+        region = kwargs.get("region")
+        budget = float(kwargs.get("budget") or (2.5 if interval_name in {"1m", "5m", "15m", "60m"} else 6.0))
+        env = layer.candles(self.ticker, period=period_name, interval=interval_name, region=region, budget=budget)
         bars = env.get("data") if isinstance(env, dict) and isinstance(env.get("data"), list) else []
         frame = _frame(bars)
+        try:
+            frame.attrs["source"] = (env or {}).get("source")
+            frame.attrs["as_of"] = (env or {}).get("as_of")
+            frame.attrs["stale"] = bool((env or {}).get("stale"))
+        except Exception:
+            pass
         if start is not None or end is not None:
             try:
                 frame = frame.loc[start:end]
@@ -267,6 +275,12 @@ class Tickers:
 
     def __getattr__(self, name):
         return self.tickers.get(name)
+
+
+def history_frame(symbol: str, period: str = "1y", interval: str = "1d", region: str | None = None) -> pd.DataFrame:
+    """The one candle entry analysis routes use. Always a DataFrame, never None."""
+    frame = Ticker(symbol).history(period=period, interval=interval, region=region)
+    return frame if isinstance(frame, pd.DataFrame) else _empty()
 
 
 def download(tickers="AAPL", period="1mo", interval="1d", group_by="column", threads=True, progress=False, start=None, end=None, **kwargs) -> pd.DataFrame:

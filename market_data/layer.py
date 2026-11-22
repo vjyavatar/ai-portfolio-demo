@@ -185,34 +185,37 @@ def _remember(key: str, ttl: float, loader: Callable[[], Optional[dict]]) -> dic
     }
 
 
-def _request(url: str, *, data: Optional[bytes] = None, headers: Optional[dict] = None, timeout: int = TIMEOUT) -> tuple[int, bytes]:
+def _request(url: str, *, data: Optional[bytes] = None, headers: Optional[dict] = None, timeout: int = TIMEOUT, attempts: int = RETRIES + 1) -> tuple[int, bytes]:
     if _blocked(url):
         raise RuntimeError("Yahoo Finance is disabled")
     hdrs = {"User-Agent": _USER_AGENT, "Accept": "application/json,text/plain,*/*"}
     if headers:
         hdrs.update(headers)
     last_error = None
-    for attempt in range(RETRIES + 1):
+    for attempt in range(max(1, attempts)):
         req = urllib.request.Request(url, data=data, headers=hdrs)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 return response.status, response.read()
         except urllib.error.HTTPError as exc:
             body = exc.read() if exc.fp else b""
-            if exc.code in (429, 500, 502, 503, 504) and attempt < RETRIES:
-                time.sleep(0.4)
+            if exc.code in (429, 500, 502, 503, 504) and attempt + 1 < attempts:
+                time.sleep(0.2)
                 continue
             return exc.code, body
         except Exception as exc:
             last_error = exc
-            if attempt < RETRIES:
-                time.sleep(0.4)
+            if attempt + 1 < attempts:
+                time.sleep(0.2)
                 continue
     raise TimeoutError("provider timed out") from last_error
 
 
 def _json(url: str, **kwargs) -> Optional[Any]:
-    status, raw = _request(url, **kwargs)
+    try:
+        status, raw = _request(url, **kwargs)
+    except Exception:
+        return None
     if status != 200 or not raw:
         return None
     try:
@@ -284,14 +287,17 @@ def _tv_row(symbol: str, region: Optional[str] = None) -> Optional[dict]:
     return env.get("data") if env.get("ok") else None
 
 
-def _finnhub(path: str, params: dict) -> Optional[Any]:
+def _finnhub(path: str, params: dict, timeout: int = TIMEOUT) -> Optional[Any]:
     key = os.getenv("FINNHUB_API_KEY", "").strip()
     if not key:
         return None
     query = dict(params)
     query["token"] = key
     url = "https://finnhub.io/api/v1" + path + "?" + urllib.parse.urlencode(query)
-    return _json(url, timeout=TIMEOUT)
+    try:
+        return _json(url, timeout=timeout, attempts=1)
+    except Exception:
+        return None
 
 
 def _put_metric(info: dict, sources: dict, field: str, value, source: str, as_of: str) -> None:
@@ -512,7 +518,7 @@ def _screener_page(symbol: str) -> Optional[str]:
     key = "screener-html:" + root
 
     def load():
-        status, raw = _request(_SCREENER_PAGE.format(symbol=urllib.parse.quote(root)), headers={"User-Agent": "Mozilla/5.0", "Accept": "text/html"}, timeout=TIMEOUT)
+        status, raw = _request(_SCREENER_PAGE.format(symbol=urllib.parse.quote(root)), headers={"User-Agent": "Mozilla/5.0", "Accept": "text/html"}, timeout=5, attempts=1)
         if status != 200 or not raw or b"Stock P/E" not in raw and b"company" not in raw:
             return None
         return {"ok": True, "data": raw.decode("utf-8", "replace"), "source": "screener", "as_of": _iso(), "metric_sources": {}}
@@ -738,7 +744,7 @@ def _nasdaq_bars(symbol: str) -> Optional[dict]:
     url = _NASDAQ.format(symbol=urllib.parse.quote(meta["root"])) + "?" + urllib.parse.urlencode({
         "assetclass": "stocks", "fromdate": start, "limit": "500",
     })
-    payload = _json(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+    payload = _json(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}, timeout=5, attempts=1)
     table = ((payload or {}).get("data") or {}).get("tradesTable") if isinstance(payload, dict) else None
     rows = (table or {}).get("rows") if isinstance(table, dict) else None
     if not isinstance(rows, list):
@@ -763,7 +769,7 @@ def _finnhub_bars(symbol: str, interval: str) -> Optional[dict]:
     days = 10 if resolution in {"1", "5", "15", "60"} else 420
     end = int(_now())
     start = end - days * 86400
-    payload = _finnhub("/stock/candle", {"symbol": meta["root"], "resolution": resolution, "from": start, "to": end})
+    payload = _finnhub("/stock/candle", {"symbol": meta["root"], "resolution": resolution, "from": start, "to": end}, timeout=4)
     if not isinstance(payload, dict) or payload.get("s") != "ok":
         return None
     stamps = payload.get("t") or []
@@ -798,7 +804,7 @@ def _screener_bars(symbol: str) -> Optional[dict]:
     match = re.search(r"/api/company/(\d+)/", html)
     if not match:
         return None
-    payload = _json(_SCREENER_CHART.format(cid=match.group(1)), headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.screener.in/"})
+    payload = _json(_SCREENER_CHART.format(cid=match.group(1)), headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.screener.in/"}, timeout=5, attempts=1)
     datasets = payload.get("datasets") if isinstance(payload, dict) else None
     if not isinstance(datasets, list):
         return None
@@ -826,7 +832,7 @@ def _moneycontrol_index_bars(symbol: str) -> Optional[dict]:
     ind = _MC_INDEX.get(meta["root"]) or _MC_INDEX.get(meta["raw"])
     if not ind:
         return None
-    payload = _json(_MC_INDEX_URL.format(ind=ind), headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.moneycontrol.com/"})
+    payload = _json(_MC_INDEX_URL.format(ind=ind), headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.moneycontrol.com/"}, timeout=4, attempts=1)
     values = ((payload or {}).get("graph") or {}).get("values") if isinstance(payload, dict) else None
     if not isinstance(values, list):
         return None
@@ -844,18 +850,39 @@ def _moneycontrol_index_bars(symbol: str) -> Optional[dict]:
 
 
 def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
-    token = _angel_token(symbol)
-    headers = _angel_headers()
-    if not token or not headers:
+    """Historical candles through the Angel proxy. A direct call from Render is rejected."""
+    try:
+        import angel_options
+        import angel_session
+        if not angel_options.configured():
+            return None
+        key = angel_options._nse_key(symbol)
+        if not key:
+            return None
+        # The instrument master is large. A cold download must not hold the decision request.
+        if getattr(angel_options, "_nse_book", None) is None:
+            threading.Thread(target=lambda: angel_options._load_nse_book(time.time()), daemon=True).start()
+            return None
+        book = angel_options._nse_book
+        inst = book.get(key) if isinstance(book, dict) else None
+        token = inst.get("token") if isinstance(inst, dict) else None
+        if not token:
+            return None
+        headers = angel_options._headers()
+    except Exception:
         return None
     interval_name = {"1d": "ONE_DAY", "5m": "FIVE_MINUTE", "15m": "FIFTEEN_MINUTE", "60m": "ONE_HOUR", "1m": "ONE_MINUTE"}.get(interval, "ONE_DAY")
     end = datetime.now().strftime("%Y-%m-%d %H:%M")
-    start = (datetime.now() - timedelta(days=10 if interval != "1d" else 420)).strftime("%Y-%m-%d %H:%M")
-    payload = _json(
-        _ANGEL_CANDLE,
-        data=json.dumps({"exchange": "NSE", "symboltoken": token, "interval": interval_name, "fromdate": start, "todate": end}).encode(),
-        headers=headers,
-    )
+    start = (datetime.now() - timedelta(days=10 if interval != "1d" else 400)).strftime("%Y-%m-%d %H:%M")
+    try:
+        payload = angel_session.request_json(
+            _ANGEL_CANDLE,
+            payload={"exchange": "NSE", "symboltoken": str(token), "interval": interval_name, "fromdate": start, "todate": end},
+            headers=headers,
+            timeout=8,
+        )
+    except Exception:
+        return None
     rows = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
         return None
@@ -867,34 +894,74 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
     return _bars_from_pairs(pairs, "angel")
 
 
-def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None) -> dict:
+def _try_bars(loader) -> Optional[dict]:
+    """One candle provider cannot cancel the next."""
+    try:
+        bars = loader()
+    except Exception:
+        return None
+    if isinstance(bars, dict) and bars.get("ok") and isinstance(bars.get("data"), list) and bars["data"]:
+        return bars
+    return None
+
+
+def _race_bars(loaders: list, budget: float = 6.0) -> Optional[dict]:
+    """Run providers together and return a real series inside the budget.
+
+    Earlier providers win when they finish. A later provider that already
+    has bars is used once 1.2s have passed, so a hung Finnhub or Angel call
+    cannot hold Nasdaq or Screener. Daemon threads are not joined.
+    """
+    if not loaders:
+        return None
+    results: list[Optional[dict]] = [None] * len(loaders)
+    finished = [False] * len(loaders)
+
+    def run(index: int, loader) -> None:
+        results[index] = _try_bars(loader)
+        finished[index] = True
+
+    started = time.time()
+    for index, loader in enumerate(loaders):
+        threading.Thread(target=run, args=(index, loader), daemon=True).start()
+    deadline = started + budget
+    while time.time() < deadline:
+        for index, item in enumerate(results):
+            if not finished[index] or not item:
+                continue
+            if all(finished[earlier] for earlier in range(index)):
+                return item
+        if time.time() - started >= 1.2 and any(results):
+            for item in results:
+                if item:
+                    return item
+        if all(finished):
+            break
+        time.sleep(0.05)
+    for item in results:
+        if item:
+            return item
+    return None
+
+
+def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None, budget: float = 6.0) -> dict:
     meta = classify(symbol, region)
     key = f"candles:{meta['region']}:{meta['root']}:{period}:{interval}"
 
     def load():
-        if interval in {"5m", "1m", "15m", "60m"}:
-            for loader in (_angel_bars if meta["region"] == "IN" else _finnhub_bars,):
-                bars = loader(symbol, interval)
-                if bars and bars.get("data"):
-                    return bars
-            if meta["region"] == "US":
-                bars = _finnhub_bars(symbol, interval)
-                if bars and bars.get("data"):
-                    return bars
-            return None
-        order = []
+        intraday = interval in {"5m", "1m", "15m", "60m"}
         if meta["region"] == "IN":
-            order = [_angel_bars, _moneycontrol_index_bars if meta["kind"] == "index" else _screener_bars]
+            steps = [lambda: _angel_bars(symbol, interval if intraday else "1d")]
+            if not intraday:
+                steps.append(lambda: _moneycontrol_index_bars(symbol) if meta["kind"] == "index" else _screener_bars(symbol))
+            else:
+                steps.append(lambda: _moneycontrol_index_bars(symbol) if meta["kind"] == "index" else None)
         else:
-            order = [_finnhub_bars, _nasdaq_bars]
-        for loader in order:
-            try:
-                bars = loader(symbol, interval) if loader is _angel_bars or loader is _finnhub_bars else loader(symbol)
-            except TypeError:
-                bars = loader(symbol)
-            if bars and bars.get("data"):
-                return bars
-        return None
+            # Finnhub candles first. A timeout or a free-plan denial must not skip Nasdaq.
+            steps = [lambda: _finnhub_bars(symbol, "5m" if intraday else "1d")]
+            if not intraday:
+                steps.append(lambda: _nasdaq_bars(symbol))
+        return _race_bars(steps, budget=budget)
 
     env = _remember(key, TTL_CANDLE, load)
     if env.get("ok") and isinstance(env.get("data"), list):
