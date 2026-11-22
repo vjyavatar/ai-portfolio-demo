@@ -2,24 +2,31 @@
 
 US quotes and fundamentals come from Finnhub when FINNHUB_API_KEY is set,
 with TradingView scanner fields and SEC EDGAR companyfacts filling gaps.
-US daily candles come from Finnhub /stock/candle, then the Nasdaq historical
-chart when that candle route is unavailable.
+US daily candles are one chain: Finnhub /stock/candle, then Nasdaq
+api.nasdaq.com historical, then TradingView. India candles are Angel
+getCandleData through the static-IP proxy, then Screener.in, TradingView,
+and the Nifty index graph. Each candle step gives up after about 5 seconds
+and the next source runs. The whole chain stays inside an 8 second budget.
 
 India quotes come from Angel One SmartAPI when a session is configured, then
-the TradingView India scanner. India candles come from Angel getCandleData,
-then Screener.in public charts for equities and the Moneycontrol index graph
-for NIFTY and BANKNIFTY. India fundamentals come from the TradingView scanner
-and Screener.in company pages.
+the TradingView India scanner. India fundamentals come from the TradingView
+scanner and Screener.in company pages.
 
-Nothing in this module calls Yahoo Finance. Each call has an 8 second timeout,
-one retry, and an in-memory TTL cache. A failed refresh returns the last cached
-payload labelled stale, with its source and timestamp.
+Nothing in this module calls Yahoo Finance. Quote and fundamentals calls keep
+an 8 second timeout and one retry. Candle calls do not retry. An in-memory
+TTL cache plus a single in-flight load serve concurrent readers. A failed
+refresh returns the last cached payload labelled stale, with its source and
+timestamp.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
+import socket
+import ssl
+import struct
 import threading
 import time
 import urllib.error
@@ -32,6 +39,8 @@ from typing import Any, Callable, Optional
 
 TIMEOUT = 8
 RETRIES = 1
+CANDLE_TIMEOUT = 5
+CANDLE_BUDGET = 8
 TTL_QUOTE = 20
 TTL_CANDLE = 5 * 60
 TTL_FUND = 18 * 3600
@@ -81,6 +90,7 @@ _US_INDEX = {
 
 _lock = threading.Lock()
 _cache: dict[str, dict] = {}
+_inflight: dict[str, threading.Event] = {}
 _cik_map: dict[str, int] | None = None
 _orig_urlopen = urllib.request.urlopen
 
@@ -160,20 +170,7 @@ def _cache_put(key: str, value: dict) -> dict:
     return deepcopy(stored)
 
 
-def _remember(key: str, ttl: float, loader: Callable[[], Optional[dict]]) -> dict:
-    fresh = _cache_get(key, ttl)
-    if fresh:
-        return fresh
-    loaded = None
-    try:
-        loaded = loader()
-    except Exception:
-        loaded = None
-    if loaded and loaded.get("ok"):
-        return _cache_put(key, loaded)
-    stale = _cache_stale(key)
-    if stale and stale.get("ok"):
-        return stale
+def _unavailable() -> dict:
     return {
         "ok": False,
         "data": None,
@@ -185,28 +182,68 @@ def _remember(key: str, ttl: float, loader: Callable[[], Optional[dict]]) -> dic
     }
 
 
-def _request(url: str, *, data: Optional[bytes] = None, headers: Optional[dict] = None, timeout: int = TIMEOUT, attempts: int = RETRIES + 1) -> tuple[int, bytes]:
+def _remember(key: str, ttl: float, loader: Callable[[], Optional[dict]]) -> dict:
+    """One load per key. Concurrent callers wait for that load instead of starting another."""
+    fresh = _cache_get(key, ttl)
+    if fresh:
+        return fresh
+    with _lock:
+        event = _inflight.get(key)
+        owner = event is None
+        if owner:
+            event = threading.Event()
+            _inflight[key] = event
+    if not owner:
+        event.wait(20)
+        fresh = _cache_get(key, ttl)
+        if fresh:
+            return fresh
+        stale = _cache_stale(key)
+        if stale and stale.get("ok"):
+            return stale
+        return _unavailable()
+    try:
+        loaded = None
+        try:
+            loaded = loader()
+        except Exception:
+            loaded = None
+        if loaded and loaded.get("ok"):
+            return _cache_put(key, loaded)
+        stale = _cache_stale(key)
+        if stale and stale.get("ok"):
+            return stale
+        return _unavailable()
+    finally:
+        event.set()
+        with _lock:
+            if _inflight.get(key) is event:
+                _inflight.pop(key, None)
+
+
+def _request(url: str, *, data: Optional[bytes] = None, headers: Optional[dict] = None, timeout: int = TIMEOUT, retries: Optional[int] = None) -> tuple[int, bytes]:
     if _blocked(url):
         raise RuntimeError("Yahoo Finance is disabled")
     hdrs = {"User-Agent": _USER_AGENT, "Accept": "application/json,text/plain,*/*"}
     if headers:
         hdrs.update(headers)
+    attempts = RETRIES if retries is None else max(0, int(retries))
     last_error = None
-    for attempt in range(max(1, attempts)):
+    for attempt in range(attempts + 1):
         req = urllib.request.Request(url, data=data, headers=hdrs)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 return response.status, response.read()
         except urllib.error.HTTPError as exc:
             body = exc.read() if exc.fp else b""
-            if exc.code in (429, 500, 502, 503, 504) and attempt + 1 < attempts:
-                time.sleep(0.2)
+            if exc.code in (429, 500, 502, 503, 504) and attempt < attempts:
+                time.sleep(0.4)
                 continue
             return exc.code, body
         except Exception as exc:
             last_error = exc
-            if attempt + 1 < attempts:
-                time.sleep(0.2)
+            if attempt < attempts:
+                time.sleep(0.4)
                 continue
     raise TimeoutError("provider timed out") from last_error
 
@@ -287,7 +324,7 @@ def _tv_row(symbol: str, region: Optional[str] = None) -> Optional[dict]:
     return env.get("data") if env.get("ok") else None
 
 
-def _finnhub(path: str, params: dict, timeout: int = TIMEOUT) -> Optional[Any]:
+def _finnhub(path: str, params: dict, timeout: int = TIMEOUT, retries: int = RETRIES) -> Optional[Any]:
     key = os.getenv("FINNHUB_API_KEY", "").strip()
     if not key:
         return None
@@ -295,7 +332,7 @@ def _finnhub(path: str, params: dict, timeout: int = TIMEOUT) -> Optional[Any]:
     query["token"] = key
     url = "https://finnhub.io/api/v1" + path + "?" + urllib.parse.urlencode(query)
     try:
-        return _json(url, timeout=timeout, attempts=1)
+        return _json(url, timeout=timeout, retries=retries)
     except Exception:
         return None
 
@@ -518,7 +555,7 @@ def _screener_page(symbol: str) -> Optional[str]:
     key = "screener-html:" + root
 
     def load():
-        status, raw = _request(_SCREENER_PAGE.format(symbol=urllib.parse.quote(root)), headers={"User-Agent": "Mozilla/5.0", "Accept": "text/html"}, timeout=5, attempts=1)
+        status, raw = _request(_SCREENER_PAGE.format(symbol=urllib.parse.quote(root)), headers={"User-Agent": "Mozilla/5.0", "Accept": "text/html"}, timeout=TIMEOUT)
         if status != 200 or not raw or b"Stock P/E" not in raw and b"company" not in raw:
             return None
         return {"ok": True, "data": raw.decode("utf-8", "replace"), "source": "screener", "as_of": _iso(), "metric_sources": {}}
@@ -744,7 +781,7 @@ def _nasdaq_bars(symbol: str) -> Optional[dict]:
     url = _NASDAQ.format(symbol=urllib.parse.quote(meta["root"])) + "?" + urllib.parse.urlencode({
         "assetclass": "stocks", "fromdate": start, "limit": "500",
     })
-    payload = _json(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}, timeout=5, attempts=1)
+    payload = _json(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}, timeout=CANDLE_TIMEOUT, retries=0)
     table = ((payload or {}).get("data") or {}).get("tradesTable") if isinstance(payload, dict) else None
     rows = (table or {}).get("rows") if isinstance(table, dict) else None
     if not isinstance(rows, list):
@@ -769,7 +806,7 @@ def _finnhub_bars(symbol: str, interval: str) -> Optional[dict]:
     days = 10 if resolution in {"1", "5", "15", "60"} else 420
     end = int(_now())
     start = end - days * 86400
-    payload = _finnhub("/stock/candle", {"symbol": meta["root"], "resolution": resolution, "from": start, "to": end}, timeout=4)
+    payload = _finnhub("/stock/candle", {"symbol": meta["root"], "resolution": resolution, "from": start, "to": end}, timeout=CANDLE_TIMEOUT, retries=0)
     if not isinstance(payload, dict) or payload.get("s") != "ok":
         return None
     stamps = payload.get("t") or []
@@ -794,17 +831,44 @@ def _finnhub_bars(symbol: str, interval: str) -> Optional[dict]:
     return _bars_from_pairs(pairs, "finnhub")
 
 
+def _screener_html_quick(symbol: str) -> Optional[str]:
+    """Candle-path page fetch. Five seconds, no retry, and the fundamentals cache when it is warm."""
+    root = classify(symbol)["root"]
+    cached = _cache_get("screener-html:" + root, TTL_FUND)
+    if cached and isinstance(cached.get("data"), str):
+        return cached["data"]
+    try:
+        status, raw = _request(
+            _SCREENER_PAGE.format(symbol=urllib.parse.quote(root)),
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "text/html"},
+            timeout=CANDLE_TIMEOUT,
+            retries=0,
+        )
+    except Exception:
+        return None
+    if status != 200 or not raw:
+        return None
+    html = raw.decode("utf-8", "replace")
+    _cache_put("screener-html:" + root, {"ok": True, "data": html, "source": "screener", "as_of": _iso(), "metric_sources": {}})
+    return html
+
+
 def _screener_bars(symbol: str) -> Optional[dict]:
     meta = classify(symbol)
     if meta["region"] != "IN" or meta["kind"] != "equity":
         return None
-    html = _screener_page(symbol)
+    html = _screener_html_quick(symbol)
     if not html:
         return None
     match = re.search(r"/api/company/(\d+)/", html)
     if not match:
         return None
-    payload = _json(_SCREENER_CHART.format(cid=match.group(1)), headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.screener.in/"}, timeout=5, attempts=1)
+    payload = _json(
+        _SCREENER_CHART.format(cid=match.group(1)),
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.screener.in/"},
+        timeout=CANDLE_TIMEOUT,
+        retries=0,
+    )
     datasets = payload.get("datasets") if isinstance(payload, dict) else None
     if not isinstance(datasets, list):
         return None
@@ -832,7 +896,12 @@ def _moneycontrol_index_bars(symbol: str) -> Optional[dict]:
     ind = _MC_INDEX.get(meta["root"]) or _MC_INDEX.get(meta["raw"])
     if not ind:
         return None
-    payload = _json(_MC_INDEX_URL.format(ind=ind), headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.moneycontrol.com/"}, timeout=4, attempts=1)
+    payload = _json(
+        _MC_INDEX_URL.format(ind=ind),
+        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.moneycontrol.com/"},
+        timeout=CANDLE_TIMEOUT,
+        retries=0,
+    )
     values = ((payload or {}).get("graph") or {}).get("values") if isinstance(payload, dict) else None
     if not isinstance(values, list):
         return None
@@ -859,11 +928,7 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
         key = angel_options._nse_key(symbol)
         if not key:
             return None
-        # The instrument master is large. A cold download must not hold the decision request.
-        if getattr(angel_options, "_nse_book", None) is None:
-            threading.Thread(target=lambda: angel_options._load_nse_book(time.time()), daemon=True).start()
-            return None
-        book = angel_options._nse_book
+        book = angel_options._load_nse_book(time.time())
         inst = book.get(key) if isinstance(book, dict) else None
         token = inst.get("token") if isinstance(inst, dict) else None
         if not token:
@@ -879,7 +944,7 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
             _ANGEL_CANDLE,
             payload={"exchange": "NSE", "symboltoken": str(token), "interval": interval_name, "fromdate": start, "todate": end},
             headers=headers,
-            timeout=8,
+            timeout=CANDLE_TIMEOUT,
         )
     except Exception:
         return None
@@ -905,63 +970,247 @@ def _try_bars(loader) -> Optional[dict]:
     return None
 
 
-def _race_bars(loaders: list, budget: float = 6.0) -> Optional[dict]:
-    """Run providers together and return a real series inside the budget.
+def _within(loader, seconds: float):
+    """Give one candle step a hard stop. The socket keeps its own timeout too."""
+    box: dict[str, Any] = {}
 
-    Earlier providers win when they finish. A later provider that already
-    has bars is used once 1.2s have passed, so a hung Finnhub or Angel call
-    cannot hold Nasdaq or Screener. Daemon threads are not joined.
-    """
-    if not loaders:
-        return None
-    results: list[Optional[dict]] = [None] * len(loaders)
-    finished = [False] * len(loaders)
+    def run():
+        box["value"] = _try_bars(loader)
 
-    def run(index: int, loader) -> None:
-        results[index] = _try_bars(loader)
-        finished[index] = True
+    thread = threading.Thread(target=run, name="candle-step", daemon=True)
+    thread.start()
+    thread.join(max(0.1, seconds))
+    return box.get("value")
 
-    started = time.time()
-    for index, loader in enumerate(loaders):
-        threading.Thread(target=run, args=(index, loader), daemon=True).start()
-    deadline = started + budget
-    while time.time() < deadline:
-        for index, item in enumerate(results):
-            if not finished[index] or not item:
-                continue
-            if all(finished[earlier] for earlier in range(index)):
-                return item
-        if time.time() - started >= 1.2 and any(results):
-            for item in results:
-                if item:
-                    return item
-        if all(finished):
+
+def _first_bars(steps, budget: float = CANDLE_BUDGET):
+    started = time.perf_counter()
+    for step in steps:
+        left = budget - (time.perf_counter() - started)
+        if left < 0.25:
             break
-        time.sleep(0.05)
-    for item in results:
-        if item:
-            return item
+        bars = _within(step, min(CANDLE_TIMEOUT, left))
+        if bars:
+            return bars
     return None
 
 
-def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None, budget: float = 6.0) -> dict:
+def _ws_send(sock, text: str) -> None:
+    payload = text.encode()
+    mask = os.urandom(4)
+    size = len(payload)
+    header = bytearray([0x81])
+    if size < 126:
+        header.append(0x80 | size)
+    elif size < 65536:
+        header.append(0x80 | 126)
+        header += struct.pack("!H", size)
+    else:
+        header.append(0x80 | 127)
+        header += struct.pack("!Q", size)
+    header += mask
+    sock.sendall(bytes(header) + bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload)))
+
+
+def _ws_recv(sock) -> str:
+    def exact(count: int) -> bytes:
+        buf = b""
+        while len(buf) < count:
+            chunk = sock.recv(count - len(buf))
+            if not chunk:
+                raise ConnectionError("closed")
+            buf += chunk
+        return buf
+
+    parts = []
+    while True:
+        first, second = exact(2)
+        opcode = first & 0x0F
+        length = second & 0x7F
+        if length == 126:
+            length = struct.unpack("!H", exact(2))[0]
+        elif length == 127:
+            length = struct.unpack("!Q", exact(8))[0]
+        if second & 0x80:
+            mask = exact(4)
+            data = bytes(byte ^ mask[index % 4] for index, byte in enumerate(exact(length)))
+        else:
+            data = exact(length)
+        if opcode == 0x8:
+            raise ConnectionError("closed")
+        if opcode == 0x9:
+            continue
+        if opcode in (0x1, 0x0):
+            parts.append(data)
+            if first & 0x80:
+                return b"".join(parts).decode("utf-8", "replace")
+            continue
+        if first & 0x80:
+            return ""
+
+
+def _tv_connect(timeout: float):
+    host = "data.tradingview.com"
+    key = base64.b64encode(os.urandom(16)).decode()
+    raw = socket.create_connection((host, 443), timeout=timeout)
+    sock = ssl.create_default_context().wrap_socket(raw, server_hostname=host)
+    sock.settimeout(timeout)
+    request = (
+        "GET /socket.io/websocket?from=chart%2F&type=chart HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "Origin: https://www.tradingview.com\r\n"
+        "User-Agent: Mozilla/5.0\r\n"
+        "\r\n"
+    )
+    sock.sendall(request.encode())
+    buf = b""
+    while b"\r\n\r\n" not in buf:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        buf += chunk
+    status = buf.split(b"\r\n", 1)[0]
+    if b" 101 " not in status:
+        sock.close()
+        raise ConnectionError("TradingView handshake failed")
+    return sock
+
+
+def _tv_packets(blob: str) -> list:
+    out = []
+    cursor = 0
+    while True:
+        mark = blob.find("~m~", cursor)
+        if mark < 0:
+            break
+        start = mark + 3
+        end = blob.find("~m~", start)
+        if end < 0:
+            break
+        try:
+            length = int(blob[start:end])
+        except ValueError:
+            break
+        body_at = end + 3
+        body = blob[body_at:body_at + length]
+        cursor = body_at + length
+        if body.startswith("~h~"):
+            out.append({"_heartbeat": body})
+            continue
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            out.append(parsed)
+    return out
+
+
+def _tv_wrap(payload: dict) -> str:
+    message = json.dumps(payload, separators=(",", ":"))
+    return f"~m~{len(message)}~m~{message}"
+
+
+def _tv_symbol_bars(tv_symbol: str, resolution: str, count: int, timeout: float) -> list:
+    """One TradingView chart session. Returns (time, o, h, l, c, v) rows or []."""
+    sock = _tv_connect(max(0.5, timeout))
+    try:
+        _ws_recv(sock)
+        session = "cs_" + os.urandom(3).hex()
+        spec = json.dumps({"symbol": tv_symbol, "adjustment": "splits"}, separators=(",", ":"))
+        for payload in (
+            {"m": "set_auth_token", "p": ["unauthorized_user_token"]},
+            {"m": "chart_create_session", "p": [session, ""]},
+            {"m": "resolve_symbol", "p": [session, "sds_sym_1", "=" + spec]},
+            {"m": "create_series", "p": [session, "s1", "s1", "sds_sym_1", resolution, count, ""]},
+        ):
+            _ws_send(sock, _tv_wrap(payload))
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            sock.settimeout(max(0.2, deadline - time.time()))
+            text = _ws_recv(sock)
+            if text.startswith("~h~") and "~m~" not in text:
+                _ws_send(sock, text)
+                continue
+            for packet in _tv_packets(text):
+                beat = packet.get("_heartbeat")
+                if beat:
+                    _ws_send(sock, f"~m~{len(beat)}~m~{beat}")
+                    continue
+                if packet.get("m") == "timescale_update":
+                    node = (packet.get("p") or [None, {}])[1] or {}
+                    rows = ((node.get("s1") or {}).get("s")) or []
+                    pairs = []
+                    for row in rows:
+                        values = row.get("v") if isinstance(row, dict) else None
+                        if not isinstance(values, list) or len(values) < 5:
+                            continue
+                        moment = datetime.fromtimestamp(float(values[0]), timezone.utc).isoformat()
+                        volume = values[5] if len(values) > 5 else 0
+                        pairs.append((moment, values[1], values[2], values[3], values[4], volume))
+                    if pairs:
+                        return pairs
+                if packet.get("m") in {"series_error", "symbol_error"}:
+                    return []
+        return []
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+def _tradingview_bars(symbol: str, interval: str = "1d") -> Optional[dict]:
+    meta = classify(symbol)
+    resolution = {"1d": "D", "1wk": "W", "60m": "60", "15m": "15", "5m": "5", "1m": "1"}.get(interval, "D")
+    count = 120 if resolution in {"1", "5", "15", "60"} else 400
+    deadline = time.time() + CANDLE_TIMEOUT
+    for tv_symbol in meta["tv"][:4]:
+        left = deadline - time.time()
+        if left < 0.4:
+            break
+        try:
+            pairs = _tv_symbol_bars(tv_symbol, resolution, count, min(left, 4))
+        except Exception:
+            pairs = []
+        bars = _bars_from_pairs(pairs, "tradingview") if pairs else None
+        if bars:
+            return bars
+    return None
+
+
+def _candle_steps(symbol: str, meta: dict, interval_name: str) -> list:
+    intraday = interval_name in {"5m", "1m", "15m", "60m"}
+    fetch_interval = interval_name if intraday else "1d"
+    if meta["region"] == "IN":
+        # Angel first, and only Angel uses the proxy. Screener, TradingView and the Nifty graph follow.
+        steps = [lambda interval=fetch_interval: _angel_bars(symbol, interval)]
+        if not intraday:
+            steps.append(lambda: _screener_bars(symbol))
+        steps.append(lambda interval=fetch_interval: _tradingview_bars(symbol, interval))
+        if not intraday:
+            steps.append(lambda: _moneycontrol_index_bars(symbol))
+        return steps
+    steps = [lambda interval=fetch_interval: _finnhub_bars(symbol, interval)]
+    if not intraday and meta["kind"] == "equity":
+        steps.append(lambda: _nasdaq_bars(symbol))
+    steps.append(lambda interval=fetch_interval: _tradingview_bars(symbol, interval))
+    return steps
+
+
+def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None) -> dict:
     meta = classify(symbol, region)
-    key = f"candles:{meta['region']}:{meta['root']}:{period}:{interval}"
+    interval_name = "60m" if interval in {"60m", "1h"} else (interval or "1d")
+    # Period does not change the fetch window, so 3mo and 1y share one cache entry.
+    key = f"candles:{meta['region']}:{meta['root']}:{interval_name}"
+    del period
 
     def load():
-        intraday = interval in {"5m", "1m", "15m", "60m"}
-        if meta["region"] == "IN":
-            steps = [lambda: _angel_bars(symbol, interval if intraday else "1d")]
-            if not intraday:
-                steps.append(lambda: _moneycontrol_index_bars(symbol) if meta["kind"] == "index" else _screener_bars(symbol))
-            else:
-                steps.append(lambda: _moneycontrol_index_bars(symbol) if meta["kind"] == "index" else None)
-        else:
-            # Finnhub candles first. A timeout or a free-plan denial must not skip Nasdaq.
-            steps = [lambda: _finnhub_bars(symbol, "5m" if intraday else "1d")]
-            if not intraday:
-                steps.append(lambda: _nasdaq_bars(symbol))
-        return _race_bars(steps, budget=budget)
+        return _first_bars(_candle_steps(symbol, meta, interval_name))
 
     env = _remember(key, TTL_CANDLE, load)
     if env.get("ok") and isinstance(env.get("data"), list):

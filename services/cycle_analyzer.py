@@ -1606,6 +1606,16 @@ def analyze_cycle(ticker: str, market_cap: int = 0, current_price: float = 0) ->
         if cached and (now - cached[0]) < _CACHE_TTL:
             return cached[1]
 
+    if current_price <= 0:
+        try:
+            from market_data.layer import candles as _cycle_candles
+            env = _cycle_candles(t, period="1y", interval="1d")
+            rows = env.get("data") if isinstance(env, dict) else None
+            if isinstance(rows, list) and rows:
+                current_price = float(rows[-1].get("close") or 0)
+        except Exception:
+            pass
+
     snap = _fetch_fundamentals(t)
     sector = snap.sector if snap.has_data else ""
 
