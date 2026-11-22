@@ -1,4 +1,5 @@
 """Provider layer behavior that must hold without a live network."""
+import time
 import unittest
 from datetime import datetime, timezone
 
@@ -63,6 +64,20 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(len(bars["data"]), 2)
         self.assertEqual(bars["data"][-1]["close"], 342.56)
         self.assertEqual(bars["source"], "nasdaq")
+
+    def test_slow_preferred_provider_does_not_hold_a_ready_fallback(self):
+        layer._cache.clear()
+        def slow():
+            time.sleep(5)
+            return {"ok": True, "data": [{"time": "2026-11-01", "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}], "source": "finnhub", "as_of": "x", "stale": False}
+        def fast():
+            return {"ok": True, "data": [{"time": f"2026-11-{day:02d}", "open": 1, "high": 1, "low": 1, "close": 2, "volume": 1} for day in range(1, 8)], "source": "nasdaq", "as_of": "x", "stale": False}
+        started = time.perf_counter()
+        got = layer._race_bars([slow, fast], budget=6)
+        elapsed = time.perf_counter() - started
+        self.assertEqual(got["source"], "nasdaq")
+        self.assertLess(elapsed, 3.0)
+        self.assertGreaterEqual(len(got["data"]), 5)
 
     def test_finnhub_timeout_still_uses_the_next_candle_source(self):
         layer._cache.clear()

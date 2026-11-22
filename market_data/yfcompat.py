@@ -74,7 +74,8 @@ class Ticker:
     def history(self, period="1mo", interval="1d", start=None, end=None, **kwargs) -> pd.DataFrame:
         period_name, interval_name = _period_interval(str(period or "1y"), str(interval or "1d"))
         region = kwargs.get("region")
-        env = layer.candles(self.ticker, period=period_name, interval=interval_name, region=region)
+        budget = float(kwargs.get("budget") or (2.5 if interval_name in {"1m", "5m", "15m", "60m"} else 6.0))
+        env = layer.candles(self.ticker, period=period_name, interval=interval_name, region=region, budget=budget)
         bars = env.get("data") if isinstance(env, dict) and isinstance(env.get("data"), list) else []
         frame = _frame(bars)
         try:

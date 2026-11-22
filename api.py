@@ -21427,7 +21427,7 @@ async def algo_signal_safe(symbol: str = "NIFTY", region: str = ""):
         if (now - _algo_cache_ts[cache_key]).total_seconds() < 600:
             return _legacy_algo_research_guard(_algo_cache[cache_key])
     try:
-        result = _legacy_algo_research_guard(await asyncio.wait_for(_algo_signal_impl(symbol, region), timeout=25))
+        result = _legacy_algo_research_guard(await asyncio.wait_for(_algo_signal_impl(symbol, region), timeout=9))
         _algo_cache[cache_key] = result
         _algo_cache_ts[cache_key] = now
         return result
@@ -21526,14 +21526,17 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     closes = None; daily = None; highs = None; lows = None; volumes_arr = None
     _loop = asyncio.get_event_loop()
     
-    # Price history comes only from market_data.layer: Finnhub candles, then
-    # Nasdaq daily bars, and Angel getCandleData (via the static-IP proxy) for India.
+    # Both regions load candles through market_data.layer. Finnhub is first for
+    # the US and falls through to Nasdaq. India uses Angel getCandleData through
+    # the proxy when the instrument book is already warm, otherwise Screener or
+    # the Nifty graph. The two calls stay separate so neither path is skipped.
     import pandas as pd
+    from market_data.yfcompat import Ticker as _HistoryTicker
     try:
-        from market_data.yfcompat import history_frame as _history_frame
-        daily = await _loop.run_in_executor(
-            None, lambda _s=yf_sym, _r=inst.get("region"): _history_frame(_s, period="1y", interval="1d", region=_r)
-        )
+        if not is_us:
+            daily = await _loop.run_in_executor(None, lambda _s=yf_sym: _HistoryTicker(_s).history(period="1y", interval="1d"))
+        else:
+            daily = await _loop.run_in_executor(None, lambda _s=yf_sym: _HistoryTicker(_s).history(period="1y", interval="1d"))
         _bar_source = getattr(daily, "attrs", {}).get("source") if daily is not None else None
         print(f"  candles {symbol}: {0 if daily is None else len(daily)} bars from {_bar_source}")
     except Exception as _candle_err:
@@ -21550,14 +21553,13 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     intraday_1h = None
     try:
         _loop_i = asyncio.get_event_loop()
-        _region = inst.get("region")
-        intraday_5m = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="5d", interval="5m", region=_region))
+        intraday_5m, intraday_15m, intraday_1h = await asyncio.wait_for(asyncio.gather(
+            _loop_i.run_in_executor(None, lambda: _HistoryTicker(yf_sym).history(period="5d", interval="5m", budget=2)),
+            _loop_i.run_in_executor(None, lambda: _HistoryTicker(yf_sym).history(period="5d", interval="15m", budget=2)),
+            _loop_i.run_in_executor(None, lambda: _HistoryTicker(yf_sym).history(period="5d", interval="60m", budget=2)),
+        ), timeout=2.5)
         if intraday_5m is not None and len(intraday_5m) > 0:
             print(f"  📊 Intraday 5m: {len(intraday_5m)} bars for {symbol}")
-        intraday_15m = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="1mo", interval="15m", region=_region))
-        if intraday_15m is not None and len(intraday_15m) > 0:
-            print(f"  📊 Intraday 15m: {len(intraday_15m)} bars for {symbol}")
-        intraday_1h = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="1mo", interval="60m", region=_region))
         if intraday_1h is not None and len(intraday_1h) > 0:
             print(f"  📊 Intraday 1h: {len(intraday_1h)} bars for {symbol}")
     except Exception as _id_err:
@@ -22127,7 +22129,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     # ═══ INDIA VIX — Direct fetch if missing from option chain ═══
     if vix <= 0 and not is_us:
         try:
-            _vix_data = _nse_get("https://www.nseindia.com/api/allIndices")
+            _vix_resp = _nse_session.get("https://www.nseindia.com/api/allIndices", timeout=2)
+            _vix_data = _vix_resp.json() if _vix_resp.status_code == 200 else None
             if _vix_data:
                 for _vi in _vix_data.get("data", []):
                     if "VIX" in (_vi.get("index", "") or "").upper():
@@ -22142,10 +22145,10 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     if is_us and vix <= 0:
         # USA — fetch VIX and basic options from yfinance
         try:
-            vix_tk = yf.Ticker("^VIX")
-            vix_info = vix_tk.info or {}
-            vix = round(float(vix_info.get("regularMarketPrice", 0) or vix_info.get("previousClose", 0)), 1)
-        except:
+            from market_data.layer import quote as _vix_quote
+            _vix_row = (_vix_quote("VIX", "US").get("data") or {})
+            vix = round(float(_vix_row.get("price") or 0), 1)
+        except Exception:
             pass
         # Try yfinance options chain for US stocks
         try:
