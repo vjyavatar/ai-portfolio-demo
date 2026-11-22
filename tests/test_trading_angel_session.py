@@ -127,7 +127,7 @@ class AngelSessionTests(unittest.TestCase):
         http = FakeHttp([])
         with patch.dict(os.environ, {"CELESYS_ANGEL_PROXY_URL": PROXY}, clear=True), patch.object(session, "_http", return_value=http):
             with self.assertRaises(ValueError):
-                session.request_json("https://query1.finance.yahoo.com/v8/finance/chart/AAPL")
+                session.request_json("https://example.com/quote/AAPL")
             self.assertEqual(http.calls, [])
             def explode(*args, **kwargs):
                 raise requests.RequestException("http://user:s3cret@139.59.38.68:8888 down")

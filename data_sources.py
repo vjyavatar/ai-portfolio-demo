@@ -14,8 +14,8 @@ Every return value carries `_source` (which provider answered) and
 `_partial` (True if some fields missing).
 
 Region routing (priority order, tries each until one succeeds):
-  US:  yfinance → google_finance
-  IN:  nse → yfinance(.NS) → google_finance
+  US:  finnhub → provider → google_finance
+  IN:  nse → provider → google_finance
 
 Integrates with existing infrastructure:
   • _cb_allow / _cb_record_success / _cb_record_failure (circuit breaker)
@@ -47,7 +47,7 @@ try:
         _nse_get,
         fetch_google_finance,
     )
-    import yfinance as yf
+    import market_data.yfcompat as yf
     _CELESYS_INTEGRATED = True
 except ImportError:
     _CELESYS_INTEGRATED = False
@@ -70,7 +70,7 @@ except ImportError:
     def diag_log(ch, ev, meta=None): pass
     def _nse_get(url, retries=2): return None
     def fetch_google_finance(t): return None
-    try: import yfinance as yf
+    try: import market_data.yfcompat as yf
     except ImportError: yf = None
 
 
@@ -80,24 +80,24 @@ except ImportError:
 _CAPABILITIES = {
     # r63.0: Finnhub primary for US (Yahoo blocks Render IP). India unchanged.
     "quote": {
-        "US": ["finnhub", "yfinance", "google_finance"],
-        "IN": ["nse_quote", "yfinance", "google_finance"],
+        "US": ["finnhub", "provider", "google_finance"],
+        "IN": ["nse_quote", "provider", "google_finance"],
     },
     "price_history": {
-        "US": ["finnhub", "yfinance", "google_finance"],
-        "IN": ["yfinance", "nse_chart", "google_finance"],
+        "US": ["finnhub", "provider", "google_finance"],
+        "IN": ["provider", "nse_chart", "google_finance"],
     },
     "earnings_history": {
-        "US": ["finnhub", "yfinance"],
-        "IN": ["nse_corp_info", "yfinance"],
+        "US": ["finnhub", "provider"],
+        "IN": ["nse_corp_info", "provider"],
     },
     "next_earnings": {
-        "US": ["yfinance"],  # finnhub free tier doesn't have this endpoint
-        "IN": ["nse_event_calendar", "yfinance"],
+        "US": ["provider"],
+        "IN": ["nse_event_calendar", "provider"],
     },
     "quarterly_results": {
-        "US": ["finnhub", "yfinance"],
-        "IN": ["nse_corp_info", "yfinance"],
+        "US": ["finnhub", "provider"],
+        "IN": ["nse_corp_info", "provider"],
     },
 }
 
@@ -370,7 +370,7 @@ _HANDLERS = {
         "earnings_history":   _fh.get_earnings_history,
         "quarterly_results":  _fh.get_earnings_history,
     },
-    "yfinance": {
+    "provider": {
         "quote":              _yf_quote,
         "price_history":      _yf_price_history,
         "earnings_history":   _yf_earnings_history,

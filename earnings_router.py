@@ -16,7 +16,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-import yfinance as yf
+import market_data.yfcompat as yf
 from fastapi import APIRouter
 
 router = APIRouter()

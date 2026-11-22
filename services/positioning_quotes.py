@@ -82,7 +82,7 @@ def _fetch_one_quote(ticker: str) -> Optional[dict]:
 def _fetch_one_quote_yf(ticker: str) -> Optional[dict]:
     """yfinance-only fetch. Returns None on any failure (including Render block)."""
     try:
-        import yfinance as yf
+        import market_data.yfcompat as yf
     except ImportError:
         return None
 

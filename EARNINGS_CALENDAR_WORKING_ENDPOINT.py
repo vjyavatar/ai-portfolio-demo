@@ -20,7 +20,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-import yfinance as yf
+import market_data.yfcompat as yf
 
 logger = logging.getLogger(__name__)
 
@@ -308,7 +308,7 @@ def earnings_calendar(symbol: str, region: str = "US", email: str = ""):
 #    late November (the WEDNESDAY of the last week). CSCO's are typically the
 #    Wednesday after AAPL (mid-Feb / mid-May / mid-Aug / mid-Nov). If you
 #    expect a name on a specific date and it's not appearing, check on Yahoo
-#    Finance directly: https://finance.yahoo.com/quote/NVDA/calendar/
+#    Company calendar pages are not fetched from a blocked public chart host.
 #    yfinance reads from the same data — if Yahoo shows it, this endpoint will.
 #
 # 3. If you ALREADY have an /api/earnings-this-week handler in api.py, you
@@ -316,6 +316,6 @@ def earnings_calendar(symbol: str, region: str = "US", email: str = ""):
 #    Use Ctrl-F in api.py for `earnings-this-week` and remove the old handler.
 #
 # 4. Render outbound IP (72.180.65.28) is banned by NSE for direct API calls.
-#    yfinance routes through query1.finance.yahoo.com which is NOT NSE-direct,
+#    Historical note: an older build used a public chart host that is no longer called.
 #    so .NS tickers work fine from Render.
 # ═══════════════════════════════════════════════════════════════════════════

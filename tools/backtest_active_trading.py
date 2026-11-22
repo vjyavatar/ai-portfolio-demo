@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 try:
-    import yfinance as yf
+    import market_data.yfcompat as yf
     import pandas as pd
 except ImportError:
     print("ERROR: Install dependencies first: pip install yfinance pandas")

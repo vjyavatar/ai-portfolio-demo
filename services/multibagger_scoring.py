@@ -119,7 +119,7 @@ def _fetch_fundamentals(ticker: str) -> FundamentalsSnapshot:
             return cached[1]
 
     try:
-        import yfinance as yf
+        import market_data.yfcompat as yf
     except ImportError:
         with _fund_lock:
             _fund_cache[ticker] = (now, snap)

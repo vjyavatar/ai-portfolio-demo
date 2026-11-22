@@ -31,7 +31,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Optional
 
-import yfinance as yf
+import market_data.yfcompat as yf
 
 logger = logging.getLogger("stock_intel")
 

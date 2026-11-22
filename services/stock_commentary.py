@@ -91,11 +91,11 @@ def _fetch_news(ticker: str, region: str) -> List[dict]:
     """Fetch up to 10 recent news headlines. 5s hard timeout."""
     def _go():
         try:
-            import yfinance as yf
+            import market_data.yfcompat as yf
             # Try to import the rate-wait helper
             try:
-                from api import _yahoo_rate_wait
-                _yahoo_rate_wait()
+                from api import _provider_slot_wait
+                _provider_slot_wait()
             except Exception:
                 pass
 
@@ -126,10 +126,10 @@ def _fetch_price_series(ticker: str, region: str, days: int = 7) -> List[dict]:
     """Fetch last N days OHLC. 5s hard timeout. Returns [{date, open, close, volume, pct_change}, ...]"""
     def _go():
         try:
-            import yfinance as yf
+            import market_data.yfcompat as yf
             try:
-                from api import _yahoo_rate_wait
-                _yahoo_rate_wait()
+                from api import _provider_slot_wait
+                _provider_slot_wait()
             except Exception:
                 pass
 
@@ -170,11 +170,11 @@ def _fetch_upcoming_earnings(ticker: str, region: str) -> Optional[dict]:
 
     def _go():
         try:
-            import yfinance as yf
+            import market_data.yfcompat as yf
             from datetime import datetime, timedelta
             try:
-                from api import _yahoo_rate_wait
-                _yahoo_rate_wait()
+                from api import _provider_slot_wait
+                _provider_slot_wait()
             except Exception:
                 pass
 
