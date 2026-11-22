@@ -144,9 +144,10 @@ class AngelOneMarketData(MarketDataProvider):
         for row in rows[-int(limit):]:
             if not isinstance(row, list) or len(row) < 6:
                 continue
-            stamp = datetime.fromisoformat(str(row[0])).replace(
-                tzinfo=timezone(timedelta(hours=5, minutes=30))
-            ).astimezone(timezone.utc)
+            stamp = datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
+            stamp = stamp.astimezone(timezone.utc)
             end = stamp + timedelta(seconds=seconds)
             complete = end <= now
             result.append(MarketBar(
