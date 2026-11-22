@@ -137,3 +137,28 @@ body.ws-unified{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 @media(max-width:760px){.ws-unified #ws-legacy-search .irow{grid-template-columns:minmax(0,1fr)!important}.ws-unified #ws-legacy-search #btn{width:100%!important}.ws-unified #ws-legacy-search #autocomplete{position:static!important;max-height:200px;margin-top:4px}}
 /* Async report cards must not become scroll anchors that hide the report header. */
 .ws-unified #report{overflow-anchor:none}
+
+
+/* Market board UX refinement: clear source/freshness and readable responsive cards. */
+.ws-unified #live-board{border:1px solid var(--ws-line);border-radius:18px;padding:clamp(18px,2.2vw,30px);background:var(--ws-card);box-shadow:0 8px 30px rgba(15,35,54,.045)}
+.ws-unified #live-board .ws-section-heading{align-items:center;gap:16px}
+.ws-unified #live-board .ws-section-heading a{font-weight:650;color:var(--ws-accent);text-underline-offset:4px}
+.ws-unified .live-board-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;margin:18px 0}
+.ws-unified .live-chip--refined{min-width:0;padding:16px;border:1px solid var(--ws-line);border-radius:13px;background:var(--ws-card);display:flex;flex-direction:column;gap:10px;box-shadow:0 2px 8px rgba(15,35,54,.025)}
+.ws-unified .live-chip__top,.ws-unified .live-chip__foot{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ws-unified .live-chip__name{font-weight:700;color:var(--ws-ink);overflow-wrap:anywhere}
+.ws-unified .live-chip__quality{font-size:10px;line-height:1.5;font-weight:650;border-radius:99px;padding:3px 8px;background:var(--ws-soft);color:var(--ws-muted);white-space:normal;text-align:right}
+.ws-unified .live-chip__quality[data-state=live]{color:var(--ws-accent)}
+.ws-unified .live-chip__quality[data-state=delayed]{background:rgba(200,138,30,.12);color:var(--ws-ink)}
+.ws-unified .live-chip__price{font-size:clamp(20px,2vw,26px);line-height:1.2;letter-spacing:-.025em;font-variant-numeric:tabular-nums;color:var(--ws-ink)}
+.ws-unified .live-chip__change{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.ws-unified .live-chip__change.up{color:#087b68}.ws-unified .live-chip__change.dn{color:#c03b45}.ws-unified .live-chip__change.flat{color:var(--ws-muted)}
+.ws-unified .live-chip__foot{font-size:11px;color:var(--ws-muted);border-top:1px solid var(--ws-line);padding-top:10px;line-height:1.5}
+.ws-unified .live-board-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.ws-unified .live-board-status{margin:0;color:var(--ws-muted);font-size:12px}
+.ws-unified .live-board-refresh{border:1px solid var(--ws-line);background:var(--ws-card);color:var(--ws-ink);padding:8px 13px;border-radius:9px;font:inherit;font-weight:650;cursor:pointer;min-height:40px}
+.ws-unified .live-board-refresh:hover{border-color:var(--ws-accent);color:var(--ws-accent)}
+.ws-unified .live-board-refresh:focus-visible,.ws-unified #live-board a:focus-visible{outline:3px solid var(--ws-accent);outline-offset:3px}
+.ws-unified .live-board-refresh:disabled{opacity:.55;cursor:wait}
+@media(max-width:640px){.ws-unified #live-board .ws-section-heading{flex-wrap:wrap}.ws-unified .live-chip__foot{flex-wrap:wrap}.ws-unified .live-board-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))}}
+@media(prefers-reduced-motion:reduce){.ws-unified .live-chip--refined{transition:none}}
