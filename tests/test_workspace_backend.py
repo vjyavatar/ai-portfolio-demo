@@ -14,12 +14,13 @@ class WorkspaceBackendTests(unittest.TestCase):
         self.assertEqual(node.body[0].value.value.func.id,'legacy_research')
     def test_no_active_broker_functions_credentials_or_http_endpoint(self):
         calls={n.func.id for n in ast.walk(self.tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)}
-        self.assertFalse(any(n.startswith('_upstox') for n in calls))
+        self.assertFalse(any('upstox' in n.lower() for n in calls))
         self.assertNotIn('api.upstox.com',self.source)
-        self.assertNotIn('os.getenv("UPSTOX',self.source)
-        node=self.function('retired_broker_connection')
-        self.assertEqual(len(node.decorator_list),4)
-        for d in node.decorator_list:self.assertTrue(any(k.arg=='status_code' and k.value.value==410 for k in d.keywords))
+        self.assertNotIn('UPSTOX_',self.source)
+        self.assertNotIn('/api/upstox-',self.source)
+        names={n.name for n in self.tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))}
+        self.assertNotIn('retired_broker_connection',names)
+        self.assertNotIn('upstox_login',names)
     def test_india_scanner_uses_exchange_and_skips_absent_volume(self):
         text=ast.get_source_segment(self.source,self.function('_options_setup_india_nse'))
         self.assertIn('await nse_options(sym)',text)

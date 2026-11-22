@@ -20,12 +20,6 @@ INDICES = {'NIFTY': 'NSE_INDEX|Nifty 50', 'BANKNIFTY': 'NSE_INDEX|Nifty Bank',
 _cache = {}
 _locks = {r: threading.Lock() for r in ('US', 'IN')}
 _retry = {'US': 0, 'IN': 0}
-_token_supplier = lambda: None
-
-
-def configure_india_token(supplier):
-    global _token_supplier
-    _token_supplier = supplier
 
 
 def nonnegative(v):
@@ -90,6 +84,34 @@ def normalize(payload, region, symbol, expiry):
     return sorted(rows.values(), key=lambda q: q['strike']), spot
 
 
+def _angel_india_chain(base, symbol, expiry):
+    """NIFTY and BANKNIFTY from Angel One. No Upstox token and no exchange scrape."""
+    if symbol not in ('NIFTY', 'BANKNIFTY'):
+        return dict(base, source='angel_one', message='Angel One covers NIFTY and BANKNIFTY on this route. FINNIFTY and SENSEX are not on that chain.')
+    try:
+        import angel_options
+        if not angel_options.configured():
+            return dict(base, source='angel_one', message='Angel One is not configured for India chains. No substitute prices are shown.')
+        snap = angel_options.chain(symbol, expiry)
+    except Exception:
+        return dict(base, source='angel_one', message='Angel One chain could not be read. No substitute prices are shown.')
+    if not isinstance(snap, dict):
+        return dict(base, source='angel_one', message='Angel One chain could not be read. No substitute prices are shown.')
+    status = snap.get('status') if snap.get('status') in ('SNAPSHOT', 'UNAVAILABLE') else 'UNAVAILABLE'
+    return dict(
+        base,
+        source='angel_one',
+        status=status,
+        rows=snap.get('rows') or [] if status == 'SNAPSHOT' else [],
+        expiry=snap.get('expiry'),
+        expiries=snap.get('expiries') or [],
+        spot=snap.get('spot'),
+        freshness=snap.get('freshness') or 'UNVERIFIED_OR_STALE',
+        fetched_at=snap.get('fetched_at'),
+        message=snap.get('message') or base.get('message') or '',
+    )
+
+
 def get_json(region, path, params, token):
     base = 'https://api.tradier.com/v1/markets/'
     req = Request(base + path + '?' + urlencode(params), headers={'Accept': 'application/json', 'Authorization': 'Bearer '+token})
@@ -129,12 +151,11 @@ def chain(region: str = 'IN', symbol: str = 'NIFTY', expiry: str = ''):
                 limitations='Snapshot research only. OI and Greeks have separate update schedules. Quote recency does not verify market hours. No trade recommendation.')
     def response(data): return JSONResponse(data, headers={'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex'})
     if region == 'IN':
-        return response(dict(base, message='Use Options in the main Celesys workspace for India exchange snapshots.'))
+        return response(_angel_india_chain(base, symbol, expiry))
     # A brokerage token alone is not permission to redistribute its data publicly.
     if os.getenv('CELESYS_PUBLIC_OPTIONS_'+region) != 'true':
         return response(dict(base, message='This market feed is not enabled for public display. Explore the guide below while the operator connects an authorized feed.'))
-    token = os.getenv('CELESYS_INDIA_OPTIONS_DATA_TOKEN') if region == 'IN' else os.getenv('CELESYS_OPTIONS_DATA_TOKEN')
-    if region == 'IN' and not token: token = _token_supplier()
+    token = os.getenv('CELESYS_OPTIONS_DATA_TOKEN')
     if not token: return response(dict(base, message='The data connection is unavailable or needs renewal. No substitute prices are shown.'))
     now = time.time()
     key = (region, symbol, expiry)
@@ -145,19 +166,15 @@ def chain(region: str = 'IN', symbol: str = 'NIFTY', expiry: str = ''):
             return response(snapshot(cached, now))
         if now < _retry[region]: return response(dict(base, message='Provider cooldown active. Please retry after the countdown.', retry_after=_retry[region]))
         _retry[region] = now + 15
-        if region == 'IN':
-            raw = get_json(region, 'option/contract', {'instrument_key': INDICES[symbol]}, token)
-            expiries = {q.get('expiry') for q in raw.get('data', []) if isinstance(q, dict) and q.get('underlying_key') == INDICES[symbol]}
-        else:
-            dates = (get_json(region, 'options/expirations', {'symbol':symbol}, token).get('expirations') or {}).get('date') or []
-            expiries = {dates} if isinstance(dates, str) else set(dates)
+        dates = (get_json(region, 'options/expirations', {'symbol':symbol}, token).get('expirations') or {}).get('date') or []
+        expiries = {dates} if isinstance(dates, str) else set(dates)
         today = datetime.fromtimestamp(now, ZoneInfo('Asia/Kolkata' if region == 'IN' else 'America/New_York')).date().isoformat()
         expiries = sorted(e for e in expiries if isinstance(e, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', e) and e >= today)
         if not expiries: return response(dict(base, message='No available expirations were returned.'))
         chosen = expiry or expiries[0]
         if chosen not in expiries: return response(dict(base, expiries=expiries, message='That expiry is unavailable. Select an available expiry.'))
-        params = {'instrument_key':INDICES[symbol], 'expiry_date':chosen} if region == 'IN' else {'symbol':symbol, 'expiration':chosen, 'greeks':'true'}
-        raw = get_json(region, 'option/chain' if region == 'IN' else 'options/chains', params, token)
+        params = {'symbol':symbol, 'expiration':chosen, 'greeks':'true'}
+        raw = get_json(region, 'options/chains', params, token)
         rows, spot = normalize(raw, region, symbol, chosen)
         if not rows: return response(dict(base, expiries=expiries, message='The provider returned no valid matching contracts.'))
         data = dict(base, rows=rows, spot=spot, expiry=chosen, expiries=expiries, status='SNAPSHOT', fetched_at=time.time(),

@@ -41,7 +41,8 @@ except Exception:
     import logging
     logging.getLogger(__name__).exception("Trading Desk unavailable; existing routes remain active")
 
-# Angel SmartAPI session refresh. No-op unless the login env vars are set.
+# Angel SmartAPI session refresh and a non-blocking login self-check.
+# No-op unless the login env vars are set. Static JWT still works without them.
 try:
     import angel_session
     angel_session.ensure_daily_refresh()

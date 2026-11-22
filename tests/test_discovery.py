@@ -58,6 +58,16 @@ class DiscoveryTests(unittest.TestCase):
             self.assertEqual(response.headers['x-robots-tag'],'noindex, nofollow')
             self.assertEqual(response.headers['cache-control'],'no-store')
 
+    def test_india_chain_reads_angel_and_not_a_removed_broker(self):
+        snap=dict(status='SNAPSHOT',rows=[{'strike':25000,'call':{'oi':10,'bid':1,'ask':2},'put':{'oi':8,'bid':1,'ask':2}}],
+                  expiry='2099-01-16',expiries=['2099-01-16'],spot=24900,freshness='RECENT_FEED_SNAPSHOT',fetched_at=1000,message='angel')
+        with patch('angel_options.configured',return_value=True),patch('angel_options.chain',return_value=snap) as chain,patch('option_chain.urlopen') as net:
+            body=self.client.get('/api/option-chain?region=IN&symbol=NIFTY').json()
+        chain.assert_called_once()
+        self.assertFalse(net.called)
+        self.assertEqual(body['source'],'angel_one')
+        self.assertEqual(body['status'],'SNAPSHOT')
+        self.assertEqual(body['rows'][0]['call']['oi'],10)
     def test_public_feed_disabled_without_network(self):
         with patch.dict(os.environ,{},clear=True),patch('option_chain.urlopen') as call:
             r=self.client.get('/api/option-chain');self.assertEqual(r.json()['status'],'UNAVAILABLE')

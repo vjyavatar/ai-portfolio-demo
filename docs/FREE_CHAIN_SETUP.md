@@ -1,5 +1,9 @@
 # Account-backed options chains: Angel One India + Tradier US
 
+The public `/markets` board and `/api/live/options` also read Angel One when `angel_options.configured()` is true (API key, local IP, MAC, and either a JWT or the client-code/PIN/TOTP login). That path does not require a signed-in session. `CELESYS_LICENSED_OPTIONS_IN` is checked only by the private desk in `private_options.ready`. It is an operator display switch, not a statutory test encoded in the public route, so a configured Angel session is enough for the public NIFTY/BANKNIFTY chain and for NSE quotes. The operator is still responsible for the account's data entitlement.
+
+Upstox is not part of this app.
+
 The original Decide → Trader page now includes **View option chain**. This is a read-only, verified-account feature. It uses the same private chain endpoint for both markets and does not send orders or turn chain snapshots into buy recommendations.
 
 ## Provider choice
