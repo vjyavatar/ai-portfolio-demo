@@ -94,6 +94,9 @@ class DecideTests(unittest.TestCase):
         boot=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_auto_scan_boot')
         boot_src=ast.get_source_segment(Path('api.py').read_text(), boot)
         self.assertIn('CELESYS_BOOT_SCAN', boot_src)
+        impl=next(n for n in TREE.body if isinstance(n, ast.AsyncFunctionDef) and n.name=='_algo_signal_impl')
+        impl_src=ast.get_source_segment(Path('api.py').read_text(), impl)
+        self.assertIn('_past_decision_budget', impl_src)
 
     def test_budget_returns_ready_sections_while_the_body_is_still_running(self):
         import asyncio
