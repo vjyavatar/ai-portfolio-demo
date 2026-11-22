@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.112"
+APP_VERSION = "v4.63.113"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.112: Background scans yield between tickers and do not start inside the decision process. /api/debug/loop-lag reports event-loop delay. "
+    "v4.63.113: Decision stays in-process. A second interpreter was OOM-killing the 2GB instance, and the boot scan no longer starts by itself. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -18924,8 +18924,10 @@ async def paper_journal(region: str = "IN", limit: int = 50):
 def _auto_scan_boot():
     import threading
     import web_background
-    # The decision process imports this module. A second boot scan there
-    # doubled the GIL load and the web route could not answer.
+    # A 48-name boot scan held the loop for about 20s and, together with a
+    # second interpreter, OOM-killed the 2GB instance. Opt in to run it.
+    if os.getenv("CELESYS_BOOT_SCAN") != "1":
+        return
     if not web_background.in_web_server():
         return
     def _bg():
@@ -32880,8 +32882,7 @@ def _decision_research_guard(result):
 
 
 import contextvars
-import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 _in_decision_worker = contextvars.ContextVar("celesys_decision_worker", default=False)
 _chain_worker = contextvars.ContextVar("celesys_chain_worker", default=False)
@@ -32892,26 +32893,20 @@ _DECISION_BUDGET_S = 12
 
 
 def _decision_pool():
-    """One spawned process. Its GIL cannot stop this process from answering."""
+    """One thread in this process. A second interpreter re-imports the app and OOM-killed the 2GB instance."""
     global _decision_executor
     if _decision_executor is None:
-        _decision_executor = ProcessPoolExecutor(
-            max_workers=1,
-            mp_context=multiprocessing.get_context("spawn"),
-        )
+        _decision_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="decision")
     return _decision_executor
 
 
 def _decision_process_entry(symbol, region):
-    """Run inside the decision process. The route only waits for this."""
+    """Run beside the request. The route only waits for this."""
     _in_decision_worker.set(True)
     try:
-        result = asyncio.run(decision_engine(symbol, region))
+        return asyncio.run(decision_engine(symbol, region))
     finally:
         _in_decision_worker.set(False)
-    if isinstance(result, dict):
-        return json.loads(json.dumps(result, default=str))
-    return result
 
 
 def _decision_partial(symbol, region, snapshot=None):

@@ -85,11 +85,15 @@ class DecideTests(unittest.TestCase):
         self.assertIn('_run_decision_within_budget', segment)
         self.assertIn('_in_decision_worker', segment)
 
-    def test_decision_pool_is_one_spawned_process(self):
+    def test_decision_pool_stays_in_process(self):
         pool=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_decision_pool')
         segment=ast.get_source_segment(Path('api.py').read_text(), pool)
-        self.assertIn('spawn', segment)
-        self.assertIn('max_workers=1', segment)
+        self.assertIn('ThreadPoolExecutor', segment)
+        self.assertNotIn('ProcessPoolExecutor', segment)
+        self.assertNotIn('spawn', segment)
+        boot=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_auto_scan_boot')
+        boot_src=ast.get_source_segment(Path('api.py').read_text(), boot)
+        self.assertIn('CELESYS_BOOT_SCAN', boot_src)
 
     def test_budget_returns_ready_sections_while_the_body_is_still_running(self):
         import asyncio
