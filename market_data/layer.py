@@ -2,8 +2,8 @@
 
 US quotes and fundamentals come from Finnhub when FINNHUB_API_KEY is set,
 with TradingView scanner fields and SEC EDGAR companyfacts filling gaps.
-US daily candles are one chain: Finnhub /stock/candle, then Nasdaq
-api.nasdaq.com historical, then TradingView. India candles are Angel
+US daily candles are TradingView, then Nasdaq, then Stooq, then Finnhub.
+India candles are Angel
 getCandleData through the static-IP proxy, then Screener.in, TradingView,
 and the Nifty index graph. Each candle step gives up after about 5 seconds
 and the next source runs. The whole chain stays inside an 8 second budget.
@@ -779,7 +779,22 @@ def _nasdaq_bars(symbol: str) -> Optional[dict]:
     url = _NASDAQ.format(symbol=urllib.parse.quote(meta["root"])) + "?" + urllib.parse.urlencode({
         "assetclass": "stocks", "fromdate": start, "limit": "500",
     })
-    payload = _json(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"}, timeout=CANDLE_TIMEOUT, retries=0)
+    status = None
+    try:
+        status, raw = _request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Origin": "https://www.nasdaq.com",
+            "Referer": "https://www.nasdaq.com/",
+        }, timeout=CANDLE_TIMEOUT, retries=0)
+        payload = json.loads(raw.decode("utf-8", "replace")) if status == 200 and raw else None
+    except Exception as exc:
+        print(f"  candle {meta['root']}: nasdaq request failed ({type(exc).__name__})")
+        return None
+    if not isinstance(payload, dict):
+        print(f"  candle {meta['root']}: nasdaq HTTP {status}")
+        return None
     table = ((payload or {}).get("data") or {}).get("tradesTable") if isinstance(payload, dict) else None
     rows = (table or {}).get("rows") if isinstance(table, dict) else None
     if not isinstance(rows, list):
@@ -796,6 +811,29 @@ def _nasdaq_bars(symbol: str) -> Optional[dict]:
     return _bars_from_pairs(pairs, "nasdaq")
 
 
+def _stooq_bars(symbol: str) -> Optional[dict]:
+    """Daily bars from Stooq. Used when Nasdaq and TradingView both miss."""
+    meta = classify(symbol)
+    if meta["region"] != "US" or meta["kind"] != "equity":
+        return None
+    url = f"https://stooq.com/q/d/l/?s={urllib.parse.quote(meta['root'].lower())}.us&i=d"
+    try:
+        status, raw = _request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "text/csv"}, timeout=CANDLE_TIMEOUT, retries=0)
+    except Exception as exc:
+        print(f"  candle {meta['root']}: stooq request failed ({type(exc).__name__})")
+        return None
+    if status != 200 or not raw or raw[:1] == b"<":
+        print(f"  candle {meta['root']}: stooq HTTP {status}")
+        return None
+    pairs = []
+    for line in raw.decode("utf-8", "replace").splitlines()[1:]:
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 5 or parts[0].lower() == "date":
+            continue
+        pairs.append((parts[0], parts[1], parts[2], parts[3], parts[4], parts[5] if len(parts) > 5 else 0))
+    return _bars_from_pairs(pairs[-400:], "stooq")
+
+
 def _finnhub_bars(symbol: str, interval: str) -> Optional[dict]:
     meta = classify(symbol)
     if not meta["finnhub"]:
@@ -806,6 +844,8 @@ def _finnhub_bars(symbol: str, interval: str) -> Optional[dict]:
     start = end - days * 86400
     payload = _finnhub("/stock/candle", {"symbol": meta["root"], "resolution": resolution, "from": start, "to": end}, timeout=CANDLE_TIMEOUT, retries=0)
     if not isinstance(payload, dict) or payload.get("s") != "ok":
+        reason = payload.get("s") or payload.get("error") if isinstance(payload, dict) else "no response"
+        print(f"  candle {meta['root']}: finnhub {reason}")
         return None
     stamps = payload.get("t") or []
     opens = payload.get("o") or []
@@ -1169,8 +1209,21 @@ def _tv_symbol_bars(tv_symbol: str, resolution: str, count: int, timeout: float)
             pass
 
 
+_tv_slots = threading.Semaphore(2)
+
+
 def _tradingview_bars(symbol: str, interval: str = "1d") -> Optional[dict]:
     meta = classify(symbol)
+    if not _tv_slots.acquire(timeout=1):
+        print(f"  candle {meta['root']}: tradingview busy")
+        return None
+    try:
+        return _tradingview_bars_unlocked(symbol, interval, meta)
+    finally:
+        _tv_slots.release()
+
+
+def _tradingview_bars_unlocked(symbol: str, interval: str, meta: dict) -> Optional[dict]:
     resolution = {"1d": "D", "1wk": "W", "60m": "60", "15m": "15", "5m": "5", "1m": "1"}.get(interval, "D")
     count = 120 if resolution in {"1", "5", "15", "60"} else 400
     deadline = time.time() + CANDLE_TIMEOUT
@@ -1200,10 +1253,14 @@ def _candle_steps(symbol: str, meta: dict, interval_name: str) -> list:
         if not intraday:
             steps.append(("nifty", lambda: _moneycontrol_index_bars(symbol)))
         return steps
-    steps = [("finnhub", lambda interval=fetch_interval: _finnhub_bars(symbol, interval))]
+    # TradingView is the source that actually returns bars from this host.
+    # Finnhub's candle call is often empty on the current plan, and Nasdaq
+    # rejects a bare request, so those follow instead of going first.
+    steps = [("tradingview", lambda interval=fetch_interval: _tradingview_bars(symbol, interval))]
     if not intraday and meta["kind"] == "equity":
         steps.append(("nasdaq", lambda: _nasdaq_bars(symbol)))
-    steps.append(("tradingview", lambda interval=fetch_interval: _tradingview_bars(symbol, interval)))
+        steps.append(("stooq", lambda: _stooq_bars(symbol)))
+    steps.append(("finnhub", lambda interval=fetch_interval: _finnhub_bars(symbol, interval)))
     return steps
 
 
