@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.110"
+APP_VERSION = "v4.63.111"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.110: The 12 second decision budget covers the whole request for US and India. A slow Angel instrument book is parsed outside this process. "
+    "v4.63.111: The decision calculation runs in its own process. The route returns within 12 seconds even if that process holds the GIL. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -21490,6 +21490,42 @@ def _decision_cache_key(symbol, region):
     return f"{sym}_{str(region or '').upper().strip()}"
 
 
+def _decision_snapshot_path(key):
+    safe = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in str(key or ""))
+    return f"/tmp/celesys-decision-{safe}.json"
+
+
+def _store_decision_snapshot(key, snap):
+    """Keep the in-flight sections where the request process can read them.
+
+    The calculation runs in another process, so the dict alone is not visible
+    to the route. A small JSON file crosses that boundary.
+    """
+    if not key or not isinstance(snap, dict):
+        return
+    _inflight_snapshots[key] = snap
+    try:
+        path = _decision_snapshot_path(key)
+        temporary = path + ".tmp"
+        with open(temporary, "w") as handle:
+            json.dump(snap, handle, default=str)
+        os.replace(temporary, path)
+    except Exception:
+        pass
+
+
+def _load_decision_snapshot(key):
+    found = _inflight_snapshots.get(key)
+    if isinstance(found, dict):
+        return found
+    try:
+        with open(_decision_snapshot_path(key)) as handle:
+            loaded = json.load(handle)
+        return loaded if isinstance(loaded, dict) else None
+    except Exception:
+        return None
+
+
 def _publish_decision_snapshot(progress, result, pending):
     """Share the sections finished so far. The request can return these at the budget."""
     if not isinstance(progress, dict) or not isinstance(result, dict):
@@ -21503,8 +21539,8 @@ def _publish_decision_snapshot(progress, result, pending):
     progress["snapshot"] = snap
     sym = str(result.get("symbol") or "").upper().strip()
     if sym:
-        _inflight_snapshots[sym] = snap
-        _inflight_snapshots[_decision_cache_key(sym, result.get("region"))] = snap
+        _store_decision_snapshot(sym, snap)
+        _store_decision_snapshot(_decision_cache_key(sym, result.get("region")), snap)
 
 
 def _pending_decision(symbol, region, snapshot=None):
@@ -32830,14 +32866,38 @@ def _decision_research_guard(result):
 
 
 import contextvars
-from concurrent.futures import ThreadPoolExecutor as _DecisionPool
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 
 _in_decision_worker = contextvars.ContextVar("celesys_decision_worker", default=False)
 _chain_worker = contextvars.ContextVar("celesys_chain_worker", default=False)
-_decision_executor = _DecisionPool(max_workers=4, thread_name_prefix="decision")
+_decision_executor = None
 _decision_cache = {}
 _decision_cache_ts = {}
 _DECISION_BUDGET_S = 12
+
+
+def _decision_pool():
+    """One spawned process. Its GIL cannot stop this process from answering."""
+    global _decision_executor
+    if _decision_executor is None:
+        _decision_executor = ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=multiprocessing.get_context("spawn"),
+        )
+    return _decision_executor
+
+
+def _decision_process_entry(symbol, region):
+    """Run inside the decision process. The route only waits for this."""
+    _in_decision_worker.set(True)
+    try:
+        result = asyncio.run(decision_engine(symbol, region))
+    finally:
+        _in_decision_worker.set(False)
+    if isinstance(result, dict):
+        return json.loads(json.dumps(result, default=str))
+    return result
 
 
 def _decision_partial(symbol, region, snapshot=None):
@@ -32874,18 +32934,12 @@ async def _run_decision_within_budget(symbol, region):
     if isinstance(cached, dict) and cached.get("success") and cached.get("data_status") != "partial" and stamped and (now - stamped).total_seconds() < 600:
         return cached
 
-    def _worker():
-        _in_decision_worker.set(True)
-        try:
-            return asyncio.run(decision_engine(symbol, region))
-        finally:
-            _in_decision_worker.set(False)
-
-    fut = asyncio.get_running_loop().run_in_executor(_decision_executor, _worker)
+    fut = asyncio.get_running_loop().run_in_executor(_decision_pool(), _decision_process_entry, symbol, region)
     try:
         result = await asyncio.wait_for(asyncio.shield(fut), timeout=_DECISION_BUDGET_S)
     except asyncio.TimeoutError:
-        snap = _inflight_snapshots.get(key) or _inflight_snapshots.get(str(symbol or "").upper().strip().replace(".NS", "").replace(".BO", ""))
+        plain = str(symbol or "").upper().strip().replace(".NS", "").replace(".BO", "")
+        snap = _load_decision_snapshot(key) or _load_decision_snapshot(plain)
         print(f"  decision {symbol}: budget {_DECISION_BUDGET_S:.0f}s, returning partial pending={(snap or {}).get('pending')}", flush=True)
 
         def _cache_when_ready(done):
