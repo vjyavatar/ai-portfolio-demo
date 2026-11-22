@@ -5,8 +5,8 @@
     <meta http-equiv="cache-control" content="no-cache, must-revalidate, max-age=0">
     <meta http-equiv="pragma" content="no-cache">
     <meta http-equiv="expires" content="0">
-<meta name="celesys-version" content="v4.63.102">
-<meta name="celesys-build" content="2026-04-29 03:10:46 UTC">
+<meta name="celesys-version" content="v4.63.103">
+<meta name="celesys-build" content="2026-11-22 08:45:00 UTC">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -1186,6 +1186,7 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
   <button class="ws-brand" data-ws-home><span class="ws-mark">C</span><span>CELESYS<small>MARKET INTELLIGENCE</small></span></button>
   <p class="ws-nav-caption">WORKSPACE</p>
   <button class="ws-nav active" data-ws-home><span>◈</span> Overview</button>
+  <a class="ws-nav" href="/markets"><span>◉</span> Live markets</a>
   <button class="ws-nav" data-ws-mode="stock"><span>▥</span> Stock research</button>
   <button class="ws-nav" data-ws-mode="trading"><span>↗</span> Trading setups</button>
   <button class="ws-nav" data-ws-mode="options"><span>⇄</span> Options chain</button>
@@ -1195,6 +1196,12 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 </aside>
 <div class="ws-topbar"><button id="ws-menu-toggle" class="ws-icon-btn" aria-label="Toggle navigation" aria-expanded="false">☰</button><span id="ws-breadcrumb">Workspace / Overview</span><div class="ws-top-actions"><button data-ws-directory>Find a tool <kbd>/</kbd></button><button id="ws-voice-toggle" aria-pressed="false">Voice off</button><button id="ws-theme" aria-label="Switch color theme">◐</button><button id="ws-account-toggle" aria-expanded="true">Account</button><button id="ws-help-toggle" aria-expanded="false">Help</button></div></div>
 <main id="ws-main" class="ws-main">
+  <section id="live-board" class="ws-panel" aria-label="Live market board">
+    <div class="ws-section-heading"><div><p class="ws-eyebrow">US AND INDIA</p><h2>Market board</h2></div><a href="/markets">Open the full board →</a></div>
+    <p id="live-board-clocks" class="ws-muted">Loading session clocks…</p>
+    <div id="live-board-indices" class="live-board-grid"></div>
+    <p class="ws-muted">Not financial advice. Tiles show the provider delay and whether the exchange is in its regular session. Source limitations stay on the figure.</p>
+  </section>
   <section id="ws-welcome" class="ws-welcome"><div><p class="ws-eyebrow" id="ws-page-kicker">CELESYS / YOUR INVESTMENT WORKSPACE</p><h1 id="ws-page-title">A clearer perspective.<br><span>A more considered decision.</span></h1><p class="ws-intro" id="ws-page-description">Research a company. Follow a setup. Understand an option. Start with one question, and keep the evidence in view.</p></div><div class="ws-method"><span>OUR RESEARCH STANDARD</span><ol><li>Assessment</li><li>Evidence</li><li>Counterargument</li><li>Missing data</li><li>Next check</li></ol></div></section>
   <section id="ws-help" class="ws-panel" hidden><div class="ws-section-heading"><h2>A simple way to begin</h2><button id="ws-help-close">Close help ×</button></div><ol class="ws-help-steps"><li><strong>Research a company</strong><span>Enter your account email and a stock symbol. Analyze opens your original charts and report.</span></li><li><strong>Choose your workspace</strong><span>Trading has watchlists and voice alerts. Options compares available contracts and helps you size a plan.</span></li><li><strong>Review before acting</strong><span>Check source times, missing data and risks. Find your other tools in the searchable library.</span></li></ol></section>
   <p id="ws-notice" class="ws-notice" role="status" aria-live="polite" hidden></p>
@@ -3093,7 +3100,8 @@ function pwaInstall(){
 }
 </script>
 <script src="/static/workspace-core.js?v=20261012-options-ticket" defer></script>
-<script src="/static/workspace.js?v=20261012-market-panel" defer></script>
+<script src="/static/workspace.js?v=20261122-live-board" defer></script>
+<script src="/static/live-board.js?v=20261122" defer></script>
 <script src="/static/brief-market.js?v=20261012-notifications" defer></script>
 <script src="/static/trading-watch.js?v=20261013-free-chains" defer></script>
 </body>

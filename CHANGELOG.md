@@ -1,3 +1,10 @@
+## v4.63.103 (2026-11-22) — Live US and India market board
+
+- Public `/markets` board and overview strip: quotes, percent change, volume, index set, session clocks (ET and IST), delayed vs last-close labels.
+- Research score with trend, valuation, momentum and risk written out. Not a trade instruction.
+- Browser watchlist, liquid-name screener, bounded US option chain (Yahoo) and NSE F&O when the exchange allows it.
+- Cached provider cascade: TradingView scanner, Yahoo, optional Finnhub, optional Twelve Data. Existing routes stay in place.
+
 ## r63.100.1 (2026-06-04) — Honest-NULL backport to legacy /api/institutional-360
 
 ### THE BUG

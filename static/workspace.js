@@ -9,7 +9,8 @@ const fmt=v=>typeof v==='number'&&Number.isFinite(v)?new Intl.NumberFormat('en-U
 function element(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
 function status(text,error=false){$('ws-status').textContent=text;$('ws-status').dataset.error=String(error);$('ws-notice').textContent=text;$('ws-notice').hidden=!error;}
 function stopWatch(){$('tw-stop')?.click();}
-function clearSurface(){hideReport();for(const id of ['ws-account','ws-quick-controls','tw-panel','ws-start-cards','ws-options','ws-plan','ws-market-context','ws-directory','ws-results'])$(id).hidden=true;}
+function setLiveBoard(show){const el=$('live-board');if(el)el.hidden=!show;}
+function clearSurface(){hideReport();setLiveBoard(false);for(const id of ['ws-account','ws-quick-controls','tw-panel','ws-start-cards','ws-options','ws-plan','ws-market-context','ws-directory','ws-results'])$(id).hidden=true;}
 function pageHeading(title,description,kicker){$('ws-welcome').hidden=false;$('ws-page-title').textContent=title;$('ws-page-description').textContent=description;$('ws-page-kicker').textContent=kicker||'CELESYS / YOUR WORKSPACE';}
 function navState(selected,home=false){document.querySelectorAll('#ws-sidebar .ws-nav').forEach(b=>{const active=home?b.hasAttribute('data-ws-home'):b.dataset.wsMode===selected;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});}
 function marketContext(active){if(typeof CustomEvent==='function')document.dispatchEvent(new CustomEvent('celesys:brief-context',{detail:{...context(),mode,active}}));}
@@ -29,6 +30,7 @@ function setMode(next,home=false,quick=false){
  const titles={stock:['Company research','Bring the charts, fundamentals and investment thesis into one view.'],trading:['Your trading workspace','Follow your watchlist. Review the evidence. Hear what has changed.'],options:['The options desk','Compare available contracts, check the source and prepare your position.']};
  pageHeading(home?'A clearer perspective. A more considered decision.':titles[mode][0],home?'Research a company. Follow a setup. Understand an option. Start with one question, and keep the evidence in view.':titles[mode][1],home?'CELESYS / YOUR INVESTMENT WORKSPACE':'CELESYS / '+mode.toUpperCase());
  $('ws-breadcrumb').textContent='Workspace / '+(home?'Overview':titles[mode][0]);
+ setLiveBoard(home);
  document.querySelectorAll('[data-ws-mode]').forEach(b=>{const active=b.dataset.wsMode===mode&&(!home||!!b.closest('#ws-quick-controls'));b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});navState(mode,home);
  $('ws-query-title').textContent=mode==='options'?'Find an option chain':mode==='trading'?'Review a single setup':'Prefer a quick brief?';
  $('ws-query-description').textContent=mode==='options'?'Choose your market and symbol. Quote availability and freshness appear with the result.':mode==='trading'?'A focused assessment alongside your watchlist.':'A focused review of the evidence, risks and next steps.';

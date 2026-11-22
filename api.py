@@ -1517,10 +1517,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.70"
-APP_BUILD_TIME = 1778190986
-APP_BUILD_DATE = "2026-05-07 21:56:26 UTC"
+APP_VERSION = "v4.63.103"
+APP_BUILD_TIME = 1795337100
+APP_BUILD_DATE = "2026-11-22 08:45:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.103: Live US/India market board with cached quotes, session clocks and a research score. "
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
     "layman blocks every section (r61.7), combined Institutional Summary (r61.6), "
@@ -14230,7 +14231,8 @@ async def global_ticker():
     # ═══ FAST PATH: serve from cache ═══
     global _ticker_cache, _ticker_cache_ts
     now_utc = datetime.utcnow()
-    if _ticker_cache and _ticker_cache_ts and (now_utc - _ticker_cache_ts).total_seconds() < 1800:
+    _ticker_max_age = 90 if isinstance(_ticker_cache, dict) and _ticker_cache.get("source") == "live_markets" else 1800
+    if _ticker_cache and _ticker_cache_ts and (now_utc - _ticker_cache_ts).total_seconds() < _ticker_max_age:
         return _ticker_cache
     
     tickers_map = {
@@ -14249,7 +14251,14 @@ async def global_ticker():
         "BTC-USD": {"name": "BTC", "flag": "₿"},
     }
     
-    results = []
+    live_results = []
+    try:
+        from live_markets.service import index_rows
+        live_results = index_rows() or []
+    except Exception:
+        live_results = []
+
+    results = list(live_results) if len(live_results) >= 4 else []
     gold_price = None
     silver_price = None
     
@@ -14341,17 +14350,18 @@ async def global_ticker():
         
         return None
     
-    with ThreadPoolExecutor(max_workers=6) as executor:
-        futures = {executor.submit(_fetch_index, tk, meta): meta for tk, meta in tickers_map.items()}
-        for f in as_completed(futures, timeout=10):
-            try:
-                r = f.result(timeout=3)
-                if r:
-                    results.append(r)
-                    if r["name"] == "GOLD/OZ": gold_price = r["price"]
-                    if r["name"] == "SILVER/OZ": silver_price = r["price"]
-            except:
-                pass
+    if len(results) < 4:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {executor.submit(_fetch_index, tk, meta): meta for tk, meta in tickers_map.items()}
+            for f in as_completed(futures, timeout=10):
+                try:
+                    r = f.result(timeout=3)
+                    if r:
+                        results.append(r)
+                        if r["name"] == "GOLD/OZ": gold_price = r["price"]
+                        if r["name"] == "SILVER/OZ": silver_price = r["price"]
+                except:
+                    pass
     
     # Sort in original order
     name_order = [m["name"] for m in tickers_map.values()]
@@ -14467,6 +14477,8 @@ async def global_ticker():
         news.append(cn)
     
     result = {"success": True, "indices": results, "news": news[:8], "updated_at": IST.strftime("%I:%M %p IST")}
+    if len(live_results) >= 4:
+        result["source"] = "live_markets"
     
     if not results:
         if _ticker_cache and _ticker_cache.get("indices"):
@@ -32766,6 +32778,18 @@ async def price_tick(symbol: str = "NIFTY", region: str = "IN"):
             except:
                 pass
         
+        if price <= 0:
+            try:
+                from live_markets.service import price_tick_quote
+                alt = price_tick_quote(symbol, "US" if is_us else "IN")
+            except Exception:
+                alt = None
+            if alt and alt.get("price"):
+                price = alt["price"]
+                prev_close = alt.get("prev_close") or price
+                volume = alt.get("volume") or volume
+                day_high = alt.get("day_high") or price
+                day_low = alt.get("day_low") or price
         if price <= 0:
             return {"success": False, "error": f"Could not fetch price for {symbol}"}
         
