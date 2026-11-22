@@ -33107,6 +33107,7 @@ return '<span class="ti"><span style="font-size:11px">'+(idx.flag||'')+'</span><
 var loaded=false;
 try{
 var r=await fetch('/api/global-ticker');var d=await r.json();
+if(!(d.success&&d.indices&&d.indices.length>0)){var rLive=await fetch('/api/live/ticker');d=await rLive.json();}
 if(d.success&&d.indices&&d.indices.length>0){
 var items=d.indices.map(_bld).join('');
 row.innerHTML=items+items;

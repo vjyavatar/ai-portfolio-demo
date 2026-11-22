@@ -1,4 +1,4 @@
-"""Read-only SmartAPI NFO snapshots; no login, refresh, TOTP or order operations.
+"""SmartAPI NFO snapshots. Login and HTTP go through angel_session.
 Sources: smartapi.angelone.in/docs (FULL market data), official angel-one/smartapi-python
 SDK headers; official SmartAPI instrument-master interpretation (NFO strikes in paise).
 Caller must enforce verified identity and licensed-display permission before chain().
@@ -9,15 +9,15 @@ from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 import hashlib
 import ipaddress
-import json
 import math
 import os
 import re
 import threading
 import time
 from urllib.error import HTTPError
-from urllib.request import Request, HTTPRedirectHandler, build_opener
+from urllib.request import HTTPRedirectHandler
 from zoneinfo import ZoneInfo
+import angel_session
 
 MASTER_URL='https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json'
 QUOTE_URL='https://apiconnect.angelone.in/rest/secure/angelbroking/market/v1/quote/'
@@ -32,7 +32,11 @@ class NoRedirect(HTTPRedirectHandler):
         raise ValueError('Provider redirect rejected')
 
 def configured():
-    values=[os.getenv(key,'').strip() for key in ENV]
+    public=angel_session.public_ip()
+    jwt=os.getenv(ENV[1],'').strip()
+    use_login=angel_session.login_configured()
+    if not use_login and (not jwt or '\r' in jwt or '\n' in jwt):return False
+    values=[os.getenv(ENV[0],'').strip(), 'ready', os.getenv(ENV[2],'').strip(), public, os.getenv(ENV[4],'').strip()]
     if not all(values) or any('\r' in v or '\n' in v for v in values):return False
     try:
         ipaddress.ip_address(values[2]);ipaddress.ip_address(values[3])
@@ -40,19 +44,23 @@ def configured():
     except ValueError:return False
 
 def _headers():
-    return {'Authorization':'Bearer '+os.environ[ENV[1]].strip(),'X-PrivateKey':os.environ[ENV[0]].strip(),
-        'X-ClientLocalIP':os.environ[ENV[2]].strip(),'X-ClientPublicIP':os.environ[ENV[3]].strip(),
+    token=angel_session.jwt_token()
+    if not token:raise ValueError('Angel session unavailable')
+    return {'Authorization':'Bearer '+token,'X-PrivateKey':os.environ[ENV[0]].strip(),
+        'X-ClientLocalIP':os.environ[ENV[2]].strip(),'X-ClientPublicIP':angel_session.public_ip(),
         'X-MACAddress':os.environ[ENV[4]].strip(),'X-UserType':'USER','X-SourceID':'WEB',
         'Content-Type':'application/json','Accept':'application/json'}
 
-def _request(url,payload=None):
+def _request(url,payload=None,_auth_retry=True):
     if url not in (MASTER_URL,QUOTE_URL):raise ValueError('Unsupported provider resource')
-    cap=64_000_000 if url==MASTER_URL else 2_000_000
     headers={'Accept':'application/json'} if url==MASTER_URL else _headers()
-    request=Request(url,headers=headers,data=json.dumps(payload).encode() if payload is not None else None)
-    with build_opener(NoRedirect()).open(request,timeout=15) as response:raw=response.read(cap+1)
-    if len(raw)>cap:raise ValueError('Oversized provider response')
-    return json.loads(raw)
+    try:
+        return angel_session.request_json(url,payload=payload,headers=headers)
+    except angel_session.Unauthorized:
+        if url==QUOTE_URL and _auth_retry and angel_session.login_configured():
+            angel_session.jwt_token(force=True)
+            return _request(url,payload,False)
+        raise HTTPError(url,401,'provider',{},None)
 
 def _num(value):
     if isinstance(value,bool):return None
@@ -161,7 +169,8 @@ def chain(symbol,expiry=''):
     if not _lock.acquire(False):return dict(base,message='Provider request already in progress. Retry shortly.')
     try:
         now=time.time();today=datetime.fromtimestamp(now,IST).date()
-        auth_scope=hashlib.sha256((os.environ[ENV[0]]+'\0'+os.environ[ENV[1]]).encode()).hexdigest()
+        token=angel_session.jwt_token()
+        auth_scope=hashlib.sha256((os.environ[ENV[0]].strip()+'\0'+token).encode()).hexdigest()
         key=(symbol,expiry,auth_scope);hit=_cache.get(key)
         if hit and 0<=now-hit['fetched_at']<60:return _snapshot(hit,now)
         if now<_retry_at:return dict(base,message='Provider cooldown active.',retry_after=_retry_at)

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="celesys-version" content="v4.63.104">
+<title>Live markets | Celesys AI</title>
+<meta name="description" content="US and India market board with delayed quotes, session clocks and a research score. Not financial advice.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0c1222;--card:#141c2f;--line:#243049;--text:#e8eef9;--muted:#93a0b8;--up:#34d399;--dn:#f87171;--gold:#fbbf24;--blue:#93c5fd}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "IBM Plex Mono",ui-monospace,monospace}
+a{color:var(--blue);text-decoration:none}header,main{width:min(1120px,calc(100% - 28px));margin:0 auto}
+header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;padding:22px 0 8px}
+h1,h2,h3{font-family:Sora,sans-serif;margin:0}h1{font-size:28px;letter-spacing:-.4px}h2{font-size:16px}
+.sub{color:var(--muted);font-size:12px;max-width:640px}
+.clocks{display:flex;gap:8px;flex-wrap:wrap}.pill{border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-size:11px;color:var(--muted);background:#10192b}
+.pill strong{color:var(--text);font-weight:600}.open{color:var(--up)}.shut{color:var(--gold)}
+section{margin:16px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#141c2f,#10182a)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.idx{padding:10px 12px;border-radius:10px;background:#0e1628;border:1px solid #1e2a44}
+.idx .nm{font-size:11px;color:var(--muted)}.idx .px{font-family:Sora,sans-serif;font-size:20px;margin:4px 0}
+.up{color:var(--up)}.dn{color:var(--dn)}.flat{color:var(--muted)}
+.tag{display:inline-block;margin-top:6px;font-size:10px;letter-spacing:.04em;border-radius:6px;padding:2px 6px;border:1px solid var(--line);color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}input,select,button{font:inherit;color:var(--text);background:#0e1628;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+button{cursor:pointer;background:#1d4ed8;border-color:#1d4ed8}button.ghost{background:transparent}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:8px 6px;text-align:right;border-bottom:1px solid #1e2a44}th:first-child,td:first-child{text-align:left}
+.score{font-family:Sora,sans-serif;font-size:42px;letter-spacing:-1px}.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.cards{grid-template-columns:1fr}header{flex-direction:column;align-items:flex-start}}
+.reasons{margin:8px 0 0;padding-left:16px;color:var(--muted);font-size:12px}.warn{color:var(--gold);font-size:12px}
+footer{color:var(--muted);font-size:11px;padding-bottom:28px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <p class="sub">CELESYS · v4.63.104</p>
+    <h1>Live market board</h1>
+    <p class="sub">US and India quotes, session clocks, a research score, a liquid-name screener and a bounded option chain. <a href="/">Back to the workspace</a>.</p>
+  </div>
+  <div class="clocks" id="clocks">Loading clocks…</div>
+</header>
+<main>
+  <section>
+    <h2>Indices</h2>
+    <p class="sub" id="index-note">Loading the US and India boards…</p>
+    <div class="grid" id="indices"></div>
+  </section>
+  <section>
+    <h2>Decision desk</h2>
+    <p class="sub">The score mixes trend, valuation, momentum and risk when those inputs exist. Missing inputs are left out. This is not a buy or sell instruction.</p>
+    <form class="row" id="lookup">
+      <label>Symbol <input id="symbol" value="AAPL" maxlength="24" autocomplete="off"></label>
+      <label>Market
+        <select id="region"><option value="">Auto</option><option value="US">United States</option><option value="IN">India</option></select>
+      </label>
+      <button type="submit">Score</button>
+    </form>
+    <div class="cards" id="desk"></div>
+  </section>
+  <section>
+    <h2>Watchlist</h2>
+    <form class="row" id="watch-form">
+      <input id="watch-input" value="AAPL, MSFT, NVDA, RELIANCE.NS, TCS.NS, HDFCBANK.NS" maxlength="180">
+      <button type="submit">Refresh</button>
+    </form>
+    <div id="watch"></div>
+  </section>
+  <section>
+    <h2>Liquid-name screener</h2>
+    <p class="sub">A fixed sample of large names, sorted by the same research score. It is not the full S&amp;P 500 or Nifty 500.</p>
+    <div class="row">
+      <button type="button" id="screen-us">United States</button>
+      <button type="button" class="ghost" id="screen-in">India</button>
+    </div>
+    <div id="screen"></div>
+  </section>
+  <section>
+    <h2>Option chain</h2>
+    <p class="sub">US chains come from Yahoo’s delayed public feed, nearest expiry, strikes around spot. India F&amp;O uses the NSE chain when that request is allowed. Angel One stays on the private desk.</p>
+    <form class="row" id="opt-form">
+      <input id="opt-symbol" value="AAPL" maxlength="24">
+      <button type="submit">Load chain</button>
+    </form>
+    <div id="options"></div>
+  </section>
+  <section>
+    <h2>Sources and limits</h2>
+    <div id="sources"></div>
+  </section>
+  <footer id="disclaimer">Not financial advice. Source limitations are shown with each figure.</footer>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const num = (v, d=2) => (typeof v === 'number' && Number.isFinite(v)) ? v.toLocaleString(undefined,{maximumFractionDigits:d,minimumFractionDigits:d}) : '—';
+const vol = v => (typeof v === 'number') ? Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:1}).format(v) : '—';
+function cls(p){if(typeof p!=='number')return 'flat';if(Math.abs(p)<0.005)return 'flat';return p>0?'up':'dn';}
+function tag(row){
+  const bits = [row.quality || 'UNVERIFIED', row.session || ''];
+  if(row.delay_seconds) bits.push(Math.round(row.delay_seconds/60) + 'm delay');
+  if(row.as_of) bits.push(row.as_of.slice(5,16).replace('T',' ') + ' UTC');
+  else if(row.as_of_estimated) bits.push('no exchange clock');
+  if(row.provider) bits.push(row.provider);
+  return bits.filter(Boolean).join(' · ');
+}
+function card(row){
+  const pct = row.change_pct;
+  const volume = row.volume ? ` · vol ${vol(row.volume)}` : '';
+  return `<article class="idx"><div class="nm">${row.flag||''} ${row.name||row.symbol}</div><div class="px">${num(row.price)} <span style="font-size:12px;color:var(--muted)">${row.currency||''}</span></div><div class="${cls(pct)}">${pct>0?'+':''}${num(pct)}%${volume}</div><div class="tag">${tag(row)}</div></article>`;
+}
+function verdictCard(row){
+  if(!row || row.success===false) return `<article class="idx"><h3>${row&&row.symbol||'Symbol'}</h3><p class="warn">${(row&&row.error)||'No price.'}</p></article>`;
+  const v = row.verdict || {};
+  const pillars = (v.pillars||[]).map(p=>`<div><strong>${p.label}</strong> ${p.used?p.score:'—'}</div>`).join('');
+  const reasons = (v.reasons||[]).map(r=>`<li>${r}</li>`).join('');
+  return `<article class="idx"><div class="nm">${row.symbol} · ${row.name||''}</div><div class="px">${num(row.price)} <span class="${cls(row.change_pct)}">${row.change_pct>0?'+':''}${num(row.change_pct)}%</span></div><div class="score">${v.score==null?'—':v.score}</div><div>${v.label||'Insufficient'}</div><div class="tag">${tag(row)}</div><div class="grid" style="margin-top:8px">${pillars}</div><ul class="reasons">${reasons}</ul><p class="sub">${v.disclaimer||''}</p></article>`;
+}
+async function get(url){const r=await fetch(url);if(!r.ok)throw Error('Request failed');return r.json();}
+function paintClocks(data){
+  const ex = data.exchanges || {};
+  const clocks = data.clocks || {};
+  const pill = (label, session, clock) => `<span class="pill"><strong>${label}</strong> ${clock||''} · <span class="${session==='OPEN'?'open':'shut'}">${session||''}</span></span>`;
+  $('clocks').innerHTML = pill('US Eastern', ex.US&&ex.US.session, clocks.et) + pill('India IST', ex.IN&&ex.IN.session, clocks.ist);
+}
+async function loadBoard(){
+  const data = await get('/api/live/overview');
+  paintClocks(data.sessions||{});
+  $('indices').innerHTML = (data.indices||[]).map(card).join('') || '<p class="warn">No index quotes returned.</p>';
+  const warns = (data.warnings||[]).join(' ');
+  const holiday = (data.sessions && data.sessions.note) ? ' ' + data.sessions.note : '';
+  $('index-note').textContent = (warns?warns+' ':'') + 'Each tile shows price, percent change, volume, delay and whether that exchange is in its regular session.' + holiday;
+  $('disclaimer').textContent = data.disclaimer || $('disclaimer').textContent;
+  const sources = (data.sources||[]).map(s=>`<tr><td>${s.id}</td><td>${s.role}</td><td>${s.freshness}</td><td>${s.limit}</td><td>${s.cost}</td></tr>`).join('');
+  $('sources').innerHTML = `<table><thead><tr><th>Source</th><th>Role</th><th>Freshness</th><th>Limit</th><th>Cost</th></tr></thead><tbody>${sources}</tbody></table>`;
+}
+async function score(symbol, region, host){
+  const q = new URLSearchParams({symbol});
+  if(region) q.set('region', region);
+  const row = await get('/api/live/verdict?'+q.toString());
+  host.insertAdjacentHTML('beforeend', verdictCard(row));
+}
+async function loadDesk(){
+  $('desk').innerHTML = '';
+  await Promise.all([
+    score('AAPL','US',$('desk')),
+    score('RELIANCE.NS','IN',$('desk'))
+  ]);
+}
+function watchKey(){return 'celesys-live-watch';}
+async function loadWatch(){
+  const stored = localStorage.getItem(watchKey());
+  const value = stored || $('watch-input').value;
+  $('watch-input').value = value;
+  const data = await get('/api/live/quotes?symbols='+encodeURIComponent(value));
+  const head = '<table><thead><tr><th>Symbol</th><th>Price</th><th>%</th><th>Volume</th><th>Freshness</th></tr></thead><tbody>';
+  const body = (data.quotes||[]).map(row=>{
+    if(!row.success) return `<tr><td>${row.symbol||''}</td><td colspan="4">${row.error||'unavailable'}</td></tr>`;
+    return `<tr><td>${row.symbol}</td><td>${num(row.price)}</td><td class="${cls(row.change_pct)}">${num(row.change_pct)}%</td><td>${vol(row.volume)}</td><td>${row.quality} · ${row.session}</td></tr>`;
+  }).join('');
+  $('watch').innerHTML = head+body+'</tbody></table>';
+}
+async function loadScreen(market){
+  $('screen').innerHTML = '<p class="sub">Scoring the sample…</p>';
+  const data = await get('/api/live/screen?market='+market);
+  const head = `<p class="sub">${data.universe||''}</p><table><thead><tr><th>Symbol</th><th>Price</th><th>%</th><th>Score</th><th>Read</th><th>Session</th></tr></thead><tbody>`;
+  const body = (data.results||[]).map(row=>`<tr><td>${row.symbol}</td><td>${num(row.price)}</td><td class="${cls(row.change_pct)}">${num(row.change_pct)}%</td><td>${row.verdict&&row.verdict.score!=null?row.verdict.score:'—'}</td><td>${row.verdict?row.verdict.label:''}</td><td>${row.quality} · ${row.session}</td></tr>`).join('');
+  $('screen').innerHTML = head+body+'</tbody></table>';
+}
+function optLeg(leg){if(!leg)return '—';return `${num(leg.bid)} / ${num(leg.ask)}`;}
+async function loadOptions(symbol){
+  $('options').innerHTML = '<p class="sub">Requesting the chain…</p>';
+  const data = await get('/api/live/options?symbol='+encodeURIComponent(symbol));
+  const chain = data.chain || {};
+  if(!chain.available){
+    $('options').innerHTML = `<p class="warn">${chain.reason||'Chain unavailable.'}</p><p class="sub">Angel One configured on this server: ${data.angel_one_configured?'yes':'no'}. The private desk is unchanged.</p>`;
+    return;
+  }
+  const rows = (chain.rows||[]).map(row=>`<tr><td>${optLeg(row.call)}</td><td>${row.call&&row.call.open_interest!=null?vol(row.call.open_interest):'—'}</td><td>${num(row.strike)}</td><td>${optLeg(row.put)}</td><td>${row.put&&row.put.open_interest!=null?vol(row.put.open_interest):'—'}</td></tr>`).join('');
+  $('options').innerHTML = `<p class="sub">${chain.provider} · ${chain.quality} · expiry ${chain.expiry||'—'} · spot ${num(chain.spot)}. ${chain.note||''}</p><table><thead><tr><th>Call bid / ask</th><th>Call OI</th><th>Strike</th><th>Put bid / ask</th><th>Put OI</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+$('lookup').addEventListener('submit', async ev=>{ev.preventDefault();$('desk').innerHTML='';await score($('symbol').value,$('region').value,$('desk'));});
+$('watch-form').addEventListener('submit', ev=>{ev.preventDefault();localStorage.setItem(watchKey(), $('watch-input').value);loadWatch();});
+$('screen-us').addEventListener('click', ()=>loadScreen('US'));
+$('screen-in').addEventListener('click', ()=>loadScreen('IN'));
+$('opt-form').addEventListener('submit', ev=>{ev.preventDefault();loadOptions($('opt-symbol').value);});
+loadBoard().catch(err=>{$('index-note').textContent=err.message;});
+loadDesk().catch(()=>{});
+loadWatch().catch(()=>{});
+loadScreen('US').catch(()=>{});
+loadOptions('AAPL').catch(()=>{});
+setInterval(()=>{loadBoard().catch(()=>{});}, 60000);
+</script>
+</body>
+</html>

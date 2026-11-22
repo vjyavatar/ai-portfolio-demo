@@ -16,9 +16,11 @@ Set these as server-side environment values, never in browser code or git:
 |---|---|---|
 | India | `CELESYS_INDIA_OPTIONS_PROVIDER=angelone` | Explicit provider choice |
 | India | `CELESYS_ANGEL_API_KEY` | SmartAPI application key |
-| India | `CELESYS_ANGEL_JWT_TOKEN` | Authorized current account session JWT |
+| India | `CELESYS_ANGEL_JWT_TOKEN` | Static session JWT, used when the login trio below is not fully set |
+| India | `CELESYS_ANGEL_CLIENT_CODE`, `CELESYS_ANGEL_PIN`, `CELESYS_ANGEL_TOTP_SECRET` | Optional. When all three are set, the server calls `loginByPassword` with a generated TOTP, caches the JWT in memory, and refreshes it after HTTP 401 and once a day around 08:30 IST |
+| India | `CELESYS_ANGEL_PROXY_URL` | Optional `http://user:pass@host:8888` forward proxy. Applied only to Angel hosts (login, quotes, instrument master, order routes). Other providers are not proxied |
 | India | `CELESYS_ANGEL_CLIENT_LOCAL_IP` | Actual client environment header required by SmartAPI |
-| India | `CELESYS_ANGEL_CLIENT_PUBLIC_IP` | Actual client public IP header |
+| India | `CELESYS_ANGEL_CLIENT_PUBLIC_IP` | Public IP header. When the proxy URL is set and this is blank, the header defaults to `139.59.38.68` |
 | India | `CELESYS_ANGEL_MAC_ADDRESS` | Actual client MAC header required by the documented SDK |
 | India | `CELESYS_LICENSED_OPTIONS_IN=true` | Enable only after verifying account entitlements and permitted audience |
 | US | `CELESYS_OPTIONS_DATA_TOKEN` | Tradier production market-data token |

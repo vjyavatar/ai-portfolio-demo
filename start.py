@@ -41,6 +41,22 @@ except Exception:
     import logging
     logging.getLogger(__name__).exception("Trading Desk unavailable; existing routes remain active")
 
+# Angel SmartAPI session refresh. No-op unless the login env vars are set.
+try:
+    import angel_session
+    angel_session.ensure_daily_refresh()
+except Exception:
+    import logging
+    logging.getLogger(__name__).exception("Angel session refresh unavailable; static JWT still works when set")
+
+# Public US/India quote board. Failure here leaves the existing site up.
+try:
+    from live_markets.router import attach_live_markets
+    attach_live_markets(app)
+except Exception:
+    import logging
+    logging.getLogger(__name__).exception("Live market board unavailable; existing routes remain active")
+
 # Search-friendly discovery and read-only India/US option snapshots.
 from discovery_site import attach_discovery
 try:
