@@ -85,39 +85,47 @@ class DecideTests(unittest.TestCase):
         self.assertIn('_run_decision_within_budget', segment)
         self.assertIn('_in_decision_worker', segment)
 
+    def test_decision_pool_is_one_spawned_process(self):
+        pool=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_decision_pool')
+        segment=ast.get_source_segment(Path('api.py').read_text(), pool)
+        self.assertIn('spawn', segment)
+        self.assertIn('max_workers=1', segment)
+
     def test_budget_returns_ready_sections_while_the_body_is_still_running(self):
         import asyncio
+        from concurrent.futures import ThreadPoolExecutor
         source=Path('api.py').read_text()
         tree=ast.parse(source)
         keep={'_inflight_snapshots','_in_decision_worker','_chain_worker','_decision_executor','_decision_cache','_decision_cache_ts','_DECISION_BUDGET_S'}
+        fns={'_decision_cache_key','_load_decision_snapshot','_decision_partial','_run_decision_within_budget'}
         nodes=[]
         for node in tree.body:
             if isinstance(node, ast.Import) and any(alias.name=='contextvars' for alias in node.names):
                 nodes.append(node)
-            elif isinstance(node, ast.ImportFrom) and node.module=='concurrent.futures' and any(alias.asname=='_DecisionPool' for alias in node.names):
-                nodes.append(node)
             elif isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in keep for target in node.targets):
                 nodes.append(node)
-            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {'_decision_cache_key','_decision_partial','_run_decision_within_budget'}:
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in fns:
                 nodes.append(node)
         env={'asyncio':asyncio}
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'api.py','exec'),env)
         env['_DECISION_BUDGET_S']=0.3
-        async def decision_engine(symbol='NIFTY', region='IN'):
+        pool=ThreadPoolExecutor(max_workers=1)
+        env['_decision_pool']=lambda: pool
+        def entry(symbol, region):
             env['_inflight_snapshots'][env['_decision_cache_key'](symbol, region)]={
-                'success':True,'symbol':'RELIANCE','region':'IN','spot':1377.5,
-                'technicals':{'rsi':55},'priceHistory':[1370,1377.5],'pending':['options','decision'],
-                'signal':'BUY','direction':'BULLISH','options':{}}
-            await asyncio.sleep(1)
-            return {'success':True,'symbol':symbol,'price':1377.5}
-        env['decision_engine']=decision_engine
+                'success':True,'symbol':'LT','region':'IN','spot':4209.1,
+                'technicals':{'rsi':54},'priceHistory':[4160,4209.1],'pending':['options','decision'],
+                'signal':'LEAN BUY','direction':'BULLISH','options':{}}
+            __import__('time').sleep(1)
+            return {'success':True,'symbol':symbol,'price':4209.1}
+        env['_decision_process_entry']=entry
         started=__import__('time').perf_counter()
-        out=asyncio.run(env['_run_decision_within_budget']('RELIANCE.NS','IN'))
+        out=asyncio.run(env['_run_decision_within_budget']('LT.NS','IN'))
         elapsed=__import__('time').perf_counter()-started
-        env['_decision_executor'].shutdown(wait=True, cancel_futures=False)
+        pool.shutdown(wait=True, cancel_futures=False)
         self.assertLess(elapsed, 0.8)
         self.assertTrue(out['success'])
         self.assertEqual(out['data_status'],'partial')
-        self.assertEqual(out['spot'],1377.5)
-        self.assertEqual(out['signal'],'BUY')
+        self.assertEqual(out['spot'],4209.1)
+        self.assertEqual(out['signal'],'LEAN BUY')
         self.assertIn('decision', out['pending'])
