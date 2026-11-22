@@ -565,7 +565,12 @@ def _screener_page(symbol: str) -> Optional[str]:
 
 
 def _screener_ratios(html: str) -> dict[str, float]:
-    pairs = re.findall(r'class="name">\s*([^<]+?)\s*</span>.*?class="number">\s*([^<]+?)\s*</span>', html, flags=re.S)
+    # RELIANCE's page is large. A DOTALL scan of the whole document holds the GIL.
+    start = html.find('id="top-ratios"')
+    if start < 0:
+        start = 0
+    chunk = html[start:start + 12000]
+    pairs = re.findall(r'class="name">\s*([^<]+?)\s*</span>.*?class="number">\s*([^<]+?)\s*</span>', chunk, flags=re.S)
     out = {}
     for name, raw in pairs:
         label = re.sub(r"\s+", " ", name).strip()

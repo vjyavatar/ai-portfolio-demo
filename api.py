@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.113"
+APP_VERSION = "v4.63.114"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.113: Decision stays in-process. A second interpreter was OOM-killing the 2GB instance, and the boot scan no longer starts by itself. "
+    "v4.63.114: The decision stops itself at 12 seconds, and startup cache load plus preseed run off the request loop. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -21981,6 +21981,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
         if closes is not None and len(closes) >= 5 and "priceHistory" not in result:
             result["priceHistory"] = [round(float(v), 2) for v in list(closes)[-30:]]
         _publish_decision_snapshot(progress, result, ["options", "engines", "plans", "fundamentals", "decision"])
+        if _past_decision_budget():
+            return progress.get("snapshot") or result
     except Exception as e:
         return {"success": False, "error": f"Data fetch failed: {e}"}
     
@@ -25146,6 +25148,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
         print(f"  ⚠️ priceHistory error: {ph_err}")
     
     print(f"🎯 Algo Signal: {symbol} → {result.get('signal','')} ({result.get('supports',0)}/{result.get('totalFactors',0)}) {result.get('direction','')}")
+    if _past_decision_budget():
+        return (progress or {}).get("snapshot") or result
     return _legacy_algo_research_guard(result)
 
 
@@ -25685,6 +25689,8 @@ async def algo_backtest(symbol: str = "NIFTY", years: int = 3):
         open_trade = None  # {entry_price, sl, t1, t2, t3, entry_date, direction, qty_remaining}
         
         for i in range(start_idx, len(closes)):
+            if i % 25 == 0 and _past_decision_budget():
+                return (progress or {}).get("snapshot") or result
             price = closes[i]
             prev_close = closes[i-1]
             
@@ -32885,6 +32891,7 @@ import contextvars
 from concurrent.futures import ThreadPoolExecutor
 
 _in_decision_worker = contextvars.ContextVar("celesys_decision_worker", default=False)
+_decision_deadline = contextvars.ContextVar("celesys_decision_deadline", default=None)
 _chain_worker = contextvars.ContextVar("celesys_chain_worker", default=False)
 _decision_executor = None
 _decision_cache = {}
@@ -32900,9 +32907,19 @@ def _decision_pool():
     return _decision_executor
 
 
+def _past_decision_budget():
+    """True once this calculation has used the route budget. Yields the GIL."""
+    import time as _time
+    deadline = _decision_deadline.get()
+    _time.sleep(0)
+    return bool(deadline) and _time.monotonic() >= deadline
+
+
 def _decision_process_entry(symbol, region):
     """Run beside the request. The route only waits for this."""
+    import time as _time
     _in_decision_worker.set(True)
+    _decision_deadline.set(_time.monotonic() + _DECISION_BUDGET_S)
     try:
         return asyncio.run(decision_engine(symbol, region))
     finally:
@@ -32978,6 +32995,10 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
     try:
         import math
         algo = await algo_signal_safe(symbol, region)
+        if _past_decision_budget() and algo.get("data_status") != "partial":
+            algo = dict(algo)
+            algo["data_status"] = "partial"
+            algo["pending"] = list(algo.get("pending") or ["decision"])
         if algo.get("data_status") == "partial":
             pending = list(algo.get("pending") or ["decision"])
             if "decision" not in pending:
@@ -60396,12 +60417,15 @@ async def ds_preview_route():
 @app.on_event("startup")
 async def _v4_61_11_hydrate_disk_cache():
     """Load DD responses from disk so cache survives Render redeploys."""
-    try:
-        n = _dd_disk_cache_load()
-        if n > 0:
-            print(f"✅ v4.61.11: DD cache pre-warmed with {n} entries from disk")
-    except Exception as e:
-        print(f"[DD-DISK] startup hydration failed (non-fatal): {e}")
+    import threading
+    def _hydrate():
+        try:
+            n = _dd_disk_cache_load()
+            if n > 0:
+                print(f"✅ v4.61.11: DD cache pre-warmed with {n} entries from disk")
+        except Exception as e:
+            print(f"[DD-DISK] startup hydration failed (non-fatal): {e}")
+    threading.Thread(target=_hydrate, name="dd-hydrate", daemon=True).start()
 
 # ═══ v4.61.11: Pre-seed cache for top tickers (best-effort) ═══
 @app.on_event("startup")
@@ -60452,8 +60476,9 @@ async def _v4_61_11_preseed_top_tickers():
         except Exception as e:
             print(f"[DD-PRESEED] Outer error: {e}")
 
-    # Fire-and-forget — don't block startup
-    asyncio.create_task(_preseed())
+    # Off the request loop. The body does synchronous provider work.
+    import threading
+    threading.Thread(target=lambda: asyncio.run(_preseed()), name="dd-preseed", daemon=True).start()
 
 
 @app.get("/api/debug/loop-lag")
