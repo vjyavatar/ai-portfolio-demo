@@ -836,8 +836,7 @@ async def _start_prefetch_loop():
     print("📦 Background prefetch starting (light)...")
     while True:
         try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(_thread_pool, _prefetch_popular)
+            await asyncio.wrap_future(_background_pool().submit(_background_job, "prefetch", None))
         except Exception as e:
             print(f"⚠️ Prefetch error: {e}")
         await asyncio.sleep(120)  # Every 2 min (was 90s)
@@ -1377,11 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.117"
+APP_VERSION = "v4.63.118"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.117: Decision and index-chain work run in one worker process. Each request gets a fresh 12 second clock. "
+    "v4.63.118: Background scans run in a second worker. The web process only waits, including on the first call. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -1433,22 +1432,27 @@ async def startup_event():
     _si_cache.clear()
     print("🧹 All in-memory caches cleared on startup")
     print("🚀 Celesys AI server READY — accepting requests NOW")
-    # Load disk cache SYNCHRONOUSLY for instant warm data
-    _disk_cache_file = "celesys_price_cache.json"
+    # Price-cache JSON stays off this loop. A large file used to delay the first requests.
     try:
-        if os.path.exists(_disk_cache_file):
-            age = time.time() - os.path.getmtime(_disk_cache_file)
-            if age < 14400:  # 4hr cache valid
-                with open(_disk_cache_file) as f:
-                    cached = json.load(f)
-                loaded = 0
-                for key, val in cached.items():
-                    if key not in _smart_cache:
-                        _smart_cache_set(key, val, max(120, 900 - int(age)))
-                        loaded += 1
-                if loaded > 0:
-                    print(f"⚡ INSTANT warm start: {loaded} prices from disk ({age:.0f}s old)")
-    except:
+        def _load_prices():
+            path = "celesys_price_cache.json"
+            if not os.path.exists(path):
+                return None, 0
+            age = time.time() - os.path.getmtime(path)
+            if age >= 14400:
+                return None, age
+            with open(path) as handle:
+                return json.load(handle), age
+        cached, age = await asyncio.to_thread(_load_prices)
+        loaded = 0
+        if isinstance(cached, dict):
+            for key, val in cached.items():
+                if key not in _smart_cache:
+                    _smart_cache_set(key, val, max(120, 900 - int(age)))
+                    loaded += 1
+        if loaded:
+            print(f"⚡ INSTANT warm start: {loaded} prices from disk ({age:.0f}s old)")
+    except Exception:
         pass
     # Defer ALL network prefetch — server is already serving
     # ═══ CRITICAL: Clear stale algo cache on restart ═══
@@ -1469,6 +1473,7 @@ async def startup_event():
         print("🗄️  Positioning DB: db module not present (skipping)")
     except Exception as _e:
         print(f"🗄️  Positioning DB: boot check error — {_e}")
+    _auto_scan_boot()
     asyncio.create_task(_start_prefetch_loop())
     asyncio.create_task(_ws_broadcast_loop())
     import web_background
@@ -15942,8 +15947,9 @@ async def bottom_nav_scan(region: str = "IN"):
         age = time.time() - cache["time"]
         # Trigger a background refresh if TTL exceeded and no refresh is running.
         if age > ttl and reg not in _bottom_nav_busy:
-            import threading
-            threading.Thread(target=_run_bottom_nav_scan, args=(reg,), daemon=True).start()
+            _bottom_nav_busy.add(reg)
+            _bottom_nav_busy_since[reg] = time.time()
+            _spawn_background("bottom", reg)
         # Mirror the data but attach a `_stale` flag if we're serving it past TTL.
         resp = dict(cache["data"])
         resp["_stale"] = bool(age > ttl)
@@ -15952,8 +15958,9 @@ async def bottom_nav_scan(region: str = "IN"):
     
     # Cold cache — trigger first scan
     if reg not in _bottom_nav_busy:
-        import threading
-        threading.Thread(target=_run_bottom_nav_scan, args=(reg,), daemon=True).start()
+        _bottom_nav_busy.add(reg)
+        _bottom_nav_busy_since[reg] = time.time()
+        _spawn_background("bottom", reg)
     return {"success": True, "region": reg, "count": 0, "tickers": [], "ts": 0}
 
 
@@ -16149,8 +16156,9 @@ async def movers(region: str = "IN"):
     if cache["data"]:
         age = time.time() - cache["time"]
         if age > _MOVERS_CACHE_TTL and reg not in _movers_busy:
-            import threading
-            threading.Thread(target=_run_movers_scan, args=(reg,), daemon=True).start()
+            _movers_busy.add(reg)
+            _movers_busy_since[reg] = time.time()
+            _spawn_background("movers", reg)
         resp = dict(cache["data"])
         resp["_stale"] = bool(age > _MOVERS_CACHE_TTL)
         resp["_cache_age_sec"] = int(age)
@@ -16162,8 +16170,9 @@ async def movers(region: str = "IN"):
 
     # Cold cache — kick off first scan, return loading state.
     if reg not in _movers_busy:
-        import threading
-        threading.Thread(target=_run_movers_scan, args=(reg,), daemon=True).start()
+        _movers_busy.add(reg)
+        _movers_busy_since[reg] = time.time()
+        _spawn_background("movers", reg)
     return {"success": True, "region": reg, "windows": {}, "ts": 0,
             "_loading": True, "_scan_complete": False, "_scanning": True}
 
@@ -18925,7 +18934,6 @@ async def paper_journal(region: str = "IN", limit: int = 50):
 
 
 def _auto_scan_boot():
-    import threading
     import web_background
     # A 48-name boot scan held the loop for about 20s and, together with a
     # second interpreter, OOM-killed the 2GB instance. Opt in to run it.
@@ -18933,19 +18941,7 @@ def _auto_scan_boot():
         return
     if not web_background.in_web_server():
         return
-    def _bg():
-        time.sleep(15)
-        print("[BOTTOM-NAV] 🚀 Boot scan starting...")
-        try: diag_log("SYSTEM", "boot_scan_starting", {"delay_sec": 15})
-        except Exception: pass
-        _run_bottom_nav_scan("IN")
-        web_background.yield_worker()
-        _run_bottom_nav_scan("US")
-        print("[BOTTOM-NAV] 🚀 Boot scan done")
-        try: diag_log("SYSTEM", "boot_scan_done", {})
-        except Exception: pass
-    threading.Thread(target=_bg, daemon=True).start()
-_auto_scan_boot()
+    _spawn_background("boot", None)
 
 
 @app.get("/api/participant-oi")
@@ -20457,6 +20453,55 @@ _ticker_cache = None
 _ticker_cache_ts = None
 
 @app.get("/api/market-pulse")
+def _market_pulse_fetch():
+    """Commodity quotes. Runs in the background process, not on the web loop."""
+    import re as _re
+    names = {"BZ=F": "Brent Crude", "CL=F": "WTI Crude", "GC=F": "Gold", "SI=F": "Silver", "DX-Y.NYB": "US Dollar", "^GSPC": "S&P 500", "INR=X": "USD/INR"}
+
+    def fetch_ticker(ticker, name):
+        try:
+            _gf_map2 = {"BZ=F": "BZ%3DF:COMMODITY", "CL=F": "CL%3DF:COMMODITY", "GC=F": "GC%3DF:COMMODITY", "SI=F": "SI%3DF:COMMODITY", "DX-Y.NYB": "DX-Y.NYB:NYBOT", "^GSPC": ".INX:INDEXSP", "INR=X": "USD-INR"}
+            _gf_sym2 = _gf_map2.get(ticker, "")
+            if _gf_sym2:
+                _h2 = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,135)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36'}
+                _gr2 = _http_pool.get(f"https://www.google.com/finance/quote/{_gf_sym2}", timeout=5, headers=_h2)
+                if _gr2.status_code == 200:
+                    _pm2 = _re.search(r'data-last-price="([0-9.,]+)"', _gr2.text)
+                    _cm2 = _re.search(r'data-last-normal-market-change-percent="([0-9.,-]+)"', _gr2.text) or _re.search(r'data-change-percent="([0-9.,-]+)"', _gr2.text)
+                    if _pm2:
+                        price = round(float(_pm2.group(1).replace(',', '')), 2)
+                        chg_pct = round(float(_cm2.group(1).replace(',', '')), 2) if _cm2 else 0
+                        return name, {"price": price, "change_pct": chg_pct}
+        except Exception:
+            pass
+        try:
+            r = _chart_response(ticker, interval="1d", range="2d")
+            if r.status_code == 200:
+                m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
+                price = m.get('regularMarketPrice', 0)
+                prev = m.get('chartPreviousClose', m.get('previousClose', price))
+                if price and float(price) > 0:
+                    price = round(float(price), 2)
+                    prev = round(float(prev), 2)
+                    chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
+                    return name, {"price": price, "change_pct": chg_pct}
+        except Exception:
+            pass
+        return name, None
+
+    snapshot = {}
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = [executor.submit(fetch_ticker, ticker, name) for ticker, name in names.items()]
+        for fut in as_completed(futures, timeout=7):
+            try:
+                name, data = fut.result(timeout=2)
+                if data:
+                    snapshot[name] = data
+            except Exception:
+                pass
+    return snapshot
+
+
 async def market_pulse():
     """Lightweight market events — cached 5min, parallel fetches."""
     # yfinance imported globally with 401 wrapper
@@ -20505,62 +20550,16 @@ async def market_pulse():
     global_snapshot = {}
     quick_tickers = {"BZ=F": "Brent Crude", "CL=F": "WTI Crude", "GC=F": "Gold", "SI=F": "Silver", "DX-Y.NYB": "US Dollar", "^GSPC": "S&P 500", "INR=X": "USD/INR"}
     
-    def fetch_ticker(ticker, name):
-        # Source 1: Google Finance (NO rate limits)
-        try:
-            import re as _re
-            _gf_map2 = {"BZ=F": "BZ%3DF:COMMODITY", "CL=F": "CL%3DF:COMMODITY", "GC=F": "GC%3DF:COMMODITY", "SI=F": "SI%3DF:COMMODITY", "DX-Y.NYB": "DX-Y.NYB:NYBOT", "^GSPC": ".INX:INDEXSP", "INR=X": "USD-INR"}
-            _gf_sym2 = _gf_map2.get(ticker, "")
-            if _gf_sym2:
-                _gf_url2 = f"https://www.google.com/finance/quote/{_gf_sym2}"
-                _h2 = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,135)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36'}
-                _gr2 = _http_pool.get(_gf_url2, timeout=5, headers=_h2)
-                if _gr2.status_code == 200:
-                    _pm2 = _re.search(r'data-last-price="([0-9.,]+)"', _gr2.text)
-                    _cm2 = _re.search(r'data-last-normal-market-change-percent="([0-9.,-]+)"', _gr2.text) or _re.search(r'data-change-percent="([0-9.,-]+)"', _gr2.text)
-                    if _pm2:
-                        price = round(float(_pm2.group(1).replace(',', '')), 2)
-                        chg_pct = round(float(_cm2.group(1).replace(',', '')), 2) if _cm2 else 0
-                        return name, {"price": price, "change_pct": chg_pct}
-        except:
-            pass
-        # Source 2: Yahoo v8 chart API (backup)
-        try:
-            _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
-            r = _chart_response(ticker, interval="1d", range="2d")
-            if r.status_code == 200:
-                m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
-                price = m.get('regularMarketPrice', 0)
-                prev = m.get('chartPreviousClose', m.get('previousClose', price))
-                if price and float(price) > 0:
-                    price = round(float(price), 2)
-                    prev = round(float(prev), 2)
-                    chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
-                    return name, {"price": price, "change_pct": chg_pct}
-        except:
-            pass
-        # Source 3: yfinance (last resort)
-        try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="2d")
-            if not hist.empty:
-                price = round(hist.iloc[-1]['Close'], 2)
-                prev = hist.iloc[-2]['Close'] if len(hist) > 1 else price
-                chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
-                return name, {"price": price, "change_pct": chg_pct}
-        except:
-            pass
-        return name, None
-    
-    with ThreadPoolExecutor(max_workers=6) as executor:
-        futures = {executor.submit(fetch_ticker, t, n): n for t, n in quick_tickers.items()}
-        for f in as_completed(futures, timeout=8):
-            try:
-                name, data = f.result(timeout=3)
-                if data:
-                    global_snapshot[name] = data
-            except:
-                pass
+    try:
+        # Quotes are fetched in the background process. This loop only waits.
+        fetched = await asyncio.wait_for(
+            asyncio.wrap_future(_background_pool().submit(_background_job, "pulse", None)),
+            timeout=8,
+        )
+        if isinstance(fetched, dict):
+            global_snapshot.update(fetched)
+    except Exception as _pulse_exc:
+        print(f"market pulse snapshot skipped: {type(_pulse_exc).__name__}", flush=True)
     
     # ═══ AUTO-DETECT EVENTS from parallel-fetched snapshot ═══
     # Always show key commodity/market data as context
@@ -32972,6 +32971,7 @@ def warm_decision_worker():
     pool = _decision_pool()
     pid = pool.submit(_decision_child_ping).result(timeout=30)
     _decision_worker_pid = pid
+    _background_pool().submit(_decision_child_ping).result(timeout=30)
     parent = _proc_memory_mb(os.getpid())
     child = _proc_memory_mb(pid)
     _decision_memory = {
@@ -33002,6 +33002,96 @@ def decision_memory():
     }
 
 
+_background_executor = None
+
+
+def _background_child_init():
+    """Once, in the scan process. It must not fork another worker."""
+    os.environ["CELESYS_DISABLE_BACKGROUND"] = "1"
+    os.environ["CELESYS_BACKGROUND_WORKER"] = "1"
+    os.environ["CELESYS_DECISION_WORKER"] = "1"
+    global _thread_pool
+    _thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="background-child")
+
+
+def _background_pool():
+    """Second forked process for scans and warm-up. Decisions keep the first one."""
+    global _background_executor
+    if os.environ.get("CELESYS_BACKGROUND_WORKER") == "1" or os.environ.get("CELESYS_DECISION_WORKER") == "1":
+        raise RuntimeError("a worker cannot start another worker")
+    if _background_executor is None:
+        import multiprocessing
+        ctx = multiprocessing.get_context("fork")
+        _background_executor = ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=_background_child_init)
+    return _background_executor
+
+
+def _background_job(kind, arg):
+    """One background task. The web process only stores what this returns."""
+    if kind == "bottom":
+        _run_bottom_nav_scan(arg)
+        return _bottom_nav_cache.get(arg)
+    if kind == "movers":
+        _run_movers_scan(arg)
+        return _movers_cache.get(arg)
+    if kind == "boot":
+        _run_bottom_nav_scan("IN")
+        _run_bottom_nav_scan("US")
+        return {"IN": _bottom_nav_cache.get("IN"), "US": _bottom_nav_cache.get("US")}
+    if kind == "pulse":
+        return _market_pulse_fetch()
+    if kind == "prefetch":
+        _prefetch_popular()
+        return "ok"
+    if kind == "hydrate":
+        _dd_disk_cache_load()
+        return {key: value for key, value in _smart_cache.items() if str(key).startswith("dd_")}
+    if kind == "preseed":
+        asyncio.run(_run_dd_preseed())
+        _dd_disk_cache_save()
+        return {key: value for key, value in _smart_cache.items() if str(key).startswith("dd_")}
+    if kind == "cds":
+        region, email = arg
+        return asyncio.run(cds_daily_scan(region=region, email=email, threshold=70))
+    return None
+
+
+def _spawn_background(kind, arg):
+    """Queue a job on the scan process and copy a small result back."""
+    if os.environ.get("CELESYS_BACKGROUND_WORKER") == "1" or os.environ.get("CELESYS_DECISION_WORKER") == "1":
+        return None
+    try:
+        fut = _background_pool().submit(_background_job, kind, arg)
+    except Exception as exc:
+        print(f"background {kind} not started: {type(exc).__name__}", flush=True)
+        return None
+
+    def _apply(done, kind=kind, arg=arg):
+        try:
+            payload = done.result()
+        except Exception as exc:
+            print(f"background {kind} failed: {type(exc).__name__}: {exc}", flush=True)
+            payload = None
+        if kind == "bottom":
+            if isinstance(payload, dict):
+                _bottom_nav_cache[arg] = payload
+            _bottom_nav_busy.discard(arg)
+        elif kind == "movers":
+            if isinstance(payload, dict):
+                _movers_cache[arg] = payload
+            _movers_busy.discard(arg)
+        elif kind == "boot" and isinstance(payload, dict):
+            for reg, slot in payload.items():
+                if isinstance(slot, dict):
+                    _bottom_nav_cache[reg] = slot
+        elif kind in ("hydrate", "preseed") and isinstance(payload, dict) and payload:
+            _smart_cache.update(payload)
+            print(f"[DD-DISK] parent stored {len(payload)} entries from {kind}", flush=True)
+
+    fut.add_done_callback(_apply)
+    return fut
+
+
 def run_chain_in_worker(symbol, expiry=""):
     """Index chain parse and quotes. The web thread waits at most 12 seconds."""
     import angel_options
@@ -33027,21 +33117,44 @@ def _past_decision_budget():
 
 
 def _decision_process_entry(symbol, region):
-    """One job in the long-lived worker. Its clock starts now, not at the previous request."""
+    """One job in the long-lived worker. It returns when the 12 second clock ends."""
+    import threading
     import time as _time
     import web_background
     _in_decision_worker.set(True)
     _decision_deadline.set(_time.monotonic() + _DECISION_BUDGET_S)
     web_background.start_deadline(_DECISION_BUDGET_S)
+    box = {}
+    ctx = contextvars.copy_context()
+
+    def _run():
+        def _body():
+            try:
+                result = asyncio.run(decision_engine(symbol, region))
+                if isinstance(result, dict):
+                    box["result"] = json.loads(json.dumps(result, default=str))
+                else:
+                    box["result"] = result
+            except Exception as exc:
+                box["result"] = {"success": False, "error": f"Decision error: {exc}", "symbol": symbol}
+        ctx.run(_body)
+
+    job = threading.Thread(target=_run, name="decision-job", daemon=True)
+    job.start()
+    job.join(_DECISION_BUDGET_S)
     try:
-        result = asyncio.run(decision_engine(symbol, region))
-        if isinstance(result, dict):
-            return json.loads(json.dumps(result, default=str))
-        return result
-    except Exception as exc:
-        return {"success": False, "error": f"Decision error: {exc}", "symbol": symbol}
+        if "result" in box:
+            return box["result"]
+        web_background.expire_budget()
+        plain = str(symbol or "").upper().strip().replace(".NS", "").replace(".BO", "")
+        key = _decision_cache_key(symbol, region)
+        snap = _load_decision_snapshot(key) or _load_decision_snapshot(plain)
+        partial = _decision_partial(symbol, region, snap)
+        print(f"  decision {symbol}: worker budget {_DECISION_BUDGET_S:.0f}s, partial pending={partial.get('pending')}", flush=True)
+        return partial
     finally:
-        web_background.clear_budget()
+        if "result" in box:
+            web_background.clear_budget()
         _in_decision_worker.set(False)
 
 
@@ -33079,12 +33192,27 @@ async def _run_decision_within_budget(symbol, region):
     if isinstance(cached, dict) and cached.get("success") and cached.get("data_status") != "partial" and stamped and (now - stamped).total_seconds() < 600:
         return cached
 
+    import time as _time
+    started = _time.monotonic()
     try:
-        fut = asyncio.get_running_loop().run_in_executor(_decision_pool(), _decision_process_entry, symbol, region)
+        # Submitting can block if the worker is still forking. Do that off this loop,
+        # and count it inside the same 12 seconds.
+        def _submit():
+            return _decision_pool().submit(_decision_process_entry, symbol, region)
+        cfut = await asyncio.wait_for(asyncio.to_thread(_submit), timeout=_DECISION_BUDGET_S)
+    except asyncio.TimeoutError:
+        plain = str(symbol or "").upper().strip().replace(".NS", "").replace(".BO", "")
+        snap = _load_decision_snapshot(key) or _load_decision_snapshot(plain)
+        print(f"  decision {symbol}: worker was not ready within {_DECISION_BUDGET_S:.0f}s", flush=True)
+        return _decision_partial(symbol, region, snap)
     except Exception as exc:
         return {"success": False, "error": f"Decision worker unavailable: {exc}", "symbol": symbol}
+    remaining = _DECISION_BUDGET_S - (_time.monotonic() - started)
+    if remaining <= 0:
+        return _decision_partial(symbol, region, _load_decision_snapshot(key))
+    fut = asyncio.wrap_future(cfut)
     try:
-        result = await asyncio.wait_for(asyncio.shield(fut), timeout=_DECISION_BUDGET_S)
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=remaining)
     except asyncio.TimeoutError:
         plain = str(symbol or "").upper().strip().replace(".NS", "").replace(".BO", "")
         snap = _load_decision_snapshot(key) or _load_decision_snapshot(plain)
@@ -60538,72 +60666,48 @@ async def ds_preview_route():
 
 
 
+async def _run_dd_preseed():
+    """Due-diligence warm-up. The background process runs this, then the file is read back."""
+    try:
+        await asyncio.sleep(30)
+        stats = _dd_disk_cache_stats()
+        if stats.get("n_entries", 0) >= 5:
+            print(f"[DD-PRESEED] Skipping — disk already has {stats['n_entries']} entries")
+            return
+        top_us = ["NVDA", "AAPL", "MSFT", "GOOGL", "META", "TSLA", "AMZN", "JPM"]
+        top_in = ["RELIANCE", "TCS", "INFY", "HDFCBANK"]
+        print(f"[DD-PRESEED] Pre-fetching {len(top_us)} US + {len(top_in)} IN top tickers...")
+        for region, syms in [("US", top_us), ("IN", top_in)]:
+            for sym in syms:
+                try:
+                    if _smart_cache_get(f"dd_v6:{region}:{sym}"):
+                        continue
+                    result = await investor_due_diligence(email="", symbol=sym, region=region)
+                    if isinstance(result, dict) and result.get("success"):
+                        print(f"[DD-PRESEED] ✅ {sym} ({region})")
+                    else:
+                        print(f"[DD-PRESEED] ⚠ {sym} ({region})")
+                    await asyncio.sleep(8)
+                except Exception as exc:
+                    print(f"[DD-PRESEED] {sym} ({region}) error: {str(exc)[:60]}")
+                    await asyncio.sleep(15)
+        _dd_disk_cache_save()
+        print("[DD-PRESEED] Done")
+    except Exception as exc:
+        print(f"[DD-PRESEED] Outer error: {exc}")
+
+
 # ═══ v4.61.11: Hydrate DD disk cache on startup ═══
 @app.on_event("startup")
 async def _v4_61_11_hydrate_disk_cache():
-    """Load DD responses from disk so cache survives Render redeploys."""
-    import threading
-    def _hydrate():
-        try:
-            n = _dd_disk_cache_load()
-            if n > 0:
-                print(f"✅ v4.61.11: DD cache pre-warmed with {n} entries from disk")
-        except Exception as e:
-            print(f"[DD-DISK] startup hydration failed (non-fatal): {e}")
-    threading.Thread(target=_hydrate, name="dd-hydrate", daemon=True).start()
+    """Load DD responses from disk in the background process."""
+    _spawn_background("hydrate", None)
 
 # ═══ v4.61.11: Pre-seed cache for top tickers (best-effort) ═══
 @app.on_event("startup")
 async def _v4_61_11_preseed_top_tickers():
-    """
-    Fire-and-forget background task that pre-fetches top US/IN tickers
-    so users don't hit cold cache + Yahoo rate-limit on first request.
-
-    Runs ~30s after startup (lets disk hydration finish first).
-    Each ticker is fetched serially with delays to avoid triggering
-    Yahoo rate-limit. Failures are silent.
-    """
-    async def _preseed():
-        try:
-            await asyncio.sleep(30)  # let server warm up + disk hydrate
-            # Skip if disk cache already has fresh entries
-            stats = _dd_disk_cache_stats()
-            if stats.get("n_entries", 0) >= 5:
-                print(f"[DD-PRESEED] Skipping — disk already has {stats['n_entries']} entries")
-                return
-
-            top_us = ["NVDA", "AAPL", "MSFT", "GOOGL", "META", "TSLA", "AMZN", "JPM"]
-            top_in = ["RELIANCE", "TCS", "INFY", "HDFCBANK"]
-            print(f"[DD-PRESEED] Pre-fetching {len(top_us)} US + {len(top_in)} IN top tickers...")
-
-            for region, syms in [("US", top_us), ("IN", top_in)]:
-                for sym in syms:
-                    try:
-                        # Check if already cached fresh (skip if so)
-                        if _smart_cache_get(f"dd_v6:{region}:{sym}"):
-                            continue
-                        # The report does synchronous provider I/O. Run it off the loop.
-                        result = await asyncio.to_thread(
-                            lambda region=region, sym=sym: asyncio.run(
-                                investor_due_diligence(email="", symbol=sym, region=region)
-                            )
-                        )
-                        if result.get("success"):
-                            print(f"[DD-PRESEED] ✅ {sym} ({region})")
-                        else:
-                            print(f"[DD-PRESEED] ⚠ {sym} ({region}) — {result.get('error', 'failed')[:60]}")
-                        # Pace requests — Yahoo rate-limits aggressive fetching
-                        await asyncio.sleep(8)
-                    except Exception as e:
-                        print(f"[DD-PRESEED] {sym} ({region}) error: {str(e)[:60]}")
-                        await asyncio.sleep(15)  # back off on errors
-            print(f"[DD-PRESEED] Done")
-        except Exception as e:
-            print(f"[DD-PRESEED] Outer error: {e}")
-
-    # Off the request loop. The body does synchronous provider work.
-    import threading
-    threading.Thread(target=lambda: asyncio.run(_preseed()), name="dd-preseed", daemon=True).start()
+    """Warm a few reports in the background process, not in this one."""
+    _spawn_background("preseed", None)
 
 
 @app.get("/api/debug/loop-lag")
@@ -63008,9 +63112,9 @@ async def _cds_daily_auto_scan():
             print(f"🤖 CDS Auto-scan: Running daily scan at {now.strftime('%H:%M')}")
             try:
                 # Scan India and the US off the request loop.
-                await asyncio.to_thread(lambda: asyncio.run(cds_daily_scan(region="IN", email=auto_email, threshold=70)))
+                await asyncio.wrap_future(_background_pool().submit(_background_job, "cds", ("IN", auto_email)))
                 await asyncio.sleep(60)  # Brief pause between scans
-                await asyncio.to_thread(lambda: asyncio.run(cds_daily_scan(region="US", email=auto_email, threshold=70)))
+                await asyncio.wrap_future(_background_pool().submit(_background_job, "cds", ("US", auto_email)))
                 print(f"✅ CDS Auto-scan: Complete. Emails sent to {auto_email}")
             except Exception as e:
                 print(f"❌ CDS Auto-scan error: {e}")

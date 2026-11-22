@@ -46,6 +46,12 @@ def clear_budget() -> None:
     _deadline = None
 
 
+def expire_budget() -> None:
+    """The clock is over. A job that is still running has to stop."""
+    global _deadline
+    _deadline = time.monotonic() - 1
+
+
 def budget_hit() -> bool:
     return _deadline is not None and time.monotonic() >= _deadline
 
