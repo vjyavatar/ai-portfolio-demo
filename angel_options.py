@@ -365,7 +365,7 @@ def _load_nse_book(now):
     """NSE -EQ names and the three index symbols. The full master is not retained."""
     global _nse_book,_nse_book_at
     if _nse_book is not None and 0<=now-_nse_book_at<21600:return _nse_book
-    raw = angel_session.request_bytes(MASTER_URL, headers={"Accept": "application/json"}, timeout=15)
+    raw = angel_session.request_bytes(MASTER_URL, headers={"Accept": "application/json"}, timeout=8)
     book = _book_from_master_bytes(raw)
     _nse_book=book;_nse_book_at=now
     return book
