@@ -55,8 +55,10 @@ def market_data_status():
 
 
 @router.get("/api/market-data/quote/{symbol}")
-def market_data_quote(symbol: str, region: str = Query("US", pattern="^(US|IN)$")):
+def market_data_quote(symbol: str, region: str = Query("US")):
     require_user()
+    if region not in ("US", "IN"):
+        raise HTTPException(422, "region must be US or IN")
     provider = _provider(region)
     if provider is None:
         raise HTTPException(503, "Market-data provider is disabled; no live data is available.")
@@ -70,10 +72,12 @@ def market_data_quote(symbol: str, region: str = Query("US", pattern="^(US|IN)$"
 
 
 @router.get("/api/market-data/bars/{symbol}")
-def market_data_bars(symbol: str, region: str = Query("US", pattern="^(US|IN)$"),
+def market_data_bars(symbol: str, region: str = Query("US"),
                      timeframe: str = Query("5m"),
                      limit: int = Query(100, ge=1, le=1000)):
     require_user()
+    if region not in ("US", "IN"):
+        raise HTTPException(422, "region must be US or IN")
     provider = _provider(region)
     if provider is None:
         raise HTTPException(503, "Market-data provider is disabled; no live data is available.")
