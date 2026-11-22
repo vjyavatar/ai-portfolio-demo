@@ -13,10 +13,13 @@ from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 import hashlib
 import ipaddress
+import json
 import logging
 import math
 import os
 import re
+import subprocess
+import sys
 import threading
 import time
 from urllib.error import HTTPError
@@ -248,32 +251,76 @@ def _nse_key(raw):
     return text
 
 
+_BOOK_SCRIPT = r"""
+import json, re, sys
+INDEX = {"NIFTY": "Nifty 50", "BANKNIFTY": "Nifty Bank", "INDIAVIX": "India VIX"}
+master = json.load(sys.stdin)
+if not isinstance(master, list) or len(master) > 400000:
+    raise SystemExit(2)
+book = {}
+for raw in master:
+    if not isinstance(raw, dict) or raw.get("exch_seg") != "NSE":
+        continue
+    token = str(raw.get("token", ""))
+    if not re.fullmatch(r"[1-9][0-9]{0,11}", token):
+        continue
+    symbol = str(raw.get("symbol") or "")
+    kind = raw.get("instrumenttype") or ""
+    if kind == "AMXIDX":
+        for key, trading in INDEX.items():
+            if symbol == trading and key not in book:
+                book[key] = {"token": token, "symbol": symbol}
+        continue
+    if kind not in ("", "EQ") or not symbol.endswith("-EQ"):
+        continue
+    key = symbol[:-3].upper()
+    if key in INDEX or key in book or not re.fullmatch(r"[A-Z][A-Z0-9]{0,19}", key):
+        continue
+    listed = str(raw.get("name") or "").upper()
+    if listed and listed != key:
+        continue
+    book[key] = {"token": token, "symbol": symbol}
+if "NIFTY" not in book or "BANKNIFTY" not in book:
+    raise SystemExit(3)
+json.dump(book, sys.stdout)
+"""
+
+
+def _book_from_master_bytes(raw):
+    """Build the NSE token book in another process.
+
+    json.loads of the full instrument master holds this process's GIL for a long
+    stretch. The decision request cannot answer while that lock is held.
+    """
+    if not isinstance(raw, (bytes, bytearray)) or not raw:
+        raise ValueError("Invalid instrument master")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _BOOK_SCRIPT],
+            input=bytes(raw),
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Instrument master parse timed out") from exc
+    if proc.returncode != 0 or not proc.stdout:
+        raise ValueError("Invalid instrument master")
+    try:
+        book = json.loads(proc.stdout.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Invalid instrument master") from exc
+    if not isinstance(book, dict) or "NIFTY" not in book or "BANKNIFTY" not in book:
+        raise ValueError("NSE index tokens unavailable")
+    return book
+
+
 def _load_nse_book(now):
     """NSE -EQ names and the three index symbols. The full master is not retained."""
     global _nse_book,_nse_book_at
     if _nse_book is not None and 0<=now-_nse_book_at<21600:return _nse_book
-    master=_request(MASTER_URL)
-    if not isinstance(master,list) or len(master)>400000:raise ValueError('Invalid instrument master')
-    book={}
-    for raw in master:
-        if not isinstance(raw,dict) or raw.get('exch_seg')!='NSE':continue
-        token=str(raw.get('token',''))
-        if not re.fullmatch(r'[1-9][0-9]{0,11}',token):continue
-        symbol=str(raw.get('symbol') or '')
-        kind=raw.get('instrumenttype') or ''
-        if kind=='AMXIDX':
-            for key,trading in INDEX_QUOTES.items():
-                if symbol==trading and key not in book:
-                    book[key]={'token':token,'symbol':symbol}
-            continue
-        if kind not in ('','EQ') or not symbol.endswith('-EQ'):continue
-        key=symbol[:-3].upper()
-        if key in INDEX_QUOTES or key in book or not re.fullmatch(r'[A-Z][A-Z0-9]{0,19}',key):continue
-        listed=str(raw.get('name') or '').upper()
-        if listed and listed!=key:continue
-        book[key]={'token':token,'symbol':symbol}
-    if 'NIFTY' not in book or 'BANKNIFTY' not in book:
-        raise ValueError('NSE index tokens unavailable')
+    raw = angel_session.request_bytes(MASTER_URL, headers={"Accept": "application/json"}, timeout=15)
+    book = _book_from_master_bytes(raw)
     _nse_book=book;_nse_book_at=now
     return book
 

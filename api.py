@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.109"
+APP_VERSION = "v4.63.110"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.109: Decision engine returns within about 12 seconds. Sections still running are marked pending instead of an analysis timeout. "
+    "v4.63.110: The 12 second decision budget covers the whole request for US and India. A slow Angel instrument book is parsed outside this process. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -21482,6 +21482,14 @@ _SNAPSHOT_KEYS = (
 )
 
 
+_inflight_snapshots = {}
+
+
+def _decision_cache_key(symbol, region):
+    sym = str(symbol or "").upper().strip().replace(".NS", "").replace(".BO", "")
+    return f"{sym}_{str(region or '').upper().strip()}"
+
+
 def _publish_decision_snapshot(progress, result, pending):
     """Share the sections finished so far. The request can return these at the budget."""
     if not isinstance(progress, dict) or not isinstance(result, dict):
@@ -21489,9 +21497,14 @@ def _publish_decision_snapshot(progress, result, pending):
     snap = {key: result.get(key) for key in _SNAPSHOT_KEYS if key in result}
     snap["success"] = True
     snap["symbol"] = result.get("symbol")
+    snap["region"] = result.get("region")
     snap["data_status"] = "partial"
     snap["pending"] = list(pending)
     progress["snapshot"] = snap
+    sym = str(result.get("symbol") or "").upper().strip()
+    if sym:
+        _inflight_snapshots[sym] = snap
+        _inflight_snapshots[_decision_cache_key(sym, result.get("region"))] = snap
 
 
 def _pending_decision(symbol, region, snapshot=None):
@@ -32504,7 +32517,22 @@ async def top_picks(region: str = "IN"):
 # ═══ PREMIUM HELPERS — Options Chain + Peer Analysis ═══
 
 async def _fetch_options_chain(symbol: str, region: str = "IN"):
-    """Fetch options chain — returns strike-level OI, premiums, greeks"""
+    """Fetch options chain — returns strike-level OI, premiums, greeks.
+
+    The body is synchronous provider I/O. It runs on a worker thread with a
+    four second cap so it cannot hold the request loop.
+    """
+    if not _chain_worker.get():
+        def _run():
+            _chain_worker.set(True)
+            try:
+                return asyncio.run(_fetch_options_chain(symbol, region))
+            finally:
+                _chain_worker.set(False)
+        try:
+            return await asyncio.wait_for(asyncio.get_running_loop().run_in_executor(None, _run), timeout=4)
+        except asyncio.TimeoutError:
+            return {"success": False}
     try:
         is_us = region.upper() == "US"
         inst = _resolve_instrument(symbol, region)
@@ -32801,9 +32829,89 @@ def _decision_research_guard(result):
     return out
 
 
+import contextvars
+from concurrent.futures import ThreadPoolExecutor as _DecisionPool
+
+_in_decision_worker = contextvars.ContextVar("celesys_decision_worker", default=False)
+_chain_worker = contextvars.ContextVar("celesys_chain_worker", default=False)
+_decision_executor = _DecisionPool(max_workers=4, thread_name_prefix="decision")
+_decision_cache = {}
+_decision_cache_ts = {}
+_DECISION_BUDGET_S = 12
+
+
+def _decision_partial(symbol, region, snapshot=None):
+    """A successful answer from whatever sections finished before the budget."""
+    base = snapshot if isinstance(snapshot, dict) else {}
+    pending = list(base.get("pending") or ["candles", "technicals", "options", "decision"])
+    if "decision" not in pending:
+        pending.append("decision")
+    spot = base.get("spot") or base.get("price") or 0
+    return {
+        "success": True,
+        "symbol": base.get("symbol") or symbol,
+        "region": base.get("region") or region,
+        "data_status": "partial",
+        "pending": pending,
+        "spot": spot,
+        "price": base.get("price") or spot,
+        "technicals": base.get("technicals") or {},
+        "priceHistory": base.get("priceHistory") or [],
+        "signal": base.get("research_signal") or base.get("signal") or "HOLD / WAIT",
+        "direction": base.get("direction") or "NEUTRAL",
+        "options": base.get("options") or {},
+        "note": "Sections listed in pending are still running. Retry for the full decision.",
+    }
+
+
+async def _run_decision_within_budget(symbol, region):
+    """Return within 12 seconds. The calculation keeps running and is cached when it finishes."""
+    from datetime import datetime
+    key = _decision_cache_key(symbol, region)
+    now = datetime.utcnow()
+    cached = _decision_cache.get(key)
+    stamped = _decision_cache_ts.get(key)
+    if isinstance(cached, dict) and cached.get("success") and cached.get("data_status") != "partial" and stamped and (now - stamped).total_seconds() < 600:
+        return cached
+
+    def _worker():
+        _in_decision_worker.set(True)
+        try:
+            return asyncio.run(decision_engine(symbol, region))
+        finally:
+            _in_decision_worker.set(False)
+
+    fut = asyncio.get_running_loop().run_in_executor(_decision_executor, _worker)
+    try:
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=_DECISION_BUDGET_S)
+    except asyncio.TimeoutError:
+        snap = _inflight_snapshots.get(key) or _inflight_snapshots.get(str(symbol or "").upper().strip().replace(".NS", "").replace(".BO", ""))
+        print(f"  decision {symbol}: budget {_DECISION_BUDGET_S:.0f}s, returning partial pending={(snap or {}).get('pending')}", flush=True)
+
+        def _cache_when_ready(done):
+            try:
+                full = done.result()
+            except Exception:
+                return
+            if isinstance(full, dict) and full.get("success") and full.get("data_status") != "partial":
+                _decision_cache[key] = full
+                _decision_cache_ts[key] = datetime.utcnow()
+
+        fut.add_done_callback(_cache_when_ready)
+        return _decision_partial(symbol, region, snap)
+    except Exception as exc:
+        return {"success": False, "error": f"Decision error: {exc}", "symbol": symbol}
+    if isinstance(result, dict) and result.get("success") and result.get("data_status") != "partial":
+        _decision_cache[key] = result
+        _decision_cache_ts[key] = now
+    return result
+
+
 @app.get("/api/decision-engine")
 async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
     """Premium Trader Decision Engine — Institutional options + technical framework"""
+    if not _in_decision_worker.get():
+        return await _run_decision_within_budget(symbol, region)
     try:
         import math
         algo = await algo_signal_safe(symbol, region)

@@ -78,3 +78,46 @@ class DecideTests(unittest.TestCase):
     def test_failed_response_stays_failure(self):
         raw={'success':False,'error':'No source data'}
         self.assertEqual(scope()['_decision_research_guard'](raw),raw)
+
+    def test_request_budget_wraps_both_regions_before_the_body(self):
+        gate=next(n for n in DECIDE.body if isinstance(n, ast.If))
+        segment=ast.get_source_segment(Path('api.py').read_text(), gate)
+        self.assertIn('_run_decision_within_budget', segment)
+        self.assertIn('_in_decision_worker', segment)
+
+    def test_budget_returns_ready_sections_while_the_body_is_still_running(self):
+        import asyncio
+        source=Path('api.py').read_text()
+        tree=ast.parse(source)
+        keep={'_inflight_snapshots','_in_decision_worker','_chain_worker','_decision_executor','_decision_cache','_decision_cache_ts','_DECISION_BUDGET_S'}
+        nodes=[]
+        for node in tree.body:
+            if isinstance(node, ast.Import) and any(alias.name=='contextvars' for alias in node.names):
+                nodes.append(node)
+            elif isinstance(node, ast.ImportFrom) and node.module=='concurrent.futures' and any(alias.asname=='_DecisionPool' for alias in node.names):
+                nodes.append(node)
+            elif isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in keep for target in node.targets):
+                nodes.append(node)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {'_decision_cache_key','_decision_partial','_run_decision_within_budget'}:
+                nodes.append(node)
+        env={'asyncio':asyncio}
+        exec(compile(ast.Module(body=nodes,type_ignores=[]),'api.py','exec'),env)
+        env['_DECISION_BUDGET_S']=0.3
+        async def decision_engine(symbol='NIFTY', region='IN'):
+            env['_inflight_snapshots'][env['_decision_cache_key'](symbol, region)]={
+                'success':True,'symbol':'RELIANCE','region':'IN','spot':1377.5,
+                'technicals':{'rsi':55},'priceHistory':[1370,1377.5],'pending':['options','decision'],
+                'signal':'BUY','direction':'BULLISH','options':{}}
+            await asyncio.sleep(1)
+            return {'success':True,'symbol':symbol,'price':1377.5}
+        env['decision_engine']=decision_engine
+        started=__import__('time').perf_counter()
+        out=asyncio.run(env['_run_decision_within_budget']('RELIANCE.NS','IN'))
+        elapsed=__import__('time').perf_counter()-started
+        env['_decision_executor'].shutdown(wait=True, cancel_futures=False)
+        self.assertLess(elapsed, 0.8)
+        self.assertTrue(out['success'])
+        self.assertEqual(out['data_status'],'partial')
+        self.assertEqual(out['spot'],1377.5)
+        self.assertEqual(out['signal'],'BUY')
+        self.assertIn('decision', out['pending'])
