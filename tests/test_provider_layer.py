@@ -64,6 +64,29 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(bars["data"][-1]["close"], 342.56)
         self.assertEqual(bars["source"], "nasdaq")
 
+    def test_finnhub_timeout_still_uses_the_next_candle_source(self):
+        layer._cache.clear()
+        original_finnhub = layer._finnhub_bars
+        original_nasdaq = layer._nasdaq_bars
+        def boom(symbol, interval="1d"):
+            raise TimeoutError("finnhub timed out")
+        def nasdaq(symbol):
+            rows = []
+            for day in range(1, 8):
+                rows.append({"time": f"2026-11-{day:02d}", "open": 10, "high": 11, "low": 9, "close": 10 + day, "volume": 100})
+            return {"ok": True, "data": rows, "source": "nasdaq", "as_of": "2026-11-22T00:00:00+00:00", "stale": False, "metric_sources": {}}
+        layer._finnhub_bars = boom
+        layer._nasdaq_bars = nasdaq
+        try:
+            env = layer.candles("MU", period="1y", interval="1d", region="US")
+        finally:
+            layer._finnhub_bars = original_finnhub
+            layer._nasdaq_bars = original_nasdaq
+            layer._cache.clear()
+        self.assertTrue(env["ok"])
+        self.assertEqual(env["source"], "nasdaq")
+        self.assertGreaterEqual(len(env["data"]), 5)
+
     def test_region_routing(self):
         self.assertEqual(layer.classify("MU")["region"], "US")
         self.assertEqual(layer.classify("KAYNES.NS")["region"], "IN")

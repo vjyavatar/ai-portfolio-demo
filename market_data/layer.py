@@ -212,7 +212,10 @@ def _request(url: str, *, data: Optional[bytes] = None, headers: Optional[dict] 
 
 
 def _json(url: str, **kwargs) -> Optional[Any]:
-    status, raw = _request(url, **kwargs)
+    try:
+        status, raw = _request(url, **kwargs)
+    except Exception:
+        return None
     if status != 200 or not raw:
         return None
     try:
@@ -284,14 +287,17 @@ def _tv_row(symbol: str, region: Optional[str] = None) -> Optional[dict]:
     return env.get("data") if env.get("ok") else None
 
 
-def _finnhub(path: str, params: dict) -> Optional[Any]:
+def _finnhub(path: str, params: dict, timeout: int = TIMEOUT) -> Optional[Any]:
     key = os.getenv("FINNHUB_API_KEY", "").strip()
     if not key:
         return None
     query = dict(params)
     query["token"] = key
     url = "https://finnhub.io/api/v1" + path + "?" + urllib.parse.urlencode(query)
-    return _json(url, timeout=TIMEOUT)
+    try:
+        return _json(url, timeout=timeout)
+    except Exception:
+        return None
 
 
 def _put_metric(info: dict, sources: dict, field: str, value, source: str, as_of: str) -> None:
@@ -844,18 +850,35 @@ def _moneycontrol_index_bars(symbol: str) -> Optional[dict]:
 
 
 def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
-    token = _angel_token(symbol)
-    headers = _angel_headers()
-    if not token or not headers:
+    """Historical candles through the Angel proxy. A direct call from Render is rejected."""
+    try:
+        import angel_options
+        import angel_session
+        if not angel_options.configured():
+            return None
+        key = angel_options._nse_key(symbol)
+        if not key:
+            return None
+        book = angel_options._load_nse_book(time.time())
+        inst = book.get(key) if isinstance(book, dict) else None
+        token = inst.get("token") if isinstance(inst, dict) else None
+        if not token:
+            return None
+        headers = angel_options._headers()
+    except Exception:
         return None
     interval_name = {"1d": "ONE_DAY", "5m": "FIVE_MINUTE", "15m": "FIFTEEN_MINUTE", "60m": "ONE_HOUR", "1m": "ONE_MINUTE"}.get(interval, "ONE_DAY")
     end = datetime.now().strftime("%Y-%m-%d %H:%M")
-    start = (datetime.now() - timedelta(days=10 if interval != "1d" else 420)).strftime("%Y-%m-%d %H:%M")
-    payload = _json(
-        _ANGEL_CANDLE,
-        data=json.dumps({"exchange": "NSE", "symboltoken": token, "interval": interval_name, "fromdate": start, "todate": end}).encode(),
-        headers=headers,
-    )
+    start = (datetime.now() - timedelta(days=10 if interval != "1d" else 400)).strftime("%Y-%m-%d %H:%M")
+    try:
+        payload = angel_session.request_json(
+            _ANGEL_CANDLE,
+            payload={"exchange": "NSE", "symboltoken": str(token), "interval": interval_name, "fromdate": start, "todate": end},
+            headers=headers,
+            timeout=8,
+        )
+    except Exception:
+        return None
     rows = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
         return None
@@ -867,32 +890,35 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
     return _bars_from_pairs(pairs, "angel")
 
 
+def _try_bars(loader) -> Optional[dict]:
+    """One candle provider cannot cancel the next."""
+    try:
+        bars = loader()
+    except Exception:
+        return None
+    if isinstance(bars, dict) and bars.get("ok") and isinstance(bars.get("data"), list) and bars["data"]:
+        return bars
+    return None
+
+
 def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None) -> dict:
     meta = classify(symbol, region)
     key = f"candles:{meta['region']}:{meta['root']}:{period}:{interval}"
 
     def load():
-        if interval in {"5m", "1m", "15m", "60m"}:
-            for loader in (_angel_bars if meta["region"] == "IN" else _finnhub_bars,):
-                bars = loader(symbol, interval)
-                if bars and bars.get("data"):
-                    return bars
-            if meta["region"] == "US":
-                bars = _finnhub_bars(symbol, interval)
-                if bars and bars.get("data"):
-                    return bars
-            return None
-        order = []
+        intraday = interval in {"5m", "1m", "15m", "60m"}
         if meta["region"] == "IN":
-            order = [_angel_bars, _moneycontrol_index_bars if meta["kind"] == "index" else _screener_bars]
+            steps = [lambda: _angel_bars(symbol, interval if intraday else "1d")]
+            if not intraday:
+                steps.append(lambda: _moneycontrol_index_bars(symbol) if meta["kind"] == "index" else _screener_bars(symbol))
         else:
-            order = [_finnhub_bars, _nasdaq_bars]
-        for loader in order:
-            try:
-                bars = loader(symbol, interval) if loader is _angel_bars or loader is _finnhub_bars else loader(symbol)
-            except TypeError:
-                bars = loader(symbol)
-            if bars and bars.get("data"):
+            # Finnhub candles first. A free-plan denial must not skip Nasdaq.
+            steps = [lambda: _finnhub_bars(symbol, "5m" if intraday else "1d")]
+            if not intraday:
+                steps.append(lambda: _nasdaq_bars(symbol))
+        for step in steps:
+            bars = _try_bars(step)
+            if bars:
                 return bars
         return None
 

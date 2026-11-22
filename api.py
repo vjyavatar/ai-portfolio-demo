@@ -96,6 +96,17 @@ class _SafeTicker:
         return _legacy_market_cache.get(key, load, ttl=ttl, default=defaults.get(name))
     def history(self, *args, **kwargs):
         result = self._cached('history', *args, **kwargs)
+        empty = result is None or (hasattr(result, "empty") and result.empty)
+        if empty and self._obj is not None:
+            # A Yahoo-era cooldown must not hide a later Finnhub or Nasdaq candle.
+            try:
+                fresh = self._obj.history(*args, **kwargs)
+                if fresh is not None and not (hasattr(fresh, "empty") and fresh.empty):
+                    return fresh
+                if fresh is not None:
+                    result = fresh
+            except Exception:
+                pass
         if result is None:
             import pandas as _pd
             return _pd.DataFrame(columns=['Open', 'High', 'Low', 'Close', 'Volume'])
@@ -445,7 +456,6 @@ def fetch_nse_stock_data(symbol):
     if result["pe"] == 0 and result["eps"] == 0 and result["price"] > 0:
         try:
             # yfinance imported globally with 401 wrapper
-            _provider_slot_wait()
 
             tk = yf.Ticker(f"{symbol}.NS")
             # Try .info first
@@ -1367,10 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.106"
-APP_BUILD_TIME = 1795350000
-APP_BUILD_DATE = "2026-11-22 11:20:00 UTC"
+APP_VERSION = "v4.63.107"
+APP_BUILD_TIME = 1795353600
+APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.107: Decision, swing, intraday, momentum and earnings routes load candles from Finnhub, then Nasdaq, and from Angel getCandleData for India. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -3180,7 +3191,6 @@ def get_live_stock_data(company_name: str) -> dict:
                     # Source 2: Yahoo v8 chart (only if Source 1 failed, 3s timeout)
                     if not price:
                         try:
-                            _provider_slot_wait()
 
                             r = _chart_response(ptk, interval="1d", range="2d")
                             if r.status_code == 200:
@@ -3618,7 +3628,7 @@ async def dd_returns_snapshot(symbol: str = "", region: str = "US"):
     try:
         import market_data.yfcompat as yf
         yf_sym = sym if reg == "US" else f"{sym}.NS"
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         tk = yf.Ticker(yf_sym)
         hist = tk.history(period="10y", interval="1d", auto_adjust=True)
@@ -3637,7 +3647,7 @@ async def dd_returns_snapshot(symbol: str = "", region: str = "US"):
         try:
             import market_data.yfcompat as yf
             yf_sym = sym if reg == "US" else f"{sym}.NS"
-            try: _provider_slot_wait()
+            try: pass
             except Exception: pass
             tk2 = yf.Ticker(yf_sym)
             mhist = tk2.history(period="10y", interval="1mo", auto_adjust=True)
@@ -4167,7 +4177,6 @@ async def _stock_dashboard_impl(symbol: str = "", region: str = "US", refresh: i
 
     # ───────── 1. Fetch financials ─────────
     def _fetch_all():
-        _provider_slot_wait()
         try:
             tk = yf.Ticker(_yf_sym)
             inc = tk.income_stmt if hasattr(tk, 'income_stmt') else getattr(tk, 'financials', None)
@@ -5075,7 +5084,6 @@ async def _stock_dashboard_impl(symbol: str = "", region: str = "US", refresh: i
         bench_label = "S&P 500" if region == "US" else "NIFTY 50"
 
         def _fetch_returns(sym):
-            _provider_slot_wait()
             try:
                 t = yf.Ticker(sym)
                 hist = t.history(period="5y", interval="1mo", auto_adjust=True)
@@ -5961,7 +5969,7 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
     try:
         import market_data.yfcompat as yf
         import asyncio as _aio
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
 
@@ -6311,7 +6319,7 @@ async def _portfolio_risk_impl(payload):
     try:
         import market_data.yfcompat as yf
         import asyncio as _aio
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
 
         def _fetch_meta(syms_regions):
@@ -6622,7 +6630,7 @@ async def _inst_conviction_impl(symbol, region, refresh):
     try:
         import market_data.yfcompat as yf
         import asyncio as _aio
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
         def _f():
@@ -6802,7 +6810,7 @@ async def _capital_rotation_impl(region, lookback_days, refresh):
     try:
         import market_data.yfcompat as yf
         import asyncio as _aio
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
 
         def _fetch_etf(yf_sym):
@@ -7120,7 +7128,7 @@ async def _multibagger_prob_impl(symbol, region, refresh):
     try:
         import market_data.yfcompat as yf
         import asyncio as _aio
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
         def _f():
@@ -7498,7 +7506,7 @@ async def _earnings_pred_impl(symbol, region, refresh):
     try:
         import market_data.yfcompat as yf
         import asyncio as _aio
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
 
@@ -7802,7 +7810,7 @@ async def _macro_impact_impl(symbol, region, refresh):
     try:
         import market_data.yfcompat as yf
         import asyncio as _aio
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
 
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
@@ -7970,7 +7978,7 @@ async def _mgmt_change_impl(symbol, region, refresh):
     try:
         import market_data.yfcompat as yf
         import asyncio as _aio
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
 
@@ -10465,7 +10473,7 @@ def _index_read(region):
     syms = [p[1] for p in pairs]
     df = None
     try:
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         df = yf.download(tickers=" ".join(syms), period="1y", interval="1d",
                          group_by="ticker", auto_adjust=True, threads=True, progress=False)
@@ -10531,7 +10539,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
     # ───────── Fetch VIX + benchmark in parallel ─────────
     try:
         import market_data.yfcompat as yf
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         bench_sym = "SPY" if region == "US" else "^NSEI"
 
@@ -10568,7 +10576,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
     yf_syms = [_yf_sym(s) for s in universe]
 
     def _batch_dl():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         try:
             return yf.download(tickers=" ".join(yf_syms), period="1y", interval="1d",
@@ -10598,7 +10606,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         sub = _slice(_yf_sym(sym))
         if sub is None:
             # batch miss for this ticker — fall back to a single throttled per-ticker fetch
-            try: _provider_slot_wait()
+            try: pass
             except Exception: pass
         scored = await _lp.run_in_executor(None, _score_directional_ticker,
                                             sym, region, benchmark_ret_20d, sub)
@@ -12148,7 +12156,7 @@ async def _inst_360_compute(symbol, region, cache_key):
     t0 = _time.time()
     try:
         import market_data.yfcompat as yf
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
 
@@ -12489,7 +12497,7 @@ async def _insider_activity_impl(symbol, region, lookback_days, refresh):
             return out_c
 
     t0 = _time.time()
-    try: _provider_slot_wait()
+    try: pass
     except Exception: pass
 
     # Run blocking yfinance call in executor
@@ -13870,7 +13878,6 @@ async def nse_options(symbol: str = "NIFTY"):
             if symbol in ["NIFTY", "BANKNIFTY", "NIFTY BANK"]:
                 # yfinance imported globally with 401 wrapper
                 tk_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "NIFTY BANK": "^NSEBANK"}
-                _provider_slot_wait()
 
                 tk = yf.Ticker(tk_map.get(symbol, f"{symbol}.NS"))
                 hist = tk.history(period="5d", interval="1d")
@@ -13908,7 +13915,6 @@ async def nse_options(symbol: str = "NIFTY"):
                     
                     # Intraday OHLC for candlestick chart
                     try:
-                        _provider_slot_wait()
                         intra = tk.history(period="5d", interval="5m")
                         if intra is not None and len(intra) > 10:
                             ohlc_bars = []
@@ -13989,7 +13995,6 @@ async def fund_live():
     
     def _fetch_fund(display_name, yf_ticker):
         try:
-            _provider_slot_wait()
 
             tk = yf.Ticker(yf_ticker)
             hist = tk.history(period="5y", interval="1mo")
@@ -14165,7 +14170,6 @@ async def global_ticker():
         # Source 2: Yahoo v8 chart API (direct HTTP — backup)
         try:
             _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
-            _provider_slot_wait()
             r = _chart_response(ticker, interval="1d", range="2d")
             if r.status_code == 200:
                 m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
@@ -14187,7 +14191,6 @@ async def global_ticker():
         
         # Source 3: yfinance (last resort — most rate-limited)
         try:
-            _provider_slot_wait()
             t = yf.Ticker(ticker)
             hist = t.history(period="2d")
             if not hist.empty:
@@ -14418,7 +14421,6 @@ async def stock_quick(ticker: str = ""):
         if not price:
             try:
                 _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
-                _provider_slot_wait()
 
                 r = _chart_response(ticker, interval="1d", range="5d")
                 if r.status_code == 200:
@@ -15739,7 +15741,6 @@ def _run_bottom_nav_scan(reg):
             import market_data.yfcompat as yf
             yf_symbols = list(us_yf_map.values())
             print(f"[BOTTOM-NAV] 🇺🇸 Stage 1: Batch download {len(yf_symbols)} US tickers...")
-            _provider_slot_wait()
             data = yf.download(yf_symbols, period="2d", interval="1d", group_by="ticker", threads=True, progress=False)
             
             candidates = []
@@ -15785,7 +15786,7 @@ def _run_bottom_nav_scan(reg):
         
         # ═══ STAGE 2: Full scoring via _options_quick_impl ═══
         # US thread count reduced from 8 → 3 because Yahoo rate-limits concurrent
-        # requests from the same IP. With _provider_slot_wait() now serializing the
+        # requests from the same IP. With pass now serializing the
         # chain fetches through a global 1.5s lock, 8 threads would just queue
         # behind each other anyway — but 3 threads keeps the fan-out cleaner
         # and leaves headroom for Yahoo's per-burst cap. Scan time increases to
@@ -16200,10 +16201,6 @@ def _premium_yf_block(symbol, region):
 
     try:
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
-        try:
-            _provider_slot_wait()
-        except Exception:
-            pass
         tk = yf.Ticker(yf_sym)
         info = {}
         try:
@@ -17277,7 +17274,7 @@ async def structural_change_signal(symbol: str = "", region: str = "US", nocache
 
     yf_sym = sym if reg == "US" else f"{sym}.NS"
     try:
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         tk = yf.Ticker(yf_sym)
         info = {}
@@ -17444,7 +17441,7 @@ def _scs_batch_compute_one(symbol, region):
         except Exception:
             return None
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         try:
             tk = yf.Ticker(yf_sym)
@@ -18984,7 +18981,6 @@ async def gift_nifty():
             "asia_etf": "INDA",           # India ETF (US-listed)
         }
         
-        _provider_slot_wait()
         
         results = {}
         for key, sym in symbols.items():
@@ -19153,7 +19149,6 @@ async def us_premarket():
             "btc": "BTC-USD",    # Bitcoin (risk appetite)
         }
         
-        _provider_slot_wait()
         
         results = {}
         for key, sym in symbols.items():
@@ -19928,7 +19923,6 @@ async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
         if region == 'IN' and yf_sym not in ['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY','^NSEI','^NSEBANK','^BSESN']:
             yf_sym = symbol.upper() + '.NS'
         
-        _provider_slot_wait()
         tk = yf.Ticker(yf_sym)
         hist = tk.history(period='5d', interval='5m')
         
@@ -20130,7 +20124,6 @@ async def live_scan(request: Request):
         import pandas as pd
         
         # ONE batch download — much faster than individual calls
-        _provider_slot_wait()
         df = yf.download(yf_tickers, period='2d', interval='15m', 
                          group_by='ticker', progress=False, threads=True)
         
@@ -20287,7 +20280,6 @@ async def test_price(ticker: str):
     
     # Source 2: Yahoo v8 chart
     try:
-        _provider_slot_wait()
 
         r = _chart_response(ticker, interval="1d", range="2d")
         if r.status_code == 200:
@@ -20342,7 +20334,6 @@ async def batch_prices(request: Request):
             
             # Source 2: Yahoo v8 chart API
             try:
-                _provider_slot_wait()
 
                 r = _chart_response(tk, interval="1d", range="2d")
                 if r.status_code == 200:
@@ -20458,7 +20449,6 @@ async def market_pulse():
         # Source 2: Yahoo v8 chart API (backup)
         try:
             _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
-            _provider_slot_wait()
             r = _chart_response(ticker, interval="1d", range="2d")
             if r.status_code == 200:
                 m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
@@ -20473,7 +20463,6 @@ async def market_pulse():
             pass
         # Source 3: yfinance (last resort)
         try:
-            _provider_slot_wait()
             t = yf.Ticker(ticker)
             hist = t.history(period="2d")
             if not hist.empty:
@@ -21350,7 +21339,6 @@ async def health_check():
     # Test 3: yfinance
     try:
         t0 = _ht.time()
-        _provider_slot_wait()
 
         tk = yf.Ticker("^NSEI")
         h = tk.history(period="5d")
@@ -21538,39 +21526,23 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     closes = None; daily = None; highs = None; lows = None; volumes_arr = None
     _loop = asyncio.get_event_loop()
     
-    if not is_us:
-        # Price-only NSE chart points do not supply OHLCV candles. The legacy
-        # conversion invented highs/lows and one-million-unit volumes, and the
-        # historical index conversion discarded dates and invented volume too.
-        # Use genuine timestamped history until a validated NSE OHLCV adapter exists.
-        import pandas as pd
-        if daily is None or len(daily) < 5:
-            try:
-                print(f"  🔄 Genuine OHLCV history: yfinance for {yf_sym}")
-                _provider_slot_wait()
-
-                tk = yf.Ticker(yf_sym)
-                daily = await _loop.run_in_executor(None, lambda _t=tk: _t.history(period="1y", interval="1d"))
-                if daily is not None and len(daily) >= 5:
-                    print(f"  ✅ yfinance recovered: {len(daily)} bars for {symbol}")
-                else:
-                    print(f"  ❌ yfinance still empty for {symbol}")
-                    daily = None
-            except Exception as _yf_err:
-                print(f"  ⚠️ yfinance last resort failed: {_yf_err}")
-    else:
-        # ═══ USA: yfinance (primary) ═══
-        try:
-            _provider_slot_wait()
-
-            tk = yf.Ticker(yf_sym)
-            daily = await _loop.run_in_executor(None, lambda _t=tk: _t.history(period="1y", interval="1d"))
-        except Exception as _yf_err:
-            print(f"  ⚠️ yfinance failed for {yf_sym}: {_yf_err}")
-            daily = None
+    # Price history comes only from market_data.layer: Finnhub candles, then
+    # Nasdaq daily bars, and Angel getCandleData (via the static-IP proxy) for India.
+    import pandas as pd
+    try:
+        from market_data.yfcompat import history_frame as _history_frame
+        daily = await _loop.run_in_executor(
+            None, lambda _s=yf_sym, _r=inst.get("region"): _history_frame(_s, period="1y", interval="1d", region=_r)
+        )
+        _bar_source = getattr(daily, "attrs", {}).get("source") if daily is not None else None
+        print(f"  candles {symbol}: {0 if daily is None else len(daily)} bars from {_bar_source}")
+    except Exception as _candle_err:
+        print(f"  candle layer failed for {yf_sym}: {type(_candle_err).__name__}")
+        daily = None
+        _bar_source = None
     
     if daily is None or len(daily) < 5:
-        return {"success": False, "error": f"No price data for {symbol}. Genuine historical data is unavailable. No synthetic candles or substitute volumes are used; try again later."}
+        return {"success": False, "error": f"No price data for {symbol}. Genuine historical data is unavailable. No synthetic candles or substitute volumes are used; try again later.", "source": _bar_source}
     
     # ═══ INTRADAY 5-MINUTE CANDLE FETCH (9.0+ Engine Upgrade) ═══
     intraday_5m = None
@@ -21578,17 +21550,14 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     intraday_1h = None
     try:
         _loop_i = asyncio.get_event_loop()
-        _tk_i = yf.Ticker(yf_sym)
-        # 5m candles — last 5 days max on Yahoo Finance
-        intraday_5m = await _loop_i.run_in_executor(None, lambda _t=_tk_i: _t.history(period="5d", interval="5m"))
+        _region = inst.get("region")
+        intraday_5m = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="5d", interval="5m", region=_region))
         if intraday_5m is not None and len(intraday_5m) > 0:
             print(f"  📊 Intraday 5m: {len(intraday_5m)} bars for {symbol}")
-        # 15m candles
-        intraday_15m = await _loop_i.run_in_executor(None, lambda _t=_tk_i: _t.history(period="1mo", interval="15m"))
+        intraday_15m = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="1mo", interval="15m", region=_region))
         if intraday_15m is not None and len(intraday_15m) > 0:
             print(f"  📊 Intraday 15m: {len(intraday_15m)} bars for {symbol}")
-        # 1h candles
-        intraday_1h = await _loop_i.run_in_executor(None, lambda _t=_tk_i: _t.history(period="1mo", interval="1h"))
+        intraday_1h = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="1mo", interval="60m", region=_region))
         if intraday_1h is not None and len(intraday_1h) > 0:
             print(f"  📊 Intraday 1h: {len(intraday_1h)} bars for {symbol}")
     except Exception as _id_err:
@@ -25454,7 +25423,6 @@ async def algo_backtest(symbol: str = "NIFTY", years: int = 3):
     years = min(max(years, 1), 5)
     
     try:
-        _provider_slot_wait()
 
         tk = yf.Ticker(yf_sym)
         hist = tk.history(period=f"{years}y", interval="1d")
@@ -25852,7 +25820,6 @@ async def index_trades(request: Request):
         # Source 2: Yahoo v8 chart API
         try:
             _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
-            _provider_slot_wait()
 
             r = _chart_response(ticker, interval="1d", range="5d")
             if r.status_code == 200:
@@ -28501,7 +28468,6 @@ async def validate_trades(request: Request):
                         _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
                         ts1 = int(trade_date.timestamp())
                         ts2 = int((trade_date + timedelta(days=2)).timestamp())
-                        _provider_slot_wait()
 
                         r = _chart_response(ticker, interval="1d", period1=ts1, period2=ts2)
                         if r.status_code == 200:
@@ -29094,12 +29060,11 @@ _VIX_SYMS = {"US": "^VIX", "IN": "^INDIAVIX"}
 
 
 def _mw_fetch_ohlcv(yf_sym, period="5d"):
-    """Fetch last N days OHLCV. Returns dict with today's data + 20d avg vol."""
+    """Fetch last N days OHLCV from market_data.layer."""
     try:
-        import market_data.yfcompat as yf
+        from market_data.yfcompat import history_frame
         import numpy as np
-        tk = yf.Ticker(yf_sym)
-        hist = tk.history(period="30d", interval="1d", auto_adjust=True, timeout=8)
+        hist = history_frame(yf_sym, period="30d", interval="1d")
         if hist is None or hist.empty or len(hist) < 2:
             return None
         closes = list(hist["Close"].dropna())
@@ -29957,11 +29922,10 @@ def _mcoc_ret(closes, n):
 
 
 def _mcoc_fetch(yf_sym):
-    """9-month daily history. Returns dict of arrays or None. Timeout-bounded."""
+    """9-month daily history from market_data.layer. Returns dict of arrays or None."""
     try:
-        import market_data.yfcompat as yf
-        tk = yf.Ticker(yf_sym)
-        hist = tk.history(period="9mo", interval="1d", auto_adjust=True, timeout=8)
+        from market_data.yfcompat import history_frame
+        hist = history_frame(yf_sym, period="9mo", interval="1d")
         if hist is None or hist.empty or len(hist) < 40:
             return None
         return {
@@ -31171,7 +31135,7 @@ async def runway_screener(region: str = "US", limit: int = 40, force: int = 0):
 
     import market_data.yfcompat as yf
     def _dl():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         return yf.download(tickers=" ".join(all_syms), period="1y", interval="1d",
                            group_by="ticker", progress=False, threads=True, auto_adjust=False)
@@ -31341,7 +31305,7 @@ async def runway_top(region: str = "US", force: int = 0):
 
     import market_data.yfcompat as yf
     def _dl():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         return yf.download(tickers=" ".join(all_syms), period="1y", interval="1d",
                            group_by="ticker", progress=False, threads=True, auto_adjust=False)
@@ -31413,7 +31377,9 @@ async def decision_360(symbol: str = "", region: str = "US"):
     symbol = (symbol or "").upper().strip()
     if not symbol:
         return {"success": False, "error": "symbol required"}
-    ys = symbol if region == "US" else f"{symbol}.NS"
+    ys = symbol
+    if region == "IN" and not symbol.endswith((".NS", ".BO")) and symbol not in {"NIFTY", "BANKNIFTY", "SENSEX", "FINNIFTY"}:
+        ys = f"{symbol}.NS"
     _lp = _aio.get_event_loop()
 
     try:
@@ -32283,7 +32249,6 @@ async def top_picks(region: str = "IN"):
         def fetch_info(item):
             sym = item["_sym"]
             try:
-                _provider_slot_wait()
 
                 tk = yf.Ticker(sym)
                 info = tk.info or {}
@@ -32409,7 +32374,6 @@ async def _fetch_options_chain(symbol: str, region: str = "IN"):
         inst = _resolve_instrument(symbol, region)
         yf_sym = inst.get("yf", symbol)
         
-        _provider_slot_wait()
 
         
         tk = yf.Ticker(yf_sym)
@@ -32534,7 +32498,6 @@ async def _fetch_peers(symbol: str, region: str = "IN"):
             # Try to get from yfinance sector
             try:
                 inst = _resolve_instrument(symbol, region)
-                _provider_slot_wait()
 
                 tk = yf.Ticker(inst.get("yf", symbol))
                 info = tk.info or {}
@@ -32597,7 +32560,6 @@ async def price_tick(symbol: str = "NIFTY", region: str = "IN"):
         # Method 1: Direct Yahoo HTTP (fastest — no yfinance overhead)
         try:
             ticker = yf_sym.replace("^", "%5E")
-            _provider_slot_wait()
 
             r = _chart_response(ticker, interval="1d", range="2d")
             if r.status_code == 200:
@@ -32615,7 +32577,6 @@ async def price_tick(symbol: str = "NIFTY", region: str = "IN"):
         if price <= 0:
             try:
                 _loop = asyncio.get_event_loop()
-                _provider_slot_wait()
 
                 tk = yf.Ticker(yf_sym)
                 fi = await _loop.run_in_executor(None, lambda: tk.fast_info)
@@ -34659,7 +34620,6 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                 _loop_r = asyncio.get_event_loop()
                 def _rescue_fetch(sym=_rescue_sym):
                     try:
-                        _provider_slot_wait()
 
                         _tk = yf.Ticker(sym)
                         return _tk.info or {}
@@ -34815,7 +34775,6 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                 # Try yfinance .income_stmt + .balance_sheet (different endpoints from .info)
                 try:
                     print(f"  📊 Attempting income_stmt for {symbol}...")
-                    _provider_slot_wait()
                     _us_tk = yf.Ticker(symbol)
                     _us_inc = _us_tk.income_stmt
                     print(f"  📊 income_stmt result: type={type(_us_inc).__name__}, empty={getattr(_us_inc, 'empty', 'N/A')}, cols={len(_us_inc.columns) if _us_inc is not None and hasattr(_us_inc, 'columns') else 0}")
@@ -34892,7 +34851,6 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                         if _gf2.status_code == 200:
                             _pm2 = _usre2.search(r'P/E ratio[^>]*>([0-9,.]+)', _gf2.text)
                             if _pm2 and pe == 0: pe = round(float(_pm2.group(1).replace(",", "")), 1)
-                        _provider_slot_wait()
 
                         _tk2 = yf.Ticker(symbol)
                         _inc2 = _tk2.income_stmt
@@ -35772,7 +35730,6 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
             inst = _resolve_instrument(symbol, region)
             _yf_ticker = inst.get("yf", symbol)
             def _fetch_financials(sym=_yf_ticker):
-                _provider_slot_wait()
 
                 _tk = yf.Ticker(sym)
                 _inc = _tk.income_stmt if hasattr(_tk, 'income_stmt') else (_tk.financials if hasattr(_tk, 'financials') else None)
@@ -37003,7 +36960,6 @@ async def market_context_v3(symbol: str = "RELIANCE", region: str = "IN"):
         def _fetch_v3(sym=yf_sym):
             for _attempt in range(2):  # 2 attempts
                 try:
-                    _provider_slot_wait()
                     tk = yf.Ticker(sym)
                     info = tk.info or {}
                     hist = tk.history(period="6mo")
@@ -37173,7 +37129,6 @@ async def market_context_v3(symbol: str = "RELIANCE", region: str = "IN"):
             try:
                 def _fetch_sector_etf(etf=sector_etf):
                     try:
-                        _provider_slot_wait()
 
                         tk = yf.Ticker(etf)
                         h = tk.history(period="3mo")
@@ -37185,7 +37140,6 @@ async def market_context_v3(symbol: str = "RELIANCE", region: str = "IN"):
                 broad_idx = "SPY" if is_us else "^NSEI"
                 def _fetch_broad(idx=broad_idx):
                     try:
-                        _provider_slot_wait()
 
                         tk = yf.Ticker(idx)
                         h = tk.history(period="3mo")
@@ -37274,7 +37228,6 @@ async def market_context_v3(symbol: str = "RELIANCE", region: str = "IN"):
         try:
             def _fetch_news(sym=yf_sym):
                 try:
-                    _provider_slot_wait()
 
                     tk = yf.Ticker(sym)
                     news = tk.news or []
@@ -37558,7 +37511,6 @@ async def pro_scan(symbol: str = "RELIANCE", region: str = "IN"):
             """Fetch financials, quarterly data, 10Y history, institutional holders"""
             result = {"financials": {}, "quarterly": {}, "history": [], "holders": [], "info": {}}
             try:
-                _provider_slot_wait()
 
                 tk = yf.Ticker(sym)
                 _info = tk.info or {}
@@ -39567,7 +39519,7 @@ async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
     bench = "SPY" if region == "US" else "^NSEI"
 
     def _fetch():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         try:
             return yf.download(tickers="%s %s" % (yf_sym, bench), period="1y", interval="1d",
@@ -39670,7 +39622,7 @@ async def imdf_themes(region: str = "ALL", refresh: int = 0):
     def _yf(s, reg): return s if reg == "US" else "%s.NS" % s
 
     def _batch():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         tickers = [_yf(s, m["region"]) for s, m in syms] + ["SPY", "^NSEI"]
         try:
@@ -39783,7 +39735,7 @@ async def multibagger_discovery(region: str = "US", refresh: int = 0):
 
     # ── batch technicals + benchmarks ──
     def _batch():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         tickers = [_yf(s, m["region"]) for s, m in syms] + ["SPY", "^NSEI"]
         try:
@@ -40118,7 +40070,7 @@ async def red_flag_scan(symbol: str = "", region: str = "US", refresh: int = 0):
     bench = "SPY" if region == "US" else "^NSEI"
 
     def _fetch():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         try:
             return yf.download(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
@@ -40238,7 +40190,7 @@ async def red_flag_screen(region: str = "US", refresh: int = 0):
     def _yf(s): return s if region == "US" else "%s.NS" % s
 
     def _batch():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         tickers = [_yf(s) for s in uni] + [bench]
         try:
@@ -41029,7 +40981,7 @@ def _uvc_screen_one(sym, region):
     yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
     closes = []
     try:
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         h = yf.Ticker(yf_sym).history(period="5y", interval="1d", auto_adjust=True)
         if h is not None and not h.empty:
@@ -41404,7 +41356,7 @@ async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0
     yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
 
     def _hist():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         try:
             return yf.Ticker(yf_sym).history(period="1y", interval="1d", auto_adjust=True)
@@ -41575,7 +41527,7 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
     bench = "SPY" if region == "US" else "^NSEI"
 
     def _fetch():
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         try:
             return yf.download(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
@@ -41702,7 +41654,7 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
         idx_name = {"SPY": "S&P 500", "QQQ": "Nasdaq 100", "^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty"}
 
         def _fetch2():
-            try: _provider_slot_wait()
+            try: pass
             except Exception: pass
             try:
                 return yf.download(tickers=" ".join(idx + sects), period="1y", interval="1d",
@@ -42979,7 +42931,6 @@ async def early_momentum_radar(email: str = "", region: str = "US", category: st
     # This is ONE HTTP request — replaces 80 individual tk.history() calls.
     import market_data.yfcompat as yf
     try:
-        _provider_slot_wait()
         # Run batch download in threadpool (yf.download is sync)
         hist_all = await asyncio.get_event_loop().run_in_executor(
             None,
@@ -43241,7 +43192,6 @@ async def _momentum_scan_single_with_hist(sym, region, hist):
     try:
         import market_data.yfcompat as yf
         yf_sym = sym if region == "US" else sym + ".NS"
-        _provider_slot_wait()
         tk = yf.Ticker(yf_sym)
         info = {}
         try:
@@ -43255,7 +43205,6 @@ async def _momentum_scan_single_with_hist(sym, region, hist):
         options_chain = None
         if region == "US":
             try:
-                _provider_slot_wait()
                 expiries = tk.options
                 if expiries and len(expiries) > 0:
                     chain = tk.option_chain(expiries[0])
@@ -43308,11 +43257,9 @@ async def _momentum_scan_single(sym, region):
     try:
         import market_data.yfcompat as yf
         yf_sym = sym if region == "US" else sym + ".NS"
-        _provider_slot_wait()
         tk = yf.Ticker(yf_sym)
         hist = None
         try:
-            _provider_slot_wait()
             hist = tk.history(period="1y", interval="1d")
             if hist is None or len(hist) < 30:
                 return None
@@ -44077,7 +44024,7 @@ def _fetch_etf_holdings_multi_source(symbol, region):
     # SOURCE 1: yfinance funds_data (works for many US ETFs; spotty on India)
     try:
         import market_data.yfcompat as yf
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         tk = yf.Ticker(symbol)
         try:
@@ -44188,7 +44135,7 @@ def _fetch_holding_fundamentals(symbol):
     out = {}
     try:
         import market_data.yfcompat as yf
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         tk = yf.Ticker(symbol)
         info = {}
@@ -44277,7 +44224,7 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
         return resp
     try:
         import market_data.yfcompat as yf
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
 
         # r63.99.15: region-aware universe + benchmark
@@ -44591,7 +44538,7 @@ async def etf_analyze(symbol: str = "", region: str = "US", refresh: int = 0):
             return resp
     try:
         import market_data.yfcompat as yf
-        try: _provider_slot_wait()
+        try: pass
         except Exception: pass
         # Pick benchmark for region
         benchmark_sym = "SPY" if region == "US" else "NIFTYBEES.NS"
@@ -45015,7 +44962,7 @@ def _resolve_360_fields(symbol, region):
     fields = {}
     sources_used = set()
     info = {}
-    try: _provider_slot_wait()
+    try: pass
     except Exception: pass
     try:
         tk = yf.Ticker(yf_sym)
@@ -45819,7 +45766,6 @@ async def intraday_setups(
     for sym in universe:
         yf_sym = sym + suffix
         try:
-            _provider_slot_wait()
             tk = yf.Ticker(yf_sym)
 
             # Intraday data (5-min bars, today-ish window)
@@ -45961,7 +45907,6 @@ async def high_prob_setups(email: str = "", region: str = "US", mode: str = "bal
     # Batch price history (same technique as momentum radar r40)
     import market_data.yfcompat as yf
     try:
-        _provider_slot_wait()
         hist_all = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: yf.download(
@@ -46472,7 +46417,6 @@ async def options_setup_detector(email: str = "", region: str = "US"):
     # Batch price history
     import market_data.yfcompat as yf
     try:
-        _provider_slot_wait()
         hist_all = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: yf.download(
@@ -46537,7 +46481,6 @@ async def options_setup_detector(email: str = "", region: str = "US"):
                     except Exception:
                         return ({}, None)
                 
-                _provider_slot_wait()
                 info, chain_data = await asyncio.get_event_loop().run_in_executor(None, _blocking_fetch)
                 return _detect_options_setup(sym, region, info, hist, chain_data)
             except Exception as _e:
@@ -46784,7 +46727,6 @@ async def trade_ticket(
         yf_sym = symbol if region == "US" else symbol + ".NS"
         
         # ── Fetch price history (60d for ATR, RSI, MA calcs) ──
-        _provider_slot_wait()
         tk = yf.Ticker(yf_sym)
         try:
             hist = tk.history(period="3mo", interval="1d")
@@ -46825,7 +46767,6 @@ async def trade_ticket(
         # ── Options chain ──
         if region == "US":
             try:
-                _provider_slot_wait()
                 expiries = tk.options
                 if not expiries:
                     return {"success": False, "error": f"No options chain available for {symbol}"}
@@ -46839,7 +46780,6 @@ async def trade_ticket(
             chosen_expiry, chosen_dte = exp_choice
             
             try:
-                _provider_slot_wait()
                 chain = tk.option_chain(chosen_expiry)
             except Exception as _ce:
                 return {"success": False, "error": f"Option chain fetch failed: {type(_ce).__name__}"}
@@ -47199,7 +47139,6 @@ def _screen_microcap_for_picks(target_count=6, region="US"):
     
     # Batch price history for everything
     try:
-        _provider_slot_wait()
         hist_all = yf.download(
             tickers=" ".join(yf_symbols),
             period="6mo", interval="1d",
@@ -47247,7 +47186,6 @@ def _screen_microcap_for_picks(target_count=6, region="US"):
             
             # Now fetch .info for market cap + short interest (single call per symbol)
             try:
-                _provider_slot_wait()
                 tk = yf.Ticker(sym)
                 info = tk.info or {}
             except Exception:
@@ -47541,7 +47479,6 @@ async def microcap_hunter(
     for i, sym in enumerate(universe):
         yf_sym = sym + suffix
         try:
-            _provider_slot_wait()
             tk = yf.Ticker(yf_sym)
             info = tk.info or {}
             if not info or not info.get("regularMarketPrice"):
@@ -47702,7 +47639,6 @@ async def microcap_challenge_status(email: str = "", region: str = "US"):
         from datetime import datetime as _dt
         symbols_yf = [p.get("yf_symbol", p["symbol"]) for p in state["positions"]]
         if symbols_yf:
-            _provider_slot_wait()
             hist_all = yf.download(
                 tickers=" ".join(symbols_yf), period="5d", interval="1d",
                 group_by="ticker", progress=False, threads=True, auto_adjust=False,
@@ -47799,7 +47735,6 @@ async def microcap_challenge_exit(email: str = "", symbol: str = "", region: str
     try:
         import market_data.yfcompat as yf
         sym_yf = target_pos.get("yf_symbol", symbol)
-        _provider_slot_wait()
         tk = yf.Ticker(sym_yf)
         cp = float(tk.history(period="2d")['Close'].iloc[-1])
     except Exception:
@@ -48250,7 +48185,6 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         # Insider/institutional sections downstream need `tk` to be a real Ticker.
         # If Yahoo blocks the IP, individual tk.X calls fail gracefully (return None).
         try:
-            _provider_slot_wait()
             tk = yf.Ticker(yf_symbol)
             try: yf_info = tk.info or {}
             except Exception: yf_info = {}
@@ -48680,7 +48614,6 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             if peer_tickers:
                 # Batch fetch peer data
                 yf_peers = peer_tickers if region == "US" else [p + ".NS" for p in peer_tickers]
-                _provider_slot_wait()
                 for i, p_sym_raw in enumerate(peer_tickers):
                     try:
                         p_sym_yf = yf_peers[i]
@@ -48735,7 +48668,6 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         sector_data = {"sector": sector, "industry": info.get("industry")}
         if sector_etf_sym:
             try:
-                _provider_slot_wait()
                 etf = yf.Ticker(sector_etf_sym)
                 etf_info = etf.info or {}
                 etf_hist = etf.history(period="1y", interval="1d")
@@ -51443,7 +51375,6 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
         if not benchmark_closes:
             # Fallback to yfinance
             try:
-                _provider_slot_wait()
                 btk = yf.Ticker(benchmark_symbol)
                 bhist = btk.history(period="1y", interval="1d")
                 if bhist is not None and not bhist.empty:
@@ -51494,7 +51425,6 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
             if not hist_closes:
                 try:
                     yf_sym = ticker if region == "US" else f"{ticker}.NS"
-                    _provider_slot_wait()
                     tk = yf.Ticker(yf_sym)
                     hist_df = tk.history(period="1y", interval="1d")
                     if hist_df is not None and not hist_df.empty:
@@ -51662,7 +51592,6 @@ async def earnings_calendar(symbol: str = "", region: str = "US", email: str = "
         if not upcoming:
             try:
                 import datetime as _dtR72_24
-                _provider_slot_wait()
                 tk_fb = yf.Ticker(symbol)
                 info_fb = tk_fb.info or {}
                 ts_fb = info_fb.get("earningsTimestamp") or info_fb.get("earningsTimestampStart")
@@ -51806,7 +51735,6 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         for sym in priority_check:
             attempted_count += 1
             try:
-                _provider_slot_wait()
                 tk_check = yf.Ticker(sym)
                 info_check = tk_check.info or {}
                 ts_check = info_check.get("earningsTimestamp") or info_check.get("earningsTimestampStart")
@@ -51949,7 +51877,6 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         price_map = {}
         if all_syms:
             try:
-                _provider_slot_wait()
                 bdata = yf.download(
                     all_syms[:150], period="5d", interval="1d",
                     group_by="ticker", threads=True, progress=False, auto_adjust=True
@@ -51984,7 +51911,6 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         
         for _sym67 in tracked_syms_in_response:
             try:
-                _provider_slot_wait()
                 _tk67 = yf.Ticker(_sym67)
                 _info67 = _tk67.info or {}
                 _nm67 = _info67.get("shortName") or _info67.get("longName") or ""
@@ -52127,7 +52053,6 @@ async def diag_data_sources(symbol: str = "MU", email: str = ""):
     # ─── Test 2: yfinance .history() ─────────────────────────────────
     t0 = time.time()
     try:
-        _provider_slot_wait()
         tk = yf.Ticker(symbol)
         hist = tk.history(period="1y", interval="1d")
         if hist is not None and not hist.empty:
@@ -53404,7 +53329,6 @@ async def journal_list(email: str = ""):
         current_spot = None
         try:
             ticker_sym = symbol if region == "US" else f"{symbol}.NS"
-            _provider_slot_wait()
             tk = yf.Ticker(ticker_sym)
             info = tk.info or {}
             current_spot = _safe_float(info.get("regularMarketPrice") or info.get("currentPrice"))
@@ -53688,7 +53612,6 @@ def _r6338_options_score(symbol, region):
     try:
         if region.upper() == "US":
             # Try yfinance options chain
-            _provider_slot_wait()
             tk = yf.Ticker(symbol)
             opts = tk.options
             if not opts:
@@ -53803,7 +53726,6 @@ def _r6338_vwap_score(symbol, region, price):
     """VWAP component (0-10). Real data: intraday VWAP if available, else 20-day VWAP from EOD.
     Honest 'n/a' if neither computable."""
     try:
-        _provider_slot_wait()
         tk = yf.Ticker(symbol if region == "US" else f"{symbol}.NS")
         
         # Try intraday VWAP first (most accurate institutional signal)
@@ -53880,7 +53802,6 @@ def _r6338_volatility_expansion_score(symbol, region):
     """Volatility expansion (0-10). ATR_now vs ATR_22d_ago.
     Expanding = trending move. Contracting = chop or topping."""
     try:
-        _provider_slot_wait()
         tk = yf.Ticker(symbol if region == "US" else f"{symbol}.NS")
         hist = tk.history(period="50d", interval="1d")
         
@@ -53950,7 +53871,6 @@ def _r6338_market_sector_context(region, sector_data):
     out = {"market": {"available": False}, "sector": {"available": False}}
     
     try:
-        _provider_slot_wait()
         # Market: SPX for US, NIFTY for India
         idx_sym = "^GSPC" if region == "US" else "^NSEI"
         idx = yf.Ticker(idx_sym)
@@ -54403,7 +54323,6 @@ def _r6339_options_score(symbol, region, current_price=0):
     
     try:
         if region.upper() == "US":
-            _provider_slot_wait()
             tk = yf.Ticker(symbol)
             opts = tk.options
             if not opts:
@@ -54512,7 +54431,6 @@ def _r6339_vwap_score(symbol, region, price):
     """3.5 VWAP SCORE (0-10). User spec exact:
     >1% above: 10, >0%: 7, >-1%: 5, else: 2"""
     try:
-        _provider_slot_wait()
         tk = yf.Ticker(symbol if region.upper() == "US" else f"{symbol}.NS")
         
         # Try intraday first
@@ -54570,7 +54488,6 @@ def _r6339_volatility_score(symbol, region):
     ATR stable: 6
     Else: 3"""
     try:
-        _provider_slot_wait()
         tk = yf.Ticker(symbol if region.upper() == "US" else f"{symbol}.NS")
         hist = tk.history(period="50d", interval="1d")
         
@@ -54940,7 +54857,6 @@ async def execution_score_v2(symbol: str = "", region: str = "US", email: str = 
     ema50_slope = 0
     last_10_std_pct = None
     try:
-        _provider_slot_wait()
         _tk = yf.Ticker(symbol if region == "US" else f"{symbol}.NS")
         _hist = _tk.history(period="40d", interval="1d")
         if _hist is not None and len(_hist) >= 25:
@@ -55085,7 +55001,6 @@ def _r6344_get_next_earnings(symbol, region):
     Returns None if no upcoming earnings within next 90 days."""
     import datetime as _dt
     try:
-        _provider_slot_wait()
         tk_sym = symbol if region.upper() == "US" else f"{symbol}.NS"
         tk = yf.Ticker(tk_sym)
         
@@ -55206,7 +55121,6 @@ def _r6344_implied_move(symbol, region, spot, days_until_earnings):
     """
     import datetime as _dt
     try:
-        _provider_slot_wait()
         tk_sym = symbol if region.upper() == "US" else f"{symbol}.NS"
         tk = yf.Ticker(tk_sym)
         
@@ -55287,7 +55201,6 @@ def _r6344_historical_moves(symbol, region):
     Returns list of {date, pct_move, abs_move} for last 8 quarters."""
     import datetime as _dt
     try:
-        _provider_slot_wait()
         tk_sym = symbol if region.upper() == "US" else f"{symbol}.NS"
         tk = yf.Ticker(tk_sym)
         
@@ -55376,7 +55289,6 @@ def _r6344_iv_crush_risk(symbol, region):
     """Compare front-month IV vs back-month IV. High spread = high crush risk.
     Returns {front_iv, back_iv, ratio, risk_label, rationale}."""
     try:
-        _provider_slot_wait()
         tk_sym = symbol if region.upper() == "US" else f"{symbol}.NS"
         tk = yf.Ticker(tk_sym)
         
@@ -55573,7 +55485,6 @@ async def earnings_setup(symbol: str = "", region: str = "US", email: str = ""):
     
     # Get spot
     try:
-        _provider_slot_wait()
         tk_sym = symbol if region == "US" else f"{symbol}.NS"
         tk = yf.Ticker(tk_sym)
         info = tk.info or {}
@@ -55678,7 +55589,6 @@ def _r6345_score_one_sector(etf_symbol, benchmark_data=None):
     Returns dict with raw values + composite score (0-100, normalized later).
     """
     try:
-        _provider_slot_wait()
         tk = yf.Ticker(etf_symbol)
         hist = tk.history(period="60d", interval="1d")
         if hist is None or len(hist) < 25:
@@ -55766,7 +55676,6 @@ def _r6345_compute_sector_heat(region):
         import market_data.yfcompat as yf
         etf_to_name = {info["etf"]: name for name, info in sectors.items()}
         all_etfs = list(etf_to_name.keys())
-        _provider_slot_wait()  # Rate-limit ONCE for the batch
         batch_data = yf.download(
             all_etfs, period="60d", interval="1d",
             group_by="ticker", threads=True, progress=False, auto_adjust=True
@@ -55963,7 +55872,6 @@ def _r6351_score_one_stock(sym, region, benchmark_history=None):
     """
     import datetime as _dt51
     try:
-        _provider_slot_wait()
         tk_sym = sym if region.upper() == "US" else f"{sym}.NS"
         tk = yf.Ticker(tk_sym)
         hist = tk.history(period="1y", interval="1d")
@@ -56168,7 +56076,6 @@ def _r6364_batch_score_sector_stocks(stocks_list, region, benchmark_data=None):
     
     # ONE batch call for all tickers
     try:
-        _provider_slot_wait()  # rate-limit ONCE for the batch
         data = yf.download(
             yf_syms, 
             period="1y", 
@@ -57037,7 +56944,6 @@ def _r6369_insider_net_90d(sym, region="US"):
                 "data_quality": "MISSING", "note": "Indian Form-4 equivalent not available via yfinance"}
     
     try:
-        _provider_slot_wait()
         tk = yf.Ticker(sym)
         ins_df = None
         try:
@@ -57265,7 +57171,6 @@ def _r6370_compute_index_compare(symbol, region):
     # Batch fetch — ONE yf.download call
     return_map = {}
     try:
-        _provider_slot_wait()
         bdata = yf.download(
             tickers_to_fetch, period="1y", interval="1d",
             group_by="ticker", threads=True, progress=False, auto_adjust=True
@@ -58238,7 +58143,6 @@ def _r6353_backfill_eps_actual(symbol):
     """Query yfinance.earnings_history for symbol's last 4 quarters of actuals.
     Returns dict {quarter_date_str: {eps_actual, rev_actual}}."""
     try:
-        _provider_slot_wait()
         tk = yf.Ticker(symbol)
         eh = tk.earnings_history if hasattr(tk, "earnings_history") else None
         if eh is None or eh.empty:
@@ -58277,7 +58181,6 @@ def _r6353_compute_reaction(symbol, earnings_date_str):
         if ed > today:
             return None  # future earnings — no reaction yet
         
-        _provider_slot_wait()
         tk = yf.Ticker(symbol)
         # Pull 30 days around earnings to ensure we get pre+post closes
         start = ed - _dt53.timedelta(days=10)
@@ -58709,7 +58612,6 @@ async def portfolio_scan(request: Request):
                     for sym in syms:
                         try:
                             _yf_sym = sym if sym.startswith("^") else (sym if is_us else f"{sym}.NS")
-                            _provider_slot_wait()
 
                             tk = yf.Ticker(_yf_sym)
                             h = tk.history(period="1y")
@@ -61411,7 +61313,6 @@ async def _run_stock_intel(symbol, region, cache_key):
             yf_sym = f"{symbol}.NS"
             hist = pd.DataFrame()
             try:
-                _provider_slot_wait()
 
                 tk = yf.Ticker(yf_sym)
                 _lp = asyncio.get_event_loop()
@@ -61545,7 +61446,6 @@ async def _run_stock_intel(symbol, region, cache_key):
                 _info = {}; _hist = pd.DataFrame()
                 for attempt in range(2):
                     try:
-                        _provider_slot_wait()
 
                         _tk = yf.Ticker(sym)
                         _hist = _tk.history(period="1y")
@@ -61613,7 +61513,6 @@ async def _run_stock_intel(symbol, region, cache_key):
             # ═══ FALLBACK 2: Derive ROE + D/E from financial statements if still missing ═══
             if not info.get("returnOnEquity") or not info.get("debtToEquity"):
                 try:
-                    _provider_slot_wait()
 
                     _tk3 = yf.Ticker(yf_sym)
                     # Income statement → Net Income → ROE
@@ -62160,7 +62059,6 @@ async def stock_news(symbol: str = "RELIANCE", region: str = "IN"):
     
     def _fetch():
         try:
-            _provider_slot_wait()
             tk = yf.Ticker(yf_sym)
             news = tk.news or []
             items = []
@@ -62655,7 +62553,6 @@ async def catalyst_scan(region: str = "IN"):
         try:
             yf_map = {"NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK","SENSEX":"^BSESN","FINNIFTY":"NIFTY_FIN_SERVICE.NS"}
             yf_sym = sym if is_us else yf_map.get(sym, f"{sym}.NS")
-            _provider_slot_wait()
             tk = yf.Ticker(yf_sym)
             news = tk.news or []
             items = []
@@ -62672,7 +62569,6 @@ async def catalyst_scan(region: str = "IN"):
     def _fetch_price_yf(sym):
         """Fetch price/gap/volume from Yahoo Finance — used for US stocks"""
         try:
-            _provider_slot_wait()
             tk = yf.Ticker(sym)
             hist = tk.history(period="5d")
             if len(hist) < 2:
@@ -62938,7 +62834,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
             yf_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "FINNIFTY": "NIFTY_FIN_SERVICE.NS", "MIDCPNIFTY": "NIFTY_MID_SELECT.NS"}
             yf_sym = yf_map.get(sym, f"^NSEI")
             print(f"[OPTIONS-QUICK] yfinance fallback: {yf_sym}")
-            _provider_slot_wait()
             
             try:
                 tk = yf.Ticker(yf_sym)
@@ -63046,7 +62941,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                     yf_idx_sym = None
                 
                 if yf_idx_sym:
-                    _provider_slot_wait()
                     yf_idx_tk = yf.Ticker(yf_idx_sym)
                     yf_idx_spot = 0
                     yf_idx_bars = []
@@ -63060,7 +62954,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                     # fallback via history if .info didn't work (common for indices)
                     if yf_idx_spot <= 0:
                         try:
-                            _provider_slot_wait()
                             _quick = yf_idx_tk.history(period="1d", interval="1m")
                             if _quick is not None and len(_quick) > 0:
                                 yf_idx_spot = float(_quick['Close'].iloc[-1])
@@ -63069,7 +62962,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                     
                     if yf_idx_spot > 0:
                         try:
-                            _provider_slot_wait()
                             yf_hist_idx = yf_idx_tk.history(period="1d", interval="5m")
                             if yf_hist_idx is not None and len(yf_hist_idx) > 0:
                                 for _, _b in yf_hist_idx.tail(30).iterrows():
@@ -63241,7 +63133,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
             #   ✓ Intraday OHLC bars (enables sparklines, timeframes view)
             #   ✗ No option chain → card remains non-tradable
             #
-            # Rate-limit shared with US yfinance path via _provider_slot_wait().
+            # Rate-limit shared with US yfinance path via pass.
             # Circuit breaker (r23) protects both regions using same
             # provider key "yahoo_chain" — but we DON'T fetch options here,
             # just spot + bars, so no chain-level rate limit.
@@ -63265,7 +63157,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                     # Regular equity — append .NS for NSE listing
                     yf_india_sym = sym + ".NS"
                 
-                _provider_slot_wait()  # respect global Yahoo rate limit
                 yf_tk = yf.Ticker(yf_india_sym)
                 try:
                     yf_info = yf_tk.info or {}
@@ -63278,7 +63169,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 # Intraday bars — last day, 5m interval (matches US path)
                 if yf_spot > 0:
                     try:
-                        _provider_slot_wait()
                         yf_hist = yf_tk.history(period="1d", interval="5m")
                         if yf_hist is not None and len(yf_hist) > 0:
                             for _, _b in yf_hist.tail(30).iterrows():
@@ -63338,7 +63228,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         yf_sym = sym
         
         print(f"[OPTIONS-QUICK] Fetching {yf_sym} via Yahoo Finance")
-        _provider_slot_wait()
         
         import market_data.yfcompat as yf
         tk = yf.Ticker(yf_sym)
@@ -63415,14 +63304,13 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 # Without this, 8 parallel scanner threads would hit
                 # tk.option_chain() concurrently → "Too Many Requests" → every
                 # ticker dropped by our strict-honest no-fabrication policy →
-                # empty scanner. _provider_slot_wait() uses a module-global lock
+                # empty scanner. pass uses a module-global lock
                 # that serializes calls across threads with 1.5s spacing.
                 #
                 # We also retry once on failure with a 3s backoff — Yahoo's
                 # rate limit is a hard cap per burst, not per hour, so a single
                 # patient retry usually succeeds.
                 # ══════════════════════════════════════════════════════════════
-                _provider_slot_wait()
                 try:
                     chain = tk.option_chain(opts[0])
                 except Exception as _chain_e1:
@@ -63433,7 +63321,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         import time as _t2
                         print(f"[OPTIONS-QUICK] {yf_sym} rate-limited, retrying once after 3s...")
                         _t2.sleep(3.0)
-                        _provider_slot_wait()
                         try:
                             chain = tk.option_chain(opts[0])
                         except Exception as _chain_e2:
@@ -63616,7 +63503,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # ═══ FETCH INTRADAY BARS (5-min) — OPTIONAL, non-critical ═══
         # Skip if we already used too many Yahoo calls (rate limit protection)
         try:
-            _provider_slot_wait()
             hist_5m = tk.history(period='1d', interval='5m')
             if hist_5m is not None and len(hist_5m) > 0:
                 ohlc_bars = []
@@ -63642,7 +63528,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         
         # ═══ DAILY TREND DATA — SMA 200/400 + EMA 9/21 for Trend Compass ═══
         try:
-            _provider_slot_wait()
             hist_daily = tk.history(period='2y', interval='1d')
             if hist_daily is not None and len(hist_daily) >= 5:
                 closes = [float(r['Close']) for _, r in hist_daily.iterrows()]
@@ -63702,7 +63587,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # ═══ US MARKET IMPACT — For India tickers, show how US markets are doing ═══
         if region == 'IN':
             try:
-                _provider_slot_wait()
                 import market_data.yfcompat as yf
                 _sp500 = yf.Ticker("^GSPC")
                 _sp_hist = _sp500.history(period='5d')
@@ -63745,7 +63629,6 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         reg = region.upper().strip()
         
         import market_data.yfcompat as yf
-        _provider_slot_wait()
         
         # Determine yfinance ticker
         india_index_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "FINNIFTY": "^CNXFIN", "MIDCPNIFTY": "^NSEI"}
