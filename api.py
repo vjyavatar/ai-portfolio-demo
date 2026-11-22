@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.111"
+APP_VERSION = "v4.63.112"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.111: The decision calculation runs in its own process. The route returns within 12 seconds even if that process holds the GIL. "
+    "v4.63.112: Background scans yield between tickers and do not start inside the decision process. /api/debug/loop-lag reports event-loop delay. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -1471,6 +1471,8 @@ async def startup_event():
         print(f"🗄️  Positioning DB: boot check error — {_e}")
     asyncio.create_task(_start_prefetch_loop())
     asyncio.create_task(_ws_broadcast_loop())
+    import web_background
+    asyncio.create_task(web_background.monitor())
     print("🔌 WebSocket + background prefetch scheduled")
 
 # ═══ WEBSOCKET — Live price updates to all connected clients ═══
@@ -15791,10 +15793,13 @@ def _run_bottom_nav_scan(reg):
         # behind each other anyway — but 3 threads keeps the fan-out cleaner
         # and leaves headroom for Yahoo's per-burst cap. Scan time increases to
         # ~20s, which fits well inside the 2-min cache TTL.
-        n_workers = 4 if reg == "IN" else 3
+        # One scorer at a time. Four threads of provider parsing held the GIL
+        # and the decision route could not answer until the scan finished.
+        n_workers = 1
         print(f"[BOTTOM-NAV] Stage 2: Scoring {len(candidates)} {reg} candidates ({n_workers} threads)...")
         t2 = time.time()
         results = []
+        import web_background
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             futures = {executor.submit(_score_one_ticker, s, reg): s for s in candidates}
             for future in as_completed(futures, timeout=120):
@@ -15802,6 +15807,7 @@ def _run_bottom_nav_scan(reg):
                     r = future.result()
                     if r: results.append(r)
                 except: pass
+                web_background.yield_worker()
         
         results.sort(key=lambda x: x.get("spot", 0), reverse=True)
         # ══════════════════════════════════════════════════════════════════
@@ -16029,8 +16035,9 @@ def _run_movers_scan(region):
         print(f"[MOVERS] {reg}: scanning {len(universe)} tickers (LARGE+ETF)…")
         t0 = time.time()
         results = []
-        n_workers = 6 if reg == "IN" else 4   # US Yahoo rate-limits tighter
+        n_workers = 1
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        import web_background
         with ThreadPoolExecutor(max_workers=n_workers) as executor:
             futures = {executor.submit(_movers_compute_one_ticker, s, reg): s for s in universe}
             for fut in as_completed(futures, timeout=180):
@@ -16040,6 +16047,7 @@ def _run_movers_scan(region):
                         results.append(r)
                 except Exception:
                     pass
+                web_background.yield_worker()
         scan_time = time.time() - t0
         print(f"[MOVERS] {reg}: {len(results)}/{len(universe)} returned data in {scan_time:.1f}s")
 
@@ -18915,12 +18923,18 @@ async def paper_journal(region: str = "IN", limit: int = 50):
 
 def _auto_scan_boot():
     import threading
+    import web_background
+    # The decision process imports this module. A second boot scan there
+    # doubled the GIL load and the web route could not answer.
+    if not web_background.in_web_server():
+        return
     def _bg():
         time.sleep(15)
         print("[BOTTOM-NAV] 🚀 Boot scan starting...")
         try: diag_log("SYSTEM", "boot_scan_starting", {"delay_sec": 15})
         except Exception: pass
         _run_bottom_nav_scan("IN")
+        web_background.yield_worker()
         _run_bottom_nav_scan("US")
         print("[BOTTOM-NAV] 🚀 Boot scan done")
         try: diag_log("SYSTEM", "boot_scan_done", {})
@@ -60424,8 +60438,12 @@ async def _v4_61_11_preseed_top_tickers():
                         # Check if already cached fresh (skip if so)
                         if _smart_cache_get(f"dd_v6:{region}:{sym}"):
                             continue
-                        # Fetch via the actual endpoint (reuses all logic)
-                        result = await investor_due_diligence(email="", symbol=sym, region=region)
+                        # The report does synchronous provider I/O. Run it off the loop.
+                        result = await asyncio.to_thread(
+                            lambda region=region, sym=sym: asyncio.run(
+                                investor_due_diligence(email="", symbol=sym, region=region)
+                            )
+                        )
                         if result.get("success"):
                             print(f"[DD-PRESEED] ✅ {sym} ({region})")
                         else:
@@ -60441,6 +60459,13 @@ async def _v4_61_11_preseed_top_tickers():
 
     # Fire-and-forget — don't block startup
     asyncio.create_task(_preseed())
+
+
+@app.get("/api/debug/loop-lag")
+async def debug_loop_lag():
+    """How late the web event loop is. A large max_ms means a scan is blocking it."""
+    import web_background
+    return {"success": True, "version": APP_VERSION, **web_background.snapshot()}
 
 
 @app.get("/api/version")
@@ -62837,11 +62862,10 @@ async def _cds_daily_auto_scan():
         if now.hour == target_hour and now.minute == target_minute:
             print(f"🤖 CDS Auto-scan: Running daily scan at {now.strftime('%H:%M')}")
             try:
-                # Scan India
-                await cds_daily_scan(region="IN", email=auto_email, threshold=70)
+                # Scan India and the US off the request loop.
+                await asyncio.to_thread(lambda: asyncio.run(cds_daily_scan(region="IN", email=auto_email, threshold=70)))
                 await asyncio.sleep(60)  # Brief pause between scans
-                # Scan US
-                await cds_daily_scan(region="US", email=auto_email, threshold=70)
+                await asyncio.to_thread(lambda: asyncio.run(cds_daily_scan(region="US", email=auto_email, threshold=70)))
                 print(f"✅ CDS Auto-scan: Complete. Emails sent to {auto_email}")
             except Exception as e:
                 print(f"❌ CDS Auto-scan error: {e}")
