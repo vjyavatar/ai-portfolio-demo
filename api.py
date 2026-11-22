@@ -1376,11 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.122"
+APP_VERSION = "v4.63.123"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.122: NIFTY candles and the chain are warmed one worker at a time, so boot stays inside 2GB. "
+    "v4.63.123: The server accepts first. One worker then warms the NIFTY chain in the background. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -1432,6 +1432,7 @@ async def startup_event():
     _si_cache.clear()
     print("🧹 All in-memory caches cleared on startup")
     print("🚀 Celesys AI server READY — accepting requests NOW")
+    start_nifty_warm()
     # Price-cache JSON stays off this loop. A large file used to delay the first requests.
     try:
         def _load_prices():
@@ -33026,8 +33027,34 @@ def _warm_decision(symbol, region):
         return {"success": False, "error": f"{type(exc).__name__}: {exc}", "symbol": symbol, "pid": os.getpid()}
 
 
+def start_nifty_warm():
+    """One NIFTY chain warm, after the port is open. A second copy at boot was OOM-killed."""
+    if os.environ.get("CELESYS_DECISION_WORKER") == "1" or os.environ.get("CELESYS_BACKGROUND_WORKER") == "1":
+        return None
+    try:
+        fut = _decision_pool().submit(_warm_decision, "NIFTY", "IN")
+    except Exception as exc:
+        print(f"  NIFTY warm not started: {type(exc).__name__}", flush=True)
+        return None
+
+    def _done(done):
+        try:
+            ready = done.result()
+        except Exception as exc:
+            print(f"  NIFTY warm skipped: {type(exc).__name__}", flush=True)
+            return
+        print(
+            f"  NIFTY warm pid={ready.get('pid') if isinstance(ready, dict) else None} "
+            f"bars={ready.get('bars') if isinstance(ready, dict) else None}",
+            flush=True,
+        )
+
+    fut.add_done_callback(_done)
+    return fut
+
+
 def warm_decision_worker():
-    """Fork both decision workers, warm NIFTY in each, and record memory."""
+    """Fork both decision workers and return. NIFTY warms after the server accepts."""
     global _decision_worker_pids, _decision_memory
     if os.environ.get("CELESYS_DECISION_WORKER") == "1":
         return None
@@ -33042,24 +33069,6 @@ def warm_decision_worker():
         if pid not in _decision_worker_pids:
             _decision_worker_pids.append(pid)
     _background_pool().submit(_decision_child_ping).result(timeout=30)
-    # One warm at a time. Two full NIFTY decisions at once were OOM-killed at 2GB.
-    warmed = set()
-    for _attempt in range(4):
-        if len(warmed) >= max(1, len(_decision_worker_pids)):
-            break
-        try:
-            ready = pool.submit(_warm_decision, "NIFTY", "IN").result(timeout=25)
-        except Exception as exc:
-            print(f"  NIFTY warm skipped: {type(exc).__name__}", flush=True)
-            break
-        pid = ready.get("pid") if isinstance(ready, dict) else None
-        if pid:
-            warmed.add(pid)
-        print(
-            f"  NIFTY warm pid={pid} bars={(ready or {}).get('bars') if isinstance(ready, dict) else None} "
-            f"ok={isinstance(ready, dict) and ready.get('success')}",
-            flush=True,
-        )
     parent = _proc_memory_mb(os.getpid())
     workers = [_proc_memory_mb(pid) for pid in _decision_worker_pids]
     worker_pss = sum(item["pss_mb"] for item in workers)
