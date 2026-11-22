@@ -77,3 +77,7 @@ for _node in ast.parse(Path(__file__).with_name('api.py').read_text()).body:
 attach_access(app,_account_roles,_protected)
 from private_options import router as _private_options_router
 app.include_router(_private_options_router)
+
+# Authenticated read-only canonical market-data endpoints.
+from market_data.routes import router as _market_data_router
+app.include_router(_market_data_router)
