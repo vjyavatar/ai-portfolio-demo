@@ -1381,7 +1381,7 @@ APP_VERSION = "v4.63.107"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.107: Decision, swing, intraday, momentum and earnings routes load candles from Finnhub, then Nasdaq, and from Angel getCandleData for India. "
+    "v4.63.107: Decision, decision-360, master, IMDF, decide, swing, intraday, situational, cycle and trade-ticket share one candle chain. US is Finnhub, then Nasdaq, then TradingView. India is Angel getCandleData through the proxy, then Screener, TradingView and the Nifty graph. Each step fails fast in about 5 seconds and the reads run together. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -18400,6 +18400,25 @@ def _compute_situational_signals(region):
     Pure function — no AI, no network calls beyond what's already cached.
     """
     signals = {"region": region}
+
+    def _session_from_candles(symbol, market):
+        try:
+            from market_data.yfcompat import history_frame
+            frame = history_frame(symbol, period="1y", interval="1d", region=market)
+        except Exception:
+            return None
+        if frame is None or len(frame) < 1:
+            return None
+        row = frame.iloc[-1]
+        prev = float(frame["Close"].iloc[-2]) if len(frame) > 1 else float(row["Close"])
+        return {
+            "spot": float(row["Close"]),
+            "day_high": float(row["High"]),
+            "day_low": float(row["Low"]),
+            "day_open": float(row["Open"]),
+            "prev_close": prev,
+        }
+
     try:
         if region == "IN":
             # Data: GIFT NIFTY gap (pre-open), India VIX, NIFTY spot
@@ -18459,6 +18478,25 @@ def _compute_situational_signals(region):
                     pos_in_range = (spot - day_low) / (day_high - day_low)
                     signals["position_in_range"] = round(pos_in_range, 2)
             
+            if not spot:
+                candle_session = _session_from_candles("NIFTY", "IN")
+                if candle_session:
+                    spot = candle_session["spot"]
+                    day_high = candle_session["day_high"]
+                    day_low = candle_session["day_low"]
+                    day_open = candle_session["day_open"]
+                    prev_close = candle_session["prev_close"]
+                    if gap_pct is None and prev_close:
+                        gap_pct = (day_open - prev_close) / prev_close * 100
+                    if spot and day_high and day_low and day_high > day_low:
+                        range_pct = (day_high - day_low) / spot * 100
+                        signals["range_pct"] = round(range_pct, 2)
+                        signals["range_regime"] = _bucket(range_pct, [(0.3, "tight"), (0.6, "narrow"), (1.2, "normal"), (2.0, "wide"), (100, "very_wide")])
+                        if day_open:
+                            signals["position_in_range"] = round((spot - day_low) / (day_high - day_low), 2)
+                    signals["gap_pct"] = round(gap_pct, 2) if gap_pct is not None else None
+                    signals["gap_regime"] = _bucket(abs(gap_pct) if gap_pct is not None else None, [(0.3, "flat"), (0.7, "small"), (1.5, "significant"), (100, "large")])
+                    signals["gap_direction"] = ("up" if (gap_pct or 0) > 0 else "down") if gap_pct is not None else None
             signals["index"] = "NIFTY"
             signals["spot"] = round(spot, 2) if spot else None
             
@@ -18480,10 +18518,31 @@ def _compute_situational_signals(region):
                     day_open = float(spy_data.get("day_open") or 0)
                 except: pass
             
-            signals["gap_pct"] = None  # TODO: wire in /api/us-premarket gap
+            signals["gap_pct"] = None
             signals["gap_regime"] = "unknown"
-            signals["vix"] = None  # TODO: VIX source
+            signals["vix"] = None
             signals["vix_regime"] = "unknown"
+            if not spot or signals.get("vix") is None:
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    spy_job = pool.submit(_session_from_candles, "SPY", "US")
+                    vix_job = pool.submit(_session_from_candles, "^VIX", "US")
+                    candle_session = spy_job.result() if not spot else None
+                    vix_session = vix_job.result()
+                if candle_session:
+                    spot = candle_session["spot"]
+                    day_high = candle_session["day_high"]
+                    day_low = candle_session["day_low"]
+                    day_open = candle_session["day_open"]
+                    prev_close = candle_session["prev_close"]
+                    if prev_close:
+                        gap_pct = (day_open - prev_close) / prev_close * 100
+                        signals["gap_pct"] = round(gap_pct, 2)
+                        signals["gap_regime"] = _bucket(abs(gap_pct), [(0.3, "flat"), (0.7, "small"), (1.5, "significant"), (100, "large")])
+                        signals["gap_direction"] = "up" if gap_pct > 0 else "down"
+                if vix_session and vix_session.get("spot"):
+                    signals["vix"] = round(vix_session["spot"], 1)
+                    signals["vix_regime"] = _bucket(signals["vix"], [(12, "very_low"), (15, "low"), (19, "normal"), (25, "elevated"), (100, "high")])
             
             if spot and day_high and day_low and day_high > day_low:
                 range_pct = (day_high - day_low) / spot * 100
@@ -18730,7 +18789,7 @@ async def situational_analysis(region: str = "IN"):
         resp["cache_age_sec"] = int(now - cached["ts"])
         return resp
     
-    signals = _compute_situational_signals(reg)
+    signals = await asyncio.get_event_loop().run_in_executor(None, _compute_situational_signals, reg)
     checklist = _deterministic_checklist(signals)
     
     narrative = None
@@ -21427,12 +21486,12 @@ async def algo_signal_safe(symbol: str = "NIFTY", region: str = ""):
         if (now - _algo_cache_ts[cache_key]).total_seconds() < 600:
             return _legacy_algo_research_guard(_algo_cache[cache_key])
     try:
-        result = _legacy_algo_research_guard(await asyncio.wait_for(_algo_signal_impl(symbol, region), timeout=25))
+        result = _legacy_algo_research_guard(await asyncio.wait_for(_algo_signal_impl(symbol, region), timeout=9))
         _algo_cache[cache_key] = result
         _algo_cache_ts[cache_key] = now
         return result
     except asyncio.TimeoutError:
-        print(f"  ⏰ algo_signal {symbol} timed out at 12s")
+        print(f"  ⏰ algo_signal {symbol} timed out at 9s")
         return {"success": False, "error": f"Analysis timed out for {symbol} — try again", "symbol": symbol}
     except Exception as e:
         import traceback
@@ -21518,50 +21577,61 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     
     yf_sym = inst["sym"]
     is_us = inst.get("region") == "US"
+    tk = yf.Ticker(yf_sym)
     csym = "$" if is_us else "₹"
     
     # ═══ FETCH ALL DATA IN PARALLEL ═══
     result = {"success": True, "symbol": symbol, "instrument": inst, "region": inst.get("region", "IN"), "currSym": "₹" if inst.get("region") != "US" else "$"}
     factors = []
     closes = None; daily = None; highs = None; lows = None; volumes_arr = None
+    info = {}
     _loop = asyncio.get_event_loop()
-    
-    # Price history comes only from market_data.layer: Finnhub candles, then
-    # Nasdaq daily bars, and Angel getCandleData (via the static-IP proxy) for India.
+    _region = inst.get("region")
+
+    def _load_frames():
+        from market_data.yfcompat import history_many
+        return history_many(yf_sym, [("1y", "1d"), ("5d", "5m"), ("1mo", "15m"), ("1mo", "60m")], region=_region)
+
+    def _load_info():
+        try:
+            from market_data.layer import fundamentals
+            env = fundamentals(yf_sym, _region)
+            data = env.get("data") if isinstance(env, dict) else None
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _load_options():
+        try:
+            loaded = asyncio.run(nse_options(symbol))
+            return loaded if isinstance(loaded, dict) else {}
+        except Exception:
+            return {}
+
+    # Daily and intraday candles share one chain and run together. Options and
+    # fundamentals run beside them and are used only if they are already back.
+    _frames_fut = _loop.run_in_executor(None, _load_frames)
+    _info_fut = _loop.run_in_executor(None, _load_info)
+    _opt_fut = None if is_us else _loop.run_in_executor(None, _load_options)
     import pandas as pd
     try:
-        from market_data.yfcompat import history_frame as _history_frame
-        daily = await _loop.run_in_executor(
-            None, lambda _s=yf_sym, _r=inst.get("region"): _history_frame(_s, period="1y", interval="1d", region=_r)
-        )
-        _bar_source = getattr(daily, "attrs", {}).get("source") if daily is not None else None
-        print(f"  candles {symbol}: {0 if daily is None else len(daily)} bars from {_bar_source}")
+        _frames = await _frames_fut
     except Exception as _candle_err:
         print(f"  candle layer failed for {yf_sym}: {type(_candle_err).__name__}")
-        daily = None
-        _bar_source = None
-    
+        _frames = {}
+    _frames = _frames or {}
+    daily = _frames.get(("1y", "1d"))
+    intraday_5m = _frames.get(("5d", "5m"))
+    intraday_15m = _frames.get(("1mo", "15m"))
+    intraday_1h = _frames.get(("1mo", "60m"))
+    _bar_source = getattr(daily, "attrs", {}).get("source") if daily is not None else None
+    print(f"  candles {symbol}: {0 if daily is None else len(daily)} bars from {_bar_source}")
+    for _label, _frame in (("5m", intraday_5m), ("15m", intraday_15m), ("1h", intraday_1h)):
+        if _frame is not None and len(_frame) > 0:
+            print(f"  📊 Intraday {_label}: {len(_frame)} bars for {symbol}")
+
     if daily is None or len(daily) < 5:
         return {"success": False, "error": f"No price data for {symbol}. Genuine historical data is unavailable. No synthetic candles or substitute volumes are used; try again later.", "source": _bar_source}
-    
-    # ═══ INTRADAY 5-MINUTE CANDLE FETCH (9.0+ Engine Upgrade) ═══
-    intraday_5m = None
-    intraday_15m = None
-    intraday_1h = None
-    try:
-        _loop_i = asyncio.get_event_loop()
-        _region = inst.get("region")
-        intraday_5m = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="5d", interval="5m", region=_region))
-        if intraday_5m is not None and len(intraday_5m) > 0:
-            print(f"  📊 Intraday 5m: {len(intraday_5m)} bars for {symbol}")
-        intraday_15m = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="1mo", interval="15m", region=_region))
-        if intraday_15m is not None and len(intraday_15m) > 0:
-            print(f"  📊 Intraday 15m: {len(intraday_15m)} bars for {symbol}")
-        intraday_1h = await _loop_i.run_in_executor(None, lambda: _history_frame(yf_sym, period="1mo", interval="60m", region=_region))
-        if intraday_1h is not None and len(intraday_1h) > 0:
-            print(f"  📊 Intraday 1h: {len(intraday_1h)} bars for {symbol}")
-    except Exception as _id_err:
-        print(f"  ⚠️ Intraday fetch failed: {_id_err}")
     
     # ═══ SUPERTREND CALCULATION (Real ATR-based, not ADX proxy) ═══
     _supertrend_signal = "NEUTRAL"  # BULLISH / BEARISH / NEUTRAL
@@ -21762,7 +21832,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         pe = roe = margin = de = beta_val = 0
         _sector_algo = ""
         try:
-            info = await _loop.run_in_executor(None, lambda _t=tk: _t.info or {})
+            if _info_fut.done():
+                info = _info_fut.result() or {}
             pe = round(float(info.get("trailingPE", 0) or 0), 1)
             roe = round(float(info.get("returnOnEquity", 0) or 0) * 100, 1)
             margin = round(float(info.get("profitMargins", 0) or 0) * 100, 1)
@@ -21790,22 +21861,23 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         return {"success": False, "error": f"Data fetch failed: {e}"}
     
     # 2. NSE Options data (India only — US stocks use yfinance options)
+    # The chain started this beside the candles. Do not wait again here.
     nse = {}
     is_us = inst.get("region") == "US"
-    if not is_us:
+    if _opt_fut is not None and _opt_fut.done():
         try:
-            nse_resp = await nse_options(symbol)
+            nse_resp = _opt_fut.result()
             if isinstance(nse_resp, dict) and nse_resp.get("success"):
                 nse = nse_resp
-        except:
-            pass
+        except Exception:
+            nse = {}
     
     result["options"] = nse
     
     # 3. Opening Range Breakout (ORB) — intraday 15m candles
     orb = {}
     try:
-        intra = await _loop.run_in_executor(None, lambda _t=tk: _t.history(period="1d", interval="15m"))
+        intra = intraday_15m
         if intra is not None and len(intra) >= 2:
             # First 15-min candle = Opening Range
             first_candle = intra.iloc[0]
@@ -22127,7 +22199,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     # ═══ INDIA VIX — Direct fetch if missing from option chain ═══
     if vix <= 0 and not is_us:
         try:
-            _vix_data = _nse_get("https://www.nseindia.com/api/allIndices")
+            _vix_data = await asyncio.wait_for(_loop.run_in_executor(None, lambda: _nse_get("https://www.nseindia.com/api/allIndices")), timeout=2)
             if _vix_data:
                 for _vi in _vix_data.get("data", []):
                     if "VIX" in (_vi.get("index", "") or "").upper():
@@ -22140,12 +22212,12 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             pass
     
     if is_us and vix <= 0:
-        # USA — fetch VIX and basic options from yfinance
+        # USA — last VIX close from the same candle chain, capped so it cannot stall the route.
         try:
-            vix_tk = yf.Ticker("^VIX")
-            vix_info = vix_tk.info or {}
-            vix = round(float(vix_info.get("regularMarketPrice", 0) or vix_info.get("previousClose", 0)), 1)
-        except:
+            from market_data.layer import quote as _vix_quote
+            _vq = await asyncio.wait_for(_loop.run_in_executor(None, lambda: _vix_quote("^VIX", "US")), timeout=2)
+            vix = round(float(((_vq or {}).get("data") or {}).get("price") or 0), 1)
+        except Exception:
             pass
         # Try yfinance options chain for US stocks
         try:
@@ -24013,10 +24085,9 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     # ═══ SCALP / QUICK TRADE — 5min & 15min Price Action ═══
     try:
         scalp = {}
-        # Use intraday data already fetched (15m candles from ORB section)
-        # Also fetch 5m candles for scalp
-        intra_5m = tk.history(period="1d", interval="5m")
-        intra_15m = tk.history(period="2d", interval="15m")
+        # Reuse the 5m and 15m frames already loaded with the daily chain.
+        intra_5m = intraday_5m
+        intra_15m = intraday_15m
         
         if intra_5m is not None and len(intra_5m) >= 5 and intra_15m is not None and len(intra_15m) >= 5:
             c5 = intra_5m["Close"].values.astype(float)
@@ -24158,7 +24229,12 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     
     # ═══ FUNDAMENTAL ANALYSIS — Revenue, Margins, Debt, Returns ═══
     try:
-        info = tk.info if hasattr(tk, 'info') else {}
+        if _info_fut.done():
+            try:
+                info = _info_fut.result() or info or {}
+            except Exception:
+                info = info or {}
+        info = info or {}
         fa = {}
         
         # Revenue & profit growth
@@ -24245,10 +24321,12 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         w52h = float(tech_d.get("w52h", 0) or 0)
         w52l = float(tech_d.get("w52l", 0) or 0)
         
-        # Get forward PE + PEG from yfinance
+        # Forward PE and PEG come from the fundamentals read that started with the candles.
         fwd_pe = 0; peg = 0; div_yield = 0; mkt_cap = 0; sector = ""
         try:
-            info = tk.info
+            if _info_fut.done():
+                info = _info_fut.result() or info or {}
+            info = info or {}
             fwd_pe = round(float(info.get("forwardPE", 0) or 0), 1)
             peg = round(float(info.get("pegRatio", 0) or 0), 2)
             div_yield = round(float(info.get("dividendYield", 0) or 0) * 100, 2)
@@ -29921,11 +29999,11 @@ def _mcoc_ret(closes, n):
     return ((closes[-1] / base) - 1) * 100 if base else None
 
 
-def _mcoc_fetch(yf_sym):
-    """9-month daily history from market_data.layer. Returns dict of arrays or None."""
+def _mcoc_fetch(yf_sym, region=None):
+    """9-month daily history from the shared candle chain. Returns dict of arrays or None."""
     try:
         from market_data.yfcompat import history_frame
-        hist = history_frame(yf_sym, period="9mo", interval="1d")
+        hist = history_frame(yf_sym, period="9mo", interval="1d", region=region)
         if hist is None or hist.empty or len(hist) < 40:
             return None
         return {
@@ -31382,10 +31460,17 @@ async def decision_360(symbol: str = "", region: str = "US"):
         ys = f"{symbol}.NS"
     _lp = _aio.get_event_loop()
 
-    try:
-        stock = await _aio.wait_for(_lp.run_in_executor(None, _mcoc_fetch, ys), timeout=12)
-    except Exception:
-        stock = None
+    async def _b(fn, *a, timeout=4, default=None):
+        try:
+            return await _aio.wait_for(_lp.run_in_executor(None, fn, *a), timeout=timeout)
+        except Exception:
+            return default
+
+    stock, vix_pair, fundamentals = await _aio.gather(
+        _b(lambda: _mcoc_fetch(ys, region), timeout=8, default=None),
+        _b(_mw_fetch_vix, region, timeout=4, default=(None, "unknown")),
+        _b(_d360_fundamentals, ys, timeout=4, default=None),
+    )
     if not stock or len(stock["closes"]) < 60:
         return {"success": False, "symbol": symbol, "region": region,
                 "error": "No / insufficient price data for this symbol (the feed may be blocked on this host)."}
@@ -31433,15 +31518,6 @@ async def decision_360(symbol: str = "", region: str = "US"):
         if symbol in _syms:
             sector_theme = _th; break
 
-    async def _b(fn, *a, timeout=9, default=None):
-        try:
-            return await _aio.wait_for(_lp.run_in_executor(None, fn, *a), timeout=timeout)
-        except Exception:
-            return default
-    vix_pair, fundamentals = await _aio.gather(
-        _b(_mw_fetch_vix, region, timeout=9, default=(None, "unknown")),
-        _b(_d360_fundamentals, ys, timeout=9, default=None),
-    )
     vix_val, vix_regime = vix_pair if vix_pair else (None, "unknown")
     sector = (fundamentals or {}).get("sector") or sector_theme
     regime_lbl = ("Risk-ON / expansion-leaning" if vix_regime == "low"
@@ -32736,7 +32812,7 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
         vix = float(nse.get("vix", 0) or 0)
         if vix <= 0 and not is_us:
             try:
-                _vd2 = _nse_get("https://www.nseindia.com/api/allIndices")
+                _vd2 = await asyncio.wait_for(asyncio.get_event_loop().run_in_executor(None, lambda: _nse_get("https://www.nseindia.com/api/allIndices")), timeout=2)
                 if _vd2:
                     for _vi3 in _vd2.get("data", []):
                         if "VIX" in (_vi3.get("index", "") or "").upper():
@@ -39523,10 +39599,13 @@ async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
         except Exception: pass
         try:
             return yf.download(tickers="%s %s" % (yf_sym, bench), period="1y", interval="1d",
-                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+                               group_by="ticker", auto_adjust=True, threads=True, progress=False, region=region)
         except Exception:
             return None
-    hist = await _lp.run_in_executor(None, _fetch)
+    try:
+        hist = await asyncio.wait_for(_lp.run_in_executor(None, _fetch), timeout=8)
+    except Exception:
+        hist = None
 
     def _sub(ys):
         try:
@@ -39595,7 +39674,10 @@ async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
         except Exception:
             pass
         return f
-    fund = await _lp.run_in_executor(None, _fund)
+    try:
+        fund = await asyncio.wait_for(_lp.run_in_executor(None, _fund), timeout=4)
+    except Exception:
+        fund = {}
 
     meta = _imdf_infer_meta(sym, region, fund)
     card = _imdf_score(meta, fund, tech)
@@ -41356,24 +41438,11 @@ async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0
     yf_sym = _idx.get(sym, sym if region == "US" else "%s.NS" % sym)
 
     def _hist():
-        try: pass
-        except Exception: pass
         try:
-            return yf.Ticker(yf_sym).history(period="1y", interval="1d", auto_adjust=True)
+            from market_data.yfcompat import history_frame
+            return history_frame(yf_sym, period="1y", interval="1d", region=region)
         except Exception:
             return None
-    h = await _lp.run_in_executor(None, _hist)
-    closes = highs = lows = vols = []
-    try:
-        if h is not None and not h.empty:
-            closes = [float(x) for x in list(h["Close"].dropna())]
-            highs = [float(x) for x in list(h["High"].dropna())]
-            lows = [float(x) for x in list(h["Low"].dropna())]
-            vols = [float(x) for x in list(h["Volume"].fillna(0))]
-    except Exception:
-        pass
-    if len(closes) < 30:
-        return {"success": False, "error": "Not enough price history for %s." % sym}
 
     def _fund():
         f = {}
@@ -41394,7 +41463,29 @@ async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0
         except Exception:
             pass
         return f
-    fund = await _lp.run_in_executor(None, _fund)
+
+    _md_started = time.time()
+    _hist_fut = _lp.run_in_executor(None, _hist)
+    _fund_fut = _lp.run_in_executor(None, _fund)
+    try:
+        h = await asyncio.wait_for(_hist_fut, timeout=8)
+    except Exception:
+        h = None
+    closes = highs = lows = vols = []
+    try:
+        if h is not None and not h.empty:
+            closes = [float(x) for x in list(h["Close"].dropna())]
+            highs = [float(x) for x in list(h["High"].dropna())]
+            lows = [float(x) for x in list(h["Low"].dropna())]
+            vols = [float(x) for x in list(h["Volume"].fillna(0))]
+    except Exception:
+        pass
+    if len(closes) < 30:
+        return {"success": False, "error": "Not enough price history for %s." % sym}
+    try:
+        fund = await asyncio.wait_for(_fund_fut, timeout=max(0.2, 8 - (time.time() - _md_started)))
+    except Exception:
+        fund = {}
     meta = _imdf_infer_meta(sym, region, fund)
     meta["name"] = fund.get("name") or meta.get("name") or sym
 
@@ -45759,39 +45850,47 @@ async def intraday_setups(
     print(f"\n⚡ r62.2 Intraday Setup scan — {region} ({len(universe)} tickers, timeframe={timeframe})")
     t0 = time.time()
 
-    import market_data.yfcompat as yf
+    from concurrent.futures import ThreadPoolExecutor
+    from market_data.yfcompat import history_many
     candidates = []
     skipped = 0
+    specs = []
+    if timeframe in ("all", "intraday"):
+        specs.append(("2d", "5m"))
+    if timeframe in ("all", "swing"):
+        specs.append(("2y", "1d"))
 
-    for sym in universe:
+    def _load_symbol(sym):
         yf_sym = sym + suffix
         try:
-            tk = yf.Ticker(yf_sym)
+            return sym, history_many(yf_sym, specs, region=region) if specs else {}
+        except Exception:
+            return sym, {}
 
-            # Intraday data (5-min bars, today-ish window)
-            intraday_hist = None
-            if timeframe in ("all", "intraday"):
-                try:
-                    intraday_hist = tk.history(period="2d", interval="5m")
-                    if intraday_hist is None or len(intraday_hist) < 6:
-                        intraday_hist = None
-                except Exception:
-                    intraday_hist = None
+    loaded = {}
+    if universe:
+        with ThreadPoolExecutor(max_workers=min(8, len(universe))) as pool:
+            for sym, frames in pool.map(_load_symbol, list(universe)):
+                loaded[sym] = frames
 
-            # Daily bars for swing setups
-            daily_hist = None
-            if timeframe in ("all", "swing"):
-                try:
-                    daily_hist = tk.history(period="2y", interval="1d")
-                    if daily_hist is None or len(daily_hist) < 200:
-                        daily_hist = None
-                except Exception:
-                    daily_hist = None
-
-            info = tk.info or {}
-            spot = info.get("regularMarketPrice")
-            mcap = info.get("marketCap")
-            avg_vol = info.get("averageVolume") or 0
+    for sym in universe:
+        try:
+            frames = loaded.get(sym) or {}
+            intraday_hist = frames.get(("2d", "5m")) if timeframe in ("all", "intraday") else None
+            if intraday_hist is not None and len(intraday_hist) < 6:
+                intraday_hist = None
+            daily_hist = frames.get(("2y", "1d")) if timeframe in ("all", "swing") else None
+            if daily_hist is not None and len(daily_hist) < 200:
+                daily_hist = None
+            spot = None
+            avg_vol = 0
+            if daily_hist is not None and len(daily_hist):
+                spot = float(daily_hist["Close"].iloc[-1])
+                avg_vol = float(daily_hist["Volume"].tail(20).mean() or 0)
+            elif intraday_hist is not None and len(intraday_hist):
+                spot = float(intraday_hist["Close"].iloc[-1])
+            mcap = None
+            info = {"regularMarketPrice": spot, "averageVolume": avg_vol, "marketCap": None, "longName": sym, "shortName": sym}
             avg_dollar_vol = (spot or 0) * avg_vol
 
             # Liquidity gate (literature applies to liquid only)
@@ -46724,19 +46823,28 @@ async def trade_ticket(
         import market_data.yfcompat as yf
         import numpy as np
         from datetime import datetime as _dt
+        from market_data.yfcompat import history_frame
+        from concurrent.futures import ThreadPoolExecutor
         yf_sym = symbol if region == "US" else symbol + ".NS"
+        tk = yf.Ticker(yf_sym)
         
         # ── Fetch price history (60d for ATR, RSI, MA calcs) ──
-        tk = yf.Ticker(yf_sym)
+        _info_pool = ThreadPoolExecutor(max_workers=1)
+        _info_job = _info_pool.submit(lambda: tk.info or {})
         try:
-            hist = tk.history(period="3mo", interval="1d")
+            hist = history_frame(yf_sym, period="3mo", interval="1d", region=region)
         except Exception as _he:
+            _info_pool.shutdown(wait=False, cancel_futures=True)
             return {"success": False, "error": f"Failed to fetch price history: {type(_he).__name__}"}
         if hist is None or len(hist) < 30:
+            _info_pool.shutdown(wait=False, cancel_futures=True)
             return {"success": False, "error": f"Insufficient price history for {symbol}"}
-        
-        try: info = tk.info or {}
-        except Exception: info = {}
+        try:
+            info = _info_job.result(timeout=max(0.2, 4 - (time.time() - t0))) or {}
+        except Exception:
+            info = {}
+        finally:
+            _info_pool.shutdown(wait=False, cancel_futures=True)
         
         closes = hist['Close'].values
         highs = hist['High'].values
@@ -59225,7 +59333,7 @@ async def decide_index_trades(region: str = "IN", extra: str = ""):
         t0 = time.time()
         print(f"\n🏛️ Fast index scan: {len(targets)} indices, 15s timeout each")
         
-        async def _scan_with_timeout(sym, timeout=15):
+        async def _scan_with_timeout(sym, timeout=8):
             """Run decision_engine with strict timeout — return None if too slow"""
             try:
                 d = await asyncio.wait_for(decision_engine(sym, region), timeout=timeout)
@@ -59337,7 +59445,7 @@ async def decide_top_trades(region: str = "IN", force: str = ""):
         async def _scan_one(sym):
             async with sem:
                 try:
-                    d = await asyncio.wait_for(decision_engine(sym, region), timeout=20)
+                    d = await asyncio.wait_for(decision_engine(sym, region), timeout=8)
                     if not d.get("success"): return None
                     ms = d.get("marketState", {}); tp = d.get("tradePath", {})
                     vol = d.get("volatility", {}); conf = d.get("confidence", {})
@@ -63628,7 +63736,7 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         sym = symbol.upper().strip()
         reg = region.upper().strip()
         
-        import market_data.yfcompat as yf
+        from market_data.yfcompat import history_many
         
         # Determine yfinance ticker
         india_index_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "FINNIFTY": "^CNXFIN", "MIDCPNIFTY": "^NSEI"}
@@ -63636,19 +63744,17 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         if yf_sym == sym and reg == 'IN' and not sym.endswith('.NS') and not sym.startswith('^'):
             yf_sym = sym + '.NS'
         
-        tk = yf.Ticker(yf_sym)
-        
-        # ─── DAILY DATA (3 months) ───
-        daily = tk.history(period='3mo', interval='1d')
-        if len(daily) < 10:
+        frames = history_many(yf_sym, [("3mo", "1d"), ("1y", "1wk")], region=reg)
+        daily = frames.get(("3mo", "1d"))
+        weekly = frames.get(("1y", "1wk"))
+        if daily is None or len(daily) < 10:
             return {"success": False, "error": f"Insufficient daily data for {sym}"}
         
         spot = float(daily['Close'].iloc[-1])
         if hasattr(spot, 'item'): spot = spot.item()  # numpy → python
         prev = float(daily['Close'].iloc[-2]) if len(daily) > 1 else spot
-        
-        # ─── WEEKLY DATA (1 year) ───
-        weekly = tk.history(period='1y', interval='1wk')
+        if weekly is None:
+            weekly = daily
         
         # ─── TREND ANALYSIS (HH/HL pattern) ───
         closes = daily['Close'].values

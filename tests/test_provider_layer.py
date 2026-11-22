@@ -1,4 +1,5 @@
 """Provider layer behavior that must hold without a live network."""
+import time
 import unittest
 from datetime import datetime, timezone
 
@@ -112,6 +113,121 @@ class SafetyTests(unittest.TestCase):
         self.assertAlmostEqual(info["trailingPE"], 8.01, places=2)
         self.assertEqual(sources["grossMargins"]["source"], "tradingview")
         self.assertIn("as_of", sources["trailingPE"])
+
+    def _bars(self, source):
+        rows = []
+        for day in range(1, 8):
+            rows.append({"time": f"2026-11-{day:02d}", "open": 10, "high": 11, "low": 9, "close": 10 + day, "volume": 100})
+        return {"ok": True, "data": rows, "source": source, "as_of": "2026-11-22T00:00:00+00:00", "stale": False, "metric_sources": {}}
+
+    def test_us_chain_stops_when_finnhub_has_bars(self):
+        layer._cache.clear()
+        calls = []
+        original = (layer._finnhub_bars, layer._nasdaq_bars, layer._tradingview_bars)
+        def finnhub(symbol, interval="1d"):
+            calls.append("finnhub")
+            return self._bars("finnhub")
+        def later(name):
+            def inner(*args, **kwargs):
+                calls.append(name)
+                return self._bars(name)
+            return inner
+        layer._finnhub_bars = finnhub
+        layer._nasdaq_bars = later("nasdaq")
+        layer._tradingview_bars = later("tradingview")
+        try:
+            env = layer.candles("MU", region="US")
+        finally:
+            layer._finnhub_bars, layer._nasdaq_bars, layer._tradingview_bars = original
+            layer._cache.clear()
+        self.assertEqual(calls, ["finnhub"])
+        self.assertEqual(env["source"], "finnhub")
+
+    def test_us_chain_reaches_tradingview_after_finnhub_and_nasdaq_fail(self):
+        layer._cache.clear()
+        calls = []
+        original = (layer._finnhub_bars, layer._nasdaq_bars, layer._tradingview_bars)
+        def miss(name):
+            def inner(*args, **kwargs):
+                calls.append(name)
+                return None
+            return inner
+        layer._finnhub_bars = miss("finnhub")
+        layer._nasdaq_bars = miss("nasdaq")
+        layer._tradingview_bars = lambda *args, **kwargs: calls.append("tradingview") or self._bars("tradingview")
+        try:
+            env = layer.candles("AAPL", region="US")
+        finally:
+            layer._finnhub_bars, layer._nasdaq_bars, layer._tradingview_bars = original
+            layer._cache.clear()
+        self.assertEqual(calls, ["finnhub", "nasdaq", "tradingview"])
+        self.assertEqual(env["source"], "tradingview")
+
+    def test_slow_finnhub_falls_through_near_five_seconds(self):
+        layer._cache.clear()
+        original = (layer._finnhub_bars, layer._nasdaq_bars, layer._tradingview_bars)
+        def slow(symbol, interval="1d"):
+            time.sleep(30)
+            return None
+        layer._finnhub_bars = slow
+        layer._nasdaq_bars = lambda symbol: self._bars("nasdaq")
+        layer._tradingview_bars = lambda *args, **kwargs: self._bars("tradingview")
+        started = time.perf_counter()
+        try:
+            env = layer.candles("NVDA", region="US")
+        finally:
+            layer._finnhub_bars, layer._nasdaq_bars, layer._tradingview_bars = original
+            layer._cache.clear()
+        elapsed = time.perf_counter() - started
+        self.assertEqual(env["source"], "nasdaq")
+        self.assertGreater(elapsed, 4)
+        self.assertLess(elapsed, 7)
+
+    def test_india_chain_order_and_angel_proxy_session(self):
+        layer._cache.clear()
+        calls = []
+        angel_calls = []
+        original = (layer._angel_bars, layer._screener_bars, layer._tradingview_bars, layer._moneycontrol_index_bars)
+        def miss(name):
+            def inner(*args, **kwargs):
+                calls.append(name)
+                return None
+            return inner
+        layer._angel_bars = miss("angel")
+        layer._screener_bars = miss("screener")
+        layer._tradingview_bars = miss("tradingview")
+        layer._moneycontrol_index_bars = lambda symbol: calls.append("nifty") or self._bars("moneycontrol")
+        try:
+            env = layer.candles("NIFTY", region="IN")
+        finally:
+            layer._angel_bars, layer._screener_bars, layer._tradingview_bars, layer._moneycontrol_index_bars = original
+            layer._cache.clear()
+        self.assertEqual(calls, ["angel", "screener", "tradingview", "nifty"])
+        self.assertEqual(env["source"], "moneycontrol")
+
+        import angel_options
+        import angel_session
+        def request_json(url, payload=None, headers=None, timeout=15):
+            angel_calls.append((url, timeout))
+            return {"data": [["2026-11-20T09:15:00+05:30", 100, 110, 90, 105, 1000]]}
+        saved = (angel_options.configured, angel_options._nse_key, angel_options._load_nse_book, angel_options._headers, angel_session.request_json)
+        angel_options.configured = lambda: True
+        angel_options._nse_key = lambda symbol: "RELIANCE"
+        angel_options._load_nse_book = lambda now: {"RELIANCE": {"token": "2885", "symbol": "RELIANCE-EQ"}}
+        angel_options._headers = lambda: {"Authorization": "Bearer test"}
+        angel_session.request_json = request_json
+        try:
+            bars = layer._angel_bars("RELIANCE.NS", "1d")
+        finally:
+            angel_options.configured, angel_options._nse_key, angel_options._load_nse_book, angel_options._headers, angel_session.request_json = saved
+        self.assertEqual(bars["source"], "angel")
+        self.assertEqual(angel_calls[0][0], layer._ANGEL_CANDLE)
+        self.assertEqual(angel_calls[0][1], layer.CANDLE_TIMEOUT)
+
+    def test_tradingview_packets_keep_bar_rows(self):
+        body = '{"m":"series_loading","p":[]}'
+        blob = f"~m~{len(body)}~m~{body}"
+        self.assertEqual(layer._tv_packets(blob)[0]["m"], "series_loading")
 
 
 if __name__ == "__main__":
