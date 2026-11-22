@@ -208,6 +208,13 @@ def _snapshot(data,now):
 
 def chain(symbol,expiry=''):
     global _master,_master_at,_retry_at
+    # The web process only waits. The one decision worker does the parse and quotes.
+    if os.environ.get('CELESYS_DECISION_WORKER')!='1':
+        import sys
+        api=sys.modules.get('api')
+        ready=getattr(api,'decision_worker_ready',None) if api is not None else None
+        if callable(ready) and ready():
+            return api.run_chain_in_worker(symbol,expiry)
     base=dict(symbol=symbol,region='IN',currency='INR',source='Angel One SmartAPI',rows=[],expiry=None,
         expiries=[],status='UNAVAILABLE',freshness='UNVERIFIED_OR_STALE',execution_enabled=False,
         message='Account-backed read-only feed requires authorized server configuration.')

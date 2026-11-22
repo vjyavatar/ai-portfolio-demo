@@ -94,3 +94,11 @@ for _node in ast.parse(Path(__file__).with_name('api.py').read_text()).body:
 attach_access(app,_account_roles,_protected)
 from private_options import router as _private_options_router
 app.include_router(_private_options_router)
+
+# One decision process, forked once after this import and kept for the life of the server.
+try:
+    from api import warm_decision_worker
+    warm_decision_worker()
+except Exception:
+    import logging
+    logging.getLogger(__name__).exception("Decision worker did not start; the first request will retry")
