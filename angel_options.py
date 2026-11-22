@@ -212,6 +212,8 @@ def chain(symbol,expiry=''):
         expiries=[],status='UNAVAILABLE',freshness='UNVERIFIED_OR_STALE',execution_enabled=False,
         message='Account-backed read-only feed requires authorized server configuration.')
     if symbol not in INDEX_NAMES:return dict(base,message='SmartAPI coverage currently supports NIFTY and BANKNIFTY only.')
+    import web_background
+    if web_background.budget_hit():return dict(base,message='Decision budget elapsed before the index chain.')
     if expiry and (not isinstance(expiry,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',expiry)):
         return dict(base,message='Choose an available ISO expiry.')
     if not configured():return base
@@ -234,6 +236,7 @@ def chain(symbol,expiry=''):
             _master=master;_master_at=now
             index,options=instruments(master,symbol,today)
         else:index,options=instruments(_master,symbol,today)
+        if web_background.budget_hit():return dict(base,message='Decision budget elapsed before option quotes.')
         dates=sorted({item['expiry'] for item in options});selected=expiry or (dates[0] if dates else '')
         if not selected or selected not in dates:return dict(base,expiries=dates,message='No matching available expiry in the current instrument master.')
         indexq=_identify(_quotes('NSE',[index['token']]),{index['token']:index},'NSE').get(index['token'])

@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.115"
+APP_VERSION = "v4.63.116"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.115: NIFTY no longer parses the full Angel instrument book inside the web process. "
+    "v4.63.116: After the 12 second mark the NIFTY chain stops instead of keeping the web loop busy. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -13593,6 +13593,9 @@ async def nse_options(symbol: str = "NIFTY"):
         # r18: Use the WARM persistent _nse_session (same one quote-equity uses
         # successfully). _nse_init handles cookie lifecycle; we just make the
         # call. No more fresh-session-per-request bot signature.
+        import web_background
+        if web_background.budget_hit():
+            return result
         _nse_init()
         s = _nse_session
         hdr = {"Referer": "https://www.nseindia.com/option-chain"}
@@ -32910,9 +32913,10 @@ def _decision_pool():
 def _past_decision_budget():
     """True once this calculation has used the route budget. Yields the GIL."""
     import time as _time
+    import web_background
     deadline = _decision_deadline.get()
     _time.sleep(0)
-    return bool(deadline) and _time.monotonic() >= deadline
+    return web_background.budget_hit() or (bool(deadline) and _time.monotonic() >= deadline)
 
 
 def _decision_process_entry(symbol, region):
@@ -32960,6 +32964,8 @@ async def _run_decision_within_budget(symbol, region):
     if isinstance(cached, dict) and cached.get("success") and cached.get("data_status") != "partial" and stamped and (now - stamped).total_seconds() < 600:
         return cached
 
+    import web_background
+    web_background.start_deadline(_DECISION_BUDGET_S)
     fut = asyncio.get_running_loop().run_in_executor(_decision_pool(), _decision_process_entry, symbol, region)
     try:
         result = await asyncio.wait_for(asyncio.shield(fut), timeout=_DECISION_BUDGET_S)
