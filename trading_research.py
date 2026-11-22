@@ -29,7 +29,7 @@ def analyze_chart(payload, symbol, region, now):
     def stage(name, status, detail):
         stages.append(dict(name=name,status=status,detail=detail))
     out=dict(version=VERSION,symbol=symbol,region=region,currency='USD' if region=='US' else 'INR',
-        mode='RESEARCH_ONLY',generated_at=now,source='Yahoo Finance chart',source_latency='Not guaranteed real-time',
+        mode='RESEARCH_ONLY',generated_at=now,source='market-data',source_latency='Not guaranteed real-time',
         verdict='WAIT',bias='UNAVAILABLE',reason='Insufficient verified data',paper_eligible=False,
         stages=stages,bars=[],metrics={},quote_time=None,bar_close_time=None,
         limitations=['Rule-based research stages; no LLM or calibrated win probability',
@@ -40,6 +40,8 @@ def analyze_chart(payload, symbol, region, now):
         stage('Data steward','blocked','Provider returned no usable chart data.')
         return out
     raw=result[0];meta=raw.get('meta') or {}
+    if isinstance(meta, dict) and meta.get('source'):
+        out['source']=meta.get('source')
     if (not isinstance(meta,dict) or meta.get('symbol') != source_symbol(symbol, region)
             or meta.get('currency') != out['currency'] or meta.get('dataGranularity') != '5m'):
         stage('Data steward','blocked','Source symbol, currency or five-minute interval is unverified or mismatched.')

@@ -121,10 +121,10 @@ def _fetch_one_ticker(ticker: str, region: str) -> Optional[dict]:
     Returns dict with actions list + targets, or None on failure.
     """
     try:
-        import yfinance as yf
+        import market_data.yfcompat as yf
         try:
-            from api import _yahoo_rate_wait
-            _yahoo_rate_wait()
+            from api import _provider_slot_wait
+            _provider_slot_wait()
         except Exception:
             pass
 

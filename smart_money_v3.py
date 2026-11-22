@@ -51,7 +51,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Optional
 
-import yfinance as yf
+import market_data.yfcompat as yf
 from fastapi import FastAPI
 
 logger = logging.getLogger("smv3")

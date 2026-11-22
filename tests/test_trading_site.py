@@ -22,7 +22,7 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(market_symbol('SPX','US'),('SPX','^GSPC'))
         with self.assertRaises(ValueError):market_symbol('NIFTY','US')
     def test_failure_is_wait_not_fake_price(self):
-        with patch('trading_site.urlopen',side_effect=TimeoutError):
+        with patch('trading_site.open_chart',side_effect=TimeoutError):
             d=self.client.get('/api/trading-desk/research').json()
         self.assertEqual(d['verdict'],'WAIT');self.assertFalse(d['paper_eligible']);self.assertNotIn('price',d)
     def test_cached_data_rechecks_quote_freshness(self):
@@ -35,7 +35,7 @@ class RouteTests(unittest.TestCase):
 
     def test_rate_limit_is_classified_without_leaking_error_body(self):
         from urllib.error import HTTPError
-        with patch('trading_site.urlopen',side_effect=HTTPError('url',429,'private provider details',{},None)) as call:
+        with patch('trading_site.open_chart',side_effect=HTTPError('url',429,'private provider details',{},None)) as call:
             d=self.client.get('/api/trading-desk/research').json()
             second=self.client.get('/api/trading-desk/research').json()
         self.assertEqual(d['provider_status']['code'],'RATE_LIMITED')
@@ -44,14 +44,14 @@ class RouteTests(unittest.TestCase):
         self.assertNotIn('private provider details',str(d))
     def test_access_denial_is_not_mislabeled_closed_market(self):
         from urllib.error import HTTPError
-        with patch('trading_site.urlopen',side_effect=HTTPError('url',403,'Forbidden',{},None)):
+        with patch('trading_site.open_chart',side_effect=HTTPError('url',403,'Forbidden',{},None)):
             d=self.client.get('/api/trading-desk/research').json()
         self.assertEqual(d['provider_status']['code'],'ACCESS_DENIED')
         self.assertFalse(d['paper_eligible'])
 
     def test_cooldown_spans_symbols_and_honors_retry_after(self):
         from urllib.error import HTTPError
-        with patch('trading_site.time.time',return_value=1000), patch('trading_site.urlopen',side_effect=HTTPError('url',429,'rate limit',{'Retry-After':'1200'},None)) as call:
+        with patch('trading_site.time.time',return_value=1000), patch('trading_site.open_chart',side_effect=HTTPError('url',429,'rate limit',{'Retry-After':'1200'},None)) as call:
             first=self.client.get('/api/trading-desk/research',params={'symbol':'SPY'}).json()
             second=self.client.get('/api/trading-desk/research',params={'symbol':'QQQ'}).json()
             self.assertEqual(call.call_count,1)
@@ -64,7 +64,7 @@ class RouteTests(unittest.TestCase):
         from email.utils import formatdate
         e=HTTPError('url',429,'limited',{'Retry-After':formatdate(2800,usegmt=True)},None)
         self.assertEqual(retry_delay(e,1000,300),1800)
-        with patch('trading_site.urlopen',side_effect=HTTPError('url',429,'limited',{},None)) as call:
+        with patch('trading_site.open_chart',side_effect=HTTPError('url',429,'limited',{},None)) as call:
             with patch('trading_site.time.time',return_value=1000):
                 self.client.get('/api/trading-desk/research')
             with patch('trading_site.time.time',return_value=1301):
@@ -75,7 +75,7 @@ class RouteTests(unittest.TestCase):
         from trading_site import _slots
         _slots.acquire()
         try:
-            with patch('trading_site.urlopen') as call:
+            with patch('trading_site.open_chart') as call:
                 d=self.client.get('/api/trading-desk/research').json()
                 call.assert_not_called()
                 self.assertEqual(d['provider_status']['code'],'REQUEST_IN_PROGRESS')
@@ -86,7 +86,7 @@ class RouteTests(unittest.TestCase):
         p,n=fixture();response=MagicMock()
         response.__enter__.return_value.read.return_value=json.dumps(p).encode()
         _provider_state['failures']=3
-        with patch('trading_site.time.time',return_value=n),patch('trading_site.urlopen',return_value=response) as call:
+        with patch('trading_site.time.time',return_value=n),patch('trading_site.open_chart',return_value=response) as call:
             first=self.client.get('/api/trading-desk/research').json()
             second=self.client.get('/api/trading-desk/research').json()
             self.assertEqual(first['verdict'],'LONG_RESEARCH')
@@ -95,7 +95,7 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(_provider_state['failures'],0)
     def test_cached_evidence_never_refreshes_source_timestamp(self):
         p,n=fixture();_cache[('SPY','US')]=(n+300,p)
-        with patch('trading_site.time.time',return_value=n+301),patch('trading_site.urlopen') as call:
+        with patch('trading_site.time.time',return_value=n+301),patch('trading_site.open_chart') as call:
             d=self.client.get('/api/trading-desk/research').json()
             self.assertEqual(d['verdict'],'WAIT')
             self.assertEqual(d['quote_time'],n-1)
@@ -103,7 +103,7 @@ class RouteTests(unittest.TestCase):
 
     def test_last_good_outage_snapshot_is_never_an_entry_even_with_recent_quote(self):
         p,n=fixture();_cache[('SPY','US')]=(n,p)
-        with patch('trading_site.time.time',return_value=n+61),patch('trading_site.urlopen',side_effect=TimeoutError):
+        with patch('trading_site.time.time',return_value=n+61),patch('trading_site.open_chart',side_effect=TimeoutError):
             response=self.client.get('/api/trading-desk/research');d=response.json()
         self.assertTrue(d['stale_cache']);self.assertEqual(d['verdict'],'WAIT');self.assertFalse(d['paper_eligible'])
         self.assertNotIn('scenario',d)
@@ -115,7 +115,7 @@ class RouteTests(unittest.TestCase):
     def test_cooldown_and_singleflight_reuse_last_good_snapshot_without_fetch(self):
         from trading_site import _slots
         p,n=fixture();_cache[('SPY','US')]=(n,p)
-        with patch('trading_site.time.time',return_value=n+61),patch('trading_site.urlopen') as call:
+        with patch('trading_site.time.time',return_value=n+61),patch('trading_site.open_chart') as call:
             _provider_state['retry_after']=n+100
             d=self.client.get('/api/trading-desk/research').json()
             self.assertTrue(d['stale_cache']);self.assertEqual(d['verdict'],'WAIT')
@@ -130,7 +130,7 @@ class RouteTests(unittest.TestCase):
     def test_last_good_snapshot_expires_at_fifteen_minutes(self):
         from trading_site import STALE_TTL
         p,n=fixture();_cache[('SPY','US')]=(n,p)
-        with patch('trading_site.time.time',return_value=n+STALE_TTL),patch('trading_site.urlopen',side_effect=TimeoutError):
+        with patch('trading_site.time.time',return_value=n+STALE_TTL),patch('trading_site.open_chart',side_effect=TimeoutError):
             d=self.client.get('/api/trading-desk/research').json()
         self.assertFalse(d.get('stale_cache',False));self.assertEqual(d['bars'],[])
         self.assertNotIn('price',d);self.assertFalse(d['paper_eligible'])
@@ -144,7 +144,7 @@ class RouteTests(unittest.TestCase):
             _cache[('SPY','US')]=(n,p)
             return True
         gate.acquire.side_effect=acquire
-        with patch('trading_site._slots',gate),patch('trading_site.time.time',return_value=n),patch('trading_site.urlopen') as call:
+        with patch('trading_site._slots',gate),patch('trading_site.time.time',return_value=n),patch('trading_site.open_chart') as call:
             d=self.client.get('/api/trading-desk/research').json()
             call.assert_not_called()
         gate.release.assert_called_once();self.assertTrue(d['provider_status']['cached'])
@@ -152,7 +152,7 @@ class RouteTests(unittest.TestCase):
 
     def test_cached_response_advertises_remaining_refresh_delay(self):
         p,n=fixture();_cache[('SPY','US')]=(n,p)
-        with patch('trading_site.time.time',return_value=n+30),patch('trading_site.urlopen') as call:
+        with patch('trading_site.time.time',return_value=n+30),patch('trading_site.open_chart') as call:
             response=self.client.get('/api/trading-desk/research');d=response.json();call.assert_not_called()
         self.assertEqual(response.headers['retry-after'],'30');self.assertEqual(d['next_refresh_at'],n+60)
         self.assertEqual(d['provider_status']['retry_after'],d['next_refresh_at'])
@@ -162,7 +162,7 @@ class RouteTests(unittest.TestCase):
         from unittest.mock import MagicMock
         p,n=fixture();_cache[('SPY','US')]=(n,p);response=MagicMock()
         response.__enter__.return_value.read.return_value=b'{"chart":{"result":[]}}'
-        with patch('trading_site.time.time',return_value=n+61),patch('trading_site.urlopen',return_value=response):
+        with patch('trading_site.time.time',return_value=n+61),patch('trading_site.open_chart',return_value=response):
             d=self.client.get('/api/trading-desk/research').json()
         self.assertTrue(d['stale_cache']);self.assertEqual(d['provider_status']['code'],'INVALID_RESPONSE')
         self.assertIs(_cache[('SPY','US')][1],p)
@@ -171,7 +171,7 @@ class RouteTests(unittest.TestCase):
         import os
         with patch('secure_access.identity') as identity:
             identity.get.return_value={'email':'qa@example.invalid','full':True}
-            with patch.dict(os.environ,{},clear=True),patch('trading_site.urlopen',side_effect=TimeoutError):
+            with patch.dict(os.environ,{},clear=True),patch('trading_site.open_chart',side_effect=TimeoutError):
                 response=self.client.get('/api/trading-desk/options');result=response.json()
             self.assertEqual(result['status'],'WAIT')
             self.assertIsNone(result['candidate']);self.assertFalse(result['execution_enabled'])

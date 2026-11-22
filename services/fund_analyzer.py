@@ -96,7 +96,7 @@ def detect_ticker_type(ticker: str, region: str = "US") -> str:
 def _fetch_us_fund(ticker: str) -> Optional[dict]:
     """Pull ETF/MF data from yfinance. Returns None on failure."""
     try:
-        import yfinance as yf
+        import market_data.yfcompat as yf
     except ImportError:
         return None
 

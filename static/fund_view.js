@@ -244,7 +244,7 @@ window._renderFundView = function(fund, region) {
   } else if (fund.type === 'india_etf') {
     h += 'India ETF data sourced from NSE. ';
   } else {
-    h += 'US fund data sourced from Yahoo Finance. ';
+    h += 'US fund data sourced from the market-data provider. ';
   }
   h += 'Click <strong>Compare Funds</strong> to add 1-2 more tickers for side-by-side analysis with holdings overlap.';
   h += '</div>';

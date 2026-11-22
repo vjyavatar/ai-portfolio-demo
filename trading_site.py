@@ -1,11 +1,9 @@
-"""Isolated, read-only Trading Desk. Reuses the app's existing Yahoo chart source."""
+"""Isolated, read-only Trading Desk. Charts come from the market-data provider."""
 from pathlib import Path
 import os
 from market_request_cache import legacy_cache
 import json, re, threading, time, math
 from email.utils import parsedate_to_datetime
-from urllib.request import Request, urlopen
-from urllib.parse import quote
 from urllib.error import HTTPError, URLError
 from fastapi import APIRouter, HTTPException
 from starlette.responses import JSONResponse
@@ -56,8 +54,8 @@ def status():
     from private_options import ready,provider_name
     from secure_access import configured,enforced
     return dict(version=VERSION,mode='research_and_local_paper',execution_enabled=False,
-        source='Yahoo Finance chart',live_latency_guaranteed=False,provider=provider_snapshot(),
-        legacy_requests=legacy_cache.snapshot(),background_prefetch_enabled=os.getenv('CELESYS_YAHOO_PREFETCH','').lower()=='true',
+        source='Finnhub, Angel One and TradingView',live_latency_guaranteed=False,provider=provider_snapshot(),
+        legacy_requests=legacy_cache.snapshot(),background_prefetch_enabled=os.getenv('CELESYS_PREFETCH','').lower()=='true',
         cadence_seconds=300,requires_visible_tab=True,
         options_accounts={region:dict(provider=provider_name(region),
             configured=bool(ready(region)),connection_verified=False) for region in ('IN','US')},
@@ -115,6 +113,25 @@ def unavailable(key,now,details):
     data=cached_report(key,now,stale=True,details=details)
     return research_response(data or failed_report(key[0],key[1],now,details),now)
 
+class _ChartResponse:
+    def __init__(self, raw: bytes):
+        self._raw = raw
+    def read(self, limit=-1):
+        return self._raw if limit is None or limit < 0 else self._raw[:limit]
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        return False
+
+def open_chart(provider_symbol: str):
+    """Five-minute chart payload from the provider layer. Raises on an empty read."""
+    from market_data.layer import chart_payload
+    payload = chart_payload(provider_symbol, range="5d", interval="5m")
+    raw = json.dumps(payload).encode()
+    if len(raw) > 2_000_000:
+        raise ValueError("Oversized source response")
+    return _ChartResponse(raw)
+
 @router.get('/api/trading-desk/research')
 def research(symbol: str='SPY',region: str='US'):
     try: clean,provider_symbol=market_symbol(symbol,region)
@@ -138,15 +155,19 @@ def research(symbol: str='SPY',region: str='US'):
         if failure and now<failure['retry_after']:
             count('cooldown_hits');return unavailable(key,now,failure)
         count('requests')
-        url='https://query1.finance.yahoo.com/v8/finance/chart/'+quote(provider_symbol,safe='')+'?interval=5m&range=1d&includePrePost=false'
-        req=Request(url,headers={'User-Agent':'CelesysResearch/1.0','Accept':'application/json'})
-        with urlopen(req,timeout=10) as response:
+        with open_chart(provider_symbol) as response:
             raw=response.read(2_000_001)
         if len(raw)>2_000_000: raise ValueError('Oversized source response')
         payload=json.loads(raw)
         fetched=time.time()
         data=analyze_chart(payload,clean,region,fetched)
-        if not data.get('bars'): raise ValueError('No usable source history')
+        if not data.get('bars') and not data.get('price'):
+            raise ValueError('No usable source history')
+        if not data.get('bars'):
+            data['verdict']='WAIT'
+            data['paper_eligible']=False
+            data.pop('scenario', None)
+            data['reason']='Market is closed or intraday bars are unavailable. Last close is shown. No trade signal.'
         data.update(fetched_at=fetched,stale_cache=False)
         data['provider_status']=dict(code='RESPONSE_RECEIVED',cached=False,checked_at=fetched)
         with _lock:

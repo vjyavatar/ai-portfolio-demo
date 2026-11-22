@@ -31,19 +31,6 @@ def _read(url: str, timeout: int = 8) -> tuple[int, bytes]:
 
 
 def _crumb() -> Optional[str]:
-    global _CRUMB
-    import time
-    if _CRUMB and time.time() - _CRUMB[0] < 1500:
-        return _CRUMB[1]
-    try:
-        _read("https://fc.yahoo.com", timeout=6)
-    except Exception:
-        pass
-    status, raw = _read("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=6)
-    text = raw.decode("utf-8", "replace").strip()
-    if status == 200 and text and "<" not in text and len(text) < 40:
-        _CRUMB = (time.time(), text)
-        return text
     return None
 
 
@@ -110,22 +97,9 @@ def parse_yahoo_chain(payload: dict, strike_window: int = 6) -> Optional[dict]:
 
 
 def fetch_yahoo_chain(symbol: str) -> Optional[dict]:
-    crumb = _crumb()
-    if not crumb:
-        return None
-    url = (
-        "https://query1.finance.yahoo.com/v7/finance/options/"
-        + urllib.parse.quote(symbol, safe="")
-        + "?crumb="
-        + urllib.parse.quote(crumb)
-    )
-    status, raw = _read(url, timeout=10)
-    if status != 200 or not raw:
-        return None
-    try:
-        return parse_yahoo_chain(json.loads(raw.decode("utf-8", "replace")))
-    except json.JSONDecodeError:
-        return None
+    """Compatibility name. Option chains are loaded by market_data.layer."""
+    del symbol
+    return None
 
 
 def parse_nse_chain(payload: dict, strike_window: int = 6) -> Optional[dict]:

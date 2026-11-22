@@ -182,18 +182,33 @@ def parse_yahoo_chart(payload: dict) -> Optional[dict]:
     }
 
 
-def fetch_yahoo(symbol: str, http: HttpGet = _default_http, timeout: int = 8) -> Optional[dict]:
+def fetch_reference_quote(symbol: str, http: HttpGet = _default_http, timeout: int = 8) -> Optional[dict]:
+    """Kept for older callers. Quotes are served by market_data.layer, not this HTTP helper."""
+    del http, timeout
     if not symbol:
         return None
-    quoted = urllib.parse.quote(symbol, safe="")
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{quoted}?interval=1d&range=5d"
-    status, raw = http(url, None, timeout)
-    if status != 200 or not raw:
-        return None
     try:
-        return parse_yahoo_chart(json.loads(raw.decode("utf-8", "replace")))
-    except json.JSONDecodeError:
+        from market_data.layer import quote
+        env = quote(symbol)
+    except Exception:
         return None
+    data = env.get("data") if isinstance(env, dict) else None
+    if not data or not data.get("price"):
+        return None
+    return {
+        "price": data.get("price"),
+        "prev_close": data.get("prev_close"),
+        "change": data.get("change"),
+        "change_pct": data.get("change_pct"),
+        "volume": data.get("volume"),
+        "currency": data.get("currency"),
+        "name": data.get("name"),
+        "provider": env.get("source") or "provider",
+        "provider_mode": "quote",
+        "quality": "LAST_CLOSE" if env.get("stale") else "DELAYED",
+        "delay_seconds": None,
+        "as_of": env.get("as_of"),
+    }
 
 
 def fetch_finnhub(symbol: str, http: HttpGet = _default_http, timeout: int = 8) -> Optional[dict]:

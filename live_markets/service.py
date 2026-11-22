@@ -185,12 +185,6 @@ def _fetch_quote(resolved: dict) -> Optional[dict]:
             chosen = dict(tv_rows[ticker])
             break
     yahoo_list = _yahoo_candidates(chosen["tv_symbol"], resolved["yahoo"]) if chosen else list(resolved["yahoo"])
-    yahoo = None
-    for ticker in yahoo_list:
-        yahoo = providers.fetch_yahoo(ticker)
-        if yahoo:
-            yahoo = _yahoo_row(ticker, yahoo)
-            break
     chosen_prefix = (chosen or {}).get("tv_symbol", "").split(":", 1)[0]
     us_equity = chosen_prefix in {"NASDAQ", "NYSE", "AMEX"} or (
         not chosen and resolved.get("region_hint") == "US" and resolved.get("kind") == "equity"
@@ -215,16 +209,9 @@ def _fetch_quote(resolved: dict) -> Optional[dict]:
             "name": (chosen or {}).get("name") or resolved["token"],
             "features": (chosen or {}).get("features") or {},
         })
-        return _merge_timestamp(merged, yahoo)
+        return merged
     if chosen:
-        return _merge_timestamp(chosen, yahoo)
-    if yahoo:
-        row = yahoo
-        row["quality"] = "DELAYED"
-        row["features"] = {}
-        if not row.get("tv_symbol"):
-            row["tv_symbol"] = resolved["tv"][0]
-        return row
+        return chosen
     twelve_symbol = resolved["yahoo"][0] if resolved["yahoo"] else None
     twelve = providers.fetch_twelve(twelve_symbol) if twelve_symbol else None
     if twelve:
@@ -284,15 +271,8 @@ def _overview() -> dict:
         if item.get("calendar"):
             raw["calendar"] = item["calendar"]
         if not raw.get("price"):
-            yahoo = providers.fetch_yahoo(item["yahoo"])
-            if yahoo:
-                raw = _yahoo_row(item["tv"], yahoo)
-                raw["name"] = item["name"]
-                if item.get("calendar"):
-                    raw["calendar"] = item["calendar"]
-            else:
-                warnings.append(f"{item['name']} is unavailable from the current providers.")
-                continue
+            warnings.append(f"{item['name']} is unavailable from the current providers.")
+            continue
         resolved = {"token": item["name"], "tv": [item["tv"]], "region_hint": symbols.region_of(item["tv"])}
         presented = _present(raw, resolved, moment)
         presented["name"] = item["name"]
@@ -410,14 +390,14 @@ def options(symbol: str, region: str | None = None) -> dict:
     if cached:
         return cached
     region_hint = resolved.get("region_hint")
-    yahoo_symbol = resolved["yahoo"][0] if resolved["yahoo"] else resolved["token"]
     chain = None
-    if region_hint != "IN":
-        chain = options_chain.fetch_yahoo_chain(yahoo_symbol)
-        if chain and not chain.get("available") and region_hint is None:
-            chain = None
-    if chain is None or not chain.get("available"):
-        if region_hint in (None, "IN") or yahoo_symbol.endswith(".NS"):
+    try:
+        from market_data.layer import option_chain as provider_chain
+        chain = provider_chain(resolved["token"], region_hint)
+    except Exception:
+        chain = None
+    if not chain or not chain.get("available"):
+        if region_hint in (None, "IN"):
             nse_symbol = resolved["token"][:-3] if resolved["token"].endswith(".NS") else resolved["token"]
             nse = options_chain.fetch_nse_chain(nse_symbol)
             if nse and nse.get("available"):
@@ -428,7 +408,7 @@ def options(symbol: str, region: str | None = None) -> dict:
         chain = {
             "available": False,
             "provider": None,
-            "reason": "No public chain responded. US delayed chains use Yahoo. NSE F&O is often blocked from cloud hosts. Angel One remains on the private options desk when its credentials are set.",
+            "reason": "No option chain responded. US chains use Finnhub. India index chains use Angel One when that session is configured.",
         }
     underlying = quote(symbol, region)
     payload = {
@@ -479,7 +459,7 @@ def health() -> dict:
         "finnhub_configured": bool(os.getenv("FINNHUB_API_KEY", "").strip()),
         "twelve_data_configured": bool(os.getenv("TWELVE_DATA_API_KEY", "").strip()),
         "angel_one_configured": _angel_configured(),
-        "providers": ["tradingview", "yahoo", "finnhub?", "twelvedata?", "nse?"],
+        "providers": ["tradingview", "finnhub", "angel", "screener", "sec", "nasdaq", "twelvedata?"],
         "sources": _source_notes(),
         "sessions": sessions.describe(),
     }
@@ -496,12 +476,12 @@ def _source_notes() -> list[dict]:
             "cost": "free",
         },
         {
-            "id": "yahoo",
-            "role": "Chart fallback, exchange timestamp, US option chain",
-            "auth": "none (crumb cookie for options)",
-            "freshness": "Delayed public chart and options. Last daily close when the cash session is shut.",
-            "limit": "Unofficial. Options need a crumb. India option chains are not listed here.",
-            "cost": "free",
+            "id": "finnhub",
+            "role": "US quotes, candles, fundamentals, earnings, peers and news",
+            "auth": "FINNHUB_API_KEY",
+            "freshness": "Last trade when the key is set. Sunday and overnight prints are the last close.",
+            "limit": "Free tier is about 60 calls a minute. Candles fall back to Nasdaq daily history when the candle route is unavailable.",
+            "cost": "free tier",
         },
         {
             "id": "nse",
@@ -510,14 +490,6 @@ def _source_notes() -> list[dict]:
             "freshness": "Exchange print during the session, otherwise the last chain NSE returns.",
             "limit": "Often HTTP 403 from datacenter and Render IPs.",
             "cost": "free",
-        },
-        {
-            "id": "finnhub",
-            "role": "Optional US stock quote when FINNHUB_API_KEY is set",
-            "auth": "FINNHUB_API_KEY",
-            "freshness": "Free tier US stock quotes are treated as live when Finnhub returns a price.",
-            "limit": "About 60 calls/minute on the free tier. US stocks, not a full India feed.",
-            "cost": "free tier",
         },
         {
             "id": "twelvedata",

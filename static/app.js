@@ -868,7 +868,7 @@ window._csLoader = function(opts) {
         // Update status to warn
         var statusEl = document.getElementById(id + "_status");
         if (statusEl && !aborted) {
-          statusEl.innerHTML = '<span style="color:#d97706">⏱ Taking longer than usual — Yahoo may be rate-limiting. Wait or cancel.</span>';
+          statusEl.innerHTML = '<span style="color:#d97706">⏱ Taking longer than usual — the data provider is slow. Wait or cancel.</span>';
         }
       }
     }, 500);
@@ -3895,8 +3895,8 @@ window._renderPositioningPage = function(d, activeLens) {
          '<div style="font-size:32px;margin-bottom:14px">📊</div>' +
          '<div style="font-size:13px">No tickers have data for this lens.</div>' +
          '<div style="font-size:11px;margin-top:8px">' +
-         (lens === 'compounder' ? 'Compounders requires fundamentals (ROIC, margins, FCF) — Yahoo Finance may be blocked.' :
-          lens === 'optionality' ? 'Optionality requires fundamentals — Yahoo Finance may be blocked.' :
+         (lens === 'compounder' ? 'Compounders requires fundamentals (ROIC, margins, FCF) — fundamentals are temporarily unavailable.' :
+          lens === 'optionality' ? 'Optionality requires fundamentals — fundamentals are temporarily unavailable.' :
           'Try Refresh — server may be enriching the universe.') +
          '</div></div>';
   } else {
@@ -4729,7 +4729,7 @@ window.loadMicroCapHunter = function(forceReg) {
     .catch(function(e) {
       if (typeof _hunterLoader !== 'undefined') _hunterLoader.stop();
       if (typeof _hunterLoader !== 'undefined' && _hunterLoader.isAborted()) return;
-      var msg = (e.name === 'AbortError') ? 'Scan timed out after 2 minutes. Yahoo is likely rate-limiting. Try again in a few minutes.' : ('Network error: ' + e.message);
+      var msg = (e.name === 'AbortError') ? 'Scan timed out after 2 minutes. The data provider is slow. Try again in a few minutes.' : ('Network error: ' + e.message);
       el.innerHTML = _regBar +
         '<div style="max-width:720px;margin:24px auto;padding:24px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-family:Inter,sans-serif">' +
         '<div style="font-size:28px;margin-bottom:8px">⚠</div>' +
@@ -13648,7 +13648,7 @@ window._loadInsiderActivity = function() {
         if (d && d.error_kind === 'rate_limited') {
           var retryAfter = d.retry_after_sec || 45;
           resEl.innerHTML = '<div style="padding:14px 16px;background:linear-gradient(180deg,#fef3c7,#fef9c3);border:1px solid #fbbf24;border-radius:10px;color:#78350f;font-size:11.5px;line-height:1.6">' +
-            '<div style="font-weight:900;color:#92400e;margin-bottom:6px;font-family:Sora,sans-serif">⏱ Yahoo Finance rate-limited</div>' +
+            '<div style="font-weight:900;color:#92400e;margin-bottom:6px;font-family:Sora,sans-serif">⏱ market data is refreshing</div>' +
             '<div style="margin-bottom:8px">' + msg + '</div>' +
             '<div style="font-size:10px;color:#92400e;margin-bottom:10px">This is a Yahoo throttle, not a bug. Render\'s IP shares quota with other users.</div>' +
             '<button onclick="window._loadInsiderActivity()" style="padding:6px 14px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">↻ RETRY NOW</button>' +
@@ -16241,7 +16241,7 @@ window._renderMarketWhy = function(d) {
   var yfsym = E(d.yf_sym || sym);
   var dsym  = E(sym.replace(/\^/,'').replace(/\.NS|\.BO/,''));
   h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">';
-  h += '<a href="https://finance.yahoo.com/quote/' + yfsym + '" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">📊 Yahoo Finance</div></a>';
+  h += '<a href="/research?symbol=' + yfsym + '" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">📊 Quote source</div></a>';
   h += '<a href="https://finviz.com/quote.ashx?t=' + dsym + '" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">🔍 FinViz</div></a>';
   h += '<a href="https://news.google.com/search?q=' + dsym + '+stock+news" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">📰 Google News</div></div></a>';
   h += '<a href="https://stockanalysis.com/stocks/' + dsym.toLowerCase() + '/" target="_blank" rel="noopener" style="text-decoration:none"><div style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">📈 Deep Analysis</div></a>';
@@ -16390,7 +16390,7 @@ window._renderMarketWhy = function(d) {
   if (!newsItems.length) {
     var dsymFallback = E((d.yf_sym||sym).replace('.NS','').replace('.BO','').replace('^',''));
     newsItems = [
-      {title:'Search ' + sym + ' news on Yahoo Finance', publisher:'Yahoo Finance', is_fallback:true, ago:'live', link:'https://finance.yahoo.com/quote/' + E(d.yf_sym||sym) + '/news/', sentiment:'neutral'},
+      {title:'Search ' + sym + ' company news', publisher:'Market data', is_fallback:true, ago:'live', link:'/research?symbol=' + E(d.yf_sym||sym), sentiment:'neutral'},
       {title:'View ' + sym + ' charts + analyst ratings on FinViz', publisher:'FinViz', is_fallback:true, ago:'live', link:'https://finviz.com/quote.ashx?t=' + dsymFallback, sentiment:'neutral'},
       {title:'Search ' + sym + ' latest news on Google', publisher:'Google News', is_fallback:true, ago:'live', link:'https://news.google.com/search?q=' + dsymFallback + '+stock+news', sentiment:'neutral'},
       {title:'Deep fundamental analysis of ' + sym + ' on StockAnalysis', publisher:'StockAnalysis', is_fallback:true, ago:'live', link:'https://stockanalysis.com/stocks/' + dsymFallback.toLowerCase() + '/', sentiment:'neutral'},
@@ -22014,7 +22014,7 @@ if(d.coverage){
 var _cov=d.coverage;var _covColor=_cov.coverage_pct>=85?'#059669':_cov.coverage_pct>=60?'#d97706':'#dc2626';
 h+='<div style="padding:8px 12px;background:'+_covColor+'08;border:1px solid '+_covColor+'20;border-radius:8px;margin-bottom:12px;font-size:10px;color:var(--text);display:flex;justify-content:space-between;align-items:center">';
 h+='<span>📊 <strong>'+_cov.completed+'/'+_cov.scanned+'</strong> tickers scored ('+_cov.coverage_pct+'% coverage) · '+_cov.scan_time_sec+'s · batch mode</span>';
-if(_cov.coverage_pct<70){h+='<span style="color:'+_covColor+';font-weight:700">Coverage low — Yahoo may be rate-limiting</span>';}
+if(_cov.coverage_pct<70){h+='<span style="color:'+_covColor+';font-weight:700">Coverage low — some metrics did not arrive</span>';}
 h+='</div>';}
 
 // Total check
@@ -22178,7 +22178,7 @@ window.loadIntradaySetups = function(forceReg, forceTimeframe, forceMcap) {
     .catch(function(e){
       _intradayLoader.stop();
       if (_intradayLoader.isAborted()) return;
-      var msg = (e.name === 'AbortError') ? 'Scan timed out after 2 minutes. Yahoo is likely rate-limiting. Try again in a few minutes or check Render logs.' : ('Network error: ' + e.message);
+      var msg = (e.name === 'AbortError') ? 'Scan timed out after 2 minutes. The data provider is slow. Try again in a few minutes or check Render logs.' : ('Network error: ' + e.message);
       el.innerHTML = _regBar +
         '<div style="max-width:720px;margin:24px auto;padding:24px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-family:Inter,sans-serif">' +
         '<div style="font-size:28px;margin-bottom:8px">⚠</div>' +
@@ -41669,7 +41669,7 @@ window._renderFundView = function(fund, region) {
   } else if (fund.type === 'india_etf') {
     h += 'India ETF data sourced from NSE. ';
   } else {
-    h += 'US fund data sourced from Yahoo Finance. ';
+    h += 'US fund data sourced from the market-data provider. ';
   }
   h += 'Click <strong>Compare Funds</strong> to add 1-2 more tickers for side-by-side analysis with holdings overlap.';
   h += '</div>';
@@ -42646,71 +42646,12 @@ window._loadReturnsSnapshot = function(symbol, region) {
       _renderReturnsSnapshotCard(symbol, region, d);
     })
     .catch(function() {
-      // Fallback: try Yahoo Finance directly from browser (works when CORS permits)
-      _fetchYahooReturnsSnapshot(symbol, region).then(function(snapshot) {
-        if (snapshot && snapshot.returns) {
-          _renderReturnsSnapshotCard(symbol, region, snapshot);
-        } else {
-          _renderReturnsSnapshotFallback(symbol, region, 'Backend endpoint /api/dd-returns-snapshot not implemented yet, and direct Yahoo fetch was blocked.');
-        }
-      }).catch(function(e) {
-        _renderReturnsSnapshotFallback(symbol, region, 'Returns data temporarily unavailable. Backend endpoint /api/dd-returns-snapshot pending implementation.');
-      });
+      _renderReturnsSnapshotFallback(symbol, region, 'Returns data is temporarily unavailable from the market-data provider.');
     });
 };
 
-// Direct Yahoo Finance v8 chart fetch — browser-side. May fail due to CORS.
 function _fetchYahooReturnsSnapshot(symbol, region) {
-  return new Promise(function(resolve, reject) {
-    var yfSym = symbol;
-    if (region === 'IN' && !symbol.indexOf('.') >= 0) yfSym = symbol + '.NS';
-
-    var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yfSym) + '?range=10y&interval=1d';
-    fetch(url, {mode: 'cors'})
-      .then(function(r) {
-        if (!r.ok) throw new Error('yahoo http ' + r.status);
-        return r.json();
-      })
-      .then(function(d) {
-        var chart = d && d.chart && d.chart.result && d.chart.result[0];
-        if (!chart) return resolve(null);
-        var ts = chart.timestamp || [];
-        var quotes = chart.indicators && chart.indicators.quote && chart.indicators.quote[0];
-        var closes = (quotes && quotes.close) || [];
-
-        var data = [];
-        for (var i = 0; i < ts.length; i++) {
-          if (closes[i] !== null && closes[i] !== undefined && !isNaN(closes[i])) {
-            data.push({t: ts[i], c: closes[i]});
-          }
-        }
-        if (data.length < 2) return resolve(null);
-
-        var current = data[data.length - 1].c;
-        var nowTs = data[data.length - 1].t;
-        var DAY = 86400;
-        var periods = [
-          {key: '15d', days: 15},
-          {key: '1m',  days: 30},
-          {key: '3m',  days: 90},
-          {key: '6m',  days: 180},
-          {key: '1y',  days: 365},
-          {key: '5y',  days: 365 * 5},
-          {key: '10y', days: 365 * 10}
-        ];
-        var returns = {};
-        periods.forEach(function(p) {
-          var targetTs = nowTs - (p.days * DAY);
-          var found = null;
-          for (var k = data.length - 1; k >= 0; k--) {
-            if (data[k].t <= targetTs) { found = data[k].c; break; }
-          }
-          returns[p.key] = (found && found > 0) ? ((current - found) / found) * 100 : null;
-        });
-        resolve({success: true, returns: returns, current_price: current, source: 'yahoo-direct'});
-      })
-      .catch(function(e) { resolve(null); });
-  });
+  return Promise.resolve(null);
 }
 
 function _renderReturnsSnapshotCard(symbol, region, snapshot) {
@@ -44405,7 +44346,7 @@ function _renderSmv3(el, d, reg, mcap) {
   }
   if (!d.results || d.results.length === 0) {
     h += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:40px 20px;text-align:center;color:#78350f">';
-    h += '<div style="font-size:14px;font-weight:800;margin-bottom:8px">⏳ Yahoo Finance Rate-Limited</div>';
+    h += '<div style="font-size:14px;font-weight:800;margin-bottom:8px">Market data is refreshing</div>';
     h += '<div style="font-size:11px;line-height:1.6">Scan completed but all ' + (d.universe_size||0) + ' yfinance calls failed. Wait 5-15 minutes and click <strong>↻ REFRESH</strong>. The scanner does NOT cache empty results.</div>';
     h += '</div></div>';
     el.innerHTML = h;

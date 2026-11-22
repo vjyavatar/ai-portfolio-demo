@@ -49,10 +49,10 @@ def _fetch_with_timeout(fn, timeout_sec: float, default=None):
 
 def _safe_yahoo_ticker(ticker: str, region: str):
     try:
-        import yfinance as yf
+        import market_data.yfcompat as yf
         try:
-            from api import _yahoo_rate_wait
-            _yahoo_rate_wait()
+            from api import _provider_slot_wait
+            _provider_slot_wait()
         except Exception:
             pass
         yf_sym = ticker if region.upper() == "US" else f"{ticker}.NS"
