@@ -1376,11 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.121"
+APP_VERSION = "v4.63.122"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.121: Two decision workers. A partial always carries a live spot from the web process, and NIFTY is warmed before the first request. "
+    "v4.63.122: NIFTY candles and the chain are warmed one worker at a time, so boot stays inside 2GB. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -33010,20 +33010,20 @@ _decision_memory = {}
 
 
 def _warm_decision(symbol, region):
-    """Finish one symbol before the server accepts, so the first call is not a cold chain."""
-    import web_background
-    _in_decision_worker.set(True)
-    web_background.start_deadline(40)
+    """Cache the NIFTY candles and chain in this worker. A full decision here OOM-killed the 2GB boot."""
+    import os as _os
+    _os.environ["CELESYS_DECISION_WORKER"] = "1"
     try:
-        result = asyncio.run(decision_engine(symbol, region))
-        if isinstance(result, dict):
-            return json.loads(json.dumps(result, default=str))
-        return result
+        from market_data.layer import candles
+        daily = candles(symbol, period="1y", interval="1d", region=region)
+        candles(symbol, period="5d", interval="5m", region=region)
+        bars = len((daily or {}).get("data") or []) if isinstance(daily, dict) else 0
+        if str(region).upper() == "IN" and str(symbol).upper() in ("NIFTY", "BANKNIFTY"):
+            import angel_options
+            angel_options.chain(symbol)
+        return {"success": True, "symbol": symbol, "bars": bars, "pid": os.getpid()}
     except Exception as exc:
-        return {"success": False, "error": str(exc), "symbol": symbol}
-    finally:
-        web_background.clear_budget()
-        _in_decision_worker.set(False)
+        return {"success": False, "error": f"{type(exc).__name__}: {exc}", "symbol": symbol, "pid": os.getpid()}
 
 
 def warm_decision_worker():
@@ -33042,13 +33042,24 @@ def warm_decision_worker():
         if pid not in _decision_worker_pids:
             _decision_worker_pids.append(pid)
     _background_pool().submit(_decision_child_ping).result(timeout=30)
-    warms = [pool.submit(_warm_decision, "NIFTY", "IN") for _ in range(2)]
-    for warm in warms:
+    # One warm at a time. Two full NIFTY decisions at once were OOM-killed at 2GB.
+    warmed = set()
+    for _attempt in range(4):
+        if len(warmed) >= max(1, len(_decision_worker_pids)):
+            break
         try:
-            ready = warm.result(timeout=45)
-            print(f"  NIFTY warm {'ok' if isinstance(ready, dict) and ready.get('success') else 'partial'} spot={(ready or {}).get('spot') if isinstance(ready, dict) else None}", flush=True)
+            ready = pool.submit(_warm_decision, "NIFTY", "IN").result(timeout=25)
         except Exception as exc:
             print(f"  NIFTY warm skipped: {type(exc).__name__}", flush=True)
+            break
+        pid = ready.get("pid") if isinstance(ready, dict) else None
+        if pid:
+            warmed.add(pid)
+        print(
+            f"  NIFTY warm pid={pid} bars={(ready or {}).get('bars') if isinstance(ready, dict) else None} "
+            f"ok={isinstance(ready, dict) and ready.get('success')}",
+            flush=True,
+        )
     parent = _proc_memory_mb(os.getpid())
     workers = [_proc_memory_mb(pid) for pid in _decision_worker_pids]
     worker_pss = sum(item["pss_mb"] for item in workers)
