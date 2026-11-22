@@ -63,10 +63,46 @@ def _headers():
         'X-MACAddress':os.environ[ENV[4]].strip(),'X-UserType':'USER','X-SourceID':'WEB',
         'Content-Type':'application/json','Accept':'application/json'}
 
+_INDEX_MASTER_SCRIPT = r"""
+import json, sys
+names = {"NIFTY", "BANKNIFTY"}
+master = json.load(sys.stdin)
+if not isinstance(master, list) or len(master) > 400000:
+    raise SystemExit(2)
+kept = []
+for row in master:
+    if not isinstance(row, dict) or row.get("name") not in names:
+        continue
+    seg, kind = row.get("exch_seg"), row.get("instrumenttype")
+    if (seg == "NFO" and kind == "OPTIDX") or (seg == "NSE" and kind == "AMXIDX"):
+        kept.append(row)
+json.dump(kept, sys.stdout)
+"""
+
+
+def _index_master_from_bytes(raw):
+    """Filter the scrip master in another process. json.loads of the full file holds this process."""
+    if not isinstance(raw, (bytes, bytearray)) or not raw:
+        raise ValueError('Invalid instrument master')
+    try:
+        proc = subprocess.run([sys.executable, '-c', _INDEX_MASTER_SCRIPT], input=bytes(raw), capture_output=True, timeout=12, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError('Instrument master parse timed out') from exc
+    if proc.returncode != 0 or not proc.stdout:
+        raise ValueError('Invalid instrument master')
+    master = json.loads(proc.stdout.decode('utf-8'))
+    if not isinstance(master, list):
+        raise ValueError('Invalid instrument master')
+    return master
+
+
 def _request(url,payload=None,_auth_retry=True):
     if url not in (MASTER_URL,QUOTE_URL):raise ValueError('Unsupported provider resource')
     headers={'Accept':'application/json'} if url==MASTER_URL else _headers()
     try:
+        if url==MASTER_URL and payload is None:
+            raw = angel_session.request_bytes(url, headers=headers, timeout=12)
+            return _index_master_from_bytes(raw)
         return angel_session.request_json(url,payload=payload,headers=headers)
     except angel_session.Unauthorized:
         if url==QUOTE_URL and _auth_retry and angel_session.login_configured():
@@ -195,8 +231,8 @@ def chain(symbol,expiry=''):
             master=[row for row in master if isinstance(row,dict) and row.get('name') in INDEX_NAMES
                 and ((row.get('exch_seg')=='NFO' and row.get('instrumenttype')=='OPTIDX')
                      or (row.get('exch_seg')=='NSE' and row.get('instrumenttype')=='AMXIDX'))]
-            index,options=instruments(master,symbol,today)
             _master=master;_master_at=now
+            index,options=instruments(master,symbol,today)
         else:index,options=instruments(_master,symbol,today)
         dates=sorted({item['expiry'] for item in options});selected=expiry or (dates[0] if dates else '')
         if not selected or selected not in dates:return dict(base,expiries=dates,message='No matching available expiry in the current instrument master.')

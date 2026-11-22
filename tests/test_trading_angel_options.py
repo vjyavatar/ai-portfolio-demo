@@ -105,10 +105,18 @@ class AngelOptionsTests(unittest.TestCase):
   with self.assertRaises(ValueError):a._request('https://attacker.invalid')
   with self.assertRaises(ValueError):a.NoRedirect().redirect_request(None,None,302,'',{},'https://attacker.invalid')
  def test_credential_headers_never_sent_to_master(self):
-  with patch.dict(os.environ,ENV,clear=True),patch('angel_session.request_json',return_value=[]) as request:
+  with patch.dict(os.environ,ENV,clear=True),patch('angel_session.request_bytes',return_value=b'[]') as request,patch('angel_options._index_master_from_bytes',return_value=[]):
    a._request(a.MASTER_URL)
    headers=request.call_args.kwargs['headers']
    self.assertNotIn('Authorization',headers);self.assertNotIn('X-PrivateKey',headers)
+ def test_index_master_parse_keeps_only_index_rows(self):
+  raw=json.dumps([
+   dict(name='NIFTY',symbol='Nifty 50',token='1',instrumenttype='AMXIDX',exch_seg='NSE'),
+   dict(name='NIFTY',symbol='NIFTY13OCT2625000CE',token='2',instrumenttype='OPTIDX',exch_seg='NFO'),
+   dict(name='RELIANCE',symbol='RELIANCE-EQ',token='3',instrumenttype='',exch_seg='NSE'),
+  ]).encode()
+  kept=a._index_master_from_bytes(raw)
+  self.assertEqual([row['token'] for row in kept],['1','2'])
  def test_master_cache_excludes_unrelated_markets(self):
   master=self.master+[dict(name='RELIANCE',token='1',instrumenttype='OPTSTK',exch_seg='NFO')]
   result,_=self.call(master=master);self.assertEqual(result['status'],'SNAPSHOT')
