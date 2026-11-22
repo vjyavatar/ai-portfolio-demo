@@ -1,7 +1,7 @@
 """Smoke decision routes.
 
 Local mode checks market_data.layer candles without the network name celesys.ai.
-Live mode curls the deployed decision engine after v4.63.108 is on the host.
+Live mode curls the deployed decision engine after v4.63.109 is on the host.
 
     PYTHONPATH=. python3 scripts/smoke_decision_live.py --local
     python3 scripts/smoke_decision_live.py --live https://celesys.ai

@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.108"
+APP_VERSION = "v4.63.109"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.108: A cold decision-engine call tries every candle source, retries the chain once, and does not cache a miss. India skips a cold Angel instrument download so Screener can answer. "
+    "v4.63.109: Decision engine returns within about 12 seconds. Sections still running are marked pending instead of an analysis timeout. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -21475,9 +21475,41 @@ def _legacy_algo_research_guard(result):
     return out
 
 
+_SNAPSHOT_KEYS = (
+    "success", "symbol", "region", "instrument", "spot", "technicals", "priceHistory",
+    "ema9", "ema21", "volumes", "signal", "direction", "options", "orb", "trade",
+    "engines", "factors", "scalp", "fundamentals", "options_intel", "supertrend",
+)
+
+
+def _publish_decision_snapshot(progress, result, pending):
+    """Share the sections finished so far. The request can return these at the budget."""
+    if not isinstance(progress, dict) or not isinstance(result, dict):
+        return
+    snap = {key: result.get(key) for key in _SNAPSHOT_KEYS if key in result}
+    snap["success"] = True
+    snap["symbol"] = result.get("symbol")
+    snap["data_status"] = "partial"
+    snap["pending"] = list(pending)
+    progress["snapshot"] = snap
+
+
+def _pending_decision(symbol, region, snapshot=None):
+    base = snapshot if isinstance(snapshot, dict) else {}
+    pending = list(base.get("pending") or ["candles", "technicals", "options", "decision"])
+    out = dict(base)
+    out.update(success=True, symbol=base.get("symbol") or symbol, region=base.get("region") or region,
+               data_status="partial", pending=pending)
+    return out
+
+
 @app.get("/api/algo-signal")
 async def algo_signal_safe(symbol: str = "NIFTY", region: str = ""):
-    """Historical research response with a 10-minute calculation cache; never a live quote."""
+    """Historical research response with a 10-minute calculation cache; never a live quote.
+
+    The handler returns within about 12 seconds. Work still running is marked pending
+    and the finished result is cached when the background calculation completes.
+    """
     from datetime import datetime, timedelta
     symbol = symbol.upper().strip().replace(".NS","").replace(".BO","").replace("^NSEI","NIFTY").replace("^NSEBANK","BANKNIFTY").replace("^BSESN","SENSEX")
     now = datetime.utcnow()
@@ -21485,18 +21517,35 @@ async def algo_signal_safe(symbol: str = "NIFTY", region: str = ""):
     if cache_key in _algo_cache and cache_key in _algo_cache_ts:
         if (now - _algo_cache_ts[cache_key]).total_seconds() < 600:
             return _legacy_algo_research_guard(_algo_cache[cache_key])
+    progress = {}
+
+    def _worker():
+        return asyncio.run(_algo_signal_impl(symbol, region, progress))
+
+    fut = asyncio.get_running_loop().run_in_executor(None, _worker)
     try:
-        result = _legacy_algo_research_guard(await asyncio.wait_for(_algo_signal_impl(symbol, region), timeout=9))
-        _algo_cache[cache_key] = result
-        _algo_cache_ts[cache_key] = now
-        return result
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=12)
     except asyncio.TimeoutError:
-        print(f"  ⏰ algo_signal {symbol} timed out at 9s")
-        return {"success": False, "error": f"Analysis timed out for {symbol} — try again", "symbol": symbol}
+        snap = _pending_decision(symbol, region, progress.get("snapshot"))
+        print(f"  decision {symbol}: budget 12s, returning partial pending={snap.get('pending')}")
+        def _cache_when_ready(done):
+            try:
+                full = done.result()
+            except Exception:
+                return
+            if isinstance(full, dict) and full.get("success"):
+                _algo_cache[cache_key] = _legacy_algo_research_guard(full)
+                _algo_cache_ts[cache_key] = datetime.utcnow()
+        fut.add_done_callback(_cache_when_ready)
+        return _legacy_algo_research_guard(snap) if snap.get("spot") else snap
     except Exception as e:
         import traceback
         traceback.print_exc()
         return {"success": False, "error": f"Algo error: {str(e)}", "symbol": symbol}
+    guarded = _legacy_algo_research_guard(result)
+    _algo_cache[cache_key] = guarded
+    _algo_cache_ts[cache_key] = now
+    return guarded
 
 @app.get("/api/algo-batch")
 async def algo_batch(region: str = "IN"):
@@ -21534,7 +21583,7 @@ async def algo_batch(region: str = "IN"):
         "expiryToday": expiry_index, "dayName": day_name, "region": region,
     }
 
-async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
+async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: dict = None):
     """5-Layer Confluence Algorithm — ALL real data, ZERO hallucination."""
     # yfinance imported globally with 401 wrapper
     from datetime import datetime, timedelta
@@ -21864,6 +21913,9 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             "pe": pe, "roe": roe, "margin": margin, "de": de, "beta": beta_val,
             "adx": 0,  # Placeholder — computed later in trend engine, patched back here
         }
+        if closes is not None and len(closes) >= 5 and "priceHistory" not in result:
+            result["priceHistory"] = [round(float(v), 2) for v in list(closes)[-30:]]
+        _publish_decision_snapshot(progress, result, ["options", "engines", "plans", "fundamentals", "decision"])
     except Exception as e:
         return {"success": False, "error": f"Data fetch failed: {e}"}
     
@@ -23254,7 +23306,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             _smart_money = "Neutral institutional flow. No clear accumulation or distribution pattern."
         
         # ── RISK WARNING ──
-        _risk_warning = f"Trade invalid if price crosses {'below' if _is_bull_dir else 'above'} {csym}{tp_sl:,.0f if 'tp_sl' in dir() else 0}. "
+        _sl_level = tp_sl if "tp_sl" in dir() else 0
+        _risk_warning = f"Trade invalid if price crosses {'below' if _is_bull_dir else 'above'} {csym}{_sl_level:,.0f}. "
         _risk_warning += f"Key failure: {'breakdown below support' if _is_bull_dir else 'breakout above resistance'} with volume."
         if _is_trap: _risk_warning += f" ⚠️ {_trap_reason}"
         
@@ -32754,6 +32807,25 @@ async def decision_engine(symbol: str = "NIFTY", region: str = "IN"):
     try:
         import math
         algo = await algo_signal_safe(symbol, region)
+        if algo.get("data_status") == "partial":
+            pending = list(algo.get("pending") or ["decision"])
+            if "decision" not in pending:
+                pending.append("decision")
+            return {
+                "success": True,
+                "symbol": symbol,
+                "region": algo.get("region") or region,
+                "data_status": "partial",
+                "pending": pending,
+                "spot": algo.get("spot") or 0,
+                "price": algo.get("spot") or 0,
+                "technicals": algo.get("technicals") or {},
+                "priceHistory": algo.get("priceHistory") or [],
+                "signal": algo.get("research_signal") or algo.get("signal") or "HOLD / WAIT",
+                "direction": algo.get("direction") or "NEUTRAL",
+                "options": algo.get("options") or {},
+                "note": "Sections listed in pending are still running. Retry for the full decision.",
+            }
         if not algo.get("success"):
             return {"success": False, "error": algo.get("error", "Could not analyze")}
         
