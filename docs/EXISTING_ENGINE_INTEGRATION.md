@@ -11,7 +11,7 @@ signal, trend metrics and modelled levels. Confidence is labelled as an engine
 rating, not a calibrated probability.
 
 The explorer now reads /api/existing-option-chain, a presentation adapter over
-options-quick: the existing connected Upstox/NSE flow for India and Yahoo for US.
+options-quick: Angel One for NIFTY and BANKNIFTY when configured, otherwise the NSE public chain, and Yahoo for US.
 Only the actual returned expiry is offered. Spot-only failures remain unavailable.
 Per-contract quote times are absent in legacy responses: freshness stays unverified.
 Ambiguous legacy zero/missing fields remain null; modelled Greeks and placeholder

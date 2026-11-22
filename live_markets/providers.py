@@ -182,6 +182,12 @@ def parse_yahoo_chart(payload: dict) -> Optional[dict]:
     }
 
 
+def fetch_yahoo(symbol: str, http: HttpGet = _default_http, timeout: int = 8) -> Optional[dict]:
+    """Retired Yahoo chart entry. It does not call Yahoo. Tests assert it stays unused."""
+    del symbol, http, timeout
+    return None
+
+
 def fetch_reference_quote(symbol: str, http: HttpGet = _default_http, timeout: int = 8) -> Optional[dict]:
     """Kept for older callers. Quotes are served by market_data.layer, not this HTTP helper."""
     del http, timeout

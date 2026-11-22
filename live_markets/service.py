@@ -1,6 +1,7 @@
 """Compose quotes, sessions, verdicts and screeners. Fail soft."""
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,6 +12,8 @@ from live_markets import options_chain, providers, sessions, symbols, verdict
 QUOTE_TTL = float(os.getenv("CELESYS_LIVE_CACHE_SECONDS", "60") or 60)
 STALE_TTL = 1800
 SCREEN_TTL = 300
+ANGEL_OPTION_TTL = 60
+_log = logging.getLogger("live_markets.service")
 
 INDEX_BOOK = [
     {"name": "S&P 500", "flag": "🇺🇸", "tv": "SP:SPX", "yahoo": "^GSPC"},
@@ -95,6 +98,7 @@ def _present(raw: dict, resolved: dict, now: datetime | None = None) -> dict:
         "delay_seconds": raw.get("delay_seconds"),
         "provider": raw.get("provider"),
         "provider_mode": raw.get("provider_mode"),
+        "source": raw.get("source"),
         "session": session,
         "clocks": clocks["clocks"],
         "features": features,
@@ -177,13 +181,66 @@ def _yahoo_candidates(tv_symbol: str, fallbacks: list[str]) -> list[str]:
     return list(fallbacks)
 
 
+def _nse_quote_name(resolved: dict) -> Optional[str]:
+    for ticker in resolved.get("tv") or []:
+        if isinstance(ticker, str) and ticker.startswith("NSE:"):
+            return ticker.split(":", 1)[1]
+    token = resolved.get("token") or ""
+    if token.endswith(".NS"):
+        return token[:-3]
+    return None
+
+
+def _angel_nse_quotes(names: list[str]) -> dict:
+    """Angel LTP/OHLC for NSE symbols. Empty dict lets TradingView stay primary."""
+    if not names or not _angel_configured():
+        return {}
+    try:
+        import angel_options
+        rows = angel_options.nse_quotes(names)
+        return rows if isinstance(rows, dict) else {}
+    except Exception as exc:
+        _log.warning("Angel NSE quote skipped: %s: %s", type(exc).__name__, str(exc)[:180])
+        return {}
+
+
+def _apply_angel(raw: dict, angel: dict, tv_symbol: str, name: Optional[str] = None) -> dict:
+    merged = dict(raw or {})
+    merged.update({
+        "price": angel.get("price"),
+        "as_of": _iso(angel.get("as_of_epoch")) or merged.get("as_of"),
+        "provider": "angel_one",
+        "source": "angel_one",
+        "provider_mode": angel.get("provider_mode") or "OHLC",
+        "quality": "LIVE",
+        "delay_seconds": 0,
+        "currency": merged.get("currency") or angel.get("currency") or "INR",
+        "tv_symbol": merged.get("tv_symbol") or tv_symbol,
+        "name": merged.get("name") or name,
+        "features": merged.get("features") or {},
+    })
+    if angel.get("change") is not None:
+        merged["change"] = angel.get("change")
+    if angel.get("change_pct") is not None:
+        merged["change_pct"] = angel.get("change_pct")
+    if angel.get("volume") and not merged.get("volume"):
+        merged["volume"] = angel["volume"]
+    return merged
+
+
 def _fetch_quote(resolved: dict) -> Optional[dict]:
+    nse_name = _nse_quote_name(resolved)
+    angel_row = _angel_nse_quotes([nse_name]).get(nse_name) if nse_name else None
     tv_rows = providers.fetch_tradingview(resolved["tv"])
     chosen = None
     for ticker in resolved["tv"]:
         if ticker in tv_rows:
             chosen = dict(tv_rows[ticker])
             break
+    if angel_row and angel_row.get("price"):
+        base = chosen or {}
+        tv_symbol = base.get("tv_symbol") or resolved["tv"][0]
+        return _apply_angel(base, angel_row, tv_symbol, resolved.get("token"))
     yahoo_list = _yahoo_candidates(chosen["tv_symbol"], resolved["yahoo"]) if chosen else list(resolved["yahoo"])
     chosen_prefix = (chosen or {}).get("tv_symbol", "").split(":", 1)[0]
     us_equity = chosen_prefix in {"NASDAQ", "NYSE", "AMEX"} or (
@@ -263,6 +320,8 @@ def overview() -> dict:
 
 def _overview() -> dict:
     moment = _now()
+    nse_names = [item["tv"].split(":", 1)[1] for item in INDEX_BOOK if item["tv"].startswith("NSE:")]
+    angel = _angel_nse_quotes(nse_names)
     tv = providers.fetch_tradingview([item["tv"] for item in INDEX_BOOK])
     rows = []
     warnings = []
@@ -270,6 +329,10 @@ def _overview() -> dict:
         raw = dict(tv.get(item["tv"]) or {})
         if item.get("calendar"):
             raw["calendar"] = item["calendar"]
+        nse_name = item["tv"].split(":", 1)[1] if item["tv"].startswith("NSE:") else ""
+        angel_row = angel.get(nse_name) if nse_name else None
+        if angel_row and angel_row.get("price"):
+            raw = _apply_angel(raw, angel_row, item["tv"], item["name"])
         if not raw.get("price"):
             warnings.append(f"{item['name']} is unavailable from the current providers.")
             continue
@@ -360,10 +423,14 @@ def screen(market: str) -> dict:
         else:
             tv_symbols.extend([f"NASDAQ:{root}", f"NYSE:{root}"])
     found = providers.fetch_tradingview(tv_symbols)
+    angel = _angel_nse_quotes(roots) if choice == "IN" else {}
     ranked = []
     for root in roots:
         raw = found.get(f"{prefix}:{root}") or found.get(f"NYSE:{root}") or found.get(f"NASDAQ:{root}")
-        if not raw:
+        angel_row = angel.get(root) if choice == "IN" else None
+        if angel_row and angel_row.get("price"):
+            raw = _apply_angel(dict(raw or {}), angel_row, f"NSE:{root}", root)
+        if not raw or not raw.get("price"):
             continue
         resolved = {"token": root, "tv": [raw["tv_symbol"]]}
         presented = _present(raw, resolved)
@@ -383,20 +450,109 @@ def screen(market: str) -> dict:
     return payload
 
 
+def _fresh_options(key: str) -> Optional[dict]:
+    cached = CACHE.get(key, 120)
+    if not cached:
+        return None
+    if (cached.get("chain") or {}).get("source") == "angel_one":
+        return CACHE.get(key, ANGEL_OPTION_TTL)
+    return cached
+
+
+def _stale_options(key: str) -> Optional[dict]:
+    stale = CACHE.get_stale(key, STALE_TTL)
+    if not stale:
+        return None
+    stale = dict(stale)
+    chain = dict(stale.get("chain") or {})
+    chain["quality"] = "STALE"
+    stale["chain"] = chain
+    stale["warning"] = "Option chain fetch failed. Showing the last cached snapshot."
+    stale["success"] = bool(chain.get("available"))
+    return stale
+
+
+def _map_angel_chain(snap: dict) -> Optional[dict]:
+    if not isinstance(snap, dict) or snap.get("status") != "SNAPSHOT" or not snap.get("rows"):
+        return None
+
+    def leg(raw) -> Optional[dict]:
+        if not isinstance(raw, dict):
+            return None
+        return {
+            "contract": raw.get("contract"),
+            "bid": raw.get("bid"),
+            "ask": raw.get("ask"),
+            "last": raw.get("last"),
+            "volume": raw.get("volume"),
+            "open_interest": raw.get("oi"),
+            "iv": raw.get("iv_pct"),
+            "last_trade_epoch": raw.get("feed_time"),
+        }
+
+    rows = []
+    for row in snap.get("rows") or []:
+        if not isinstance(row, dict):
+            continue
+        item = {"strike": row.get("strike")}
+        call, put = leg(row.get("call")), leg(row.get("put"))
+        if call:
+            item["call"] = call
+        if put:
+            item["put"] = put
+        if "call" in item or "put" in item:
+            rows.append(item)
+    if not rows:
+        return None
+    recent = snap.get("freshness") == "RECENT_FEED_SNAPSHOT"
+    return {
+        "available": True,
+        "provider": "angel_one",
+        "source": "angel_one",
+        "quality": "LIVE" if recent else "DELAYED",
+        "expiry": snap.get("expiry"),
+        "spot": snap.get("spot"),
+        "rows": rows,
+        "truncated": True,
+        "note": snap.get("message") or "Angel One SmartAPI near-spot chain.",
+    }
+
+
+def _angel_public_chain(resolved: dict) -> Optional[dict]:
+    """Read-only SmartAPI chain. No sign-in and no licensed-display flag."""
+    token = resolved.get("token") or ""
+    symbol = token[:-3] if token.endswith(".NS") else token
+    try:
+        import angel_options
+        snap = angel_options.chain(symbol)
+    except Exception as exc:
+        _log.warning("Angel option chain skipped: %s: %s", type(exc).__name__, str(exc)[:180])
+        return None
+    return _map_angel_chain(snap if isinstance(snap, dict) else {})
+
+
 def options(symbol: str, region: str | None = None) -> dict:
     resolved = symbols.resolve(symbol, region)
     key = "opt:" + resolved["token"] + ":" + (resolved.get("region_hint") or "")
-    cached = CACHE.get(key, 120)
+    cached = _fresh_options(key)
     if cached:
         return cached
     region_hint = resolved.get("region_hint")
     chain = None
-    try:
-        from market_data.layer import option_chain as provider_chain
-        chain = provider_chain(resolved["token"], region_hint)
-    except Exception:
-        chain = None
-    if not chain or not chain.get("available"):
+    # Angel One is the India chain. The private-desk display switch is not consulted.
+    if region_hint in (None, "IN") and _angel_configured():
+        chain = _angel_public_chain(resolved)
+    if chain is None or not chain.get("available"):
+        try:
+            from market_data.layer import option_chain as provider_chain
+            provided = provider_chain(resolved["token"], region_hint)
+        except Exception:
+            provided = None
+        if provided and provided.get("available"):
+            chain = provided
+        elif chain is None:
+            chain = provided
+    if chain is None or not chain.get("available"):
         if region_hint in (None, "IN"):
             nse_symbol = resolved["token"][:-3] if resolved["token"].endswith(".NS") else resolved["token"]
             nse = options_chain.fetch_nse_chain(nse_symbol)
@@ -404,16 +560,22 @@ def options(symbol: str, region: str | None = None) -> dict:
                 chain = nse
             elif chain is None:
                 chain = nse
+    if not chain or not chain.get("available"):
+        stale = _stale_options(key)
+        if stale:
+            return stale
     if not chain:
         chain = {
             "available": False,
             "provider": None,
-            "reason": "No option chain responded. US chains use Finnhub. India index chains use Angel One when that session is configured.",
+            "source": None,
+            "reason": "No chain responded. US chains use Finnhub. India tries Angel One when it is configured, then the NSE public chain. NSE often returns HTTP 403 from cloud hosts.",
         }
     underlying = quote(symbol, region)
     payload = {
         "success": bool(chain.get("available")),
         "symbol": resolved["token"],
+        "source": chain.get("source") or chain.get("provider"),
         "underlying": {
             "price": underlying.get("price"),
             "quality": underlying.get("quality"),
@@ -452,6 +614,15 @@ def price_tick_quote(symbol: str, region: str) -> Optional[dict]:
     }
 
 
+def _angel_login_fields() -> dict:
+    try:
+        import angel_session
+        status = angel_session.login_status()
+        return {"angel_login_ok": status.get("ok"), "last_error": status.get("error")}
+    except Exception as exc:
+        return {"angel_login_ok": None, "last_error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+
 def health() -> dict:
     return {
         "ok": True,
@@ -459,7 +630,8 @@ def health() -> dict:
         "finnhub_configured": bool(os.getenv("FINNHUB_API_KEY", "").strip()),
         "twelve_data_configured": bool(os.getenv("TWELVE_DATA_API_KEY", "").strip()),
         "angel_one_configured": _angel_configured(),
-        "providers": ["tradingview", "finnhub", "angel", "screener", "sec", "nasdaq", "twelvedata?"],
+        **_angel_login_fields(),
+        "providers": ["angel_one?", "tradingview", "finnhub", "screener", "sec", "nasdaq", "twelvedata?", "nse?"],
         "sources": _source_notes(),
         "sessions": sessions.describe(),
     }
@@ -467,6 +639,14 @@ def health() -> dict:
 
 def _source_notes() -> list[dict]:
     return [
+        {
+            "id": "angel_one",
+            "role": "Primary NSE quotes and the public NIFTY/BANKNIFTY option chain when the SmartAPI session is configured",
+            "auth": "Angel API key, local IP, MAC, and either a JWT or the client-code/PIN/TOTP login",
+            "freshness": "Market quote OHLC/LTP and a near-spot option snapshot, cached about 60 seconds. Shown as LIVE while the NSE cash session is open, LAST_CLOSE when that session is shut.",
+            "limit": "Read-only. No private sign-in. CELESYS_LICENSED_OPTIONS_IN is not consulted here; it only enables the signed-in private desk. The chain covers NIFTY and BANKNIFTY, not every India F&O name. Quotes cover NSE symbols resolved from the instrument master.",
+            "cost": "Angel One account market data",
+        },
         {
             "id": "tradingview",
             "role": "Primary quotes, indices, technical context",

@@ -8,7 +8,7 @@ uvicorn start:app --host 0.0.0.0 --port $PORT
 
 Python version is pinned in `runtime.txt`. Dependencies are in `requirements.txt`. There is no `render.yaml` in this repo; keep the service start command above.
 
-## Live market board (v4.63.104)
+## Live market board (v4.63.105)
 
 `/markets` is a read-only board for NYSE/NASDAQ and NSE/BSE. The workspace overview also shows a short index strip. Existing research routes, analytics and AdSense tags are unchanged.
 
@@ -18,7 +18,7 @@ What it shows:
 - A research score (trend, valuation, momentum, risk) with the inputs written out
 - A watchlist kept in the browser
 - A liquid-name screener for a fixed US sample and a fixed India sample
-- A bounded option chain when a public feed answers (US via Yahoo, India via NSE)
+- A bounded option chain when a feed answers (US via Yahoo, India via Angel One when configured, then NSE)
 - Session clocks in US Eastern and India Standard Time, plus delayed vs last-close vs live
 
 Not financial advice. A score is not a trade instruction.
@@ -27,7 +27,8 @@ Not financial advice. A score is not a trade instruction.
 
 | Source | Used for | Freshness seen in checks | Limit | Cost |
 |---|---|---|---|---|
-| TradingView public scanner | Primary quotes, indices, RSI, moving averages, P/E, 52-week range | `delayed_streaming_900` (15 min) or `delayed_streaming_600` (10 min) on equities and indices. Some FX/CFD symbols report `streaming`. | Unofficial. No key. Cached. Not a licensed real-time feed and not a broker NBBO. | Free |
+| Angel One SmartAPI | Primary NSE quotes (NIFTY, BANKNIFTY, RELIANCE and other NSE names) and the NIFTY/BANKNIFTY option chain when the session is configured | Broker LTP/OHLC and a near-spot chain, cached about 60 seconds. Labeled LIVE while the NSE cash session is open. | Read-only. Needs the Angel env block below. `CELESYS_LICENSED_OPTIONS_IN` is not required for this board. | Angel One account |
+| TradingView public scanner | Fallback quotes and technicals when Angel has no price. Still the primary feed for US names and for BSE. | `delayed_streaming_900` (15 min) or `delayed_streaming_600` (10 min) on equities and indices. Some FX/CFD symbols report `streaming`. | Unofficial. No key. Cached. Not a licensed real-time feed and not a broker NBBO. | Free |
 | Yahoo chart + option chain | Fallback price, exchange timestamp, US option chain | Delayed public chart. Options need a crumb cookie. India option chains are not listed. | Unofficial. Crumb can fail. | Free |
 | NSE public chain | India F&O when the request is allowed | Exchange chain during the session | Often HTTP 403 from datacenter and Render IPs. | Free |
 | Finnhub | Optional US stock price when `FINNHUB_API_KEY` is set | Labeled live only while that exchange is in its regular session | Free tier is about 60 calls/minute and is not an India feed. | Free tier |
@@ -35,7 +36,9 @@ Not financial advice. A score is not a trade instruction.
 
 Quotes are cached in the app process (default 60 seconds, `CELESYS_LIVE_CACHE_SECONDS`). A failed fetch serves the last cached snapshot as `STALE` for up to 30 minutes instead of breaking the page. Weekend and after-hours prints are labeled `LAST_CLOSE`. The holiday calendar is not fully encoded.
 
-Angel One and Tradier stay on the existing private options desk. They are not turned on for anonymous visitors. See `docs/FREE_CHAIN_SETUP.md`.
+Angel One is used on the public board when the session is configured. The signed-in private desk is unchanged and still requires `CELESYS_LICENSED_OPTIONS_IN=true`. That flag is an operator switch in `private_options.ready`, not a statutory check, so the public read does not look at it. See `docs/FREE_CHAIN_SETUP.md`.
+
+Upstox is not used.
 
 ### Environment
 

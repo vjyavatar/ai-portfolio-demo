@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import threading
 from datetime import datetime, timedelta
@@ -31,9 +32,22 @@ _DAILY_MINUTE = 30
 _lock = threading.Lock()
 _session_lock = threading.Lock()
 _state = {"token": "", "refresh_at": None}
+_status = {"ok": None, "error": None}
 _stop = threading.Event()
 _thread = None
+_probe_thread = None
 _session = None
+_SECRET_ENV = (
+    "CELESYS_ANGEL_API_KEY",
+    "CELESYS_ANGEL_JWT_TOKEN",
+    "CELESYS_ANGEL_CLIENT_CODE",
+    "CELESYS_ANGEL_PIN",
+    "CELESYS_ANGEL_TOTP_SECRET",
+    "CELESYS_ANGEL_PROXY_URL",
+    "CELESYS_ANGEL_CLIENT_LOCAL_IP",
+    "CELESYS_ANGEL_CLIENT_PUBLIC_IP",
+    "CELESYS_ANGEL_MAC_ADDRESS",
+)
 
 
 class Unauthorized(Exception):
@@ -71,6 +85,47 @@ def public_ip() -> str:
     if proxy_url():
         return STATIC_EGRESS_IP
     return ""
+
+
+def _logger() -> logging.Logger:
+    """One stream handler so a success or failure is a single line."""
+    log = logging.getLogger("angel_session")
+    if not log.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+        log.propagate = False
+    return log
+
+
+def redact(text: str) -> str:
+    """Drop configured secrets from a log or health string."""
+    cleaned = str(text or "").replace("\n", " ").replace("\r", " ")
+    for name in _SECRET_ENV:
+        secret = _clean(name)
+        if len(secret) >= 3 and secret in cleaned:
+            cleaned = cleaned.replace(secret, "[redacted]")
+    return cleaned[:240]
+
+
+def _failure_text(exc: BaseException) -> str:
+    message = redact(str(exc)).strip()
+    if message:
+        return f"{type(exc).__name__}: {message}"
+    return type(exc).__name__
+
+
+def _record_login(ok: bool | None, error: str | None) -> None:
+    with _lock:
+        _status["ok"] = ok
+        _status["error"] = error
+
+
+def login_status() -> dict:
+    """Last startup or refresh probe. ok is None until a login is attempted."""
+    with _lock:
+        return {"ok": _status["ok"], "error": _status["error"]}
 
 
 def login_configured() -> bool:
@@ -203,9 +258,14 @@ def jwt_token(force: bool = False, now: datetime | None = None) -> str:
 
 
 def reset_for_tests() -> None:
+    global _probe_thread
     with _lock:
         _state["token"] = ""
         _state["refresh_at"] = None
+        _status["ok"] = None
+        _status["error"] = None
+        if _probe_thread is not None and not _probe_thread.is_alive():
+            _probe_thread = None
 
 
 def seconds_until_daily_refresh(now: datetime) -> float:
@@ -220,13 +280,44 @@ def run_refresh_loop(stop: threading.Event, sleep) -> None:
         if login_configured():
             try:
                 jwt_token(force=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                detail = _failure_text(exc)
+                _record_login(False, detail)
+                _logger().warning("Angel session refresh failed: %s", detail)
+            else:
+                _record_login(True, None)
+                _logger().info("Angel session refresh ok")
+
+
+def probe_login() -> None:
+    """One loginByPassword attempt. No-op when the login trio is not fully set."""
+    if not login_configured():
+        return
+    try:
+        jwt_token(force=True)
+    except Exception as exc:
+        detail = _failure_text(exc)
+        _record_login(False, detail)
+        _logger().warning("Angel login failed: %s", detail)
+        return
+    _record_login(True, None)
+    _logger().info("Angel login ok")
+
+
+def ensure_login_probe() -> None:
+    """Background thread so process startup does not wait on SmartAPI."""
+    global _probe_thread
+    with _lock:
+        if _probe_thread is not None and _probe_thread.is_alive():
+            return
+        _probe_thread = threading.Thread(target=probe_login, name="angel-login-probe", daemon=True)
+        _probe_thread.start()
 
 
 def ensure_daily_refresh() -> None:
     """Daemon thread: re-login around 08:30 IST when the login env vars are set."""
     global _thread
+    ensure_login_probe()
     with _lock:
         if _thread is not None and _thread.is_alive():
             return

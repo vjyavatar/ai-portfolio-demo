@@ -6,7 +6,7 @@
 - `/agents`: stock, trading and option-chain modes with the requested five-part brief: Assessment → Evidence → Counterargument → Missing data → Next check.
 - Visible Data steward → Research analyst → Skeptical critic → Coordinator trace. The analyst and critic are separate bounded model calls using the existing Anthropic integration, when explicitly enabled. Calculated assessment and evidence remain unchanged. Rejected drafts are not published.
 - `/options/india` and `/options/us`: expiry selection, calls/puts, OI, OI change where supplied, bid/ask, IV, delta, volume, timestamps and snapshot PCR only when all returned strikes have both OI values.
-- India: NIFTY, BANKNIFTY, FINNIFTY, SENSEX via Upstox. US: provider-supported standard stock/ETF options via Tradier; adjusted and index contracts are outside the validated scope.
+- India: NIFTY and BANKNIFTY via Angel One when that session is configured. FINNIFTY and SENSEX are not on the Angel chain. US: provider-supported standard stock/ETF options via Tradier; adjusted and index contracts are outside the validated scope.
 - Three educational guides plus methodology, crawlable content, canonical URLs, social metadata, modest WebPage/Article structured data and expanded sitemap.
 - Preserved existing GA4 property with `workspace_open` navigation events; no symbols, emails or research payloads in custom events. Analytics collection and Search Console ownership still need production verification. Existing Google verification token is retained.
 - Removed unsupported homepage/search marketing and fabricated daily sitemap modification dates; removed API-key prefix from health response.
@@ -19,8 +19,7 @@ Environment switches (default off):
 
 | Variable | Purpose |
 | --- | --- |
-| `CELESYS_PUBLIC_OPTIONS_IN=true` | Enable public India snapshots only after verifying provider display permissions. |
-| `CELESYS_INDIA_OPTIONS_DATA_TOKEN` | Optional dedicated Upstox data token. Otherwise reuse the existing server token supplier. Never put a token in client code. |
+| Angel session (`CELESYS_ANGEL_API_KEY` and the rest of the Angel block) | India NIFTY/BANKNIFTY chain on `/api/option-chain`. No separate India data token. |
 | `CELESYS_PUBLIC_OPTIONS_US=true` | Enable public US snapshots only after verifying provider display permissions. |
 | `CELESYS_OPTIONS_DATA_TOKEN` | Existing dedicated Tradier data credential. |
 | `CELESYS_AGENTS_AI_ENABLED=true` | Enable bounded analyst/critic requests on user-triggered briefs. |

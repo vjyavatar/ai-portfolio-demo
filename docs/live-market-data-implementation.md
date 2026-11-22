@@ -16,7 +16,7 @@ This is not a live-feed activation or a production deployment.
 - `start.py` imports the existing API, trading desk, discovery routes, access control, and `private_options`; avoid replacing this entry point.
 - `trading_site.py` currently describes Yahoo Finance chart data as lacking guaranteed live latency and uses a 5-minute cadence.
 - `private_options.py` currently routes US option snapshots through Tradier and India through Angel One or Dhan. US provider selection must be made explicit for Alpaca; do not silently fall back to Tradier.
-- `angel_options.py` is a read-only snapshot adapter with a manually supplied JWT and a bounded near-spot chain. It currently covers NIFTY and BANKNIFTY, not the full requested India index universe.
+- `angel_options.py` is a read-only snapshot adapter. Login can be a static JWT or `loginByPassword`. The public board and the legacy NIFTY/BANKNIFTY chain use it when the session is configured. The chain is a bounded near-spot window, not the full India index universe. NSE quotes use the market quote API in OHLC mode (LTP plus previous close).
 - `option_chain.py` contains the existing normalized option-row contract consumed by the UI. Preserve its field names during migration.
 - Existing signal logic must not receive synthetic timestamps, prices, Greeks, OI, or volume.
 

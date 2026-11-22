@@ -172,9 +172,9 @@ def main():
                 status,detail=validator(json.loads(body)) if code==200 else ('FAIL',f'HTTP {code}')
                 record('Data '+path,status,detail,seconds=elapsed)
             except Exception as e:record('Data '+path,'FAIL',type(e).__name__)
-        for path in ([] if a.live_data_only else ['/api/upstox-login','/api/upstox-status']):
-            try:code,*_=fetch(base,path);record('Retired '+path,'PASS' if code==410 else 'FAIL',f'HTTP {code}, expected 410')
-            except Exception as e:record('Retired '+path,'FAIL',type(e).__name__)
+        for path in ([] if a.live_data_only else ['/api/upstox-login','/api/upstox-status','/api/upstox-callback']):
+            try:code,*_=fetch(base,path);record('Removed '+path,'PASS' if code==404 else 'FAIL',f'HTTP {code}, expected 404')
+            except Exception as e:record('Removed '+path,'FAIL',type(e).__name__)
     else:
         record('Live pages and data','UNVERIFIED','Run with --live https://celesys.ai')
     for feature in ['Actual chart canvases rendered','All 50 menu output correctness','Authorized-user server identity','Voice microphone and audible playback','Independent financial calculation reconciliation']:

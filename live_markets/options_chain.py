@@ -1,7 +1,8 @@
 """Bounded option snapshots.
 
-US: Yahoo option chain (delayed, crumb session). India: NSE public chain when
-the exchange accepts the request. Angel One stays on the existing private desk.
+US: Yahoo option chain (delayed, crumb session). India: the public route tries
+Angel One first when that session is configured (see live_markets.service), then
+this NSE parser. NSE often refuses datacenter IPs.
 """
 from __future__ import annotations
 
