@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.114"
+APP_VERSION = "v4.63.115"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.114: The decision stops itself at 12 seconds, and startup cache load plus preseed run off the request loop. "
+    "v4.63.115: NIFTY no longer parses the full Angel instrument book inside the web process. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -13607,9 +13607,9 @@ async def nse_options(symbol: str = "NIFTY"):
             return result
         
         oc_resp = None
-        for attempt in range(2):
+        for attempt in range(1):
             try:
-                oc_resp = s.get(oc_url, headers=hdr, timeout=10)
+                oc_resp = s.get(oc_url, headers=hdr, timeout=4)
                 if oc_resp.status_code == 200:
                     break
                 print(f"[NSE-OPTIONS] ⚠️ Attempt {attempt+1} got status {oc_resp.status_code} for {symbol}")

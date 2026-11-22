@@ -646,20 +646,13 @@ def _angel_token(symbol: str) -> Optional[str]:
     def load():
         try:
             import angel_options
-            master = angel_options._request(angel_options.MASTER_URL)
+            book = angel_options._load_nse_book(time.time())
         except Exception:
             return None
-        if not isinstance(master, list):
+        token = book.get(root, {}).get("token") if isinstance(book, dict) else None
+        if not token:
             return None
-        want = "Nifty 50" if root == "NIFTY" else "Nifty Bank" if root == "BANKNIFTY" else None
-        for row in master:
-            if not isinstance(row, dict):
-                continue
-            if want and row.get("exch_seg") == "NSE" and row.get("symbol") == want and row.get("token"):
-                return {"ok": True, "data": str(row["token"]), "source": "angel", "as_of": _iso(), "metric_sources": {}}
-            if row.get("exch_seg") == "NSE" and row.get("symbol") == root + "-EQ" and row.get("token"):
-                return {"ok": True, "data": str(row["token"]), "source": "angel", "as_of": _iso(), "metric_sources": {}}
-        return None
+        return {"ok": True, "data": str(token), "source": "angel", "as_of": _iso(), "metric_sources": {}}
 
     env = _remember(key, TTL_FUND, load)
     data = env.get("data") if env.get("ok") else None
