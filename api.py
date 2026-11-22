@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.116"
+APP_VERSION = "v4.63.117"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.116: After the 12 second mark the NIFTY chain stops instead of keeping the web loop busy. "
+    "v4.63.117: Decision and index-chain work run in one worker process. Each request gets a fresh 12 second clock. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -32891,7 +32891,7 @@ def _decision_research_guard(result):
 
 
 import contextvars
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 _in_decision_worker = contextvars.ContextVar("celesys_decision_worker", default=False)
 _decision_deadline = contextvars.ContextVar("celesys_decision_deadline", default=None)
@@ -32902,12 +32902,119 @@ _decision_cache_ts = {}
 _DECISION_BUDGET_S = 12
 
 
+def _proc_memory_mb(pid):
+    """Resident and proportional memory for one process, in megabytes."""
+    rss = pss = hwm = 0.0
+    try:
+        for line in open(f"/proc/{pid}/status"):
+            if line.startswith("VmRSS:"):
+                rss = int(line.split()[1]) / 1024
+            elif line.startswith("VmHWM:"):
+                hwm = int(line.split()[1]) / 1024
+        for line in open(f"/proc/{pid}/smaps_rollup"):
+            if line.startswith("Pss:"):
+                pss = int(line.split()[1]) / 1024
+                break
+    except Exception:
+        pass
+    return {"rss_mb": round(rss, 1), "pss_mb": round(pss, 1), "hwm_mb": round(hwm, 1)}
+
+
+def _decision_child_init():
+    """Once, in the forked worker. Rebuild the thread pool fork did not keep."""
+    os.environ["CELESYS_DISABLE_BACKGROUND"] = "1"
+    os.environ["CELESYS_DECISION_WORKER"] = "1"
+    global _thread_pool
+    _thread_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="decision-child")
+
+
+def _decision_child_ping():
+    return os.getpid()
+
+
+def decision_worker_ready():
+    return _decision_executor is not None
+
+
+def _reset_decision_pool():
+    global _decision_executor, _decision_worker_pid
+    pool = _decision_executor
+    _decision_executor = None
+    _decision_worker_pid = None
+    if pool is not None:
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+
+
 def _decision_pool():
-    """One thread in this process. A second interpreter re-imports the app and OOM-killed the 2GB instance."""
+    """One process for the life of the server. Fork copies the import; it does not re-import per request."""
     global _decision_executor
+    if os.environ.get("CELESYS_DECISION_WORKER") == "1":
+        raise RuntimeError("the decision worker cannot start another worker")
     if _decision_executor is None:
-        _decision_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="decision")
+        import multiprocessing
+        ctx = multiprocessing.get_context("fork")
+        _decision_executor = ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=_decision_child_init)
     return _decision_executor
+
+
+_decision_worker_pid = None
+_decision_memory = {}
+
+
+def warm_decision_worker():
+    """Fork the worker at startup, before the first request, and record its memory."""
+    global _decision_worker_pid, _decision_memory
+    if os.environ.get("CELESYS_DECISION_WORKER") == "1":
+        return None
+    pool = _decision_pool()
+    pid = pool.submit(_decision_child_ping).result(timeout=30)
+    _decision_worker_pid = pid
+    parent = _proc_memory_mb(os.getpid())
+    child = _proc_memory_mb(pid)
+    _decision_memory = {
+        "parent": parent,
+        "worker": child,
+        "total_pss_mb": round(parent["pss_mb"] + child["pss_mb"], 1),
+        "total_rss_mb": round(parent["rss_mb"] + child["rss_mb"], 1),
+    }
+    print(
+        f"decision worker ready pid={pid} total_pss={_decision_memory['total_pss_mb']}MB "
+        f"total_rss={_decision_memory['total_rss_mb']}MB "
+        f"parent_rss={parent['rss_mb']}MB worker_rss={child['rss_mb']}MB",
+        flush=True,
+    )
+    return _decision_memory
+
+
+def decision_memory():
+    """Current parent + worker memory. Shared pages are counted once in total_pss_mb."""
+    parent = _proc_memory_mb(os.getpid())
+    worker = _proc_memory_mb(_decision_worker_pid) if _decision_worker_pid else {"rss_mb": 0.0, "pss_mb": 0.0, "hwm_mb": 0.0}
+    return {
+        "parent": parent,
+        "worker": worker,
+        "total_pss_mb": round(parent["pss_mb"] + worker["pss_mb"], 1),
+        "total_rss_mb": round(parent["rss_mb"] + worker["rss_mb"], 1),
+        "worker_pid": _decision_worker_pid,
+    }
+
+
+def run_chain_in_worker(symbol, expiry=""):
+    """Index chain parse and quotes. The web thread waits at most 12 seconds."""
+    import angel_options
+    fut = _decision_pool().submit(angel_options.chain, symbol, expiry or "")
+    try:
+        return fut.result(timeout=_DECISION_BUDGET_S)
+    except Exception as exc:
+        return {
+            "symbol": symbol, "region": "IN", "currency": "INR", "source": "Angel One SmartAPI",
+            "rows": [], "expiry": None, "expiries": [], "status": "UNAVAILABLE",
+            "freshness": "UNVERIFIED_OR_STALE", "execution_enabled": False,
+            "message": f"Index chain stopped: {type(exc).__name__}",
+        }
 
 
 def _past_decision_budget():
@@ -32920,13 +33027,21 @@ def _past_decision_budget():
 
 
 def _decision_process_entry(symbol, region):
-    """Run beside the request. The route only waits for this."""
+    """One job in the long-lived worker. Its clock starts now, not at the previous request."""
     import time as _time
+    import web_background
     _in_decision_worker.set(True)
     _decision_deadline.set(_time.monotonic() + _DECISION_BUDGET_S)
+    web_background.start_deadline(_DECISION_BUDGET_S)
     try:
-        return asyncio.run(decision_engine(symbol, region))
+        result = asyncio.run(decision_engine(symbol, region))
+        if isinstance(result, dict):
+            return json.loads(json.dumps(result, default=str))
+        return result
+    except Exception as exc:
+        return {"success": False, "error": f"Decision error: {exc}", "symbol": symbol}
     finally:
+        web_background.clear_budget()
         _in_decision_worker.set(False)
 
 
@@ -32955,7 +33070,7 @@ def _decision_partial(symbol, region, snapshot=None):
 
 
 async def _run_decision_within_budget(symbol, region):
-    """Return within 12 seconds. The calculation keeps running and is cached when it finishes."""
+    """Return within 12 seconds. The worker process computes; this loop only waits."""
     from datetime import datetime
     key = _decision_cache_key(symbol, region)
     now = datetime.utcnow()
@@ -32964,9 +33079,10 @@ async def _run_decision_within_budget(symbol, region):
     if isinstance(cached, dict) and cached.get("success") and cached.get("data_status") != "partial" and stamped and (now - stamped).total_seconds() < 600:
         return cached
 
-    import web_background
-    web_background.start_deadline(_DECISION_BUDGET_S)
-    fut = asyncio.get_running_loop().run_in_executor(_decision_pool(), _decision_process_entry, symbol, region)
+    try:
+        fut = asyncio.get_running_loop().run_in_executor(_decision_pool(), _decision_process_entry, symbol, region)
+    except Exception as exc:
+        return {"success": False, "error": f"Decision worker unavailable: {exc}", "symbol": symbol}
     try:
         result = await asyncio.wait_for(asyncio.shield(fut), timeout=_DECISION_BUDGET_S)
     except asyncio.TimeoutError:
@@ -32986,6 +33102,9 @@ async def _run_decision_within_budget(symbol, region):
         fut.add_done_callback(_cache_when_ready)
         return _decision_partial(symbol, region, snap)
     except Exception as exc:
+        from concurrent.futures.process import BrokenProcessPool
+        if isinstance(exc, BrokenProcessPool):
+            _reset_decision_pool()
         return {"success": False, "error": f"Decision error: {exc}", "symbol": symbol}
     if isinstance(result, dict) and result.get("success") and result.get("data_status") != "partial":
         _decision_cache[key] = result
@@ -60491,7 +60610,7 @@ async def _v4_61_11_preseed_top_tickers():
 async def debug_loop_lag():
     """How late the web event loop is. A large max_ms means a scan is blocking it."""
     import web_background
-    return {"success": True, "version": APP_VERSION, **web_background.snapshot()}
+    return {"success": True, "version": APP_VERSION, "memory": decision_memory(), **web_background.snapshot()}
 
 
 @app.get("/api/version")

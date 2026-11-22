@@ -32,11 +32,18 @@ def yield_worker() -> None:
 
 
 def start_deadline(seconds: float) -> None:
-    """Shared clock every NIFTY thread can see. The route and the chain both stop here."""
+    """This job's clock. A new request replaces the previous one.
+
+    The old clock only moved earlier, so after the first 12 seconds every
+    later symbol looked late and came back partial.
+    """
     global _deadline
-    nxt = time.monotonic() + seconds
-    if _deadline is None or nxt < _deadline:
-        _deadline = nxt
+    _deadline = time.monotonic() + seconds
+
+
+def clear_budget() -> None:
+    global _deadline
+    _deadline = None
 
 
 def budget_hit() -> bool:

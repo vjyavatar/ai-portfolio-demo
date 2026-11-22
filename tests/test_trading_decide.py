@@ -85,12 +85,17 @@ class DecideTests(unittest.TestCase):
         self.assertIn('_run_decision_within_budget', segment)
         self.assertIn('_in_decision_worker', segment)
 
-    def test_decision_pool_stays_in_process(self):
+    def test_decision_pool_is_one_long_lived_process(self):
         pool=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_decision_pool')
         segment=ast.get_source_segment(Path('api.py').read_text(), pool)
-        self.assertIn('ThreadPoolExecutor', segment)
-        self.assertNotIn('ProcessPoolExecutor', segment)
+        self.assertIn('ProcessPoolExecutor', segment)
+        self.assertIn('max_workers=1', segment)
+        self.assertIn('fork', segment)
         self.assertNotIn('spawn', segment)
+        init=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_decision_child_init')
+        init_src=ast.get_source_segment(Path('api.py').read_text(), init)
+        self.assertIn('CELESYS_DECISION_WORKER', init_src)
+        self.assertIn('ThreadPoolExecutor', init_src)
         boot=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_auto_scan_boot')
         boot_src=ast.get_source_segment(Path('api.py').read_text(), boot)
         self.assertIn('CELESYS_BOOT_SCAN', boot_src)
@@ -136,3 +141,42 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(out['spot'],4209.1)
         self.assertEqual(out['signal'],'LEAN BUY')
         self.assertIn('decision', out['pending'])
+
+    def test_fast_result_stays_complete_after_an_expired_budget(self):
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        import web_background
+        source=Path('api.py').read_text()
+        tree=ast.parse(source)
+        keep={'_inflight_snapshots','_in_decision_worker','_chain_worker','_decision_executor','_decision_cache','_decision_cache_ts','_DECISION_BUDGET_S'}
+        fns={'_decision_cache_key','_load_decision_snapshot','_decision_partial','_run_decision_within_budget'}
+        nodes=[]
+        for node in tree.body:
+            if isinstance(node, ast.Import) and any(alias.name=='contextvars' for alias in node.names):
+                nodes.append(node)
+            elif isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in keep for target in node.targets):
+                nodes.append(node)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in fns:
+                nodes.append(node)
+        env={'asyncio':asyncio}
+        exec(compile(ast.Module(body=nodes,type_ignores=[]),'api.py','exec'),env)
+        web_background.start_deadline(-1)
+        self.assertTrue(web_background.budget_hit())
+        pool=ThreadPoolExecutor(max_workers=1)
+        env['_decision_pool']=lambda: pool
+        env['_decision_process_entry']=lambda symbol, region: {'success':True,'symbol':symbol,'spot':2376.2,'signal':'HOLD / WAIT'}
+        out=asyncio.run(env['_run_decision_within_budget']('TCS','IN'))
+        pool.shutdown(wait=True, cancel_futures=False)
+        web_background.clear_budget()
+        self.assertTrue(out['success'])
+        self.assertNotEqual(out.get('data_status'), 'partial')
+        self.assertEqual(out['spot'], 2376.2)
+
+    def test_a_new_deadline_replaces_an_expired_one(self):
+        import web_background
+        web_background.start_deadline(-1)
+        self.assertTrue(web_background.budget_hit())
+        web_background.start_deadline(30)
+        self.assertFalse(web_background.budget_hit())
+        web_background.clear_budget()
+        self.assertFalse(web_background.budget_hit())

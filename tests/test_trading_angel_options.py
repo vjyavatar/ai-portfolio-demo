@@ -109,6 +109,16 @@ class AngelOptionsTests(unittest.TestCase):
    a._request(a.MASTER_URL)
    headers=request.call_args.kwargs['headers']
    self.assertNotIn('Authorization',headers);self.assertNotIn('X-PrivateKey',headers)
+ def test_chain_runs_again_after_the_budget_is_replaced(self):
+  import web_background
+  web_background.start_deadline(-1)
+  web_background.start_deadline(30)
+  try:
+   with patch.dict(os.environ,{},clear=True):
+    result=a.chain('NIFTY')
+   self.assertNotIn('budget', result['message'])
+  finally:
+   web_background.clear_budget()
  def test_chain_stops_when_the_decision_budget_elapsed(self):
   import web_background
   web_background.start_deadline(-1)
