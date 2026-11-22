@@ -1376,11 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.120"
+APP_VERSION = "v4.63.121"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.120: The global ticker no longer downloads the Angel book on the web loop. Market pulse returns its last page at once. "
+    "v4.63.121: Two decision workers. A partial always carries a live spot from the web process, and NIFTY is warmed before the first request. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -32982,10 +32982,10 @@ def decision_worker_ready():
 
 
 def _reset_decision_pool():
-    global _decision_executor, _decision_worker_pid
+    global _decision_executor, _decision_worker_pids
     pool = _decision_executor
     _decision_executor = None
-    _decision_worker_pid = None
+    _decision_worker_pids = []
     if pool is not None:
         try:
             pool.shutdown(wait=False, cancel_futures=True)
@@ -32994,42 +32994,74 @@ def _reset_decision_pool():
 
 
 def _decision_pool():
-    """One process for the life of the server. Fork copies the import; it does not re-import per request."""
+    """Two processes for the life of the server. Fork copies the import; it does not re-import per request."""
     global _decision_executor
     if os.environ.get("CELESYS_DECISION_WORKER") == "1":
         raise RuntimeError("the decision worker cannot start another worker")
     if _decision_executor is None:
         import multiprocessing
         ctx = multiprocessing.get_context("fork")
-        _decision_executor = ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=_decision_child_init)
+        _decision_executor = ProcessPoolExecutor(max_workers=2, mp_context=ctx, initializer=_decision_child_init)
     return _decision_executor
 
 
-_decision_worker_pid = None
+_decision_worker_pids = []
 _decision_memory = {}
 
 
+def _warm_decision(symbol, region):
+    """Finish one symbol before the server accepts, so the first call is not a cold chain."""
+    import web_background
+    _in_decision_worker.set(True)
+    web_background.start_deadline(40)
+    try:
+        result = asyncio.run(decision_engine(symbol, region))
+        if isinstance(result, dict):
+            return json.loads(json.dumps(result, default=str))
+        return result
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "symbol": symbol}
+    finally:
+        web_background.clear_budget()
+        _in_decision_worker.set(False)
+
+
 def warm_decision_worker():
-    """Fork the worker at startup, before the first request, and record its memory."""
-    global _decision_worker_pid, _decision_memory
+    """Fork both decision workers, warm NIFTY in each, and record memory."""
+    global _decision_worker_pids, _decision_memory
     if os.environ.get("CELESYS_DECISION_WORKER") == "1":
         return None
     pool = _decision_pool()
-    pid = pool.submit(_decision_child_ping).result(timeout=30)
-    _decision_worker_pid = pid
+    pings = [pool.submit(_decision_child_ping) for _ in range(2)]
+    _decision_worker_pids = []
+    for ping in pings:
+        try:
+            pid = ping.result(timeout=30)
+        except Exception:
+            continue
+        if pid not in _decision_worker_pids:
+            _decision_worker_pids.append(pid)
     _background_pool().submit(_decision_child_ping).result(timeout=30)
+    warms = [pool.submit(_warm_decision, "NIFTY", "IN") for _ in range(2)]
+    for warm in warms:
+        try:
+            ready = warm.result(timeout=45)
+            print(f"  NIFTY warm {'ok' if isinstance(ready, dict) and ready.get('success') else 'partial'} spot={(ready or {}).get('spot') if isinstance(ready, dict) else None}", flush=True)
+        except Exception as exc:
+            print(f"  NIFTY warm skipped: {type(exc).__name__}", flush=True)
     parent = _proc_memory_mb(os.getpid())
-    child = _proc_memory_mb(pid)
+    workers = [_proc_memory_mb(pid) for pid in _decision_worker_pids]
+    worker_pss = sum(item["pss_mb"] for item in workers)
+    worker_rss = sum(item["rss_mb"] for item in workers)
     _decision_memory = {
         "parent": parent,
-        "worker": child,
-        "total_pss_mb": round(parent["pss_mb"] + child["pss_mb"], 1),
-        "total_rss_mb": round(parent["rss_mb"] + child["rss_mb"], 1),
+        "workers": workers,
+        "total_pss_mb": round(parent["pss_mb"] + worker_pss, 1),
+        "total_rss_mb": round(parent["rss_mb"] + worker_rss, 1),
     }
     print(
-        f"decision worker ready pid={pid} total_pss={_decision_memory['total_pss_mb']}MB "
-        f"total_rss={_decision_memory['total_rss_mb']}MB "
-        f"parent_rss={parent['rss_mb']}MB worker_rss={child['rss_mb']}MB",
+        f"decision workers ready pids={_decision_worker_pids} total_pss={_decision_memory['total_pss_mb']}MB "
+        f"total_rss={_decision_memory['total_rss_mb']}MB",
         flush=True,
     )
     return _decision_memory
@@ -33038,13 +33070,15 @@ def warm_decision_worker():
 def decision_memory():
     """Current parent + worker memory. Shared pages are counted once in total_pss_mb."""
     parent = _proc_memory_mb(os.getpid())
-    worker = _proc_memory_mb(_decision_worker_pid) if _decision_worker_pid else {"rss_mb": 0.0, "pss_mb": 0.0, "hwm_mb": 0.0}
+    workers = [_proc_memory_mb(pid) for pid in _decision_worker_pids]
+    worker_pss = sum(item["pss_mb"] for item in workers)
+    worker_rss = sum(item["rss_mb"] for item in workers)
     return {
         "parent": parent,
-        "worker": worker,
-        "total_pss_mb": round(parent["pss_mb"] + worker["pss_mb"], 1),
-        "total_rss_mb": round(parent["rss_mb"] + worker["rss_mb"], 1),
-        "worker_pid": _decision_worker_pid,
+        "workers": workers,
+        "total_pss_mb": round(parent["pss_mb"] + worker_pss, 1),
+        "total_rss_mb": round(parent["rss_mb"] + worker_rss, 1),
+        "worker_pids": list(_decision_worker_pids),
     }
 
 
@@ -33212,6 +33246,46 @@ def _decision_process_entry(symbol, region):
         _in_decision_worker.set(False)
 
 
+async def _parent_spot(symbol, region):
+    """A live spot from the web process. No instrument-book download, and at most 3 seconds."""
+    def _load():
+        try:
+            from market_data.layer import _finnhub, _num, _tv_row, classify
+            meta = classify(symbol, region)
+            row = _tv_row(symbol, meta["region"])
+            price = _num(row.get("price")) if isinstance(row, dict) else None
+            if price and price > 0:
+                return float(price)
+            if meta.get("finnhub"):
+                fh = _finnhub("/quote", {"symbol": meta["root"]}, timeout=2, retries=0)
+                price = _num((fh or {}).get("c")) if isinstance(fh, dict) else None
+                if price and price > 0:
+                    return float(price)
+        except Exception:
+            return None
+        return None
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_load), timeout=3)
+    except Exception:
+        return None
+
+
+def _with_parent_spot(payload, spot):
+    """Keep a calculated price. Fill a missing or zero price from the parent quote."""
+    if not isinstance(payload, dict) or not isinstance(spot, (int, float)) or spot <= 0:
+        return payload
+    try:
+        current = float(payload.get("spot") or payload.get("price") or 0)
+    except (TypeError, ValueError):
+        current = 0
+    if current > 0:
+        return payload
+    out = dict(payload)
+    out["spot"] = spot
+    out["price"] = spot
+    return out
+
+
 def _decision_partial(symbol, region, snapshot=None):
     """A successful answer from whatever sections finished before the budget."""
     base = snapshot if isinstance(snapshot, dict) else {}
@@ -33248,6 +33322,20 @@ async def _run_decision_within_budget(symbol, region):
 
     import time as _time
     started = _time.monotonic()
+    spot_task = asyncio.create_task(_parent_spot(symbol, region))
+
+    async def _finish(payload):
+        spot = None
+        try:
+            if spot_task.done():
+                spot = spot_task.result()
+            else:
+                left = max(0.0, min(3.0, _DECISION_BUDGET_S - (_time.monotonic() - started)))
+                spot = await asyncio.wait_for(asyncio.shield(spot_task), timeout=left)
+        except Exception:
+            spot = None
+        return _with_parent_spot(payload, spot)
+
     try:
         # Submitting can block if the worker is still forking. Do that off this loop,
         # and count it inside the same 12 seconds.
@@ -33258,12 +33346,12 @@ async def _run_decision_within_budget(symbol, region):
         plain = str(symbol or "").upper().strip().replace(".NS", "").replace(".BO", "")
         snap = _load_decision_snapshot(key) or _load_decision_snapshot(plain)
         print(f"  decision {symbol}: worker was not ready within {_DECISION_BUDGET_S:.0f}s", flush=True)
-        return _decision_partial(symbol, region, snap)
+        return await _finish(_decision_partial(symbol, region, snap))
     except Exception as exc:
-        return {"success": False, "error": f"Decision worker unavailable: {exc}", "symbol": symbol}
+        return await _finish({"success": False, "error": f"Decision worker unavailable: {exc}", "symbol": symbol})
     remaining = _DECISION_BUDGET_S - (_time.monotonic() - started)
     if remaining <= 0:
-        return _decision_partial(symbol, region, _load_decision_snapshot(key))
+        return await _finish(_decision_partial(symbol, region, _load_decision_snapshot(key)))
     fut = asyncio.wrap_future(cfut)
     try:
         result = await asyncio.wait_for(asyncio.shield(fut), timeout=remaining)
@@ -33282,16 +33370,16 @@ async def _run_decision_within_budget(symbol, region):
                 _decision_cache_ts[key] = datetime.utcnow()
 
         fut.add_done_callback(_cache_when_ready)
-        return _decision_partial(symbol, region, snap)
+        return await _finish(_decision_partial(symbol, region, snap))
     except Exception as exc:
         from concurrent.futures.process import BrokenProcessPool
         if isinstance(exc, BrokenProcessPool):
             _reset_decision_pool()
-        return {"success": False, "error": f"Decision error: {exc}", "symbol": symbol}
+        return await _finish({"success": False, "error": f"Decision error: {exc}", "symbol": symbol})
     if isinstance(result, dict) and result.get("success") and result.get("data_status") != "partial":
         _decision_cache[key] = result
         _decision_cache_ts[key] = now
-    return result
+    return await _finish(result)
 
 
 @app.get("/api/decision-engine")

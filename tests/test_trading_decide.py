@@ -89,7 +89,7 @@ class DecideTests(unittest.TestCase):
         pool=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_decision_pool')
         segment=ast.get_source_segment(Path('api.py').read_text(), pool)
         self.assertIn('ProcessPoolExecutor', segment)
-        self.assertIn('max_workers=1', segment)
+        self.assertIn('max_workers=2', segment)
         self.assertIn('fork', segment)
         self.assertNotIn('spawn', segment)
         background=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_background_pool')
@@ -117,7 +117,7 @@ class DecideTests(unittest.TestCase):
         source=Path('api.py').read_text()
         tree=ast.parse(source)
         keep={'_inflight_snapshots','_in_decision_worker','_chain_worker','_decision_executor','_decision_cache','_decision_cache_ts','_DECISION_BUDGET_S'}
-        fns={'_decision_cache_key','_load_decision_snapshot','_decision_partial','_run_decision_within_budget'}
+        fns={'_decision_cache_key','_load_decision_snapshot','_decision_partial','_with_parent_spot','_run_decision_within_budget'}
         nodes=[]
         for node in tree.body:
             if isinstance(node, ast.Import) and any(alias.name=='contextvars' for alias in node.names):
@@ -128,6 +128,9 @@ class DecideTests(unittest.TestCase):
                 nodes.append(node)
         env={'asyncio':asyncio}
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'api.py','exec'),env)
+        async def _no_spot(symbol, region):
+            return None
+        env['_parent_spot']=_no_spot
         env['_DECISION_BUDGET_S']=0.3
         pool=ThreadPoolExecutor(max_workers=1)
         env['_decision_pool']=lambda: pool
@@ -157,7 +160,7 @@ class DecideTests(unittest.TestCase):
         source=Path('api.py').read_text()
         tree=ast.parse(source)
         keep={'_inflight_snapshots','_in_decision_worker','_chain_worker','_decision_executor','_decision_cache','_decision_cache_ts','_DECISION_BUDGET_S'}
-        fns={'_decision_cache_key','_load_decision_snapshot','_decision_partial','_run_decision_within_budget'}
+        fns={'_decision_cache_key','_load_decision_snapshot','_decision_partial','_with_parent_spot','_run_decision_within_budget'}
         nodes=[]
         for node in tree.body:
             if isinstance(node, ast.Import) and any(alias.name=='contextvars' for alias in node.names):
@@ -168,6 +171,9 @@ class DecideTests(unittest.TestCase):
                 nodes.append(node)
         env={'asyncio':asyncio}
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'api.py','exec'),env)
+        async def _no_spot(symbol, region):
+            return None
+        env['_parent_spot']=_no_spot
         web_background.start_deadline(-1)
         self.assertTrue(web_background.budget_hit())
         pool=ThreadPoolExecutor(max_workers=1)
@@ -179,6 +185,34 @@ class DecideTests(unittest.TestCase):
         self.assertTrue(out['success'])
         self.assertNotEqual(out.get('data_status'), 'partial')
         self.assertEqual(out['spot'], 2376.2)
+
+    def test_a_zero_price_is_replaced_by_the_parent_quote(self):
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        source=Path('api.py').read_text()
+        tree=ast.parse(source)
+        keep={'_inflight_snapshots','_in_decision_worker','_chain_worker','_decision_executor','_decision_cache','_decision_cache_ts','_DECISION_BUDGET_S'}
+        fns={'_decision_cache_key','_load_decision_snapshot','_decision_partial','_with_parent_spot','_run_decision_within_budget'}
+        nodes=[]
+        for node in tree.body:
+            if isinstance(node, ast.Import) and any(alias.name=='contextvars' for alias in node.names):
+                nodes.append(node)
+            elif isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in keep for target in node.targets):
+                nodes.append(node)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in fns:
+                nodes.append(node)
+        env={'asyncio':asyncio}
+        exec(compile(ast.Module(body=nodes,type_ignores=[]),'api.py','exec'),env)
+        async def _quote(symbol, region):
+            return 342.56
+        env['_parent_spot']=_quote
+        pool=ThreadPoolExecutor(max_workers=1)
+        env['_decision_pool']=lambda: pool
+        env['_decision_process_entry']=lambda symbol, region: {'success':True,'symbol':symbol,'spot':0,'price':0,'data_status':'partial','pending':['decision']}
+        out=asyncio.run(env['_run_decision_within_budget']('AAPL','US'))
+        pool.shutdown(wait=True, cancel_futures=False)
+        self.assertEqual(out['spot'], 342.56)
+        self.assertEqual(out['price'], 342.56)
 
     def test_a_new_deadline_replaces_an_expired_one(self):
         import web_background
