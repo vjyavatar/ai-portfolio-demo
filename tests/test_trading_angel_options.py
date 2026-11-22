@@ -109,6 +109,16 @@ class AngelOptionsTests(unittest.TestCase):
    a._request(a.MASTER_URL)
    headers=request.call_args.kwargs['headers']
    self.assertNotIn('Authorization',headers);self.assertNotIn('X-PrivateKey',headers)
+ def test_chain_stops_when_the_decision_budget_elapsed(self):
+  import web_background
+  web_background.start_deadline(-1)
+  try:
+   with patch.dict(os.environ,ENV,clear=True),patch('angel_options._request') as request:
+    result=a.chain('NIFTY')
+   request.assert_not_called()
+   self.assertIn('budget', result['message'])
+  finally:
+   web_background._deadline=None
  def test_index_master_parse_keeps_only_index_rows(self):
   raw=json.dumps([
    dict(name='NIFTY',symbol='Nifty 50',token='1',instrumenttype='AMXIDX',exch_seg='NSE'),
