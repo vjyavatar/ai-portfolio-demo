@@ -1,7 +1,11 @@
-"""SmartAPI NFO snapshots. Login and HTTP go through angel_session.
-Sources: smartapi.angelone.in/docs (FULL market data), official angel-one/smartapi-python
-SDK headers; official SmartAPI instrument-master interpretation (NFO strikes in paise).
-Caller must enforce verified identity and licensed-display permission before chain().
+"""SmartAPI NFO snapshots and NSE LTP/OHLC quotes. Login and HTTP go through angel_session.
+Sources: smartapi.angelone.in/docs (market quote modes LTP, OHLC, FULL), official
+angel-one/smartapi-python SDK headers; official instrument master (NFO strikes in paise,
+NSE equity symbols ending in -EQ, index symbols such as "Nifty 50").
+
+chain() and nse_quotes() are read-only. They run when configured() is true.
+CELESYS_LICENSED_OPTIONS_IN is not read here. The private desk still requires that
+flag plus a verified session. The public live board does not.
 """
 from copy import deepcopy
 from datetime import datetime
@@ -9,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 import hashlib
 import ipaddress
+import logging
 import math
 import os
 import re
@@ -23,9 +28,13 @@ MASTER_URL='https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPI
 QUOTE_URL='https://apiconnect.angelone.in/rest/secure/angelbroking/market/v1/quote/'
 IST=ZoneInfo('Asia/Kolkata')
 INDEX_NAMES={'NIFTY':'Nifty 50','BANKNIFTY':'Nifty Bank'}
+# Exact master symbols. "Nifty 50" must not match "Nifty 500" or the leveraged twins.
+INDEX_QUOTES={'NIFTY':'Nifty 50','BANKNIFTY':'Nifty Bank','INDIAVIX':'India VIX'}
+_QUOTE_ALIASES={'NIFTY50':'NIFTY','^NSEI':'NIFTY','NIFTYBANK':'BANKNIFTY','^NSEBANK':'BANKNIFTY','^INDIAVIX':'INDIAVIX'}
 ENV=('CELESYS_ANGEL_API_KEY','CELESYS_ANGEL_JWT_TOKEN','CELESYS_ANGEL_CLIENT_LOCAL_IP',
      'CELESYS_ANGEL_CLIENT_PUBLIC_IP','CELESYS_ANGEL_MAC_ADDRESS')
 _lock=threading.Lock();_master=None;_master_at=0.;_cache={};_retry_at=0.;_quote_next=0.
+_nse_book=None;_nse_book_at=0.;_ltp_cache={}
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):
@@ -107,14 +116,15 @@ def instruments(master,symbol,today):
     if len(indices)!=1 or indices[0]['token'] in tokens:raise ValueError('Index instrument identity unavailable or ambiguous')
     return indices[0],options
 
-def _quotes(exchange,tokens):
+def _quotes(exchange,tokens,mode='FULL'):
     global _quote_next
+    if mode not in ('LTP','OHLC','FULL'):raise ValueError('Invalid quote mode')
     if exchange not in ('NSE','NFO') or not 1<=len(tokens)<=50 or len(set(tokens))!=len(tokens):raise ValueError('Invalid token batch')
     wait=_quote_next-time.monotonic()
     if wait>1.2:raise ValueError('Quote pacing busy')
     if wait>0:time.sleep(wait)
     _quote_next=time.monotonic()+1.1
-    payload=_request(QUOTE_URL,{'mode':'FULL','exchangeTokens':{exchange:tokens}})
+    payload=_request(QUOTE_URL,{'mode':mode,'exchangeTokens':{exchange:tokens}})
     if not isinstance(payload,dict) or payload.get('status') is not True or not isinstance(payload.get('data'),dict):raise ValueError('Provider response unavailable')
     fetched=payload['data'].get('fetched')
     if not isinstance(fetched,list) or len(fetched)>len(tokens):raise ValueError('Invalid quote batch')
@@ -226,3 +236,178 @@ def chain(symbol,expiry=''):
         _retry_at=time.time()+delay
         return dict(base,message='Provider request failed or response could not be verified. Check server configuration and retry after cooldown.',retry_after=_retry_at)
     finally:_lock.release()
+
+
+def _nse_key(raw):
+    text=str(raw or '').strip().upper().replace(' ','')
+    if text.startswith('NSE:'):text=text[4:]
+    if text.endswith('.NS'):text=text[:-3]
+    if text.startswith('BSE:') or text.endswith('.BO'):return None
+    text=_QUOTE_ALIASES.get(text,text)
+    if not re.fullmatch(r'[A-Z][A-Z0-9]{0,19}',text):return None
+    return text
+
+
+def _load_nse_book(now):
+    """NSE -EQ names and the three index symbols. The full master is not retained."""
+    global _nse_book,_nse_book_at
+    if _nse_book is not None and 0<=now-_nse_book_at<21600:return _nse_book
+    master=_request(MASTER_URL)
+    if not isinstance(master,list) or len(master)>400000:raise ValueError('Invalid instrument master')
+    book={}
+    for raw in master:
+        if not isinstance(raw,dict) or raw.get('exch_seg')!='NSE':continue
+        token=str(raw.get('token',''))
+        if not re.fullmatch(r'[1-9][0-9]{0,11}',token):continue
+        symbol=str(raw.get('symbol') or '')
+        kind=raw.get('instrumenttype') or ''
+        if kind=='AMXIDX':
+            for key,trading in INDEX_QUOTES.items():
+                if symbol==trading and key not in book:
+                    book[key]={'token':token,'symbol':symbol}
+            continue
+        if kind not in ('','EQ') or not symbol.endswith('-EQ'):continue
+        key=symbol[:-3].upper()
+        if key in INDEX_QUOTES or key in book or not re.fullmatch(r'[A-Z][A-Z0-9]{0,19}',key):continue
+        listed=str(raw.get('name') or '').upper()
+        if listed and listed!=key:continue
+        book[key]={'token':token,'symbol':symbol}
+    if 'NIFTY' not in book or 'BANKNIFTY' not in book:
+        raise ValueError('NSE index tokens unavailable')
+    _nse_book=book;_nse_book_at=now
+    return book
+
+
+def _ltp_row(key,inst,quote,fetched):
+    ltp=_num(quote.get('ltp'))
+    if not ltp:return None
+    # OHLC "close" is the previous close on the SmartAPI market quote.
+    prev=_num(quote.get('close'))
+    change=(ltp-prev) if prev else None
+    change_pct=(change/prev*100) if prev and change is not None else None
+    stamp=feed_time(quote.get('exchFeedTime'),fetched) if quote.get('exchFeedTime') else None
+    return dict(symbol=key,price=ltp,prev_close=prev,change=change,change_pct=change_pct,
+        open=_num(quote.get('open')),high=_num(quote.get('high')),low=_num(quote.get('low')),
+        volume=_num(quote.get('tradeVolume')),as_of_epoch=stamp,provider='angel_one',source='angel_one',
+        provider_mode='OHLC',quality='LIVE',delay_seconds=0,currency='INR',
+        trading_symbol=inst['symbol'],fetched_at=fetched)
+
+
+def nse_quotes(symbols):
+    """LTP plus OHLC for NSE names. Empty when Angel is not configured or the call fails.
+
+    Uses the market quote API (mode OHLC) through angel_session, so the static-IP
+    proxy applies. Results are reused for 60 seconds. TradingView remains the caller's fallback.
+    """
+    if not configured():return {}
+    keys=[]
+    for raw in symbols or []:
+        key=_nse_key(raw)
+        if key and key not in keys:keys.append(key)
+    if not keys:return {}
+    if not _lock.acquire(False):return {}
+    out={}
+    try:
+        now=time.time();missing=[]
+        for key in keys:
+            hit=_ltp_cache.get(key)
+            if hit and 0<=now-hit['fetched_at']<60:out[key]=dict(hit)
+            else:missing.append(key)
+        if not missing:return out
+        book=_load_nse_book(now)
+        wanted=[key for key in missing if key in book]
+        for offset in range(0,len(wanted),50):
+            chunk=wanted[offset:offset+50]
+            expected={book[key]['token']:book[key] for key in chunk}
+            fetched=_quotes('NSE',[book[key]['token'] for key in chunk],mode='OHLC')
+            by_token={}
+            for quote in fetched:
+                if not isinstance(quote,dict):continue
+                token=str(quote.get('symbolToken',''))
+                inst=expected.get(token)
+                if not inst or quote.get('exchange')!='NSE' or token in by_token:continue
+                if quote.get('tradingSymbol') and quote.get('tradingSymbol')!=inst['symbol']:continue
+                by_token[token]=quote
+            fetched_at=time.time()
+            for key in chunk:
+                quote=by_token.get(book[key]['token'])
+                if not quote:continue
+                row=_ltp_row(key,book[key],quote,fetched_at)
+                if not row:continue
+                if len(_ltp_cache)>=256:_ltp_cache.pop(next(iter(_ltp_cache)))
+                _ltp_cache[key]=row
+                out[key]=dict(row)
+        return out
+    except Exception as error:
+        detail=angel_session._failure_text(error)
+        logging.getLogger('angel_options').warning('Angel NSE quote failed: %s',detail)
+        return out
+    finally:_lock.release()
+
+
+def _legacy_num(value):
+    # The older options engine stores a missing quote as 0. Keep that contract here only.
+    if isinstance(value,bool) or not isinstance(value,(int,float)):return 0
+    return value if value>=0 else 0
+
+
+def index_snapshot(symbol):
+    """NIFTY/BANKNIFTY chain in the shape nse_options() returns. None if Angel cannot supply it."""
+    sym=str(symbol or '').upper().strip()
+    if sym not in INDEX_NAMES or not configured():return None
+    snap=chain(sym)
+    if not isinstance(snap,dict) or snap.get('status')!='SNAPSHOT' or not snap.get('rows'):return None
+    spot=_num(snap.get('spot'))
+    if not spot:return None
+    chain_rows=[]
+    for raw in snap.get('rows') or []:
+        if not isinstance(raw,dict):continue
+        call=raw.get('call') if isinstance(raw.get('call'),dict) else {}
+        put=raw.get('put') if isinstance(raw.get('put'),dict) else {}
+        strike=_num(raw.get('strike'))
+        if not strike:continue
+        chain_rows.append(dict(
+            strike=strike,
+            ce_oi=_legacy_num(call.get('oi')),pe_oi=_legacy_num(put.get('oi')),
+            ce_iv=_legacy_num(call.get('iv_pct')),pe_iv=_legacy_num(put.get('iv_pct')),
+            ce_ltp=_legacy_num(call.get('last')),pe_ltp=_legacy_num(put.get('last')),
+            ce_bid=_legacy_num(call.get('bid')),pe_bid=_legacy_num(put.get('bid')),
+            ce_ask=_legacy_num(call.get('ask')),pe_ask=_legacy_num(put.get('ask')),
+            ce_volume=_legacy_num(call.get('volume')),pe_volume=_legacy_num(put.get('volume')),
+            ce_chg=0,pe_chg=0,
+        ))
+    if not chain_rows:return None
+    total_ce=sum(row['ce_oi'] for row in chain_rows)
+    total_pe=sum(row['pe_oi'] for row in chain_rows)
+    pcr=(total_pe/total_ce) if total_ce else None
+    call_wall=max(chain_rows,key=lambda row:row['ce_oi'])
+    put_wall=max(chain_rows,key=lambda row:row['pe_oi'])
+    pain_strike=None;pain_value=None
+    for settle in chain_rows:
+        pain=0
+        for row in chain_rows:
+            pain+=max(settle['strike']-row['strike'],0)*row['ce_oi']
+            pain+=max(row['strike']-settle['strike'],0)*row['pe_oi']
+        if pain_value is None or pain<pain_value:
+            pain_value=pain;pain_strike=settle['strike']
+    atm=min(chain_rows,key=lambda row:abs(row['strike']-spot))
+    atm_iv=(atm['ce_iv']+atm['pe_iv'])/2 if atm['ce_iv'] or atm['pe_iv'] else 0
+    lot=0
+    for raw in snap.get('rows') or []:
+        leg=(raw.get('call') or raw.get('put') or {}) if isinstance(raw,dict) else {}
+        if isinstance(leg,dict) and leg.get('lot_size'):
+            lot=int(leg['lot_size']);break
+    return dict(
+        success=True,symbol=sym,spot=spot,lot_size=lot,expiry=snap.get('expiry'),
+        expiry_dates=[snap.get('expiry')] if snap.get('expiry') else [],
+        pcr=round(pcr,2) if pcr is not None else None,max_pain=pain_strike,
+        atm_strike=atm['strike'],atm_iv=round(atm_iv,1),
+        total_ce_oi=total_ce,total_pe_oi=total_pe,
+        ce_resistance=[{'strike':row['strike'],'oi':row['ce_oi'],'chg':0} for row in sorted(chain_rows,key=lambda row:row['ce_oi'],reverse=True)[:5]],
+        pe_support=[{'strike':row['strike'],'oi':row['pe_oi'],'chg':0} for row in sorted(chain_rows,key=lambda row:row['pe_oi'],reverse=True)[:5]],
+        chain_near_atm=chain_rows,
+        gex={'total':0,'regime':'POSITIVE' if (pcr or 0)>1 else 'NEGATIVE','implication':'','topStrikes':[],
+             'flipPoint':0,'callWall':call_wall['strike'],'putWall':put_wall['strike']},
+        ohlc_bars=[],source='angel_one',_chain_source='angel_one',
+        message=snap.get('message'),
+    )

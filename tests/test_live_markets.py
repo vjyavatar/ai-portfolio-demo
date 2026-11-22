@@ -1,7 +1,10 @@
 """Offline tests for the public market board. No network."""
+import inspect
 import json
+import time
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from live_markets import providers, service, sessions, symbols, verdict
 from live_markets.options_chain import parse_nse_chain, parse_yahoo_chain
@@ -175,13 +178,167 @@ class RouterTests(unittest.TestCase):
         page = markets_page()
         body = page.body.decode()
         self.assertEqual(page.status_code, 200)
-        self.assertIn("v4.63.104", body)
+        self.assertIn("v4.63.105", body)
         self.assertIn("Not financial advice", body)
         bad = live_quote("<script>")
         self.assertFalse(bad["success"])
         health = live_health()
         self.assertTrue(health["ok"])
         self.assertIn("tradingview", json.dumps(health))
+        self.assertIn("angel_login_ok", health)
+        self.assertIn("last_error", health)
+        from pathlib import Path
+        source = Path("api.py").read_text()
+        start = source.index("async def nse_options")
+        body = source[start:source.index("\nasync def ", start + 20)]
+        self.assertLess(body.index("_angel_index_chain"), body.index("nseindia.com"))
+        self.assertNotIn("/api/upstox-", source)
+
+
+OPEN = datetime(2026, 11, 18, 5, 0, tzinfo=timezone.utc)
+
+
+class AngelPublicFeedTests(unittest.TestCase):
+    def setUp(self):
+        service.CACHE._items.clear()
+
+    def tearDown(self):
+        service.CACHE._items.clear()
+        import angel_session
+        angel_session.reset_for_tests()
+
+    def _tv(self, symbol, price=10):
+        return {
+            "tv_symbol": symbol, "price": price, "change": 0.1, "change_pct": 1, "volume": 5,
+            "quality": "DELAYED", "delay_seconds": 900, "provider": "tradingview",
+            "currency": "INR" if symbol.startswith(("NSE:", "BSE:")) else "USD", "features": {"rsi": 50},
+        }
+
+    def test_public_route_does_not_require_sign_in_or_the_private_flag(self):
+        from live_markets.router import live_options
+        from private_options import chain
+        self.assertNotIn("require_user", inspect.getsource(live_options))
+        self.assertIn("require_user", inspect.getsource(chain))
+        for fn in (service.options, service._fetch_quote, service._angel_public_chain, service._angel_nse_quotes):
+            self.assertNotIn("CELESYS_LICENSED_OPTIONS_IN", inspect.getsource(fn))
+
+    def test_india_quote_uses_angel_and_labels_live(self):
+        angel = {"RELIANCE": {"price": 1377.5, "change": 7.5, "change_pct": 0.55, "quality": "LIVE", "provider_mode": "OHLC"}}
+        with patch.object(service, "_angel_configured", return_value=True), \
+             patch.object(service, "_angel_nse_quotes", return_value=angel), \
+             patch.object(service.providers, "fetch_tradingview", return_value={"NSE:RELIANCE": self._tv("NSE:RELIANCE", 1)}), \
+             patch.object(service.providers, "fetch_yahoo") as yahoo:
+            row = service.quote("RELIANCE.NS", now=OPEN)
+        self.assertEqual(row["price"], 1377.5)
+        self.assertEqual(row["quality"], "LIVE")
+        self.assertEqual(row["provider"], "angel_one")
+        self.assertEqual(row["source"], "angel_one")
+        self.assertEqual(row["session"], "OPEN")
+        self.assertEqual(row["features"]["rsi"], 50)
+        yahoo.assert_not_called()
+
+    def test_angel_miss_falls_back_to_tradingview(self):
+        with patch.object(service, "_angel_configured", return_value=True), \
+             patch.object(service, "_angel_nse_quotes", return_value={}), \
+             patch.object(service.providers, "fetch_tradingview", return_value={"NSE:RELIANCE": self._tv("NSE:RELIANCE", 1300)}), \
+             patch.object(service.providers, "fetch_yahoo", return_value=None):
+            row = service.quote("RELIANCE.NS", now=OPEN)
+        self.assertEqual(row["price"], 1300)
+        self.assertEqual(row["quality"], "DELAYED")
+        self.assertEqual(row["provider"], "tradingview")
+
+    def test_us_quote_does_not_ask_angel(self):
+        with patch.object(service, "_angel_nse_quotes") as angel, \
+             patch.object(service.providers, "fetch_tradingview", return_value={"NASDAQ:AAPL": self._tv("NASDAQ:AAPL", 100)}), \
+             patch.object(service.providers, "fetch_yahoo", return_value=None), \
+             patch.object(service.providers, "fetch_finnhub", return_value=None):
+            row = service.quote("AAPL", "US", now=datetime(2026, 11, 18, 15, 0, tzinfo=timezone.utc))
+        angel.assert_not_called()
+        self.assertEqual(row["provider"], "tradingview")
+        self.assertEqual(row["quality"], "DELAYED")
+
+    def test_overview_prefers_angel_for_nse_indices(self):
+        def tv(tickers):
+            return {ticker: self._tv(ticker, 10) for ticker in tickers}
+
+        angel = {"NIFTY": {"price": 24000, "change": 50, "change_pct": 0.2, "provider_mode": "OHLC"}}
+        with patch.object(service, "_now", return_value=OPEN), \
+             patch.object(service, "_angel_configured", return_value=True), \
+             patch.object(service, "_angel_nse_quotes", return_value=angel) as quotes, \
+             patch.object(service.providers, "fetch_tradingview", side_effect=tv), \
+             patch.object(service.providers, "fetch_yahoo") as yahoo:
+            board = service.overview()
+        nifty = next(row for row in board["indices"] if row["name"] == "NIFTY 50")
+        sensex = next(row for row in board["indices"] if row["name"] == "SENSEX")
+        self.assertEqual(nifty["price"], 24000)
+        self.assertEqual(nifty["quality"], "LIVE")
+        self.assertEqual(nifty["source"], "angel_one")
+        self.assertEqual(sensex["provider"], "tradingview")
+        self.assertEqual(sensex["quality"], "DELAYED")
+        yahoo.assert_not_called()
+        names = quotes.call_args.args[0]
+        self.assertIn("NIFTY", names)
+        self.assertIn("BANKNIFTY", names)
+        self.assertNotIn("SENSEX", names)
+
+    def test_india_options_use_angel_chain_without_the_license_flag(self):
+        snap = {
+            "status": "SNAPSHOT", "freshness": "RECENT_FEED_SNAPSHOT", "expiry": "2026-11-26",
+            "spot": 25800, "message": "bounded snapshot",
+            "rows": [{"strike": 25800, "call": {"bid": 10, "ask": 11, "last": 10.5, "oi": 100, "volume": 5, "contract": "C", "iv_pct": None},
+                      "put": {"bid": 9, "ask": 10, "oi": 80, "contract": "P"}}],
+        }
+        with patch.dict(__import__("os").environ, {}, clear=False), \
+             patch.object(service, "_angel_configured", return_value=True), \
+             patch("angel_options.chain", return_value=snap) as chain, \
+             patch.object(service.options_chain, "fetch_nse_chain") as nse, \
+             patch.object(service, "quote", return_value={"price": 25800, "quality": "LIVE", "session": "OPEN", "as_of": None}):
+            os_environ = __import__("os").environ
+            os_environ.pop("CELESYS_LICENSED_OPTIONS_IN", None)
+            first = service.options("NIFTY", "IN")
+            second = service.options("NIFTY", "IN")
+        chain.assert_called_once()
+        nse.assert_not_called()
+        self.assertEqual(first["source"], "angel_one")
+        self.assertEqual(first["chain"]["source"], "angel_one")
+        self.assertEqual(first["chain"]["provider"], "angel_one")
+        self.assertEqual(first["chain"]["quality"], "LIVE")
+        self.assertEqual(first["chain"]["rows"][0]["call"]["open_interest"], 100)
+        self.assertEqual(first["chain"]["rows"][0]["put"]["bid"], 9)
+        self.assertEqual(second["chain"]["expiry"], "2026-11-26")
+
+    def test_options_fall_back_to_nse_then_stale(self):
+        nse_chain = {"available": True, "provider": "nse", "quality": "DELAYED", "expiry": "26-Nov-2026", "spot": 100, "rows": [{"strike": 100}]}
+        with patch.object(service, "_angel_configured", return_value=True), \
+             patch("angel_options.chain", return_value={"status": "UNAVAILABLE", "rows": []}), \
+             patch.object(service.options_chain, "fetch_nse_chain", return_value=nse_chain), \
+             patch.object(service, "quote", return_value={"price": 100, "quality": "DELAYED", "session": "OPEN", "as_of": None}):
+            nse = service.options("NIFTY")
+        self.assertEqual(nse["chain"]["provider"], "nse")
+        self.assertNotEqual(nse["source"], "angel_one")
+        service.CACHE._items["opt:NIFTY:IN"] = (time.monotonic() - 500, nse)
+        with patch.object(service, "_angel_configured", return_value=True), \
+             patch("angel_options.chain", return_value={"status": "UNAVAILABLE", "rows": []}), \
+             patch.object(service.options_chain, "fetch_nse_chain", return_value=None), \
+             patch.object(service, "quote") as quote:
+            stale = service.options("NIFTY")
+        quote.assert_not_called()
+        self.assertEqual(stale["chain"]["quality"], "STALE")
+        self.assertTrue(stale["success"])
+        self.assertIn("last cached", stale["warning"])
+
+    def test_health_reports_login_probe(self):
+        import angel_session
+        with patch.dict(__import__("os").environ, {
+            "CELESYS_ANGEL_CLIENT_CODE": "A123",
+            "CELESYS_ANGEL_PIN": "998877",
+            "CELESYS_ANGEL_TOTP_SECRET": "JBSWY3DPEHPK3PXP",
+        }, clear=False), patch.object(angel_session, "jwt_token", side_effect=ValueError("bad pin 998877")):
+            angel_session.probe_login()
+        health = service.health()
+        self.assertFalse(health["angel_login_ok"])
+        self.assertIn("ValueError", health["last_error"])
+        self.assertNotIn("998877", health["last_error"])
 
 
 if __name__ == "__main__":

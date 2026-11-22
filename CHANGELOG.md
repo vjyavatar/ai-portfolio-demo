@@ -1,3 +1,12 @@
+## v4.63.105 (2026-11-22) — Angel One on the public India board; Upstox removed
+
+- `/api/live/options` for India uses the cached Angel chain when the session is configured, then the NSE public chain, then the last snapshot.
+- NSE quotes and indices use Angel LTP/OHLC first and TradingView when that call fails. The cash session still shows LIVE or LAST_CLOSE.
+- Startup runs a background Angel login check. `/api/live/health` reports `angel_login_ok` and `last_error` with secrets redacted.
+- `CELESYS_LICENSED_OPTIONS_IN` stays on the signed-in private desk only. It is not required for these public reads.
+- NIFTY and BANKNIFTY inside the older India options routes (`nse_options`, the option explorer) try Angel before NSE.
+- Upstox routes, the design-preview connect button, and the unused India token path are gone. Old env vars to delete from Render: `UPSTOX_API_KEY`, `UPSTOX_API_SECRET`, `UPSTOX_REDIRECT_URI`, `UPSTOX_TOKEN_FILE`.
+
 ## v4.63.104 (2026-11-22) — Angel SmartAPI static-IP proxy and daily login
 
 - `CELESYS_ANGEL_PROXY_URL` sends Angel login, quote, instrument-master and order-host calls through that proxy only.

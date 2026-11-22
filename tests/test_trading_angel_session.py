@@ -186,11 +186,68 @@ class AngelSessionTests(unittest.TestCase):
             return len(seen) > 1
 
         def fail(force=False):
-            raise ValueError("998877")
+            raise ValueError("pin 998877 rejected")
 
-        with patch.object(session, "login_configured", return_value=True), patch.object(session, "jwt_token", side_effect=fail):
+        with patch.dict(os.environ, API, clear=True), patch.object(session, "login_configured", return_value=True), \
+             patch.object(session, "jwt_token", side_effect=fail), self.assertLogs("angel_session", level="WARNING") as logs:
             session.run_refresh_loop(session._stop, sleep)
         self.assertEqual(len(seen), 2)
+        text = "\n".join(logs.output)
+        self.assertIn("Angel session refresh failed", text)
+        self.assertIn("ValueError", text)
+        self.assertNotIn("998877", text)
+        self.assertFalse(session.login_status()["ok"])
+        self.assertNotIn("998877", session.login_status()["error"])
+
+    def test_probe_logs_success_once_and_records_status(self):
+        with patch.dict(os.environ, API, clear=True), patch.object(session, "jwt_token", return_value="minted") as token, \
+             self.assertLogs("angel_session", level="INFO") as logs:
+            session.probe_login()
+        token.assert_called_once_with(force=True)
+        self.assertTrue(session.login_status()["ok"])
+        self.assertIsNone(session.login_status()["error"])
+        self.assertEqual(sum("Angel login ok" in line for line in logs.output), 1)
+
+    def test_probe_failure_redacts_secrets(self):
+        def fail(force=False):
+            raise ValueError("bad pin 998877 totp JBSWY3DPEHPK3PXP")
+
+        with patch.dict(os.environ, API, clear=True), patch.object(session, "jwt_token", side_effect=fail), \
+             self.assertLogs("angel_session", level="WARNING") as logs:
+            session.probe_login()
+        text = "\n".join(logs.output)
+        self.assertIn("Angel login failed", text)
+        self.assertIn("ValueError", text)
+        self.assertNotIn("998877", text)
+        self.assertNotIn("JBSWY3DPEHPK3PXP", text)
+        self.assertNotIn("998877", session.login_status()["error"])
+        self.assertFalse(session.login_status()["ok"])
+
+    def test_probe_skips_when_login_is_not_configured(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(session, "jwt_token") as token:
+            session.probe_login()
+        token.assert_not_called()
+        self.assertIsNone(session.login_status()["ok"])
+        self.assertIsNone(session.login_status()["error"])
+
+    def test_login_probe_thread_does_not_block_startup(self):
+        import threading
+        started = threading.Event()
+        release = threading.Event()
+
+        def hang(force=False):
+            started.set()
+            release.wait(2)
+            return "minted"
+
+        session._probe_thread = None
+        with patch.dict(os.environ, API, clear=True), patch.object(session, "jwt_token", side_effect=hang):
+            session.ensure_login_probe()
+            self.assertTrue(started.wait(1))
+        self.assertTrue(session._probe_thread.daemon)
+        release.set()
+        session._probe_thread.join(2)
+        self.assertTrue(session.login_status()["ok"])
 
     def test_session_transport_ignores_generic_proxy_env(self):
         session._session = None

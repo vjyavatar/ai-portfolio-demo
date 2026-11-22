@@ -12,6 +12,7 @@ ENV=dict(zip(a.ENV,['test-api','test-jwt','127.0.0.1','192.0.2.1','00:11:22:33:4
 class AngelOptionsTests(unittest.TestCase):
  def setUp(self):
   a._master=None;a._master_at=0;a._retry_at=0;a._quote_next=0;a._cache.clear()
+  a._nse_book=None;a._nse_book_at=0;a._ltp_cache.clear()
   self.now=datetime(2026,10,12,11,0,tzinfo=a.IST).timestamp()
   self.master=[dict(name='NIFTY',symbol='Nifty 50',token='99926000',instrumenttype='AMXIDX',exch_seg='NSE')]
   for token,side in [('101','CE'),('102','PE')]:
@@ -115,3 +116,65 @@ class AngelOptionsTests(unittest.TestCase):
    result=a.chain('NIFTY');self.assertEqual(result['status'],'SNAPSHOT')
    self.assertEqual(len(result['rows']),25);self.assertEqual(result['coverage']['available_paired_strikes'],41)
    self.assertEqual(result['rows'][0]['strike'],23800);self.assertEqual(result['rows'][-1]['strike'],26200)
+ def _book(self):
+  return [
+   dict(token='99926000',symbol='Nifty 50',name='NIFTY',instrumenttype='AMXIDX',exch_seg='NSE'),
+   dict(token='99926009',symbol='Nifty Bank',name='BANKNIFTY',instrumenttype='AMXIDX',exch_seg='NSE'),
+   dict(token='99926017',symbol='India VIX',name='INDIA VIX',instrumenttype='AMXIDX',exch_seg='NSE'),
+   dict(token='99926004',symbol='Nifty 500',name='NIFTY 500',instrumenttype='AMXIDX',exch_seg='NSE'),
+   dict(token='2885',symbol='RELIANCE-EQ',name='RELIANCE',instrumenttype='',exch_seg='NSE'),
+   dict(token='999',symbol='RELIANCE-BE',name='RELIANCE',instrumenttype='',exch_seg='NSE'),
+  ]
+ def test_nse_quotes_use_ohlc_and_cache_for_60s(self):
+  calls=[]
+  def respond(url,payload=None):
+   calls.append((url,payload))
+   if url==a.MASTER_URL:return self._book()
+   self.assertEqual(payload['mode'],'OHLC')
+   self.assertEqual(payload['exchangeTokens']['NSE'],['2885','99926000'])
+   return self.response([
+    dict(exchange='NSE',tradingSymbol='RELIANCE-EQ',symbolToken='2885',ltp=1377.5,open=1370,high=1380,low=1368,close=1370),
+    dict(exchange='NSE',tradingSymbol='Nifty 50',symbolToken='99926000',ltp=24000,close=23900),
+   ])
+  with patch.dict(os.environ,ENV,clear=True),patch('angel_options.time.time',return_value=1_000),patch('angel_options.time.sleep'),patch('angel_options._request',side_effect=respond):
+   first=a.nse_quotes(['RELIANCE.NS','NIFTY'])
+   second=a.nse_quotes(['reliance'])
+  self.assertAlmostEqual(first['RELIANCE']['price'],1377.5)
+  self.assertAlmostEqual(first['RELIANCE']['change'],7.5)
+  self.assertEqual(first['RELIANCE']['quality'],'LIVE')
+  self.assertEqual(first['RELIANCE']['source'],'angel_one')
+  self.assertEqual(first['NIFTY']['trading_symbol'],'Nifty 50')
+  self.assertEqual(second['RELIANCE']['price'],1377.5)
+  self.assertEqual(sum(url==a.QUOTE_URL for url,_ in calls),1)
+  self.assertNotIn('Nifty 500',{row['trading_symbol'] for row in first.values()})
+ def test_nse_quotes_without_configuration_do_not_call_the_network(self):
+  with patch.dict(os.environ,{},clear=True),patch('angel_options._request') as request:
+   self.assertEqual(a.nse_quotes(['RELIANCE','NIFTY']),{})
+   request.assert_not_called()
+ def test_nse_quote_failure_logs_class_without_the_jwt(self):
+  def boom(url,payload=None):
+   raise ValueError('rejected test-jwt')
+  with patch.dict(os.environ,ENV,clear=True),patch('angel_options._request',side_effect=boom),self.assertLogs('angel_options',level='WARNING') as logs:
+   self.assertEqual(a.nse_quotes(['NIFTY']),{})
+  text='\n'.join(logs.output)
+  self.assertIn('ValueError',text)
+  self.assertNotIn('test-jwt',text)
+ def test_bse_symbol_is_not_an_nse_quote(self):
+  with patch.dict(os.environ,ENV,clear=True),patch('angel_options._request') as request:
+   self.assertEqual(a.nse_quotes(['SENSEX.BO']),{})
+   request.assert_not_called()
+ def test_index_snapshot_maps_the_legacy_chain_shape(self):
+  snap=dict(status='SNAPSHOT',spot=25000,expiry='2026-11-26',message='bounded',rows=[
+    dict(strike=25000,call=dict(bid=10,ask=11,last=10.5,oi=100,volume=5,iv_pct=None,lot_size=65),
+         put=dict(bid=9,ask=10,last=9.5,oi=80,volume=4,iv_pct=None,lot_size=65))])
+  with patch.dict(os.environ,ENV,clear=True),patch('angel_options.chain',return_value=snap) as chain:
+   out=a.index_snapshot('NIFTY')
+   self.assertIsNone(a.index_snapshot('RELIANCE'))
+   self.assertIsNone(a.index_snapshot('SENSEX'))
+  chain.assert_called_once_with('NIFTY')
+  self.assertEqual(out['_chain_source'],'angel_one')
+  self.assertEqual(out['chain_near_atm'][0]['ce_oi'],100)
+  self.assertEqual(out['chain_near_atm'][0]['ce_volume'],5)
+  self.assertEqual(out['pcr'],0.8)
+  self.assertEqual(out['max_pain'],25000)
+  self.assertEqual(out['lot_size'],65)

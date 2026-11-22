@@ -31,7 +31,12 @@ async def fetch(supplier, symbol, region):
 
 
 def option_snapshot(data, symbol, region):
-    source = 'NSE via existing Celesys options engine' if region == 'IN' else 'Yahoo Finance via existing Celesys options engine'
+    if region == 'IN' and (data.get('_chain_source') == 'angel_one' or data.get('source') == 'angel_one'):
+        source = 'Angel One SmartAPI'
+    elif region == 'IN':
+        source = 'NSE via existing Celesys options engine'
+    else:
+        source = 'Yahoo Finance via existing Celesys options engine'
     expiry = data.get('expiry')
     rows = []
     valid_expiry = False

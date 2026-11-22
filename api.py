@@ -157,6 +157,18 @@ _http_pool.mount('https://', _pool_adapter)
 _http_pool.mount('http://', _pool_adapter)
 
 
+def _angel_index_chain(symbol):
+    """Read-only Angel snapshot for the legacy India chain shape. None when unavailable."""
+    try:
+        import angel_options
+        return angel_options.index_snapshot(symbol)
+    except Exception as exc:
+        logging.getLogger("api").warning(
+            "Angel index chain skipped: %s: %s", type(exc).__name__, str(exc)[:160]
+        )
+        return None
+
+
 # Broker-independent cache for synchronous legacy scoring consumers.
 def _india_cached_chain(symbol):
     cached = _nse_cache.get(symbol.upper())
@@ -1517,10 +1529,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.104"
-APP_BUILD_TIME = 1795340400
-APP_BUILD_DATE = "2026-11-22 09:40:00 UTC"
+APP_VERSION = "v4.63.105"
+APP_BUILD_TIME = 1795343400
+APP_BUILD_DATE = "2026-11-22 10:30:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
     "v4.63.103: Live US/India market board with cached quotes, session clocks and a research score. "
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
@@ -13721,6 +13734,21 @@ async def nse_options(symbol: str = "NIFTY"):
     if cache_key in _nse_cache and cache_key in _nse_cache_ts:
         if (now - _nse_cache_ts[cache_key]).total_seconds() < 120:
             return _nse_cache[cache_key]
+
+    # Angel One replaces the removed Upstox chain for NIFTY and BANKNIFTY.
+    # Other India names, and any Angel miss, keep the NSE request below.
+    if symbol in ("NIFTY", "BANKNIFTY"):
+        try:
+            angel = await asyncio.to_thread(_angel_index_chain, symbol)
+        except Exception as angel_err:
+            logging.getLogger("api").warning(
+                "Angel index chain skipped: %s: %s", type(angel_err).__name__, str(angel_err)[:160]
+            )
+            angel = None
+        if isinstance(angel, dict) and angel.get("success") and angel.get("chain_near_atm"):
+            _nse_cache[cache_key] = angel
+            _nse_cache_ts[cache_key] = now
+            return angel
     
     result = {"success": False, "symbol": symbol}
     
@@ -18963,16 +18991,6 @@ async def diag_endpoint(channel: str = "", limit: int = 100):
 
 # ═══════════════════════════════════════════════════════════════════════
 
-# ═══════════════════════════════════════════════════════════════════════
-
-@app.get("/api/upstox-login", status_code=410)
-@app.get("/api/upstox-callback", status_code=410)
-@app.get("/api/upstox-status", status_code=410)
-@app.post("/api/upstox-disconnect", status_code=410)
-async def retired_broker_connection():
-    return {"success": False, "connected": False, "message": "This broker integration has been removed. Use Options in the main workspace."}
-
-
 @app.get("/api/paper-journal")
 async def paper_journal(region: str = "IN", limit: int = 50):
     """Auto paper-trading journal + stats.
@@ -19720,7 +19738,7 @@ async def _fetch_index_chain_with_fallback(symbol):
                 "expiry": nse_resp.get("expiry"),
                 "ce_resistance": ce_res[:5],
                 "pe_support": pe_sup[:5],
-                "_chain_source": "nse-direct",
+                "_chain_source": nse_resp.get("_chain_source") or "nse-direct",
             }
         else:
             errors.append(f"nse-direct returned no chain (likely Render IP block)")
