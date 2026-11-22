@@ -62,6 +62,31 @@ def _period_interval(period: str, interval: str) -> tuple[str, str]:
     return period or "1y", "1d"
 
 
+def _roll_up(frame: pd.DataFrame, rule: str) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    indexed = frame.sort_index()
+    if getattr(indexed.index, "tz", None) is not None:
+        indexed = indexed.tz_localize(None)
+    aggregations = {
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Adj Close": "last",
+        "Volume": "sum",
+    }
+    try:
+        rolled = indexed.resample(rule).agg(aggregations).dropna(subset=["Close"])
+    except ValueError:
+        rolled = indexed.resample("M" if rule == "ME" else rule).agg(aggregations).dropna(subset=["Close"])
+    try:
+        rolled.attrs = dict(frame.attrs)
+    except Exception:
+        pass
+    return rolled
+
+
 class Ticker:
     def __init__(self, ticker, *args, **kwargs):
         self.ticker = str(ticker or "").strip()
@@ -72,12 +97,16 @@ class Ticker:
         return data if isinstance(data, dict) else {}
 
     def history(self, period="1mo", interval="1d", start=None, end=None, **kwargs) -> pd.DataFrame:
-        period_name, interval_name = _period_interval(str(period or "1y"), str(interval or "1d"))
+        requested = str(interval or "1d")
+        period_name, interval_name = _period_interval(str(period or "1y"), requested)
         region = kwargs.get("region")
-        budget = float(kwargs.get("budget") or (2.5 if interval_name in {"1m", "5m", "15m", "60m"} else 6.0))
-        env = layer.candles(self.ticker, period=period_name, interval=interval_name, region=region, budget=budget)
+        env = layer.candles(self.ticker, period=period_name, interval=interval_name, region=region)
         bars = env.get("data") if isinstance(env, dict) and isinstance(env.get("data"), list) else []
         frame = _frame(bars)
+        if requested in {"1wk", "1w"}:
+            frame = _roll_up(frame, "W-FRI")
+        elif requested in {"1mo", "1month"}:
+            frame = _roll_up(frame, "ME")
         try:
             frame.attrs["source"] = (env or {}).get("source")
             frame.attrs["as_of"] = (env or {}).get("as_of")
@@ -283,7 +312,33 @@ def history_frame(symbol: str, period: str = "1y", interval: str = "1d", region:
     return frame if isinstance(frame, pd.DataFrame) else _empty()
 
 
-def download(tickers="AAPL", period="1mo", interval="1d", group_by="column", threads=True, progress=False, start=None, end=None, **kwargs) -> pd.DataFrame:
+def history_many(symbol: str, specs, region: str | None = None) -> dict:
+    """Fetch several (period, interval) frames at once. They share the candle cache."""
+    wanted = [(str(period or "1y"), str(interval or "1d")) for period, interval in list(specs or [])]
+    if not wanted:
+        return {}
+
+    def one(spec):
+        period, interval = spec
+        return history_frame(symbol, period=period, interval=interval, region=region)
+
+    if len(wanted) == 1:
+        return {wanted[0]: one(wanted[0])}
+    from concurrent.futures import ThreadPoolExecutor
+    out = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(wanted))) as pool:
+        jobs = {pool.submit(one, spec): spec for spec in wanted}
+        for job, spec in jobs.items():
+            try:
+                out[spec] = job.result()
+            except Exception:
+                out[spec] = _empty()
+    return out
+
+
+def download(tickers="AAPL", period="1mo", interval="1d", group_by="column", threads=True, progress=False, start=None, end=None, region=None, **kwargs) -> pd.DataFrame:
+    if region is None:
+        region = kwargs.get("region")
     if isinstance(tickers, str):
         symbols = [part for part in tickers.replace(",", " ").split() if part]
     else:
@@ -294,7 +349,7 @@ def download(tickers="AAPL", period="1mo", interval="1d", group_by="column", thr
     if threads and len(symbols) > 1:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as pool:
-            jobs = {pool.submit(Ticker(symbol).history, period=period, interval=interval, start=start, end=end): symbol for symbol in symbols}
+            jobs = {pool.submit(Ticker(symbol).history, period=period, interval=interval, start=start, end=end, region=region): symbol for symbol in symbols}
             for job, symbol in list(jobs.items()):
                 try:
                     frames[symbol] = job.result()
@@ -302,7 +357,7 @@ def download(tickers="AAPL", period="1mo", interval="1d", group_by="column", thr
                     frames[symbol] = _empty()
     else:
         for symbol in symbols:
-            frames[symbol] = Ticker(symbol).history(period=period, interval=interval, start=start, end=end)
+            frames[symbol] = Ticker(symbol).history(period=period, interval=interval, start=start, end=end, region=region)
     usable = {symbol: frame for symbol, frame in frames.items() if isinstance(frame, pd.DataFrame) and not frame.empty}
     if not usable:
         return _empty()
