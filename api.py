@@ -1376,11 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.119"
+APP_VERSION = "v4.63.120"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.119: Market pulse and the global ticker no longer block the web loop. A failed price is not cached. "
+    "v4.63.120: The global ticker no longer downloads the Angel book on the web loop. Market pulse returns its last page at once. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
@@ -14122,10 +14122,16 @@ async def global_ticker():
         "BTC-USD": {"name": "BTC", "flag": "₿"},
     }
     
-    live_results = []
+    # index_rows() downloads the Angel instrument book with a 15 second socket
+    # timeout. Calling it here froze the web loop for those 15 seconds.
+    def _index_rows():
+        try:
+            from live_markets.service import index_rows
+            return index_rows() or []
+        except Exception:
+            return []
     try:
-        from live_markets.service import index_rows
-        live_results = index_rows() or []
+        live_results = await asyncio.wait_for(asyncio.to_thread(_index_rows), timeout=2) or []
     except Exception:
         live_results = []
 
@@ -14236,7 +14242,7 @@ async def global_ticker():
                     pass
             return found
         try:
-            results.extend(await asyncio.wait_for(asyncio.to_thread(_load_missing), timeout=8))
+            results.extend(await asyncio.wait_for(asyncio.to_thread(_load_missing), timeout=3))
         except Exception:
             pass
         for row in results:
@@ -20462,6 +20468,7 @@ async def batch_prices(request: Request):
 # Module-level cache for market-pulse
 _pulse_cache = None
 _pulse_cache_ts = None
+_pulse_inflight = False
 _ticker_cache = None
 _ticker_cache_ts = None
 
@@ -20519,27 +20526,23 @@ def _market_pulse_fetch():
 
 @app.get("/api/market-pulse")
 async def market_pulse():
-    """The page is built in the background process. This loop only waits."""
+    """Return the last page immediately. A refresh runs in the background process."""
     from datetime import datetime
-    global _pulse_cache, _pulse_cache_ts
+    global _pulse_cache, _pulse_cache_ts, _pulse_inflight
     now_ts = datetime.utcnow()
-    if _pulse_cache and _pulse_cache_ts and (now_ts - _pulse_cache_ts).total_seconds() < 1800:
-        return _pulse_cache
-    try:
-        result = await asyncio.wait_for(
-            asyncio.wrap_future(_background_pool().submit(_background_job, "pulse-page", None)),
-            timeout=12,
-        )
-    except Exception as exc:
-        print(f"market pulse page skipped: {type(exc).__name__}", flush=True)
-        result = None
-    if isinstance(result, dict) and result.get("success") is not False:
-        _pulse_cache = result
-        _pulse_cache_ts = now_ts
-        return result
+    age = (now_ts - _pulse_cache_ts).total_seconds() if _pulse_cache_ts else None
+    fresh = _pulse_cache and age is not None and age < 1800
+    if not fresh and not _pulse_inflight:
+        _pulse_inflight = True
+        if _spawn_background("pulse-page", None) is None:
+            _pulse_inflight = False
     if _pulse_cache:
-        return _pulse_cache
-    return {"success": False, "error": "Market pulse is still loading."}
+        if fresh:
+            return _pulse_cache
+        stale = dict(_pulse_cache)
+        stale["stale"] = True
+        return stale
+    return {"success": True, "stale": True, "events": [], "note": "Market pulse is refreshing."}
 
 
 async def _market_pulse_page():
@@ -33132,6 +33135,12 @@ def _spawn_background(kind, arg):
         elif kind in ("hydrate", "preseed"):
             # The file is the handoff. Do not unpickle the reports into this process.
             threading.Thread(target=_dd_disk_cache_load, name=f"dd-{kind}", daemon=True).start()
+        elif kind == "pulse-page":
+            global _pulse_inflight, _pulse_cache, _pulse_cache_ts
+            _pulse_inflight = False
+            if isinstance(payload, dict) and payload.get("success") is not False:
+                _pulse_cache = payload
+                _pulse_cache_ts = __import__("datetime").datetime.utcnow()
 
     fut.add_done_callback(_apply)
     return fut
