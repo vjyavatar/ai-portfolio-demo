@@ -1377,11 +1377,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.107"
+APP_VERSION = "v4.63.108"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
-    "v4.63.107: Decision, decision-360, master, IMDF, decide, swing, intraday, situational, cycle and trade-ticket share one candle chain. US is Finnhub, then Nasdaq, then TradingView. India is Angel getCandleData through the proxy, then Screener, TradingView and the Nifty graph. Each step fails fast in about 5 seconds and the reads run together. "
+    "v4.63.108: A cold decision-engine call tries every candle source, retries the chain once, and does not cache a miss. India skips a cold Angel instrument download so Screener can answer. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
     "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "

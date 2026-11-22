@@ -41,6 +41,7 @@ TIMEOUT = 8
 RETRIES = 1
 CANDLE_TIMEOUT = 5
 CANDLE_BUDGET = 8
+ANGEL_CANDLE_TIMEOUT = 2
 TTL_QUOTE = 20
 TTL_CANDLE = 5 * 60
 TTL_FUND = 18 * 3600
@@ -159,6 +160,9 @@ def _cache_stale(key: str) -> Optional[dict]:
 
 
 def _cache_put(key: str, value: dict) -> dict:
+    # A miss is not stored. The next call must try the providers again.
+    if not value.get("ok"):
+        return deepcopy(value)
     stored = deepcopy(value)
     stored.setdefault("as_of", _iso())
     stored["stale"] = False
@@ -183,42 +187,38 @@ def _unavailable() -> dict:
 
 
 def _remember(key: str, ttl: float, loader: Callable[[], Optional[dict]]) -> dict:
-    """One load per key. Concurrent callers wait for that load instead of starting another."""
-    fresh = _cache_get(key, ttl)
-    if fresh:
-        return fresh
-    with _lock:
-        event = _inflight.get(key)
-        owner = event is None
-        if owner:
-            event = threading.Event()
-            _inflight[key] = event
-    if not owner:
-        event.wait(20)
+    """One load per key. A failed load is not cached, and a waiter may try again."""
+    for _attempt in range(2):
         fresh = _cache_get(key, ttl)
-        if fresh:
+        if fresh and fresh.get("ok"):
             return fresh
-        stale = _cache_stale(key)
-        if stale and stale.get("ok"):
-            return stale
-        return _unavailable()
-    try:
-        loaded = None
-        try:
-            loaded = loader()
-        except Exception:
-            loaded = None
-        if loaded and loaded.get("ok"):
-            return _cache_put(key, loaded)
-        stale = _cache_stale(key)
-        if stale and stale.get("ok"):
-            return stale
-        return _unavailable()
-    finally:
-        event.set()
         with _lock:
-            if _inflight.get(key) is event:
-                _inflight.pop(key, None)
+            event = _inflight.get(key)
+            owner = event is None
+            if owner:
+                event = threading.Event()
+                _inflight[key] = event
+        if not owner:
+            event.wait(20)
+            continue
+        try:
+            loaded = None
+            try:
+                loaded = loader()
+            except Exception:
+                loaded = None
+            if loaded and loaded.get("ok"):
+                return _cache_put(key, loaded)
+            stale = _cache_stale(key)
+            if stale and stale.get("ok"):
+                return stale
+            return _unavailable()
+        finally:
+            event.set()
+            with _lock:
+                if _inflight.get(key) is event:
+                    _inflight.pop(key, None)
+    return _unavailable()
 
 
 def _request(url: str, *, data: Optional[bytes] = None, headers: Optional[dict] = None, timeout: int = TIMEOUT, retries: Optional[int] = None) -> tuple[int, bytes]:
@@ -928,7 +928,11 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
         key = angel_options._nse_key(symbol)
         if not key:
             return None
-        book = angel_options._load_nse_book(time.time())
+        # The instrument master is large. A cold download must not hold Screener or TradingView.
+        book = getattr(angel_options, "_nse_book", None)
+        if not isinstance(book, dict):
+            threading.Thread(target=lambda: angel_options._load_nse_book(time.time()), name="angel-book", daemon=True).start()
+            return None
         inst = book.get(key) if isinstance(book, dict) else None
         token = inst.get("token") if isinstance(inst, dict) else None
         if not token:
@@ -944,7 +948,7 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
             _ANGEL_CANDLE,
             payload={"exchange": "NSE", "symboltoken": str(token), "interval": interval_name, "fromdate": start, "todate": end},
             headers=headers,
-            timeout=CANDLE_TIMEOUT,
+            timeout=ANGEL_CANDLE_TIMEOUT,
         )
     except Exception:
         return None
@@ -959,18 +963,18 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
     return _bars_from_pairs(pairs, "angel")
 
 
-def _try_bars(loader) -> Optional[dict]:
-    """One candle provider cannot cancel the next."""
+def _try_bars(loader) -> tuple:
+    """One candle provider cannot cancel the next. Returns bars and a short failure reason."""
     try:
         bars = loader()
-    except Exception:
-        return None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"[:160]
     if isinstance(bars, dict) and bars.get("ok") and isinstance(bars.get("data"), list) and bars["data"]:
-        return bars
-    return None
+        return bars, None
+    return None, "no bars"
 
 
-def _within(loader, seconds: float):
+def _within(loader, seconds: float) -> tuple:
     """Give one candle step a hard stop. The socket keeps its own timeout too."""
     box: dict[str, Any] = {}
 
@@ -980,18 +984,21 @@ def _within(loader, seconds: float):
     thread = threading.Thread(target=run, name="candle-step", daemon=True)
     thread.start()
     thread.join(max(0.1, seconds))
-    return box.get("value")
+    if "value" not in box:
+        return None, "timeout"
+    return box["value"]
 
 
-def _first_bars(steps, budget: float = CANDLE_BUDGET):
-    started = time.perf_counter()
-    for step in steps:
-        left = budget - (time.perf_counter() - started)
-        if left < 0.25:
-            break
-        bars = _within(step, min(CANDLE_TIMEOUT, left))
+def _run_chain(symbol: str, steps: list) -> Optional[dict]:
+    """Try every source. A timeout or a fast failure cannot skip the rest."""
+    for name, step in steps:
+        started = time.perf_counter()
+        bars, reason = _within(step, CANDLE_TIMEOUT)
+        elapsed = time.perf_counter() - started
         if bars:
+            print(f"  candle {symbol}: {name} ok {len(bars['data'])} bars in {elapsed:.2f}s")
             return bars
+        print(f"  candle {symbol}: {name} failed in {elapsed:.2f}s ({reason})")
     return None
 
 
@@ -1188,17 +1195,17 @@ def _candle_steps(symbol: str, meta: dict, interval_name: str) -> list:
     fetch_interval = interval_name if intraday else "1d"
     if meta["region"] == "IN":
         # Angel first, and only Angel uses the proxy. Screener, TradingView and the Nifty graph follow.
-        steps = [lambda interval=fetch_interval: _angel_bars(symbol, interval)]
+        steps = [("angel", lambda interval=fetch_interval: _angel_bars(symbol, interval))]
         if not intraday:
-            steps.append(lambda: _screener_bars(symbol))
-        steps.append(lambda interval=fetch_interval: _tradingview_bars(symbol, interval))
+            steps.append(("screener", lambda: _screener_bars(symbol)))
+        steps.append(("tradingview", lambda interval=fetch_interval: _tradingview_bars(symbol, interval)))
         if not intraday:
-            steps.append(lambda: _moneycontrol_index_bars(symbol))
+            steps.append(("nifty", lambda: _moneycontrol_index_bars(symbol)))
         return steps
-    steps = [lambda interval=fetch_interval: _finnhub_bars(symbol, interval)]
+    steps = [("finnhub", lambda interval=fetch_interval: _finnhub_bars(symbol, interval))]
     if not intraday and meta["kind"] == "equity":
-        steps.append(lambda: _nasdaq_bars(symbol))
-    steps.append(lambda interval=fetch_interval: _tradingview_bars(symbol, interval))
+        steps.append(("nasdaq", lambda: _nasdaq_bars(symbol)))
+    steps.append(("tradingview", lambda interval=fetch_interval: _tradingview_bars(symbol, interval)))
     return steps
 
 
@@ -1210,7 +1217,13 @@ def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optio
     del period
 
     def load():
-        return _first_bars(_candle_steps(symbol, meta, interval_name))
+        steps = _candle_steps(symbol, meta, interval_name)
+        bars = _run_chain(meta["root"], steps)
+        if bars:
+            return bars
+        print(f"  candle {meta['root']}: no source returned bars, retrying the chain once")
+        time.sleep(0.25)
+        return _run_chain(meta["root"], steps)
 
     env = _remember(key, TTL_CANDLE, load)
     if env.get("ok") and isinstance(env.get("data"), list):
