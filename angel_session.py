@@ -150,8 +150,8 @@ def _http() -> requests.Session:
         return _session
 
 
-def request_json(url: str, *, payload=None, headers=None, timeout: int = 15):
-    """POST or GET an Angel URL. Non-Angel hosts are rejected before any socket opens."""
+def request_bytes(url: str, *, payload=None, headers=None, timeout: int = 15) -> bytes:
+    """POST or GET an Angel URL and return the body. Non-Angel hosts never open a socket."""
     if not is_angel_url(url):
         raise ValueError("Unsupported provider resource")
     proxies = proxy_mapping()
@@ -178,6 +178,12 @@ def request_json(url: str, *, payload=None, headers=None, timeout: int = 15):
     cap = 64_000_000 if "OpenAPIScripMaster" in url else 2_000_000
     if len(raw) > cap:
         raise ValueError("Oversized provider response")
+    return raw
+
+
+def request_json(url: str, *, payload=None, headers=None, timeout: int = 15):
+    """POST or GET an Angel URL. Non-Angel hosts are rejected before any socket opens."""
+    raw = request_bytes(url, payload=payload, headers=headers, timeout=timeout)
     try:
         return json.loads(raw.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError):

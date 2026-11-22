@@ -25,6 +25,21 @@ class AngelOptionsTests(unittest.TestCase):
  def call(self,master=None,quotes=None):
   with patch.dict(os.environ,ENV,clear=True),patch('angel_options.time.time',return_value=self.now),patch('angel_options.time.sleep'),patch('angel_options._request',side_effect=[self.master if master is None else master,self.response([self.index]),self.response(self.quotes if quotes is None else quotes)]) as request:
    result=a.chain('NIFTY');return result,request
+ def test_instrument_book_is_parsed_outside_this_process(self):
+  raw=json.dumps([
+   dict(symbol='Nifty 50',token='1',instrumenttype='AMXIDX',exch_seg='NSE',name='NIFTY'),
+   dict(symbol='Nifty Bank',token='2',instrumenttype='AMXIDX',exch_seg='NSE',name='BANKNIFTY'),
+   dict(symbol='RELIANCE-EQ',token='2885',instrumenttype='EQ',exch_seg='NSE',name='RELIANCE'),
+   dict(symbol='SKIP-EQ',token='4',instrumenttype='EQ',exch_seg='NSE',name='OTHER'),
+  ]).encode()
+  book=a._book_from_master_bytes(raw)
+  self.assertEqual(book['NIFTY']['token'],'1')
+  self.assertEqual(book['BANKNIFTY']['symbol'],'Nifty Bank')
+  self.assertEqual(book['RELIANCE'],{'token':'2885','symbol':'RELIANCE-EQ'})
+  self.assertNotIn('SKIP',book)
+  with self.assertRaises(ValueError):
+   a._book_from_master_bytes(b'{"not":"a list"}')
+
  def test_no_configuration_means_no_network(self):
   with patch.dict(os.environ,{},clear=True),patch('angel_options._request') as request:
    self.assertFalse(a.configured());self.assertEqual(a.chain('NIFTY')['status'],'UNAVAILABLE');request.assert_not_called()
