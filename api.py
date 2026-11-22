@@ -21588,9 +21588,9 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     _loop = asyncio.get_event_loop()
     _region = inst.get("region")
 
-    def _load_frames():
+    def _load_intraday():
         from market_data.yfcompat import history_many
-        return history_many(yf_sym, [("1y", "1d"), ("5d", "5m"), ("1mo", "15m"), ("1mo", "60m")], region=_region)
+        return history_many(yf_sym, [("5d", "5m"), ("1mo", "15m"), ("1mo", "60m")], region=_region)
 
     def _load_info():
         try:
@@ -21608,19 +21608,26 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         except Exception:
             return {}
 
-    # Daily and intraday candles share one chain and run together. Options and
-    # fundamentals run beside them and are used only if they are already back.
-    _frames_fut = _loop.run_in_executor(None, _load_frames)
+    # Daily history stays on Ticker.history for both regions. Intraday frames
+    # share that candle chain and run beside it.
+    _intra_fut = _loop.run_in_executor(None, _load_intraday)
     _info_fut = _loop.run_in_executor(None, _load_info)
     _opt_fut = None if is_us else _loop.run_in_executor(None, _load_options)
     import pandas as pd
+    from market_data.yfcompat import Ticker as _HistoryTicker
     try:
-        _frames = await _frames_fut
+        if not is_us:
+            daily = await _loop.run_in_executor(None, lambda _s=yf_sym: _HistoryTicker(_s).history(period="1y", interval="1d"))
+        else:
+            daily = await _loop.run_in_executor(None, lambda _s=yf_sym: _HistoryTicker(_s).history(period="1y", interval="1d"))
     except Exception as _candle_err:
         print(f"  candle layer failed for {yf_sym}: {type(_candle_err).__name__}")
+        daily = None
+    try:
+        _frames = await _intra_fut
+    except Exception:
         _frames = {}
     _frames = _frames or {}
-    daily = _frames.get(("1y", "1d"))
     intraday_5m = _frames.get(("5d", "5m"))
     intraday_15m = _frames.get(("1mo", "15m"))
     intraday_1h = _frames.get(("1mo", "60m"))
