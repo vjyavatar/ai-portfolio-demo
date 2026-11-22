@@ -89,14 +89,10 @@ class AngelOptionsTests(unittest.TestCase):
   with self.assertRaises(ValueError):a._request('https://attacker.invalid')
   with self.assertRaises(ValueError):a.NoRedirect().redirect_request(None,None,302,'',{},'https://attacker.invalid')
  def test_credential_headers_never_sent_to_master(self):
-  class Response:
-   def __enter__(self):return self
-   def __exit__(self,*args):pass
-   def read(self,size):return b'[]'
-  with patch.dict(os.environ,ENV,clear=True),patch('angel_options.build_opener') as builder:
-   builder.return_value.open.return_value=Response();a._request(a.MASTER_URL)
-   request=builder.return_value.open.call_args.args[0]
-   self.assertNotIn('Authorization',request.headers);self.assertNotIn('X-privatekey',request.headers)
+  with patch.dict(os.environ,ENV,clear=True),patch('angel_session.request_json',return_value=[]) as request:
+   a._request(a.MASTER_URL)
+   headers=request.call_args.kwargs['headers']
+   self.assertNotIn('Authorization',headers);self.assertNotIn('X-PrivateKey',headers)
  def test_master_cache_excludes_unrelated_markets(self):
   master=self.master+[dict(name='RELIANCE',token='1',instrumenttype='OPTSTK',exch_seg='NFO')]
   result,_=self.call(master=master);self.assertEqual(result['status'],'SNAPSHOT')

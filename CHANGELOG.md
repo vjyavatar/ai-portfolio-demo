@@ -1,3 +1,9 @@
+## v4.63.104 (2026-11-22) — Angel SmartAPI static-IP proxy and daily login
+
+- `CELESYS_ANGEL_PROXY_URL` sends Angel login, quote, instrument-master and order-host calls through that proxy only.
+- When the proxy is set and `CELESYS_ANGEL_CLIENT_PUBLIC_IP` is blank, the public IP header is 139.59.38.68.
+- Client code, PIN and TOTP secret log in via `loginByPassword`. The JWT stays in memory and refreshes after a 401 and around 08:30 IST. A static `CELESYS_ANGEL_JWT_TOKEN` is the fallback.
+
 ## v4.63.103 (2026-11-22) — Live US and India market board
 
 - Public `/markets` board and overview strip: quotes, percent change, volume, index set, session clocks (ET and IST), delayed vs last-close labels.

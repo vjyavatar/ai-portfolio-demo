@@ -1517,10 +1517,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.103"
-APP_BUILD_TIME = 1795337100
-APP_BUILD_DATE = "2026-11-22 08:45:00 UTC"
+APP_VERSION = "v4.63.104"
+APP_BUILD_TIME = 1795340400
+APP_BUILD_DATE = "2026-11-22 09:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.104: Angel SmartAPI calls can use a static-IP proxy and a daily in-memory login. "
     "v4.63.103: Live US/India market board with cached quotes, session clocks and a research score. "
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "

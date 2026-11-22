@@ -8,7 +8,7 @@ uvicorn start:app --host 0.0.0.0 --port $PORT
 
 Python version is pinned in `runtime.txt`. Dependencies are in `requirements.txt`. There is no `render.yaml` in this repo; keep the service start command above.
 
-## Live market board (v4.63.103)
+## Live market board (v4.63.104)
 
 `/markets` is a read-only board for NYSE/NASDAQ and NSE/BSE. The workspace overview also shows a short index strip. Existing research routes, analytics and AdSense tags are unchanged.
 
@@ -40,6 +40,12 @@ Angel One and Tradier stay on the existing private options desk. They are not tu
 ### Environment
 
 Copy `.env.example`. None of the keys are required for the public board. Set secrets in the Render dashboard, not in git.
+
+Angel One only, all optional:
+
+- `CELESYS_ANGEL_PROXY_URL` — forward proxy such as `http://user:pass@139.59.38.68:8888`. Login, quotes, the instrument master and Angel order routes use it. Other providers do not.
+- `CELESYS_ANGEL_CLIENT_PUBLIC_IP` — when the proxy is set and this is blank, the header sent is `139.59.38.68`.
+- `CELESYS_ANGEL_CLIENT_CODE`, `CELESYS_ANGEL_PIN`, `CELESYS_ANGEL_TOTP_SECRET` — together these log in through `loginByPassword`. The JWT stays in memory and refreshes after a 401 and around 08:30 IST. If any are blank, `CELESYS_ANGEL_JWT_TOKEN` is used.
 
 ### Local check
 
