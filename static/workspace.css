@@ -132,7 +132,7 @@ body.ws-unified{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 @media(max-width:760px){:root{--ws-sidebar:0px;--ws-top:64px}.ws-sidebar{width:268px;padding:25px 18px}.ws-sidebar-foot{margin-top:28px}.ws-main{padding:28px 18px 16px}.ws-topbar{padding:0 12px}.ws-topbar button{padding:8px 10px;font-size:11px;min-height:40px}.ws-topbar #ws-theme{display:none}.ws-top-actions{gap:5px}.ws-unified .ws-welcome{margin-bottom:26px;gap:0}.ws-unified .ws-welcome h1{font-size:34px;letter-spacing:-1px;line-height:1.18}.ws-intro{font-size:13px}.ws-eyebrow{font-size:9px;letter-spacing:1.2px}.ws-unified .ws-analysis-entry{padding:24px 20px}.ws-analysis-entry:before{left:20px;right:20px}.ws-section-heading h2,.ws-panel h2{font-size:22px}.ws-unified #ws-legacy-search .irow{flex-direction:column;gap:10px}.ws-unified #ws-legacy-search .irow>*{width:100%;min-width:0!important}.ws-unified #ws-legacy-search #btn{width:100%;height:50px!important}.ws-unified #ws-start-cards:not([hidden]){grid-template-columns:1fr;gap:14px;margin-top:24px}.ws-start-card{padding:22px!important}.ws-start-card h2{font-size:27px;margin:12px 0}.ws-start-card h2 br{display:none}.ws-start-card h2 br:after{content:' '}.ws-start-card p{min-height:0;max-width:290px}.ws-start-card strong{margin-top:18px;padding-top:14px}.ws-panel{padding:22px 18px}#tw-panel{padding:22px 18px!important}#tw-panel>details>summary strong{font-size:22px}.ws-command>summary{padding:20px!important}.ws-command-body{padding:20px}.tw-controls>button{flex:1;min-width:130px}.tw-controls label{flex-basis:100%;min-width:0}.ws-help-steps{grid-template-columns:1fr;gap:18px}.ws-unified .hero{padding-left:18px!important;padding-right:18px!important}.ws-legacy-context{align-items:flex-start;flex-direction:column}.ws-footnote{font-size:11px}}
 
 /* Keep the stock query usable alongside the original full-width controls. */
-.ws-unified #ws-legacy-search .irow{display:grid!important;grid-template-columns:minmax(180px,1fr) minmax(240px,1.3fr) auto!important}.ws-unified #ws-legacy-search .irow>*{min-width:0!important;width:100%!important}.ws-unified #ws-legacy-search .iwrap .ipt{width:100%!important}.ws-unified #ws-legacy-search #btn{width:auto!important}
+.ws-unified #ws-legacy-search .irow{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important}.ws-unified #ws-legacy-search .irow>*{min-width:0!important;width:100%!important}.ws-unified #ws-legacy-search .iwrap .ipt{width:100%!important}.ws-unified #ws-legacy-search #btn{width:auto!important}
 #ws-manual-plan{margin-top:10px;padding:10px 14px;border:1px solid var(--ws-line);background:var(--ws-card);color:var(--ws-ink);border-radius:6px;font-size:12px;min-height:42px;cursor:pointer}
 @media(max-width:760px){.ws-unified #ws-legacy-search .irow{grid-template-columns:minmax(0,1fr)!important}.ws-unified #ws-legacy-search #btn{width:100%!important}.ws-unified #ws-legacy-search #autocomplete{position:static!important;max-height:200px;margin-top:4px}}
 /* Async report cards must not become scroll anchors that hide the report header. */
@@ -164,7 +164,15 @@ body.ws-unified{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 @media(prefers-reduced-motion:reduce){.ws-unified .live-chip--refined{transition:none}}
 
 .home-board-title{margin:0;font-size:23px;letter-spacing:-.6px;font-weight:550;line-height:1.4;color:var(--ws-ink)}
-.ws-unified .live-chip--refined{padding:12px 14px;gap:4px;border-radius:12px}
+.ws-unified .live-chip--refined{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:12px 14px;gap:2px 10px;border-radius:14px;align-items:center}
+.live-spark{grid-row:1 / span 3;width:72px;height:28px}
+.ws-unified .ws-welcome{margin-bottom:14px!important}
+.ws-unified .ws-analysis-entry{padding:16px 18px!important}
+.ws-unified #ws-legacy-search .icard{max-width:none!important;margin:0!important}
+.ws-unified #ws-legacy-search #ticker{font-size:18px!important;height:56px!important}
+.home-account{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--ws-line,#e7e5e4)}
+.home-account label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:650;color:var(--ws-muted);min-width:0;flex:1;max-width:280px}
+.home-account .ipt{height:36px!important;min-height:36px!important;font-size:13px!important}
 .ws-unified .live-chip__name{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ws-muted)}
 .ws-unified .live-chip__price{font-size:18px}
 .ws-unified .ws-welcome{grid-template-columns:minmax(0,1fr)!important}
@@ -185,7 +193,7 @@ body.ws-unified{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 #ws-legacy-search{min-height:168px}
 .home-mover{border:0;border-radius:10px;padding:10px 12px;font-weight:700;cursor:pointer;background:var(--ws-soft,#f5f5f4);color:var(--ws-ink,#111)}
 .home-mover.up{color:#047857}.home-mover.dn{color:#b91c1c}
-.home-account{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0 18px;font-size:13px;color:var(--ws-muted,#64748b)}
+.home-account{font-size:13px;color:var(--ws-muted,#64748b)}
 .home-account button{border:1px solid var(--ws-line,#d6d3d1);background:var(--ws-card,#fff);color:var(--ws-ink,#111);border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
 #status.ok,#status.info,#status.err,#sbar{min-height:1.2em}
 @keyframes home-shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
