@@ -793,6 +793,72 @@ def _screener_statement_metrics(html: str) -> dict:
     return out
 
 
+def screener_decide_from_html(html: str) -> dict:
+    """Book value and the annual profit series from one Screener page.
+
+    The page is already cached for fundamentals. Decide uses this so a
+    one-year dip is not treated as the whole earnings history, and so a
+    missing gross margin on a bank is not a missing series.
+    """
+    if not html:
+        return {}
+    ratios = _screener_ratios(html)
+    sector_match = re.search(r'title="Broad Sector">([^<]+)', html)
+    sector = re.sub(r"\s+", " ", sector_match.group(1)).strip() if sector_match else ""
+    sales = profit = operating = None
+    for label, values in _screener_rows(html, "profit-loss"):
+        low = _row_label(label)
+        if sales is None and low in {"sales", "revenue"}:
+            sales = values
+        elif profit is None and "net profit" in low and "growth" not in low:
+            profit = values
+        elif operating is None and low.startswith("opm") and values and values[-1] > 0:
+            operating = values
+    sales = sales or []
+    profit = profit or []
+    count = max(len(sales), len(profit))
+    history = []
+    for index in range(count):
+        revenue = sales[index] if index < len(sales) else 0
+        earnings = profit[index] if index < len(profit) else 0
+        if operating and index < len(operating) and operating[index] > 0:
+            margin = operating[index]
+        elif revenue:
+            margin = round(earnings / revenue * 100, 1)
+        else:
+            margin = 0
+        if revenue or earnings:
+            history.append({
+                "year": str(index + 1),
+                "revenue": revenue,
+                "profit": earnings,
+                "margin": round(margin, 1) if margin else 0,
+                "fcf": 0,
+                "roe": 0,
+            })
+    cagr = None
+    if len(history) >= 4 and history[0]["profit"] > 0 and history[-1]["profit"] > 0:
+        years = len(history) - 1
+        cagr = round((history[-1]["profit"] / history[0]["profit"]) ** (1 / years) - 1, 4) * 100
+        cagr = round(cagr, 1)
+    latest_revenue = history[-1]["revenue"] if history else 0
+    latest_profit = history[-1]["profit"] if history else 0
+    net_margin = round(latest_profit / latest_revenue * 100, 1) if latest_revenue else None
+    return {
+        "bookValue": ratios.get("Book Value"),
+        "sector": sector,
+        "profitCagr": cagr,
+        "profitMargin": net_margin,
+        "dividendYield": ratios.get("Dividend Yield"),
+        "annualHistory": history,
+    }
+
+
+def screener_decide_pack(symbol: str) -> dict:
+    """Decide inputs from the Screener page cached by the fundamentals read."""
+    return screener_decide_from_html(_screener_page(symbol) or "")
+
+
 def _apply_screener_statements(info: dict, sources: dict, html: str, as_of: str) -> None:
     metrics = _screener_statement_metrics(html)
     if metrics.get("revenueGrowth") is not None:

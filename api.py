@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.132"
+APP_VERSION = "v4.63.133"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.133: India decisions use the Screener profit history already on the page. A missing sector multiple is scored neutral instead of zero. "
     "v4.63.132: India Investor Decide stays inside 8 seconds, and Analyze has a hard 10 second deadline for every symbol. "
     "v4.63.131: Analyze returns from the layer snapshot. The long model wait is no longer on the path. "
     "v4.63.130: Home sign-in is Unlock Decide and Trading. Analyze still runs without an email. "
@@ -35401,7 +35402,7 @@ _investor_budgeted = __import__("contextvars").ContextVar("investor_budgeted", d
 def _india_investor_snapshot(symbol: str) -> dict:
     """India Decide snapshot. Screener, Angel and bars run together."""
     from concurrent.futures import ThreadPoolExecutor
-    from market_data.layer import candles, investor_fundamentals, quote
+    from market_data.layer import candles, investor_fundamentals, quote, screener_decide_pack
 
     def safe(fn, *args):
         try:
@@ -35423,39 +35424,53 @@ def _india_investor_snapshot(symbol: str) -> dict:
         price = closes[-1]
     if price <= 0 and not fund.get("ok"):
         return {"success": False, "error": "India market data is temporarily unavailable"}
+    try:
+        pack = screener_decide_pack(symbol) or {}
+    except Exception:
+        pack = {}
+    book = pack.get("bookValue") or 0
 
     def avg(count):
         if len(closes) < count:
             return price
         return round(sum(closes[-count:]) / count, 2)
 
+    sma50 = avg(50)
+    sma200 = avg(200)
     return {
         "success": True,
         "symbol": symbol,
         "region": "IN",
         "price": price,
         "companyName": symbol,
-        "sector": "",
+        "sector": pack.get("sector") or "",
         "dataQuality": "HIGH" if fund.get("ok") else "LOW",
         "marketCap": fund.get("marketCap") or 0,
+        "annualHistory": pack.get("annualHistory") or [],
+        "profitCagr": pack.get("profitCagr") or 0,
         "fundamental": {
             "revGrowth": fund.get("revenueGrowth") or 0,
             "earnGrowth": fund.get("earningsGrowth") or 0,
             "grossMargin": fund.get("grossMargin") or 0,
             "operatingMargin": fund.get("operatingMargin") or 0,
-            "profitMargin": fund.get("profitMargin") or 0,
+            "profitMargin": fund.get("profitMargin") or pack.get("profitMargin") or 0,
             "roe": fund.get("roe") or 0,
             "roce": fund.get("roa") or 0,
             "debtEquity": fund.get("debt") or 0,
             "beta": 1.0,
-            "divYield": 0,
+            "divYield": pack.get("dividendYield") or 0,
+            "bookValue": book,
             "marketCap": fund.get("marketCap") or 0,
         },
-        "valuation": {"pe": fund.get("pe") or 0, "fwdPE": 0, "pb": 0, "peg": 0, "evEbitda": 0, "targetPrice": 0, "analystCount": 0},
+        "valuation": {
+            "pe": fund.get("pe") or 0, "fwdPE": 0,
+            "pb": round(price / book, 2) if price and book else 0,
+            "peg": 0, "evEbitda": 0, "targetPrice": 0, "analystCount": 0,
+        },
         "priceAction": {
             "rsi": 0,
-            "sma50": avg(50),
-            "sma200": avg(200),
+            "sma50": sma50,
+            "sma200": sma200,
             "high52": max(closes[-252:]) if closes else price,
             "low52": min(closes[-252:]) if closes else price,
             "volatility": 0,
@@ -35675,8 +35690,15 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
             print(f"  data layer returned {_filled} metrics for {symbol}")
 
         # ═══ DATA QUALITY SCORING (replaces lenient pe+price check) ═══
-        _key_metrics = [gm, roe, npm, pe, rev_g]
-        _missing_metrics = [n for n, v in zip(["GM","ROE","NPM","PE","RevG"], _key_metrics) if v == 0]
+        # Banks do not publish a gross margin. Count the operating margin instead
+        # so a missing gross margin is not a hole in the five-metric set.
+        if _is_financial and not gm:
+            _key_metrics = [om or npm, roe, npm, pe, rev_g]
+            _key_names = ["OM", "ROE", "NPM", "PE", "RevG"]
+        else:
+            _key_metrics = [gm, roe, npm, pe, rev_g]
+            _key_names = ["GM", "ROE", "NPM", "PE", "RevG"]
+        _missing_metrics = [n for n, v in zip(_key_names, _key_metrics) if v == 0]
         _non_zero_count = sum(1 for x in _key_metrics if x != 0)
         _data_quality_level = "HIGH" if _non_zero_count >= 4 else ("MEDIUM" if _non_zero_count >= 3 else ("LOW" if _non_zero_count >= 1 else "NONE"))
         print(f"  📊 Data quality: {_data_quality_level} ({_non_zero_count}/5) | GM={gm:.1f} ROE={roe:.1f} NPM={npm:.1f} PE={pe:.1f} RevG={rev_g:.1f} | Missing: {_missing_metrics} | Confident={_data_confident}")
@@ -35704,10 +35726,12 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
         
         # Track which metrics are actually available vs missing
         _metrics_available = {
-            "grossMargin": gm != 0, "roe": roe != 0, "profitMargin": npm != 0,
+            "roe": roe != 0, "profitMargin": npm != 0,
             "pe": pe != 0, "revenueGrowth": rev_g != 0,
             "debtEquity": de != 0, "currentRatio": cr != 0, "beta": beta != 1.0,
         }
+        if not (_is_financial and not gm):
+            _metrics_available["grossMargin"] = gm != 0
         _missing_metrics = [k for k, v in _metrics_available.items() if not v]
         
         # EPS + Book Value — try nse first, then derive from pe/pb
@@ -36102,7 +36126,9 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
         peer_data = []
         try:
             sector = si.get("sector", "")
-            if sector and pe > 0:
+            # India peers are a second Screener walk. The sector name is kept
+            # for the report, and the value factor uses the annual series below.
+            if sector and pe > 0 and region != "IN":
                 # Get 3-5 peers from same sector
                 sector_map = {
                     "Technology": ["TCS","INFY","WIPRO","HCLTECH"] if not is_us else ["AAPL","MSFT","GOOGL","META"],
@@ -36190,9 +36216,15 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
             iv_values.append(epv)
         
         # 5c. MULTI-STAGE DCF — high growth → fade → terminal
-        # When earn_g is missing (0), estimate from ROE (Buffett's sustainable growth method)
+        # A one-year dip is not the earnings history. Screener's annual profit
+        # series is already on the cached page; use that average for the DCF
+        # when the latest year is far below it.
+        _hist_growth = float(si.get("profitCagr") or 0)
         _dcf_earn_g = earn_g
-        if _dcf_earn_g == 0 and roe > 5 and f_score >= 4:
+        if _hist_growth > 5 and (earn_g <= 0 or earn_g < _hist_growth * 0.5):
+            _dcf_earn_g = _hist_growth
+            _debug_log.append(f"DCF: latest earn_g {earn_g:.1f}% is below the {_hist_growth:.1f}% profit history")
+        elif _dcf_earn_g == 0 and roe > 5 and f_score >= 4:
             _retention = max(0.5, 1 - (div_y / max(roe, 1)) if roe > 0 else 0.7)
             _dcf_earn_g = round(roe * _retention, 1)  # Sustainable growth = ROE × retention
             _debug_log.append(f"DCF: earn_g missing, estimated {_dcf_earn_g:.1f}% from ROE {roe:.1f}% × retention {_retention:.1f}")
@@ -36506,7 +36538,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
             pass
         
         # ═══ 9C. 10-YEAR FINANCIAL HISTORY — Annual revenue, profit, margins, ROE trend ═══
-        annual_history = []
+        annual_history = list(si.get("annualHistory") or []) if region == "IN" else []
         try:
             inst = _resolve_instrument(symbol, region)
             _yf_ticker = inst.get("yf", symbol)
@@ -36970,6 +37002,12 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
             if _total_models <= 2 and _non_zero_count < 4:
                 _value_pts = max(_value_pts, 8)  # At least neutral if we can't properly value
                 _debug_log.append(f"Value: boosted to {_value_pts}/20 — only {_total_models} models ran due to missing data")
+            # No sector multiple, no free-cash-flow history and no analyst target.
+            # Earnings-power then prices a zero-growth firm and the factor prints 0.
+            # That missing anchor is neutral, not a verdict that the shares are dear.
+            if sector_pe <= 0 and not (hist_trend.get("fcfPerShare") or 0) and not target_p and _value_pts < 8:
+                _value_pts = 8
+                _debug_log.append("Value: neutral 8/20 — sector PE, cash flow history and targets are absent")
             
             # ── 3. MOMENTUM (0-15) — Trend + Price vs SMA + Price action ──
             _pa_trend = pa.get("trend", "SIDEWAYS") if pa else "SIDEWAYS"
@@ -37000,11 +37038,13 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
             _margin_trend = buffett.get("marginTrend", "UNKNOWN")
             _cfo_ratio = buffett.get("cashConversion", 0)
             
-            # Earnings growth
-            if earn_g > 20: _earnings_pts += 5
-            elif earn_g > 10: _earnings_pts += 3
-            elif earn_g > 0: _earnings_pts += 1
-            elif earn_g < -10: _earnings_pts -= 2
+            # Earnings growth. A single down year against a long profit rise
+            # uses the history, same as the cash-flow model above.
+            _score_earn = _hist_growth if (_hist_growth > 5 and (earn_g <= 0 or earn_g < _hist_growth * 0.5)) else earn_g
+            if _score_earn > 20: _earnings_pts += 5
+            elif _score_earn > 10: _earnings_pts += 3
+            elif _score_earn > 0: _earnings_pts += 1
+            elif _score_earn < -10: _earnings_pts -= 2
             # Revenue growth
             if rev_g > 15: _earnings_pts += 3
             elif rev_g > 5: _earnings_pts += 2
