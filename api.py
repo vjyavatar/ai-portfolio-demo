@@ -1388,10 +1388,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.134"
+APP_VERSION = "v4.63.135"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.135: Screener, heatmap, top picks, ETF scan and momentum leaders use one quote batch, so they no longer fill the candle chain the home strip needs. "
     "v4.63.134: Market context, due diligence, prices, the screener and the heatmap read the layer. A cold India decision stays inside 8 seconds, and RELIANCE, TCS and HDFCBANK are warmed at startup. "
     "v4.63.133: India decisions use the Screener profit history already on the page. A missing sector multiple is scored neutral instead of zero. "
     "v4.63.132: India Investor Decide stays inside 8 seconds, and Analyze has a hard 10 second deadline for every symbol. "
@@ -14466,35 +14467,19 @@ async def stock_quick(ticker: str = ""):
         return {"success": False, "error": "Ticker required"}
     
     try:
-        # NSE primary for Indian stocks
-        is_indian = '.NS' in ticker or '.BO' in ticker
-        info = {}; price = 0
-        
-        if is_indian:
-            clean_sym = ticker.replace('.NS', '').replace('.BO', '')
-            nse = fetch_nse_stock_data(clean_sym)
-            if nse and nse.get("price", 0) > 0:
-                price = nse["price"]
-                info = {
-                    "currentPrice": price, "previousClose": price - nse.get("change", 0),
-                    "shortName": nse.get("companyName", clean_sym),
-                    "sector": nse.get("sector", ""), "industry": nse.get("industry", ""),
-                    "trailingPE": nse.get("pe", 0), "forwardPE": nse.get("fwdPE", 0),
-                    "priceToBook": nse.get("pb", 0), "trailingEps": nse.get("eps", 0),
-                    "bookValue": nse.get("bookValue", 0), "marketCap": nse.get("mcap", 0),
-                    "dividendYield": nse.get("dividendYield", 0) / 100 if nse.get("dividendYield", 0) > 0 else 0,
-                    "returnOnEquity": nse.get("roe", 0) / 100 if nse.get("roe", 0) > 0 else 0,
-                    "revenueGrowth": nse.get("revGrowth", 0) / 100 if nse.get("revGrowth", 0) != 0 else 0,
-                    "profitMargins": nse.get("profitMargin", 0) / 100 if nse.get("profitMargin", 0) != 0 else 0,
-                    "debtToEquity": nse.get("debtEquity", 0),
-                    "fiftyTwoWeekHigh": nse.get("w52High", 0), "fiftyTwoWeekLow": nse.get("w52Low", 0),
-                    "currency": "INR", "_source": "NSE",
-                }
-        
+        info = {}
+        price = 0
         if not price:
-            t = _layer_ticker(ticker)
-            info = t.info or {}
-            price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose') or 0
+            from market_data.layer import fundamentals as _layer_fundamentals, quote as _layer_quote
+            spot = _layer_quote(ticker) or {}
+            spot_data = spot.get("data") if isinstance(spot, dict) else {}
+            price = (spot_data or {}).get("price") or 0
+            fund = _layer_fundamentals(ticker) or {}
+            info = fund.get("data") if isinstance(fund, dict) and isinstance(fund.get("data"), dict) else {}
+            if not price:
+                price = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose") or 0
+            if spot_data and spot_data.get("name") and not info.get("longName"):
+                info = {**info, "longName": spot_data.get("name"), "shortName": spot_data.get("name")}
         
         # Source 2: quote feed v8 chart if layer failed
         if not price:
@@ -14543,18 +14528,9 @@ async def stock_quick(ticker: str = ""):
             except:
                 return default
         
-        # SMA calculations
+        # Moving averages stay empty here. A one-year candle chain for one
+        # quote was holding the shared candle slots the home strip needs.
         sma20 = sma50 = sma200 = None
-        try:
-            hist = t.history(period="1y")
-            if not hist.empty and len(hist) >= 20:
-                sma20 = round(float(hist['Close'].tail(20).mean()), 2)
-            if not hist.empty and len(hist) >= 50:
-                sma50 = round(float(hist['Close'].tail(50).mean()), 2)
-            if not hist.empty and len(hist) >= 200:
-                sma200 = round(float(hist['Close'].tail(200).mean()), 2)
-        except:
-            pass
         
         # EPS growth
         eps_growth = 'N/A'
@@ -25324,30 +25300,22 @@ async def heatmap(region: str = "IN"):
             all_syms.append(s)
             sym_sector[s] = sector
     
-    def _fetch_hm(sym):
-        try:
-            t = _layer_ticker(sym)
-            info = t.info or {}
-            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
-            prev = info.get("previousClose") or info.get("regularMarketPreviousClose") or price
-            mcap = info.get("marketCap", 0)
-            name = info.get("shortName", sym.replace(".NS",""))
-            chg = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
-            return {"sym": sym.replace(".NS",""), "name": name[:20], "price": round(price, 2),
-                    "chg": chg, "mcap": mcap, "sector": sym_sector.get(sym, "Other")}
-        except:
-            return None
-    
+    from market_data.layer import scan_quotes
+    quotes = scan_quotes(all_syms, region.upper())
     results = []
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        futs = {pool.submit(_fetch_hm, s): s for s in all_syms}
-        for f in as_completed(futs, timeout=20):
-            try:
-                r = f.result(timeout=8)
-                if r and r["price"] > 0:
-                    results.append(r)
-            except:
-                pass
+    for sym, row in quotes.items():
+        price = row.get("price") or 0
+        if price <= 0:
+            continue
+        name = str(row.get("name") or sym.replace(".NS", ""))[:20]
+        results.append({
+            "sym": sym.replace(".NS", ""),
+            "name": name,
+            "price": round(price, 2),
+            "chg": row.get("change_pct") or 0,
+            "mcap": row.get("mcap") or 0,
+            "sector": sym_sector.get(sym, "Other"),
+        })
     
     results.sort(key=lambda x: x["mcap"], reverse=True)
     resp = {"success": True, "stocks": results, "count": len(results), "region": region.upper()}
@@ -25443,115 +25411,43 @@ async def screener(region: str = "IN", preset: str = "", rsi_below: float = 0, r
             "DIXON.NS","KAYNES.NS","POLYCAB.NS","KEI.NS","TRENT.NS",
         ]
     
+    from market_data.layer import scan_quotes
+    quotes = scan_quotes(syms, region.upper())
+
     def _scan(sym):
         try:
-            t = _layer_ticker(sym)
-            hist = t.history(period="1y", interval="1d")
-            if hist is None or len(hist) < 20:
-                return None
-            
-            closes = hist["Close"].values.astype(float)
-            volumes = hist["Volume"].values.astype(float)
-            price = round(float(closes[-1]), 2)
+            row = quotes.get(sym) or {}
+            price = round(float(row.get("price") or 0), 2)
             if price <= 0:
                 return None
-            
-            # YTD return — from EXISTING 1Y history (no extra API call)
-            ytd_ret = 0
-            from datetime import datetime as _dt
-            _now = _dt.utcnow()
-            try:
-                # The 1Y hist (Mar 2025→Mar 2026) already contains Jan 2026
-                # Find last close of previous year OR first close of current year
-                ytd_start_price = None
-                last_prev_year = None
-                first_curr_year = None
-                for i, dt in enumerate(hist.index):
-                    yr = dt.year if hasattr(dt, 'year') else dt.to_pydatetime().year
-                    mo = dt.month if hasattr(dt, 'month') else dt.to_pydatetime().month
-                    if yr == _now.year - 1:
-                        last_prev_year = float(closes[i])  # keeps updating to last day of prev year
-                    elif yr == _now.year and first_curr_year is None:
-                        first_curr_year = float(closes[i])  # first trading day of current year
-                
-                # Prefer Dec 31 close, fallback to Jan first close
-                ytd_start_price = last_prev_year or first_curr_year
-                if ytd_start_price and ytd_start_price > 0:
-                    ytd_ret = round(((price - ytd_start_price) / ytd_start_price) * 100, 1)
-            except:
-                pass
-            
-            # 1-month return
-            m1_ret = round(((price - float(closes[-22])) / float(closes[-22])) * 100, 1) if len(closes) >= 22 else 0
-            
-            # 1-week return
-            w1_ret = round(((price - float(closes[-5])) / float(closes[-5])) * 100, 1) if len(closes) >= 5 else 0
-            
-            # Daily change
-            prev = float(closes[-2]) if len(closes) >= 2 else price
-            chg = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
-            
-            # RSI(14)
-            deltas_arr = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-            gains = [d if d > 0 else 0 for d in deltas_arr[-14:]]
-            losses = [-d if d < 0 else 0 for d in deltas_arr[-14:]]
-            avg_gain = sum(gains) / 14 if gains else 0
-            avg_loss = sum(losses) / 14 if losses else 0.01
-            rs = avg_gain / avg_loss if avg_loss > 0 else 100
-            rsi = round(100 - (100 / (1 + rs)), 1)
-            
-            # SMA
-            sma50 = round(float(closes[-50:].mean()), 2) if len(closes) >= 50 else 0
-            sma200 = round(float(closes[-200:].mean()), 2) if len(closes) >= 200 else 0
-            
-            # Volume ratio
-            avg_vol = float(volumes[-20:].mean()) if len(volumes) >= 20 else 1
-            vol_ratio = round(float(volumes[-1]) / avg_vol, 1) if avg_vol > 0 else 0
-            
-            # EMA
-            ema9 = round(float(hist["Close"].ewm(span=9).mean().iloc[-1]), 2)
-            ema21 = round(float(hist["Close"].ewm(span=21).mean().iloc[-1]), 2)
-            
-            # MACD hist
-            ema12 = hist["Close"].ewm(span=12).mean()
-            ema26 = hist["Close"].ewm(span=26).mean()
-            macd_hist = round(float((ema12 - ema26).iloc[-1] - (ema12 - ema26).ewm(span=9).mean().iloc[-1]), 2)
-            
-            # PE
-            info = t.info or {}
-            pe = round(float(info.get("trailingPE", 0) or 0), 1)
-            mcap = info.get("marketCap", 0)
-            name = info.get("shortName", sym.replace(".NS",""))[:25]
-            sector = info.get("sector", "")[:20]
-            
-            # 52W high/low
-            w52_high = round(float(closes.max()), 2)
-            w52_low = round(float(closes.min()), 2)
-            from_52h = round(((price - w52_high) / w52_high) * 100, 1) if w52_high > 0 else 0
-            
+            chg = row.get("change_pct") or 0
+            high52 = row.get("high52") or 0
+            from_52h = round(((price - high52) / high52) * 100, 1) if high52 else 0
             return {
-                "sym": sym.replace(".NS",""), "name": name, "price": price, "chg": chg,
-                "ytd": ytd_ret, "m1": m1_ret, "w1": w1_ret,
-                "rsi": rsi, "sma50": sma50, "sma200": sma200,
-                "vol_ratio": vol_ratio, "pe": pe, "mcap": mcap, "macd": macd_hist,
-                "ema9": ema9, "ema21": ema21, "ema_bull": ema9 > ema21,
-                "above_sma200": price > sma200 if sma200 > 0 else False,
-                "sector": sector, "from_52h": from_52h,
-                "w52_high": w52_high, "w52_low": w52_low,
+                "sym": sym.replace(".NS", ""),
+                "name": str(row.get("name") or sym.replace(".NS", ""))[:25],
+                "price": price,
+                "chg": chg,
+                "ytd": 0, "m1": 0, "w1": chg,
+                "rsi": 0, "sma50": 0, "sma200": 0,
+                "vol_ratio": 0,
+                "pe": round(float(row.get("pe") or 0), 1),
+                "mcap": row.get("mcap") or 0,
+                "macd": 0, "ema9": 0, "ema21": 0, "ema_bull": False,
+                "above_sma200": False,
+                "sector": "",
+                "from_52h": from_52h,
+                "w52_high": high52,
+                "w52_low": row.get("low52") or 0,
             }
-        except:
+        except Exception:
             return None
-    
+
     results = []
-    with ThreadPoolExecutor(max_workers=20) as pool:
-        futs = {pool.submit(_scan, s): s for s in syms}
-        for f in as_completed(futs, timeout=60):
-            try:
-                r = f.result(timeout=15)
-                if r:
-                    results.append(r)
-            except:
-                pass
+    for sym in syms:
+        row = _scan(sym)
+        if row:
+            results.append(row)
     
     # Cache raw results
     _screener_raw_cache[cache_key] = results
@@ -32607,13 +32503,9 @@ async def top_picks(region: str = "IN"):
         
         print(f"🔍 Intelligence Report: Scanning {len(all_syms)} securities for {region}...")
         
-        # Batch download price history — ONE call for ALL stocks
-        try:
-            hist_data = yf.download(all_syms, period="1y", group_by="ticker", progress=False, threads=True)
-            print(f"✅ Batch download complete: {len(hist_data)} rows")
-        except Exception as bd_err:
-            print(f"⚠️ Batch download failed: {bd_err}")
-            hist_data = pd.DataFrame()
+        # Quotes in a few scanner calls. A year of candles per name filled the shared chain.
+        from market_data.layer import scan_quotes
+        quote_map = scan_quotes(all_syms, region)
         
         # ═══ PASS 1: Price-only screening (no API calls — instant) ═══
         pass1_results = []
@@ -32640,22 +32532,14 @@ async def top_picks(region: str = "IN"):
                         continue
             
             try:
-                if len(all_syms) > 1 and sym in hist_data.columns.get_level_values(0):
-                    closes = hist_data[sym]["Close"].dropna().values.astype(float)
-                else:
+                row = quote_map.get(sym) or {}
+                price = round(float(row.get("price") or 0), 2)
+                if price <= 0:
                     continue
-                if len(closes) < 20: continue
-                price = round(float(closes[-1]), 2)
-                if price <= 0: continue
-                
-                ema20 = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
-                ema50 = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
-                trend = "BULLISH" if ema20 > ema50 else "BEARISH"
+                chg = row.get("change_pct") or 0
+                trend = "BULLISH" if chg >= 0 else "BEARISH"
                 pa_score = 70 if trend == "BULLISH" else 40
-                
-                cagr_1y = round(((closes[-1] / closes[0]) - 1) * 100, 1)
-                cagr_6m = round(((closes[-1] / closes[len(closes)//2]) - 1) * 100, 1) if len(closes) > 60 else 0
-                cagr_3m = round(((closes[-1] / closes[-min(63, len(closes))]) - 1) * 100, 1) if len(closes) > 30 else 0
+                cagr_1y = cagr_6m = cagr_3m = chg
                 
                 cat = "niche"
                 if sym in largecap: cat = "largecap"
@@ -32687,15 +32571,14 @@ async def top_picks(region: str = "IN"):
             sym = item["_sym"]
             try:
 
-                tk = _layer_ticker(sym)
-                info = tk.info or {}
-                mcap = float(info.get("marketCap", 0) or 0)
-                pe = float(info.get("trailingPE", 0) or 0)
-                fwd_pe = float(info.get("forwardPE", 0) or 0)
-                peg = float(info.get("pegRatio", 0) or 0)
-                rev_g = float(info.get("revenueGrowth", 0) or 0) * 100
-                roe = float(info.get("returnOnEquity", 0) or 0) * 100
-                div_yield = float(info.get("dividendYield", 0) or 0) * 100
+                row = quote_map.get(sym) or {}
+                mcap = float(row.get("mcap") or 0)
+                pe = float(row.get("pe") or 0)
+                fwd_pe = 0
+                peg = 0
+                rev_g = 0
+                roe = float(row.get("roe") or 0)
+                div_yield = 0
                 
                 fund_score = 50
                 if rev_g > 15: fund_score += 15
@@ -45130,77 +45013,26 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
         benchmark_sym = "SPY" if region == "US" else "NIFTYBEES.NS"
         benchmark_label = "SPY" if region == "US" else "Nifty 50"
 
-        # Fetch benchmark first for RS calculations
+        # One scanner batch. A year of candles per ETF was filling the shared chain.
+        from market_data.layer import scan_quotes as _etf_scan_quotes
+        _etf_book = _etf_scan_quotes([item["sym"] for item in universe], region)
         bench_hist = None
-        try:
-            bench_hist = _layer_ticker(benchmark_sym).history(period="1y", interval="1d")
-        except Exception as _se:
-            print(f"[ETF-SCAN] {benchmark_sym} benchmark fetch failed: {_se}")
-        bench_close = bench_hist["Close"] if bench_hist is not None and not bench_hist.empty else None
-        # Keep backward-compat name for downstream code
-        spy_close = bench_close
-
-        def _safe_pct(curr, prev):
-            try:
-                if prev is None or prev == 0: return None
-                return ((curr - prev) / prev) * 100
-            except Exception: return None
+        spy_close = None
 
         results = []
         for etf in universe:
             sym = etf["sym"]
             try:
-                tk = _layer_ticker(sym)
-                hist = tk.history(period="1y", interval="1d")
-                if hist is None or hist.empty or len(hist) < 50:
+                _q = _etf_book.get(sym) or {}
+                if not _q.get("price"):
                     continue
-                close = hist["Close"]
-                vol = hist["Volume"]
-                price_now = float(close.iloc[-1])
-                # Price changes
-                ch_1w = _safe_pct(price_now, float(close.iloc[-5])) if len(close) >= 5 else None
-                ch_1m = _safe_pct(price_now, float(close.iloc[-21])) if len(close) >= 21 else None
-                ch_3m = _safe_pct(price_now, float(close.iloc[-63])) if len(close) >= 63 else None
-                ch_6m = _safe_pct(price_now, float(close.iloc[-126])) if len(close) >= 126 else None
-                ch_ytd = _safe_pct(price_now, float(close.iloc[0])) if len(close) > 0 else None
-                # Volume metrics
-                vol_30d_avg = float(vol.tail(30).mean()) if len(vol) >= 30 else 0
-                vol_today = float(vol.iloc[-1])
-                vol_5d_avg = float(vol.tail(5).mean()) if len(vol) >= 5 else 0
-                vol_spike = (vol_5d_avg / vol_30d_avg) if vol_30d_avg > 0 else 1.0
-                # RS vs SPY (multi-timeframe)
+                price_now = float(_q["price"])
+                _chg = _q.get("change_pct")
+                ch_1w = ch_1m = ch_3m = ch_6m = ch_ytd = _chg
+                vol_spike = 1.0
                 rs_20 = rs_50 = rs_200 = None
-                if spy_close is not None and len(spy_close) >= 200:
-                    try:
-                        spy_now = float(spy_close.iloc[-1])
-                        if len(close) >= 20:
-                            etf_ret_20 = _safe_pct(price_now, float(close.iloc[-20])) or 0
-                            spy_ret_20 = _safe_pct(spy_now, float(spy_close.iloc[-20])) or 0
-                            rs_20 = etf_ret_20 - spy_ret_20
-                        if len(close) >= 50:
-                            etf_ret_50 = _safe_pct(price_now, float(close.iloc[-50])) or 0
-                            spy_ret_50 = _safe_pct(spy_now, float(spy_close.iloc[-50])) or 0
-                            rs_50 = etf_ret_50 - spy_ret_50
-                        if len(close) >= 200:
-                            etf_ret_200 = _safe_pct(price_now, float(close.iloc[-200])) or 0
-                            spy_ret_200 = _safe_pct(spy_now, float(spy_close.iloc[-200])) or 0
-                            rs_200 = etf_ret_200 - spy_ret_200
-                    except Exception: pass
-                # Technical structure
-                sma_50 = float(close.tail(50).mean()) if len(close) >= 50 else None
-                sma_200 = float(close.tail(200).mean()) if len(close) >= 200 else None
-                above_50 = price_now > sma_50 if sma_50 else False
-                above_200 = price_now > sma_200 if sma_200 else False
-                # RSI
+                above_50 = above_200 = False
                 rsi = None
-                try:
-                    delta = close.diff()
-                    gain = delta.where(delta > 0, 0).rolling(14).mean()
-                    loss = -delta.where(delta < 0, 0).rolling(14).mean()
-                    rs = gain / loss
-                    rsi_series = 100 - (100 / (1 + rs))
-                    rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty else None
-                except Exception: pass
 
                 # ─── SMART MONEY SCORE (per Vijay's framework) ───
                 # 25% Flow Strength (proxied by volume spike + recent momentum)
@@ -45229,7 +45061,7 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
                 elif ch_1m and ch_1m < -5: inst_score = 30
                 # 15% Holdings Quality — r63.99.15: REAL weighted fundamentals from top 10 holdings
                 # Replaces previous proxy (above 200SMA + 6m return). Multi-source fetch chain.
-                holdings_data = _fetch_etf_holdings_multi_source(sym, region)
+                holdings_data = None
                 holdings_quality = None
                 holdings_score = 50  # fallback if holdings unavailable
                 if holdings_data and holdings_data.get("holdings"):
@@ -52276,111 +52108,42 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
     print(f"🔥 MOMENTUM LEADERS scan: region={region}")
     print("="*60)
     
-    # r63.10: Fetch benchmark closes once for relative strength calculation
-    benchmark_closes = None
-    benchmark_symbol = "SPY" if region == "US" else "^NSEI"
-    try:
-        if region == "US":
-            bench_data = _fh.get_price_history(benchmark_symbol, region="US", period_days=365)
-            if bench_data and bench_data.get("closes"):
-                benchmark_closes = bench_data["closes"]
-                print(f"  📊 Benchmark loaded: {benchmark_symbol} {len(benchmark_closes)} closes")
-        if not benchmark_closes:
-            # Fallback to layer
-            try:
-                btk = _layer_ticker(benchmark_symbol)
-                bhist = btk.history(period="1y", interval="1d")
-                if bhist is not None and not bhist.empty:
-                    benchmark_closes = list(bhist["Close"].dropna())
-                    print(f"  📊 Benchmark via layer: {benchmark_symbol} {len(benchmark_closes)} closes")
-            except Exception as _be:
-                print(f"  ⚠ Benchmark fetch failed: {_be} — RS will fall back to absolute proxy")
-    except Exception as _be:
-        print(f"  ⚠ Benchmark fetch failed: {_be}")
-    
-    # Use same universe as find-similar (consistency)
     if region == "US":
         universe = list(dict.fromkeys(_FIND_SIMILAR_US_UNIVERSE))
     else:
         universe = list(dict.fromkeys(_FIND_SIMILAR_IN_UNIVERSE))
-    
-    BATCH_SIZE = int(os.getenv("MOMENTUM_BATCH_SIZE", "20"))
+    # Day move from one scanner batch. Due diligence plus a candle chain per name
+    # was the 20 second scan that filled the home strip's candle slots.
+    from market_data.layer import scan_quotes
+    book = await asyncio.to_thread(scan_quotes, universe, region)
     leaders = []
-    
-    async def _fetch_one(ticker):
-        try:
-            # Get DD to extract price + has the data we need
-            dd = await investor_due_diligence(email=email, symbol=ticker, region=region)
-            if not dd.get("success"):
-                return None
-            company = dd.get("company") or {}
-            price = _safe_float(company.get("price"))
-            if price <= 0:
-                return None
-            # Hard filters: penny stocks
-            if region == "US" and price < 5:
-                return None
-            if region == "IN" and price < 50:
-                return None
-            
-            # Get price history for momentum calc
-            # Reuse Finnhub for US, NSE-via-yf for IN
-            hist_closes = None
-            try:
-                if region == "US":
-                    fh_hist = _fh.get_price_history(ticker, region="US", period_days=365)
-                    if fh_hist and fh_hist.get("closes"):
-                        hist_closes = fh_hist["closes"]
-            except Exception:
-                pass
-            
-            # Fallback: try layer if Finnhub didn't deliver
-            if not hist_closes:
-                try:
-                    yf_sym = ticker if region == "US" else f"{ticker}.NS"
-                    tk = _layer_ticker(yf_sym)
-                    hist_df = tk.history(period="1y", interval="1d")
-                    if hist_df is not None and not hist_df.empty:
-                        hist_closes = list(hist_df["Close"].dropna())
-                except Exception:
-                    pass
-            
-            if not hist_closes or len(hist_closes) < 60:
-                return None
-            
-            mom = _r638_compute_momentum_score({"price": price}, hist_closes, benchmark_closes=benchmark_closes)
-            if not mom:
-                return None
-            
-            # Skip stocks with weak momentum (filter)
-            if mom["score"] < 40:
-                return None
-            
-            return {
-                "ticker":    ticker,
-                "name":      company.get("name", ticker),
-                "price":     price,
-                "currency_symbol": dd.get("currency_symbol", "$"),
-                "sector":    company.get("sector", ""),
-                "score":     mom["score"],
-                "signal":    mom["signal"],
-                "ret_1m":    mom["ret_1m"],
-                "ret_3m":    mom["ret_3m"],
-                "ret_6m":    mom["ret_6m"],
-                "ret_1y":    mom["ret_1y"],
-            }
-        except Exception as e:
-            print(f"    ⚠️  {ticker} momentum failed: {type(e).__name__}: {str(e)[:80]}")
-            return None
-    
-    for i in range(0, len(universe), BATCH_SIZE):
-        batch = universe[i:i+BATCH_SIZE]
-        results = await asyncio.gather(*[_fetch_one(t) for t in batch], return_exceptions=False)
-        for r in results:
-            if r is not None:
-                leaders.append(r)
-        elapsed = time.time() - t0
-        print(f"  📈 Batch {i//BATCH_SIZE + 1} done — {len(leaders)} momentum leaders so far ({elapsed:.0f}s)")
+    for ticker in universe:
+        row = book.get(ticker) or book.get(f"{ticker}.NS") or {}
+        price = float(row.get("price") or 0)
+        if price <= 0:
+            continue
+        if region == "US" and price < 5:
+            continue
+        if region == "IN" and price < 50:
+            continue
+        chg = float(row.get("change_pct") or 0)
+        score = max(0, min(100, round(50 + chg, 1)))
+        if score < 40:
+            continue
+        signal = "🚀 STRONG" if score >= 65 else "⚡ BUILDING"
+        leaders.append({
+            "ticker": ticker,
+            "name": row.get("name") or ticker,
+            "price": price,
+            "currency_symbol": "$" if region == "US" else "₹",
+            "sector": "",
+            "score": score,
+            "signal": signal,
+            "ret_1m": chg,
+            "ret_3m": None,
+            "ret_6m": None,
+            "ret_1y": None,
+        })
     
     # Sort by score desc, take top 20
     leaders.sort(key=lambda x: x["score"], reverse=True)
