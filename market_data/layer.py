@@ -115,7 +115,10 @@ _INDIA_INDEX = {
 _MC_INDEX = {"NIFTY": 9, "^NSEI": 9, "BANKNIFTY": 23, "^NSEBANK": 23}
 _US_INDEX = {
     "^GSPC": "SP:SPX", "SPX": "SP:SPX", "^IXIC": "NASDAQ:IXIC",
+    "NASDAQ": "NASDAQ:IXIC", "IXIC": "NASDAQ:IXIC",
     "^DJI": "DJ:DJI", "^VIX": "CBOE:VIX", "VIX": "CBOE:VIX",
+    "GOLD": "TVC:GOLD", "GC=F": "TVC:GOLD",
+    "USDINR": "FX_IDC:USDINR", "INR=X": "FX_IDC:USDINR",
 }
 
 _lock = threading.Lock()
@@ -1595,6 +1598,61 @@ def investor_fundamentals(symbol: str, region: Optional[str] = None) -> dict:
         "nim": nim,
         "quality": quality,
         "marketCap": _num(info.get("marketCap")),
+    }
+
+
+_HOME_STRIP = (
+    ("NIFTY", "NIFTY", "IN"),
+    ("SENSEX", "SENSEX", "IN"),
+    ("S&P 500", "SPX", "US"),
+    ("NASDAQ", "NASDAQ", "US"),
+    ("USD/INR", "USDINR", "US"),
+    ("GOLD", "GOLD", "US"),
+)
+
+
+def home_strip() -> dict:
+    """Six home tiles from quote(). One NIFTY, one source line."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FuturesTimeout
+    found: dict[str, dict] = {}
+    pool = ThreadPoolExecutor(max_workers=6)
+    try:
+        jobs = {pool.submit(quote, symbol, region): label for label, symbol, region in _HOME_STRIP}
+        try:
+            for job in as_completed(jobs, timeout=4):
+                label = jobs[job]
+                try:
+                    env = job.result()
+                except Exception:
+                    continue
+                data = env.get("data") if isinstance(env, dict) else None
+                if not isinstance(data, dict) or not data.get("price"):
+                    continue
+                found[label] = {
+                    "name": label,
+                    "symbol": label,
+                    "price": data.get("price"),
+                    "change_pct": data.get("change_pct"),
+                    "provider": env.get("source"),
+                    "source": env.get("source"),
+                    "as_of": env.get("as_of"),
+                }
+        except _FuturesTimeout:
+            pass
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    indices = [found[label] for label, _symbol, _region in _HOME_STRIP if label in found]
+    providers = []
+    for row in indices:
+        if row.get("provider") and row["provider"] not in providers:
+            providers.append(row["provider"])
+    nifty = found.get("NIFTY")
+    return {
+        "success": bool(indices),
+        "indices": indices,
+        "source": ", ".join(providers),
+        "as_of": (nifty or indices[0]).get("as_of") if indices else None,
+        "nifty": nifty.get("price") if nifty else None,
     }
 
 

@@ -2132,7 +2132,7 @@ window._lastAnalyzedSymbol=ticker;window._lastDESym=ticker;
 AC.classList.remove('show');if(!ticker){showStatus('Enter a ticker','error');return}
 if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showStatus('That email is not valid. Leave it blank to continue.','error');return}
 btn.disabled=true;btn.textContent='Analyzing...';btn.classList.add('ld');rpt.classList.remove('show');hideRL();
-showStatus('Analyzing '+ticker+'...','info');showLS();
+showStatus('Analyzing '+ticker+' · this usually takes about 30 seconds','info');showLS();
 fetchMarketPulse();
 const _startT=Date.now();
 const _timerIv=setInterval(()=>{const s=Math.floor((Date.now()-_startT)/1000);showStatus('Analyzing '+ticker+'... '+s+'s','info')},2000);

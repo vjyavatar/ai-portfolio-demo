@@ -12,7 +12,7 @@ function stopWatch(){$('tw-stop')?.click();}
 function setLiveBoard(show){const el=$('live-board');if(el)el.hidden=!show;}
 function clearSurface(){hideReport();setLiveBoard(false);for(const id of ['ws-account','ws-quick-controls','tw-panel','ws-start-cards','ws-options','ws-plan','ws-market-context','ws-directory','ws-results'])$(id).hidden=true;}
 function pageHeading(title,description,kicker){$('ws-welcome').hidden=false;$('ws-page-title').textContent=title;$('ws-page-description').textContent=description;$('ws-page-kicker').textContent=kicker||'CELESYS / YOUR WORKSPACE';}
-function navState(selected,home=false){document.querySelectorAll('#ws-sidebar .ws-nav').forEach(b=>{const active=home?b.hasAttribute('data-ws-home'):b.dataset.wsMode===selected;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});}
+function navState(selected,home=false){document.querySelectorAll('#ws-sidebar .ws-nav').forEach(b=>{const active=home?b.hasAttribute('data-ws-home'):b.dataset.wsMode===selected;b.classList.toggle('active',active);if(b.tagName==='BUTTON')b.setAttribute('aria-pressed',String(active));else b.removeAttribute('aria-pressed');});}
 function marketContext(active){if(typeof CustomEvent==='function')document.dispatchEvent(new CustomEvent('celesys:brief-context',{detail:{...context(),mode,active}}));}
 function hideReport(){marketContext(false);$('ws-embedded').hidden=true;$('ws-today-frame').removeAttribute('src');const r=$('report');if(r)r.style.setProperty('display','none','important');$('ws-legacy-context').hidden=true;}
 function invalidate(){marketContext(false);version++;controller?.abort();lastBrief=lastChain=null;$('ws-results').hidden=true;$('ws-chain-rows').replaceChildren();$('ws-chain-expiry').textContent='No snapshot loaded';$('ws-chain-meta').textContent='';$('ws-plan-result').textContent='';$('ws-copy-plan').disabled=true;planText='';for(const id of ['ws-entry','ws-sl','ws-target','ws-multiplier'])$(id).value='';$('ws-plan-contract').textContent='Choose inputs';$('ws-run').disabled=false;stopVoice();}
@@ -22,13 +22,13 @@ function examples(){const values=$('ws-region').value==='IN'?(mode==='stock'?['R
 function setMode(next,home=false,quick=false){
  if(mode==='trading'&&next!=='trading')stopWatch();
  invalidate();clearSurface();mode=next;
- $('ws-account').hidden=mode!=='stock';$('ws-start-cards').hidden=!home;
+ $('ws-account').hidden=mode!=='stock';if($('ws-start-cards'))$('ws-start-cards').hidden=true;
  $('ws-quick-controls').hidden=home;$('ws-quick-controls').open=quick||mode!=='stock';
  $('tw-panel').hidden=mode!=='trading';$('tw-disclosure').open=mode==='trading';
  $('ws-options').hidden=mode!=='options';$('ws-import').hidden=$('ws-region').value!=='IN';
  if(mode==='stock'&&!quick&&!home&&$('report')?.classList.contains('show')){$('report').style.setProperty('display','block','important');if(window._stockData&&window.switchTabGroup)window.switchTabGroup('overview');}
  const titles={stock:['Company research','Bring the charts, fundamentals and investment thesis into one view.'],trading:['Your trading workspace','Follow your watchlist. Review the evidence. Hear what has changed.'],options:['The options desk','Compare available contracts, check the source and prepare your position.']};
- pageHeading(home?'A clearer perspective. A more considered decision.':titles[mode][0],home?'Research a company. Follow a setup. Understand an option. Start with one question, and keep the evidence in view.':titles[mode][1],home?'CELESYS / YOUR INVESTMENT WORKSPACE':'CELESYS / '+mode.toUpperCase());
+ pageHeading(home?'Research one company.':titles[mode][0],home?'Type a ticker and analyze. Charts, fundamentals and the verdict stay in one report.':titles[mode][1],home?'CELESYS':'CELESYS / '+mode.toUpperCase());
  $('ws-breadcrumb').textContent='Workspace / '+(home?'Overview':titles[mode][0]);
  setLiveBoard(home);
  document.querySelectorAll('[data-ws-mode]').forEach(b=>{const active=b.dataset.wsMode===mode&&(!home||!!b.closest('#ws-quick-controls'));b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});navState(mode,home);

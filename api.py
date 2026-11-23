@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.125"
+APP_VERSION = "v4.63.126"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.126: Home is a market strip, one Analyze action, a one-line brief and movers. The research-standard list and the three duplicate cards are gone. "
     "v4.63.125: Investor Decide returns a verdict inside 12 seconds. A missing candle series no longer blocks the page when a quote or fundamentals exist, and AAPL is read as a US symbol. "
     "v4.63.124: Analyze works without the email box. The ticker field no longer keeps a stray suggestion, and an earnings lookup no longer crashes the report. "
     "v4.63.123: Decide, Trading and Home read one source list. US is TradingView, Nasdaq, Stooq, Finnhub and SEC. India is Angel, Screener and TradingView. "
@@ -16152,6 +16153,42 @@ def _run_movers_scan(region):
         _movers_busy_since.pop(reg, None)
 
 
+def _movers_preview(region):
+    """A few live quotes so Home is not an empty loading panel."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FuturesTimeout
+    from market_data.layer import quote
+    symbols = ["RELIANCE", "HDFCBANK", "TCS", "INFY", "ICICIBANK", "SBIN"] if region == "IN" else ["AAPL", "NVDA", "MSFT", "AMZN", "META", "GOOGL"]
+    rows = []
+    pool = ThreadPoolExecutor(max_workers=6)
+    try:
+        futures = {pool.submit(quote, symbol, region): symbol for symbol in symbols}
+        try:
+            for future in as_completed(futures, timeout=2.5):
+                symbol = futures[future]
+                try:
+                    env = future.result()
+                except Exception:
+                    continue
+                data = env.get("data") if isinstance(env, dict) else None
+                if not isinstance(data, dict) or not data.get("price"):
+                    continue
+                rows.append({"symbol": symbol, "last": data.get("price"), "change_pct": data.get("change_pct") or 0})
+        except _FuturesTimeout:
+            pass
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    rows.sort(key=lambda item: item.get("change_pct") or 0, reverse=True)
+    gainers = rows[:2]
+    losers = [item for item in reversed(rows) if item not in gainers][:2]
+    return {"gainers": gainers, "losers": losers}
+
+
+@app.get("/api/home-strip")
+def home_market_strip():
+    from market_data.layer import home_strip
+    return home_strip()
+
+
 @app.get("/api/movers")
 async def movers(region: str = "IN"):
     """Top 5 gainers + losers per region across 1D / 1W / 1M / 3M / 1Y.
@@ -16194,12 +16231,13 @@ async def movers(region: str = "IN"):
         resp["_scanning"] = (reg in _movers_busy)
         return resp
 
-    # Cold cache — kick off first scan, return loading state.
+    # Cold cache — kick off first scan, and return a short quote preview so the page is not blank.
     if reg not in _movers_busy:
         _movers_busy.add(reg)
         _movers_busy_since[reg] = time.time()
         _spawn_background("movers", reg)
     return {"success": True, "region": reg, "windows": {}, "ts": 0,
+            "preview": _movers_preview(reg),
             "_loading": True, "_scan_complete": False, "_scanning": True}
 
 

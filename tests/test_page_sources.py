@@ -22,6 +22,8 @@ PHASE1 = {
     "movers",
     "_movers_compute_one_ticker",
     "_run_movers_scan",
+    "home_market_strip",
+    "_movers_preview",
 }
 
 FORBIDDEN = ("import yfinance", "yf.ticker", "finviz", "cnbc", "yahoo", "yfinance")
@@ -120,6 +122,26 @@ class PageSourceTests(unittest.TestCase):
         for name in ("static/app.js", "static/app.min.js"):
             text = (ROOT / name).read_text()
             self.assertNotIn("Yahoo Finance sometimes fails to return metrics", text)
+
+    def test_home_strip_asks_the_layer_for_six_tiles(self):
+        def fake(symbol, region=None):
+            return {"ok": True, "source": "tradingview", "as_of": "t", "data": {"price": 10, "change_pct": 1.2}}
+        with mock.patch.object(layer, "quote", side_effect=fake):
+            payload = layer.home_strip()
+        self.assertEqual(
+            [row["name"] for row in payload["indices"]],
+            ["NIFTY", "SENSEX", "S&P 500", "NASDAQ", "USD/INR", "GOLD"],
+        )
+        self.assertEqual(payload["nifty"], 10)
+        self.assertEqual(payload["source"], "tradingview")
+
+    def test_home_page_drops_the_repeated_blocks(self):
+        html = (ROOT / "index.html").read_text()
+        self.assertIn('id="home-brief"', html)
+        self.assertIn('id="home-movers"', html)
+        self.assertIn('data-try="TCS"', html)
+        self.assertNotIn("OUR RESEARCH STANDARD", html)
+        self.assertIn('id="ws-start-cards" class="ws-start-grid" hidden', html)
 
     def test_investor_decide_does_not_cache_an_insufficient_verdict(self):
         tree = ast.parse(API)
