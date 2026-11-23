@@ -95,6 +95,14 @@ _TV_COLUMNS = [
     "Recommend.All", "average_volume_10d_calc",
 ]
 
+_INDIA_EQUITY = {
+    "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "TATAMOTORS",
+    "BHARTIARTL", "LT", "BAJFINANCE", "ITC", "MARUTI", "WIPRO", "KOTAKBANK",
+    "ADANIENT", "ADANIPORTS", "HINDALCO", "JSWSTEEL", "TATASTEEL", "ONGC",
+    "NTPC", "POWERGRID", "BPCL", "HCLTECH", "TECHM", "DRREDDY", "CIPLA",
+    "SUNPHARMA", "HINDUNILVR", "ASIANPAINT", "ULTRACEMCO", "GRASIM", "TITAN",
+    "BAJAJFINSV", "AXISBANK", "INDUSINDBK", "KAYNES",
+}
 _INDIA_INDEX = {
     "NIFTY": "NSE:NIFTY",
     "^NSEI": "NSE:NIFTY",
@@ -288,7 +296,7 @@ def classify(symbol: str, region: Optional[str] = None) -> dict:
     root = raw[:-3] if raw.endswith(".NS") or raw.endswith(".BO") else raw
     if hint in {"US", "IN"}:
         market = hint
-    elif raw.endswith((".NS", ".BO")) or root in _INDIA_INDEX or root in {"RELIANCE", "TCS", "KAYNES"}:
+    elif raw.endswith((".NS", ".BO")) or root in _INDIA_INDEX or root in _INDIA_EQUITY:
         market = "IN"
     elif raw in _US_INDEX or raw.startswith("^"):
         market = "US"

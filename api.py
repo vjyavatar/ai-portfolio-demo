@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.124"
+APP_VERSION = "v4.63.125"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.125: Investor Decide returns a verdict inside 12 seconds. A missing candle series no longer blocks the page when a quote or fundamentals exist, and AAPL is read as a US symbol. "
     "v4.63.124: Analyze works without the email box. The ticker field no longer keeps a stray suggestion, and an earnings lookup no longer crashes the report. "
     "v4.63.123: Decide, Trading and Home read one source list. US is TradingView, Nasdaq, Stooq, Finnhub and SEC. India is Angel, Screener and TradingView. "
     "v4.63.122: NIFTY candles and the chain are warmed one worker at a time, so boot stays inside 2GB. "
@@ -35249,9 +35250,60 @@ def _compute_momentum_triggers(price, pa, vol):
 
 
 
+_investor_budgeted = __import__("contextvars").ContextVar("investor_budgeted", default=False)
+
+
+def _investor_on_budget(symbol: str, region: str) -> dict:
+    """A verdict from the layer when the full page does not finish inside 12s."""
+    from market_data.layer import investor_fundamentals, quote
+    spot = quote(symbol, region)
+    quote_data = spot.get("data") if isinstance(spot, dict) else {}
+    price = float((quote_data or {}).get("price") or 0)
+    fund = investor_fundamentals(symbol, region) or {}
+    rev = fund.get("revenueGrowth") or 0
+    earn = fund.get("earningsGrowth") or 0
+    roe = fund.get("roe") or 0
+    if rev and earn and (roe or 0) >= 12:
+        decision = "ACCUMULATE (SIP)"
+    elif price > 0 and (fund.get("pe") or rev or earn or roe):
+        decision = "HOLD / REVIEW"
+    else:
+        decision = "MONITOR — EARNINGS UNCLEAR"
+    return {
+        "success": True,
+        "symbol": symbol,
+        "region": region,
+        "decision": decision,
+        "price": price,
+        "data_status": "partial",
+        "note": "Returned inside the 12 second budget from the quote and fundamentals.",
+        "fundamental": {
+            "pe": fund.get("pe") or 0,
+            "roe": roe or 0,
+            "grossMargin": fund.get("grossMargin") or 0,
+            "revenueGrowth": rev or 0,
+            "earningsGrowth": earn or 0,
+            "debtToEquity": fund.get("debt") or 0,
+        },
+    }
+
+
 @app.get("/api/investor-decide")
-async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache: int = 0):
+async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: int = 0):
     """Premium Investor Decision Engine — Institutional-grade multi-model analysis"""
+    from market_data.layer import classify
+    if not (region or "").strip():
+        region = classify(symbol)["region"]
+    else:
+        region = region.strip().upper()
+    if not _investor_budgeted.get():
+        token = _investor_budgeted.set(True)
+        try:
+            return await asyncio.wait_for(investor_decide(symbol, region, nocache), timeout=10)
+        except asyncio.TimeoutError:
+            return _investor_on_budget(symbol, region)
+        finally:
+            _investor_budgeted.reset(token)
     from market_data.yfcompat import Ticker as _LayerTicker
     import time as _inv_time
     _inv_start = _inv_time.time()
@@ -61811,6 +61863,69 @@ async def stock_intel(symbol: str, region: str = "IN"):
     async with _sem:
         return await _run_stock_intel(symbol, region, cache_key)
 
+def _layer_history_frame(symbol, region):
+    """Daily bars from the layer. The other region runs only after the first chain is empty."""
+    import pandas as pd
+    from market_data.layer import candles, classify
+    primary = classify(symbol, region)["region"]
+    order = [primary, "US" if primary == "IN" else "IN"]
+    for reg in order:
+        env = candles(symbol, period="1y", interval="1d", region=reg)
+        bars = env.get("data") if isinstance(env, dict) and env.get("ok") else None
+        if not isinstance(bars, list) or len(bars) < 5:
+            continue
+        frame = pd.DataFrame({
+            "Open": [bar.get("open") for bar in bars],
+            "High": [bar.get("high") for bar in bars],
+            "Low": [bar.get("low") for bar in bars],
+            "Close": [bar.get("close") for bar in bars],
+            "Volume": [bar.get("volume") or 0 for bar in bars],
+        }).dropna(subset=["Close"])
+        if len(frame) >= 5:
+            return frame
+    return pd.DataFrame()
+
+
+def _intel_from_layer(symbol, region):
+    """A usable stock-intel payload when candles are missing but a quote or fundamentals exist."""
+    from market_data.layer import investor_fundamentals, quote
+    spot = quote(symbol, region)
+    data = spot.get("data") if isinstance(spot, dict) else {}
+    price = float((data or {}).get("price") or 0)
+    fund = investor_fundamentals(symbol, region) or {}
+    if price <= 0 and not fund.get("ok"):
+        return {"success": False, "error": "Genuine historical bars are unavailable. A spot quote cannot support technical indicators."}
+    return {
+        "success": True,
+        "symbol": symbol,
+        "region": region,
+        "price": price,
+        "companyName": symbol,
+        "sector": "",
+        "dataQuality": "MEDIUM" if fund.get("ok") else "LOW",
+        "marketCap": fund.get("marketCap") or 0,
+        "fundamental": {
+            "revGrowth": fund.get("revenueGrowth") or 0,
+            "earnGrowth": fund.get("earningsGrowth") or 0,
+            "grossMargin": fund.get("grossMargin") or 0,
+            "operatingMargin": fund.get("operatingMargin") or 0,
+            "profitMargin": fund.get("profitMargin") or 0,
+            "roe": fund.get("roe") or 0,
+            "roce": fund.get("roa") or 0,
+            "debtEquity": fund.get("debt") or 0,
+            "beta": 1.0,
+            "divYield": 0,
+            "marketCap": fund.get("marketCap") or 0,
+        },
+        "valuation": {"pe": fund.get("pe") or 0, "fwdPE": 0, "pb": 0, "peg": 0, "evEbitda": 0, "targetPrice": 0, "analystCount": 0},
+        "priceAction": {"rsi": 0, "sma50": price, "sma200": price, "high52": price, "low52": price, "volatility": 0, "last_volume": 0, "avg_volume": 0, "vol_ratio": 0},
+        "technicals": {},
+        "nseExtra": {},
+        "advCharts": {},
+        "metricSources": {},
+    }
+
+
 async def _run_stock_intel(symbol, region, cache_key):
     """Stock intel. India starts from the NSE quote. Both regions fill gaps from the data layer."""
     from market_data.yfcompat import Ticker as _LayerTicker
@@ -61851,7 +61966,9 @@ async def _run_stock_intel(symbol, region, cache_key):
                     pass
             
             if hist is None or getattr(hist, 'empty', False) or (not hasattr(hist, 'empty') and len(hist) == 0):
-                return {"success": False, "error": "Genuine historical bars are unavailable. A spot quote cannot support technical indicators."}
+                hist = _layer_history_frame(symbol, "IN")
+            if hist is None or getattr(hist, 'empty', False) or (not hasattr(hist, 'empty') and len(hist) == 0):
+                return _intel_from_layer(symbol, "IN")
 
             closes = hist["Close"].values.astype(float)
             volumes = hist["Volume"].values.astype(float) if "Volume" in hist else []
@@ -62079,7 +62196,9 @@ async def _run_stock_intel(symbol, region, cache_key):
                     pass
             
             if hist is None or getattr(hist, 'empty', False) or (not hasattr(hist, 'empty') and len(hist) == 0):
-                return {"success": False, "error": f"Historical prices are temporarily unavailable for {symbol}.", "source": "provider"}
+                hist = _layer_history_frame(symbol, "US")
+            if hist is None or getattr(hist, 'empty', False) or (not hasattr(hist, 'empty') and len(hist) == 0):
+                return _intel_from_layer(symbol, "US")
             
             closes = hist["Close"].values.astype(float)
             volumes = hist["Volume"].values.astype(float) if "Volume" in hist else []
