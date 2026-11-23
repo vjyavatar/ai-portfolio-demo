@@ -870,7 +870,7 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
 
     def load():
         as_of = _iso()
-        if meta["region"] == "IN":
+        if meta["region"] == "IN" and (meta["kind"] == "equity" or meta["root"] in {"NIFTY", "BANKNIFTY"}):
             token = _angel_token(symbol)
             headers = _angel_headers()
             if token and headers:
@@ -883,10 +883,19 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
                 data = payload.get("data") if isinstance(payload, dict) else None
                 price = _num((data or {}).get("ltp") if isinstance(data, dict) else None)
                 if price and price > 0:
-                    close = _num(data.get("close")) or price
+                    close = _num(data.get("close")) if isinstance(data, dict) else None
+                    change_pct = None
+                    if close and close > 0 and abs(close - price) / price > 0.0001:
+                        change_pct = (price - close) / close * 100.0
                     return {
                         "ok": True,
-                        "data": {"price": price, "prev_close": close, "currency": "INR", "symbol": meta["root"]},
+                        "data": {
+                            "price": price,
+                            "prev_close": close or price,
+                            "change_pct": change_pct,
+                            "currency": "INR",
+                            "symbol": meta["root"],
+                        },
                         "source": "angel",
                         "as_of": as_of,
                         "stale": False,
@@ -1611,49 +1620,149 @@ _HOME_STRIP = (
 )
 
 
+_STRIP_TV = {
+    "NIFTY": "NSE:NIFTY",
+    "SENSEX": "BSE:SENSEX",
+    "S&P 500": "SP:SPX",
+    "NASDAQ": "NASDAQ:IXIC",
+    "USD/INR": "FX_IDC:USDINR",
+    "GOLD": "TVC:GOLD",
+}
+
+
+def _strip_scan() -> dict[str, dict]:
+    """One TradingView scan for every home tile. India does not wait on the Angel book."""
+    tickers = [_STRIP_TV[label] for label, _symbol, _region in _HOME_STRIP]
+    body = json.dumps({"symbols": {"tickers": tickers}, "columns": ["close", "change", "change_abs"]}).encode()
+    payload = _json(_TV, data=body, headers={"Content-Type": "application/json", "Origin": "https://www.tradingview.com"})
+    rows = payload.get("data") if isinstance(payload, dict) else None
+    by_symbol = {}
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            values = row.get("d")
+            price = _num(values[0]) if isinstance(values, list) and values else None
+            if not price or price <= 0:
+                continue
+            reported = _num(values[1]) if len(values) > 1 else None
+            by_symbol[row.get("s")] = {"price": price, "change_pct": reported, "source": "tradingview"}
+    found = {}
+    for label, _symbol, _region in _HOME_STRIP:
+        hit = by_symbol.get(_STRIP_TV[label])
+        if hit:
+            found[label] = dict(hit)
+    return found
+
+
+def _session_move(price: Optional[float], closes: list, reported: Optional[float]) -> Optional[float]:
+    """Percent versus the prior daily close. A move the bars do not support is omitted."""
+    if price and price > 0 and len(closes) >= 2:
+        prev = closes[-2]
+        last = closes[-1]
+        if prev and prev > 0 and last and last > 0:
+            if abs(price - last) / last <= 0.002:
+                pct = (last - prev) / prev * 100.0
+            elif abs(price - last) / last < 0.04:
+                pct = (price - prev) / prev * 100.0
+            else:
+                pct = (price - last) / last * 100.0
+            if abs(pct) > 15:
+                return None
+            if reported is not None and abs(reported - pct) > 1.0:
+                return round(pct, 2)
+            return round(pct, 2)
+    if reported is None or abs(reported) > 8:
+        return None
+    return round(reported, 2)
+
+
 def home_strip() -> dict:
-    """Six home tiles from quote(). One NIFTY, one source line."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FuturesTimeout
-    found: dict[str, dict] = {}
-    pool = ThreadPoolExecutor(max_workers=6)
-    try:
-        jobs = {pool.submit(quote, symbol, region): label for label, symbol, region in _HOME_STRIP}
+    """Six home tiles. TradingView fills the strip; Angel can replace the NIFTY price."""
+    def load():
+        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FuturesTimeout
+        found = _strip_scan()
+        pool = ThreadPoolExecutor(max_workers=6)
         try:
-            for job in as_completed(jobs, timeout=4):
-                label = jobs[job]
-                try:
-                    env = job.result()
-                except Exception:
-                    continue
-                data = env.get("data") if isinstance(env, dict) else None
-                if not isinstance(data, dict) or not data.get("price"):
-                    continue
-                found[label] = {
-                    "name": label,
-                    "symbol": label,
-                    "price": data.get("price"),
-                    "change_pct": data.get("change_pct"),
-                    "provider": env.get("source"),
-                    "source": env.get("source"),
-                    "as_of": env.get("as_of"),
-                }
-        except _FuturesTimeout:
-            pass
-    finally:
-        pool.shutdown(wait=False, cancel_futures=True)
-    indices = [found[label] for label, _symbol, _region in _HOME_STRIP if label in found]
-    providers = []
-    for row in indices:
-        if row.get("provider") and row["provider"] not in providers:
-            providers.append(row["provider"])
-    nifty = found.get("NIFTY")
-    return {
-        "success": bool(indices),
-        "indices": indices,
-        "source": ", ".join(providers),
-        "as_of": (nifty or indices[0]).get("as_of") if indices else None,
-        "nifty": nifty.get("price") if nifty else None,
-    }
+            angel = pool.submit(quote, "NIFTY", "IN")
+            bars = {pool.submit(_tv_symbol_bars, _STRIP_TV[label], "D", 24, 3.5): label for label, _s, _r in _HOME_STRIP}
+            closes: dict[str, list] = {}
+            try:
+                for job in as_completed(list(bars), timeout=4):
+                    label = bars[job]
+                    try:
+                        rows = job.result()
+                    except Exception:
+                        rows = []
+                    series = []
+                    for row in rows or []:
+                        close = _num(row[4]) if len(row) > 4 else None
+                        if close and close > 0:
+                            series.append(close)
+                    if series:
+                        closes[label] = series[-16:]
+            except _FuturesTimeout:
+                pass
+            try:
+                env = angel.result(timeout=1.2)
+            except Exception:
+                env = None
+            angel_data = env.get("data") if isinstance(env, dict) and env.get("ok") else None
+            if isinstance(angel_data, dict) and angel_data.get("price"):
+                spot = found.setdefault("NIFTY", {"source": "angel"})
+                tv_price = spot.get("price")
+                angel_price = angel_data["price"]
+                if not tv_price or abs(angel_price - tv_price) / tv_price <= 0.03:
+                    spot["price"] = angel_price
+                    spot["source"] = "angel"
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        for label, symbol, region in _HOME_STRIP:
+            if label in found and found[label].get("price"):
+                continue
+            try:
+                env = quote(symbol, region)
+            except Exception:
+                env = None
+            data = env.get("data") if isinstance(env, dict) else None
+            if isinstance(data, dict) and data.get("price"):
+                found[label] = {"price": data["price"], "change_pct": data.get("change_pct"), "source": env.get("source") or "tradingview"}
+        indices = []
+        for label, _symbol, _region in _HOME_STRIP:
+            row = found.get(label)
+            if not row or not row.get("price"):
+                continue
+            series = closes.get(label) or []
+            pct = _session_move(row.get("price"), series, row.get("change_pct"))
+            indices.append({
+                "name": label,
+                "symbol": label,
+                "price": row.get("price"),
+                "change_pct": pct,
+                "spark": series,
+                "provider": row.get("source"),
+                "source": row.get("source"),
+                "as_of": _iso(),
+            })
+        providers = []
+        for row in indices:
+            if row.get("provider") and row["provider"] not in providers:
+                providers.append(row["provider"])
+        nifty = next((row for row in indices if row["name"] == "NIFTY"), None)
+        payload = {
+            "ok": len(indices) == 6,
+            "success": bool(indices),
+            "indices": indices,
+            "source": ", ".join(providers),
+            "as_of": nifty.get("as_of") if nifty else (indices[0]["as_of"] if indices else None),
+            "nifty": nifty.get("price") if nifty else None,
+        }
+        return payload if payload["ok"] else None
+
+    cached = _remember("home-strip", 30, load)
+    if cached.get("ok") and cached.get("indices"):
+        return cached
+    return {"success": False, "indices": [], "source": "", "as_of": None, "nifty": None}
 
 
 def bundle(symbol: str, region: Optional[str] = None, period: str = "1y", interval: str = "1d") -> dict:

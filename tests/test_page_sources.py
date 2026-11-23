@@ -124,16 +124,26 @@ class PageSourceTests(unittest.TestCase):
             self.assertNotIn("Yahoo Finance sometimes fails to return metrics", text)
 
     def test_home_strip_asks_the_layer_for_six_tiles(self):
-        def fake(symbol, region=None):
-            return {"ok": True, "source": "tradingview", "as_of": "t", "data": {"price": 10, "change_pct": 1.2}}
-        with mock.patch.object(layer, "quote", side_effect=fake):
+        def scan():
+            return {
+                label: {"price": 100.0, "change_pct": 40.0, "source": "tradingview"}
+                for label, _symbol, _region in layer._HOME_STRIP
+            }
+        def bars(_symbol, _resolution, _count, _timeout):
+            return [("t", 1, 1, 1, 90, 0), ("t", 1, 1, 1, 100, 0)]
+        layer._cache.pop("home-strip", None)
+        with mock.patch.object(layer, "_strip_scan", side_effect=scan), \
+             mock.patch.object(layer, "_tv_symbol_bars", side_effect=bars), \
+             mock.patch.object(layer, "quote", return_value={"ok": False}):
             payload = layer.home_strip()
         self.assertEqual(
             [row["name"] for row in payload["indices"]],
             ["NIFTY", "SENSEX", "S&P 500", "NASDAQ", "USD/INR", "GOLD"],
         )
-        self.assertEqual(payload["nifty"], 10)
-        self.assertEqual(payload["source"], "tradingview")
+        self.assertEqual(payload["nifty"], 100.0)
+        self.assertEqual(payload["indices"][0]["change_pct"], round((100 - 90) / 90 * 100, 2))
+        self.assertTrue(payload["indices"][0]["spark"])
+        self.assertIsNone(layer._session_move(100, [], 21))
 
     def test_home_page_drops_the_repeated_blocks(self):
         html = (ROOT / "index.html").read_text()

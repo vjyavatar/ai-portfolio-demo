@@ -42,17 +42,44 @@ function pickTiles(rows) {
   }
   return chosen;
 }
+function spark(values, direction) {
+  if (!Array.isArray(values) || values.length < 2) return null;
+  const width = 72, height = 28;
+  const min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+  const span = max - min || 1;
+  const points = values.map((value, index) => {
+    const x = (index / (values.length - 1)) * width;
+    const y = height - ((value - min) / span) * (height - 4) - 2;
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  svg.setAttribute('class', 'live-spark');
+  svg.setAttribute('aria-hidden', 'true');
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+  line.setAttribute('points', points);
+  line.setAttribute('fill', 'none');
+  line.setAttribute('stroke', direction === 'up' ? '#087b68' : direction === 'dn' ? '#c03b45' : '#64748b');
+  line.setAttribute('stroke-width', '1.6');
+  line.setAttribute('stroke-linecap', 'round');
+  line.setAttribute('stroke-linejoin', 'round');
+  svg.append(line);
+  return svg;
+}
 function chip(row) {
   const pct = typeof row.change_pct === 'number' && Number.isFinite(row.change_pct) ? row.change_pct : null;
+  const direction = pct === null ? 'flat' : pct > 0 ? 'up' : pct < 0 ? 'dn' : 'flat';
   const article = document.createElement('article');
   article.className = 'live-chip live-chip--refined';
   const name = document.createElement('span'); name.className = 'live-chip__name';
   name.textContent = row.tile || text(row.name) || text(row.symbol) || 'Market';
   const price = document.createElement('strong'); price.className = 'live-chip__price'; price.textContent = num(row.price);
   const change = document.createElement('span'); change.className = 'live-chip__change';
-  change.classList.add(pct === null ? 'flat' : pct > 0 ? 'up' : pct < 0 ? 'dn' : 'flat');
+  change.classList.add(direction);
   change.textContent = pct === null ? '—' : (pct > 0 ? '+' : '') + num(pct) + '%';
   article.append(name, price, change);
+  const line = spark(row.spark, direction);
+  if (line) article.append(line);
   return article;
 }
 function skeleton() {
