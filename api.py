@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.130"
+APP_VERSION = "v4.63.131"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.131: Analyze returns from the layer snapshot. The long model wait is no longer on the path. "
     "v4.63.130: Home sign-in is Unlock Decide and Trading. Analyze still runs without an email. "
     "v4.63.129: Each market sparkline sits under the percent, so it no longer covers the price. "
     "v4.63.128: The home strip always prints NIFTY and SENSEX, and a move is shown only when it matches the prior daily close. "
@@ -27557,6 +27558,105 @@ async def check_rate_limit_endpoint(request: Request):
 
 
 # ═══ FULL REPORT WITH AI ═══
+def _live_from_layer(company_name: str) -> dict:
+    """Core Analyze snapshot from the provider layer. Quote, fundamentals and bars run together."""
+    from concurrent.futures import ThreadPoolExecutor
+    from market_data.layer import candles, classify, investor_fundamentals, quote
+    symbol = (company_name or "").strip().upper()
+    if symbol.endswith(".NS") or symbol.endswith(".BO"):
+        symbol = symbol[:-3]
+    if not symbol:
+        return {"success": False, "error": "Enter a stock ticker"}
+    region = classify(symbol)["region"]
+
+    def safe(fn, *args):
+        try:
+            return fn(*args)
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        jobs = {
+            "quote": pool.submit(safe, quote, symbol, region),
+            "fund": pool.submit(safe, investor_fundamentals, symbol, region),
+            "bars": pool.submit(safe, candles, symbol, "1y", "1d", region),
+        }
+        got = {}
+        for name, job in jobs.items():
+            try:
+                got[name] = job.result(timeout=5)
+            except Exception:
+                got[name] = None
+    quote_env = got.get("quote") if isinstance(got.get("quote"), dict) else {}
+    data = quote_env.get("data") if isinstance(quote_env.get("data"), dict) else {}
+    price = data.get("price")
+    if not price:
+        return {"success": False, "error": "Market data is temporarily unavailable"}
+    price = float(price)
+    prev = float(data.get("prev_close") or price)
+    fund = got.get("fund") if isinstance(got.get("fund"), dict) else {}
+    closes = []
+    bar_env = got.get("bars") if isinstance(got.get("bars"), dict) else {}
+    for bar in bar_env.get("data") or []:
+        if isinstance(bar, dict) and bar.get("close"):
+            closes.append(float(bar["close"]))
+
+    def sma(count):
+        if len(closes) < count:
+            return None
+        return round(sum(closes[-count:]) / count, 2)
+
+    def metric(key):
+        value = fund.get(key)
+        return value if isinstance(value, (int, float)) else "N/A"
+
+    change = price - prev
+    high = max(closes[-252:]) if closes else price
+    low = min(closes[-252:]) if closes else price
+    return {
+        "success": True,
+        "ticker": symbol + (".NS" if region == "IN" else ""),
+        "company_name": symbol,
+        "current_price": round(price, 2),
+        "price_change": round(change, 2),
+        "price_change_pct": round((change / prev * 100) if prev else 0, 2),
+        "currency": "INR" if region == "IN" else "USD",
+        "market_cap": metric("marketCap"),
+        "pe_ratio": metric("pe"),
+        "forward_pe": "N/A",
+        "pb_ratio": "N/A",
+        "dividend_yield": 0,
+        "week52_high": round(high, 2),
+        "week52_low": round(low, 2),
+        "beta": "N/A",
+        "sector": "N/A",
+        "industry": "N/A",
+        "profit_margin": metric("profitMargin"),
+        "operating_margin": metric("operatingMargin"),
+        "roe": metric("roe"),
+        "debt_to_equity": metric("debt"),
+        "current_ratio": "N/A",
+        "eps_ttm": "N/A",
+        "eps_forward": "N/A",
+        "book_value": "N/A",
+        "free_cash_flow": "N/A",
+        "operating_cash_flow": "N/A",
+        "total_revenue": "N/A",
+        "revenue_growth": metric("revenueGrowth"),
+        "earnings_growth": metric("earningsGrowth"),
+        "gross_margins": metric("grossMargin"),
+        "sma_20": sma(20),
+        "sma_50": sma(50),
+        "sma_200": sma(200),
+        "ema_signals": [],
+        "peers": [],
+        "price_history": [round(value, 2) for value in closes[-12:]],
+        "data_timestamp": datetime.now().strftime("%B %d, %Y at %I:%M %p UTC"),
+        "data_source": "layer",
+        "extras": "lazy",
+    }
+
+
 @app.post("/api/generate-report")
 async def generate_report(request: Request):
     import time as _time
@@ -27579,12 +27679,14 @@ async def generate_report(request: Request):
                 content=rate_check
             )
         
-        # GET LIVE DATA — run in thread pool so other users aren't blocked
+        # Core snapshot from the layer. The slow provider chain is only the fallback.
         _t1 = _time.time()
         loop = asyncio.get_event_loop()
-        live_data = await loop.run_in_executor(_thread_pool, get_live_stock_data, company)
+        live_data = await loop.run_in_executor(_thread_pool, _live_from_layer, company)
+        if not live_data.get("success"):
+            live_data = await loop.run_in_executor(_thread_pool, get_live_stock_data, company)
         _t2 = _time.time()
-        print(f"⏱️ get_live_stock_data: {_t2-_t1:.1f}s")
+        print(f"⏱️ report snapshot: {_t2-_t1:.1f}s source={live_data.get('data_source')}")
         
         # Check if there was an error
         if "error" in live_data or not live_data.get("success"):
@@ -27721,22 +27823,9 @@ COMPANY INFORMATION:
 ═══════════════════════════════════════════════════════════════
 """
 
-        # FETCH REAL MANAGEMENT/EARNINGS DATA
+        # Analyst notes and fund holdings are extras. They are not on the 10 second path.
         mgmt_context = ""
         fund_holdings = {"institutions": [], "funds": [], "summary": {}}
-        try:
-            mgmt_context, fund_holdings = fetch_management_context(live_data['ticker'], live_data.get('company_name', company))
-            if mgmt_context:
-                # Final safety: reject if it's mostly HTML
-                import re as re_safety
-                html_tag_count = len(re_safety.findall(r'<[a-zA-Z/]', mgmt_context))
-                if html_tag_count > 5:
-                    print(f"⚠️ Management context contains {html_tag_count} HTML tags — DISCARDING")
-                    mgmt_context = ""
-                else:
-                    print(f"📊 Got {len(mgmt_context)} chars of clean management/earnings data")
-        except Exception as e:
-            print(f"⚠️ Management context fetch failed: {e}")
         
         # BUILD COMPUTED FINANCIAL CONTEXT (always available from live_data)
         # This ensures the AI ALWAYS has numbers to work with, even if Yahoo APIs fail
@@ -28459,8 +28548,7 @@ Based on real-time price of {_f_price}:
             return None, "none"
         
         _ai_models = [
-            ("claude-sonnet-4-20250514", 4096, 35, "sonnet"),
-            ("claude-haiku-4-5-20251001", 4096, 25, "haiku"),
+            ("claude-haiku-4-5-20251001", 900, 3, "haiku"),
         ]
         
         # Run AI in thread pool — doesn't block event loop while waiting 5-45s
