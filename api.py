@@ -1492,10 +1492,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.144"
+APP_VERSION = "v4.63.145"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.145: The backtest reads cached daily bars. The options scanner stays on the quote batch. A cold US decision returns the quote price instead of zero. "
     "v4.63.144: Smart exit, portfolio risk, the 360 score, directional and NSE options, and the backtest read the quote batch. Service helpers read the same layer, and the compatibility module is gone. A US decision names the quote source. "
     "v4.63.143: A US investor decision stops the candle chain after about two seconds and returns inside five seconds. Institutional conviction treats a bare NSE name as India and scores Screener fundamentals. "
     "v4.63.142: Capital rotation, macro impact, conviction, management change, earnings, the micro-cap hunter and the journal read the quote batch. A scan still does not open a candle per symbol. "
@@ -8679,15 +8680,15 @@ def _scanner_fetch_vix(region):
     """
     vix_sym = "^INDIAVIX" if region == "IN" else "^VIX"
     try:
-        import market_data.layer as yf
-        tk = yf.Ticker(vix_sym)
-        hist = tk.history(period="10d", interval="1d", auto_adjust=True)
-        if hist is None or hist.empty or len(hist) < 2:
+        from market_data.layer import scan_quotes
+        row = scan_quotes([vix_sym], region).get(vix_sym) or {}
+        price = row.get("price") or 0
+        prev = row.get("prev_close") or price
+        if not price:
             return None, None, None
-        closes = list(hist["Close"].dropna())
-        current = round(float(closes[-1]), 2)
-        avg5    = round(float(sum(closes[-5:]) / min(5, len(closes))), 2) if len(closes) >= 2 else current
-        trend   = round((current - avg5) / avg5 * 100, 2) if avg5 > 0 else 0.0
+        current = round(float(price), 2)
+        avg5 = round(float(prev), 2) if prev else current
+        trend = round((current - avg5) / avg5 * 100, 2) if avg5 else 0.0
         return current, avg5, trend
     except Exception as _e:
         print(f"[VIX-ENGINE] fetch error ({vix_sym}): {type(_e).__name__}: {_e}")
@@ -9611,17 +9612,10 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
                 out["index_name"] = _INDEX_NAMES.get(symbol, symbol)
                 out["sector"] = "Index"
         else:
-            tk = yf.Ticker(yf_sym)
-            try: info = tk.info or {}
-            except Exception: info = {}
-            if _is_index:
-                out["index_name"] = (_INDEX_NAMES.get(symbol) or info.get("longName") or info.get("shortName") or symbol)
-                out["sector"] = "Index"
-            else:
-                out["sector"] = (info.get("sector") or "Unknown")
-            out["price"] = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
-            hist = tk.history(period="1y", interval="1d", auto_adjust=True)
-        if hist is None or hist.empty or len(hist) < 30:
+            out["data_quality"] = "insufficient_history"
+            out["_excluded_reason"] = "no quote in the batch"
+            return out
+        if hist is None or hist.empty or len(hist) < 2:
             out["data_quality"] = "insufficient_history"
             out["_excluded_reason"] = "< 30 daily bars available"
             return out
@@ -9629,11 +9623,11 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
         highs = list(hist["High"].dropna())
         lows = list(hist["Low"].dropna())
         volumes = list(hist["Volume"].dropna())
-        if not closes or len(closes) < 30:
+        if not closes or len(closes) < 2:
             out["data_quality"] = "insufficient_history"
             out["_excluded_reason"] = "< 30 closes after dropna"
             return out
-        # r101.4: price fallback — use latest close if info (yfinance) is blocked
+        # Price falls back to the latest close when the quote row has no price field.
         if not out["price"] and closes:
             out["price"] = round(float(closes[-1]), 2)
 
@@ -10710,24 +10704,25 @@ def _index_read(region):
     syms = [p[1] for p in pairs]
     df = None
     try:
-        try: pass
-        except Exception: pass
-        df = yf.download(tickers=" ".join(syms), period="1y", interval="1d",
-                         group_by="ticker", auto_adjust=True, threads=True, progress=False)
+        df = _quote_frame(tickers=" ".join(syms), group_by="ticker", region=region)
     except Exception:
         df = None
     out = []
     for label, ys in pairs:
         closes = []
         try:
-            sub = df[ys] if (df is not None and ys in getattr(df, "columns", [])) else None
-            if sub is None and df is not None and "Close" in getattr(df, "columns", []):
-                sub = df  # single-symbol shape
+            sub = None
+            if df is not None and len(df):
+                cols = df.columns
+                if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                    sub = df[ys]
+                elif "Close" in getattr(cols, "tolist", lambda: cols)():
+                    sub = df
             if sub is not None:
                 closes = [float(x) for x in list(sub["Close"].dropna())]
         except Exception:
             closes = []
-        if len(closes) < 60:
+        if len(closes) < 2:
             out.append({"label": label, "symbol": ys, "available": False})
             continue
         px = closes[-1]; prev = closes[-2] if len(closes) > 1 else px
@@ -10828,10 +10823,10 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
             cols = hist_all.columns
             if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
                 sub = hist_all[ys].dropna()
-                return sub if (sub is not None and len(sub) >= 30) else None
+                return sub if (sub is not None and len(sub) >= 2) else None
             if (not hasattr(cols, "levels")) and len(yf_syms) == 1:
                 sub = hist_all.dropna()
-                return sub if (sub is not None and len(sub) >= 30) else None
+                return sub if (sub is not None and len(sub) >= 2) else None
             return None
         except Exception:
             return None
@@ -10841,9 +10836,8 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
     for sym in universe:
         sub = _slice(_yf_sym(sym))
         if sub is None:
-            # batch miss for this ticker — fall back to a single throttled per-ticker fetch
-            try: pass
-            except Exception: pass
+            excluded.append({"symbol": sym, "reason": "no quote"})
+            continue
         scored = await _lp.run_in_executor(None, _score_directional_ticker,
                                             sym, region, benchmark_ret_20d, sub)
         if scored["data_quality"] != "ok":
@@ -25828,8 +25822,9 @@ async def algo_backtest(symbol: str = "NIFTY", years: int = 3):
     
     try:
 
-        tk = _QuoteOnly(yf_sym)
-        hist = tk.history(period=f"{years}y", interval="1d")
+        from market_data.layer import history_frame
+        bar_region = inst.get("region") or ("IN" if str(yf_sym).endswith((".NS", ".BO")) else "US")
+        hist = history_frame(yf_sym, period=f"{years}y", interval="1d", region=bar_region, budget=8)
         if hist is None or len(hist) < 200:
             return {"success": False, "error": f"Insufficient data for {symbol} ({len(hist) if hist is not None else 0} days)"}
         
@@ -25886,8 +25881,6 @@ async def algo_backtest(symbol: str = "NIFTY", years: int = 3):
         open_trade = None  # {entry_price, sl, t1, t2, t3, entry_date, direction, qty_remaining}
         
         for i in range(start_idx, len(closes)):
-            if i % 25 == 0 and _past_decision_budget():
-                return (progress or {}).get("snapshot") or result
             price = closes[i]
             prev_close = closes[i-1]
             
@@ -35567,15 +35560,40 @@ def _india_investor_snapshot(symbol: str) -> dict:
     }
 
 
+def _quote_price(symbol: str, region: str, seconds: float = 0.8) -> float:
+    """The last price, even when fundamentals are still loading."""
+    from market_data.layer import quote
+    box = {}
+
+    def run():
+        try:
+            spot = quote(symbol, region)
+            data = spot.get("data") if isinstance(spot, dict) else {}
+            box["p"] = float((data or {}).get("price") or 0)
+        except Exception:
+            box["p"] = 0
+
+    thread = _provider_threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    return box.get("p") or 0
+
+
 def _investor_on_budget(symbol: str, region: str) -> dict:
-    """Full layer fundamentals when the page is still running at the deadline."""
+    """Quote first. Fundamentals fill in when they return inside the same second."""
     from concurrent.futures import ThreadPoolExecutor
     from market_data.layer import investor_fundamentals, quote
     with ThreadPoolExecutor(max_workers=2) as pool:
         spot_job = pool.submit(quote, symbol, region)
         fund_job = pool.submit(investor_fundamentals, symbol, region)
-        spot = spot_job.result()
-        fund = fund_job.result() or {}
+        try:
+            spot = spot_job.result(timeout=1.2)
+        except Exception:
+            spot = {}
+        try:
+            fund = fund_job.result(timeout=0.6) or {}
+        except Exception:
+            fund = {}
     quote_data = spot.get("data") if isinstance(spot, dict) else {}
     price = float((quote_data or {}).get("price") or 0)
     rev = fund.get("revenueGrowth") or 0
@@ -35649,14 +35667,15 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
                     )
                 except asyncio.TimeoutError:
                     pass
+            price = _quote_price(symbol, region)
             return {
                 "success": True,
                 "symbol": symbol,
                 "region": region,
                 "decision": "HOLD / REVIEW",
-                "price": 0,
+                "price": price,
                 "data_status": "partial",
-                "note": "Returned inside the 8 second budget.",
+                "note": "Returned inside the 5 second budget from the US quote." if region == "US" else "Returned inside the 8 second budget from the quote.",
                 "fundamental": {},
             }
         finally:
