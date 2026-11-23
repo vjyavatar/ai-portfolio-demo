@@ -40,6 +40,20 @@ class PageSourceTests(unittest.TestCase):
                     self.assertNotIn(token, folded, f"{node.name} still contains {token}")
         self.assertEqual(seen, PHASE1)
 
+    def test_aapl_is_us_and_hdfcbank_is_india_when_region_is_omitted(self):
+        self.assertEqual(layer.classify("AAPL")["region"], "US")
+        self.assertEqual(layer.classify("HDFCBANK")["region"], "IN")
+        self.assertEqual(layer.classify("RELIANCE")["region"], "IN")
+        self.assertEqual(layer.classify("AAPL", "IN")["region"], "IN")
+
+    def test_investor_decide_keeps_a_twelve_second_budget(self):
+        tree = ast.parse(API)
+        node = next(item for item in tree.body if isinstance(item, ast.AsyncFunctionDef) and item.name == "investor_decide")
+        text = ast.get_source_segment(API, node)
+        self.assertIn("timeout=10", text)
+        self.assertIn("_investor_on_budget", text)
+        self.assertIn("_intel_from_layer", (ROOT / "api.py").read_text())
+
     def test_one_source_list_per_region(self):
         self.assertEqual(layer.SOURCES["US"]["candle"][0], "tradingview")
         self.assertIn("sec", layer.SOURCES["US"]["fundamental"])
