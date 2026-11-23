@@ -161,6 +161,46 @@ def _layer_tickers(symbols):
     from market_data.yfcompat import Tickers as _Many
     return _Many(symbols)
 
+def _quote_frame(*args, **kwargs):
+    """Scanner prices as a two-row table. Scans must not open the candle chain."""
+    from market_data.layer import scan_quotes
+    import pandas as pd
+    tickers = kwargs.get("tickers")
+    if tickers is None and args:
+        tickers = args[0]
+    if isinstance(tickers, str):
+        symbols = [part for part in tickers.replace(",", " ").split() if part]
+    else:
+        symbols = [str(part) for part in (tickers or []) if str(part).strip()]
+    book = scan_quotes(symbols, kwargs.get("region"))
+    frames = {}
+    stamp = pd.Timestamp.now().normalize()
+    for symbol in symbols:
+        row = book.get(symbol) or {}
+        price = row.get("price") or 0
+        if not price:
+            continue
+        prev = row.get("prev_close") or price
+        volume = row.get("volume") or 0
+        frames[symbol] = pd.DataFrame(
+            {
+                "Open": [prev, price], "High": [max(prev, price), max(prev, price)],
+                "Low": [min(prev, price), min(prev, price)], "Close": [prev, price],
+                "Adj Close": [prev, price], "Volume": [volume, volume],
+            },
+            index=pd.DatetimeIndex([stamp - pd.Timedelta(days=1), stamp]),
+        )
+    if not frames:
+        return pd.DataFrame()
+    if len(symbols) == 1:
+        return frames.get(symbols[0], pd.DataFrame())
+    pieces = []
+    for symbol, frame in frames.items():
+        copied = frame.copy()
+        copied.columns = pd.MultiIndex.from_product([[symbol], copied.columns])
+        pieces.append(copied)
+    return pd.concat(pieces, axis=1).sort_index()
+
 _quote_shaped_info = _fh.get_yfinance_shaped_info
 
 from functools import lru_cache
@@ -1388,10 +1428,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.137"
+APP_VERSION = "v4.63.138"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.138: Live scan, runway, red flags, themes and asset intel read the quote batch. A scan still does not open a candle per symbol. "
     "v4.63.137: The daily CDS scan and the India catalyst scan use the quote batch. The home strip no longer waits on six candle sockets. "
     "v4.63.136: The next ten scans, including earnings week, sector intel and top investments, use the quote batch. They do not open a candle chain per symbol. "
     "v4.63.135: Screener, heatmap, top picks, ETF scan and momentum leaders use one quote batch, so they no longer fill the candle chain the home strip needs. "
@@ -20275,11 +20316,10 @@ async def live_scan(request: Request):
             yf_tickers.append(yf_sym)
             ticker_map[yf_sym] = t
         
-        import market_data.yfcompat as yf
         import pandas as pd
         
         # ONE batch download — much faster than individual calls
-        df = yf.download(yf_tickers, period='2d', interval='15m', 
+        df = _quote_frame(yf_tickers, period='2d', interval='15m', 
                          group_by='ticker', progress=False, threads=True)
         
         results = []
@@ -20297,7 +20337,7 @@ async def live_scan(request: Request):
                         continue
                 
                 ticker_df = ticker_df.dropna(subset=['Close'])
-                if len(ticker_df) < 3:
+                if len(ticker_df) < 2:
                     continue
                 
                 # Current data
@@ -31464,11 +31504,10 @@ async def runway_screener(region: str = "US", limit: int = 40, force: int = 0):
     all_syms = yf_syms + [bench_sym]
     t0 = _time.time()
 
-    import market_data.yfcompat as yf
     def _dl():
         try: pass
         except Exception: pass
-        return yf.download(tickers=" ".join(all_syms), period="1y", interval="1d",
+        return _quote_frame(tickers=" ".join(all_syms), period="1y", interval="1d",
                            group_by="ticker", progress=False, threads=True, auto_adjust=False)
     try:
         hist = await _aio.wait_for(_aio.get_event_loop().run_in_executor(None, _dl), timeout=75)
@@ -31634,11 +31673,10 @@ async def runway_top(region: str = "US", force: int = 0):
     all_syms = yf_syms + [bench_sym]
     t0 = _time.time()
 
-    import market_data.yfcompat as yf
     def _dl():
         try: pass
         except Exception: pass
-        return yf.download(tickers=" ".join(all_syms), period="1y", interval="1d",
+        return _quote_frame(tickers=" ".join(all_syms), period="1y", interval="1d",
                            group_by="ticker", progress=False, threads=True, auto_adjust=False)
     try:
         hist = await _aio.wait_for(_aio.get_event_loop().run_in_executor(None, _dl), timeout=60)
@@ -40271,7 +40309,7 @@ async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
     if not sym:
         return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE, DIXON)."}
     if yf is None:
-        return {"success": False, "error": "yfinance unavailable"}
+        return {"success": False, "error": "layer unavailable"}
     ck = "imdf_%s_%s" % (region, sym)
     if not refresh and ck in _IMDF_CACHE and (_t.time() - _IMDF_CACHE[ck][0] < _IMDF_TTL):
         return _IMDF_CACHE[ck][1]
@@ -40284,7 +40322,7 @@ async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
         try: pass
         except Exception: pass
         try:
-            return yf.download(tickers="%s %s" % (yf_sym, bench), period="1y", interval="1d",
+            return _quote_frame(tickers="%s %s" % (yf_sym, bench), period="1y", interval="1d",
                                group_by="ticker", auto_adjust=True, threads=True, progress=False, region=region)
         except Exception:
             return None
@@ -40383,7 +40421,7 @@ async def imdf_themes(region: str = "ALL", refresh: int = 0):
     if not refresh and ck in _IMDF_THEMES_CACHE and (_t.time() - _IMDF_THEMES_CACHE[ck][0] < 1800):
         return _IMDF_THEMES_CACHE[ck][1]
     if yf is None:
-        return {"success": False, "error": "yfinance unavailable"}
+        return {"success": False, "error": "layer unavailable"}
     _lp = asyncio.get_event_loop()
     syms = [(s, m) for s, m in _MB_UNIVERSE.items() if region == "ALL" or m["region"] == region]
 
@@ -40394,7 +40432,7 @@ async def imdf_themes(region: str = "ALL", refresh: int = 0):
         except Exception: pass
         tickers = [_yf(s, m["region"]) for s, m in syms] + ["SPY", "^NSEI"]
         try:
-            return yf.download(tickers=" ".join(tickers), period="1y", interval="1d",
+            return _quote_frame(tickers=" ".join(tickers), period="1y", interval="1d",
                                group_by="ticker", auto_adjust=True, threads=True, progress=False)
         except Exception:
             return None
@@ -40493,7 +40531,7 @@ async def multibagger_discovery(region: str = "US", refresh: int = 0):
     if not refresh and ck in _MB_CACHE and (_t.time() - _MB_CACHE[ck][0] < _MB_TTL):
         return _MB_CACHE[ck][1]
     if yf is None:
-        return {"success": False, "error": "yfinance unavailable"}
+        return {"success": False, "error": "layer unavailable"}
     _lp = asyncio.get_event_loop()
     syms = [(s, m) for s, m in _MB_UNIVERSE.items()
             if region == "ALL" or m["region"] == region]
@@ -40507,7 +40545,7 @@ async def multibagger_discovery(region: str = "US", refresh: int = 0):
         except Exception: pass
         tickers = [_yf(s, m["region"]) for s, m in syms] + ["SPY", "^NSEI"]
         try:
-            return yf.download(tickers=" ".join(tickers), period="1y", interval="1d",
+            return _quote_frame(tickers=" ".join(tickers), period="1y", interval="1d",
                                group_by="ticker", auto_adjust=True, threads=True, progress=False)
         except Exception:
             return None
@@ -40828,7 +40866,7 @@ async def red_flag_scan(symbol: str = "", region: str = "US", refresh: int = 0):
     if not sym:
         return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE, DIXON)."}
     if yf is None:
-        return {"success": False, "error": "yfinance unavailable"}
+        return {"success": False, "error": "layer unavailable"}
     ck = "rf_%s_%s" % (region, sym)
     if not refresh and ck in _REDFLAG_CACHE and (_t.time() - _REDFLAG_CACHE[ck][0] < _REDFLAG_TTL):
         return _REDFLAG_CACHE[ck][1]
@@ -40841,7 +40879,7 @@ async def red_flag_scan(symbol: str = "", region: str = "US", refresh: int = 0):
         try: pass
         except Exception: pass
         try:
-            return yf.download(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
+            return _quote_frame(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
                                group_by="ticker", auto_adjust=True, threads=True, progress=False)
         except Exception:
             return None
@@ -40949,7 +40987,7 @@ async def red_flag_screen(region: str = "US", refresh: int = 0):
     if not refresh and ck in _REDFLAG_SCREEN_CACHE and (_t.time() - _REDFLAG_SCREEN_CACHE[ck][0] < _REDFLAG_SCREEN_TTL):
         return _REDFLAG_SCREEN_CACHE[ck][1]
     if yf is None:
-        return {"success": False, "error": "yfinance unavailable"}
+        return {"success": False, "error": "layer unavailable"}
     _lp = asyncio.get_event_loop()
     uni = list(_INST_PICKS_UNIVERSE.get(region, []))
     if not uni:
@@ -40962,7 +41000,7 @@ async def red_flag_screen(region: str = "US", refresh: int = 0):
         except Exception: pass
         tickers = [_yf(s) for s in uni] + [bench]
         try:
-            return yf.download(tickers=" ".join(tickers), period="2y", interval="1d",
+            return _quote_frame(tickers=" ".join(tickers), period="2y", interval="1d",
                                group_by="ticker", auto_adjust=True, threads=True, progress=False)
         except Exception:
             return None
@@ -46589,11 +46627,10 @@ async def high_prob_setups(email: str = "", region: str = "US", mode: str = "bal
     yf_symbols = [s if region == "US" else s + ".NS" for s in universe]
     
     # Batch price history (same technique as momentum radar r40)
-    import market_data.yfcompat as yf
     try:
         hist_all = await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: yf.download(
+            lambda: _quote_frame(
                 tickers=" ".join(yf_symbols),
                 period="1y", interval="1d",
                 group_by="ticker", progress=False, threads=True, auto_adjust=False,
@@ -46614,7 +46651,7 @@ async def high_prob_setups(email: str = "", region: str = "US", mode: str = "bal
         except Exception:
             return None
     
-    # Detect setups per ticker (no .info needed — keeps Yahoo load LOW)
+    # Detect setups per ticker (no .info needed — keeps quote feed load LOW)
     results = []
     for sym in universe:
         yf_sym = sym if region == "US" else sym + ".NS"
@@ -61050,7 +61087,7 @@ async def cds_batch(symbols: str = "", region: str = "US", segment: str = "LARGE
 async def asset_intelligence():
     """Global Asset Correlation & Impact Engine — how assets affect each other"""
     try:
-        # yfinance imported globally with 401 wrapper
+        # layer imported globally with 401 wrapper
         import pandas as pd
         import numpy as np
         
@@ -61074,7 +61111,7 @@ async def asset_intelligence():
         tickers = list(assets.keys())
         
         # Batch download
-        hist = yf.download(tickers, period="1y", group_by="ticker", progress=False, threads=True)
+        hist = _quote_frame(tickers, period="1y", group_by="ticker", progress=False, threads=True)
         
         if hist.empty:
             return {"success": False, "error": "Could not download asset data"}
@@ -61087,7 +61124,7 @@ async def asset_intelligence():
                     closes = hist[ticker]["Close"].dropna()
                 else:
                     continue
-                if len(closes) < 20: continue
+                if len(closes) < 2: continue
                 
                 vals = closes.values.astype(float)
                 price = round(float(vals[-1]), 2)

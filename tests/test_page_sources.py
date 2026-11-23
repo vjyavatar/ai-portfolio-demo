@@ -30,6 +30,16 @@ PHASE2 = {
     "etf_analyze",
     "dd_returns_snapshot",
     "catalyst_scan",
+    "live_scan",
+    "runway_screener",
+    "runway_top",
+    "imdf_decision",
+    "imdf_themes",
+    "multibagger_discovery",
+    "red_flag_scan",
+    "red_flag_screen",
+    "high_prob_setups",
+    "asset_intelligence",
 }
 
 PHASE1 = {
