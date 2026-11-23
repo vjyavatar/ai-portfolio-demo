@@ -1860,10 +1860,11 @@ def home_strip() -> dict:
         pool = ThreadPoolExecutor(max_workers=6)
         try:
             angel = pool.submit(quote, "NIFTY", "IN")
-            bars = {pool.submit(_tv_symbol_bars, _STRIP_TV[label], "D", 24, 3.5): label for label, _s, _r in _HOME_STRIP}
+            # Sparks are optional. A 4 second wait on six sockets was the 3 second strip.
+            bars = {pool.submit(_tv_symbol_bars, _STRIP_TV[label], "D", 24, 0.6): label for label, _s, _r in _HOME_STRIP}
             closes: dict[str, list] = {}
             try:
-                for job in as_completed(list(bars), timeout=4):
+                for job in as_completed(list(bars), timeout=0.7):
                     label = bars[job]
                     try:
                         rows = job.result()
@@ -1879,7 +1880,7 @@ def home_strip() -> dict:
             except _FuturesTimeout:
                 pass
             try:
-                env = angel.result(timeout=1.2)
+                env = angel.result(timeout=0.4)
             except Exception:
                 env = None
             angel_data = env.get("data") if isinstance(env, dict) and env.get("ok") else None
