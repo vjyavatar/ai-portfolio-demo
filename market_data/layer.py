@@ -2351,11 +2351,18 @@ class Ticker:
         data = env.get("data") if isinstance(env, dict) else None
         return data if isinstance(data, dict) else {}
 
-    def history(self, period="1mo", interval="1d", start=None, end=None, **kwargs) -> pd.DataFrame:
+    def history(self, period="1mo", interval="1d", start=None, end=None, budget=None, **kwargs) -> pd.DataFrame:
         requested = str(interval or "1d")
         period_name, interval_name = _period_interval(str(period or "1y"), requested)
         region = kwargs.get("region")
-        env = candles(self.ticker, period=period_name, interval=interval_name, region=region)
+        env = candles(
+            self.ticker,
+            period=period_name,
+            interval=interval_name,
+            region=region,
+            retry=budget is None,
+            budget=budget,
+        )
         bars = env.get("data") if isinstance(env, dict) and isinstance(env.get("data"), list) else []
         frame = _frame(bars)
         if requested in {"1wk", "1w"}:
@@ -2561,9 +2568,9 @@ class Tickers:
         return self.tickers.get(name)
 
 
-def history_frame(symbol: str, period: str = "1y", interval: str = "1d", region: str | None = None) -> pd.DataFrame:
-    """The one candle entry analysis routes use. Always a DataFrame, never None."""
-    frame = Ticker(symbol).history(period=period, interval=interval, region=region)
+def history_frame(symbol: str, period: str = "1y", interval: str = "1d", region: str | None = None, budget: float | None = None) -> pd.DataFrame:
+    """Daily bars for one symbol. Cached. A budget stops the candle chain early."""
+    frame = Ticker(symbol).history(period=period, interval=interval, region=region, budget=budget)
     return frame if isinstance(frame, pd.DataFrame) else _empty()
 
 
