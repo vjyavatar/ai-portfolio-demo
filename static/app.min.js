@@ -1028,7 +1028,14 @@ return d;
 });
 }
 const TI=document.getElementById('ticker'),AC=document.getElementById('autocomplete');
-TI.addEventListener('input',function(){const v=this.value.trim().toUpperCase();AC.innerHTML='';if(!v){AC.classList.remove('show');return}
+let _ignoreAutofill=true;
+function _armTicker(){_ignoreAutofill=false}
+TI.addEventListener('focus',_armTicker);
+TI.addEventListener('keydown',_armTicker);
+TI.addEventListener('paste',_armTicker);
+TI.value='';
+var _em0=document.getElementById('email');if(_em0&&String(_em0.value).indexOf('*')>=0)_em0.value='';
+TI.addEventListener('input',function(){if(_ignoreAutofill){this.value='';AC.classList.remove('show');return}const v=this.value.trim().toUpperCase();AC.innerHTML='';if(!v){AC.classList.remove('show');return}
 const m=stocks.filter(s=>s.t.includes(v)||s.n.toUpperCase().includes(v)).slice(0,10);if(!m.length){AC.classList.remove('show');return}
 m.forEach(s=>{const d=document.createElement('div');d.className='aci';d.innerHTML=`<span class="act">${s.t}</span><span class="acn">${s.n}</span>`;d.onclick=()=>{TI.value=s.t;AC.classList.remove('show')};AC.appendChild(d)});AC.classList.add('show')});
 document.addEventListener('click',e=>{if(e.target!==TI)AC.classList.remove('show')});
@@ -1419,18 +1426,12 @@ try{if(show&&window._activeGroup==='dream'&&typeof switchTabGroup==='function'){
 // Email listeners — only store email for later use, do NOT trigger tab changes
 document.getElementById('email').addEventListener('blur',function(){
 var el=document.getElementById('email');
-var email=(el.dataset.real||el.value).trim().toLowerCase();
-// Show/hide PDF buttons based on email
+var email=(el.value||'').trim().toLowerCase();
 var _pdfBtns=document.querySelectorAll('[data-pdf-gate]');
 _pdfBtns.forEach(function(b){b.style.display=email==='vj@vnky.com'?'':'none'});
-if(email&&email.includes('@')){
+if(email&&email.includes('@')&&!email.includes('*')){
 window._verifiedEmail=email;
 el.dataset.real=email;
-// Mask: show first letter + asterisks
-var parts=email.split('@');
-var masked=parts[0].charAt(0)+'*'.repeat(Math.max(1,parts[0].length-1))+'@'+parts[1].charAt(0)+'*'.repeat(Math.max(1,parts[1].length-1));
-el.value=masked;
-// Silently set flags but DON'T touch any UI
 var showTradesLocal=window.hasTier(email,'trades');
 var showDreamLocal=window.hasTier(email,'dream');
 window._isPremiumUser=showTradesLocal||showDreamLocal||TRADING_ONLY_EMAILS.includes(email);
@@ -1438,24 +1439,7 @@ window._isDreamUser=showDreamLocal;
 window._showPicks=showTradesLocal||showDreamLocal;
 }
 });
-// On focus: keep masked, never reveal real email
-document.getElementById('email').addEventListener('focus',function(){
-var el=document.getElementById('email');
-if(el.dataset.real&&el.value.includes('*')){/* keep masked */}
-});
 document.getElementById('email').addEventListener('keydown',function(e){if(e.key==='Enter'){var t=document.getElementById('ticker');if(t)t.focus()}});
-// Mask email on paste
-document.getElementById('email').addEventListener('paste',function(e){
-var el=this;
-setTimeout(function(){
-var v=el.value.trim().toLowerCase();
-if(v&&v.includes('@')&&!v.includes('*')){
-el.dataset.real=v;
-var p=v.split('@');
-el.value=p[0].charAt(0)+'*'.repeat(Math.max(1,p[0].length-1))+'@'+p[1].charAt(0)+'*'.repeat(Math.max(1,p[1].length-1));
-el.blur();
-}},100);
-});
 
 // ═══════════════════════════════════════════════
 // ANTI-SCREENSHOT & ANTI-SHARING PROTECTION
@@ -2143,10 +2127,10 @@ riskEl.style.background=riskC+'15';
 }
 }
 
-async function analyze(){checkTradesAccess();const emailEl=document.getElementById('email');const email=(emailEl.dataset.real||emailEl.value).trim(),ticker=TI.value.trim().toUpperCase(),btn=document.getElementById('btn'),rpt=document.getElementById('report');
+async function analyze(){checkTradesAccess();const emailEl=document.getElementById('email');const email=emailEl?emailEl.value.trim():'',ticker=TI.value.trim().toUpperCase(),btn=document.getElementById('btn'),rpt=document.getElementById('report');
 window._lastAnalyzedSymbol=ticker;window._lastDESym=ticker;
-AC.classList.remove('show');if(!email||!ticker){showStatus('Enter both email and ticker','error');return}
-if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showStatus('Enter a valid email','error');return}
+AC.classList.remove('show');if(!ticker){showStatus('Enter a ticker','error');return}
+if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showStatus('That email is not valid. Leave it blank to continue.','error');return}
 btn.disabled=true;btn.textContent='Analyzing...';btn.classList.add('ld');rpt.classList.remove('show');hideRL();
 showStatus('Analyzing '+ticker+'...','info');showLS();
 fetchMarketPulse();
@@ -2157,7 +2141,7 @@ try{
 const res=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_name:ticker,email})});
 clearInterval(_timerIv);
 if(res.status===429){const r=await res.json().catch(()=>({}));showStatus(r.reason||'Too many requests','error');if(r.retry_after_seconds||r.retry_after_minutes)showRL(r);btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();return}
-if(!res.ok){const e=await res.json().catch(()=>({}));showStatus(e.detail||e.message||'Analysis failed','error');btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();return}
+if(!res.ok){const e=await res.json().catch(()=>({}));const detail=typeof e.detail==='string'?e.detail:(e.message||'The report service did not return a result. Retry in a moment.');showStatus(detail,'error');btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();return}
 const data=await res.json();
 if(!data.success||!data.live_data){showStatus('No data found for '+ticker,'error');btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();return}
 let q='';if(data.rate_limit){const r=data.rate_limit.remaining;var _nq=document.getElementById('navQ');if(_nq)_nq.textContent=r+'/hr';q=r===0?' · Last free report':' · '+r+' remaining'}

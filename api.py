@@ -986,7 +986,7 @@ def fetch_management_context(ticker: str, company_name: str) -> tuple:
                 
                 # LIVE earnings dates — shows actual reported dates + EPS
                 try:
-                    ed_df = tk_ins.earnings_dates
+                    ed_df = yf.Ticker(ticker).earnings_dates
                     if ed_df is not None and len(ed_df) > 0:
                         parts.append("\n--- RECENT EARNINGS REPORTS (LIVE FROM EXCHANGE) ---")
                         for idx_row in range(min(4, len(ed_df))):
@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.123"
+APP_VERSION = "v4.63.124"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.124: Analyze works without the email box. The ticker field no longer keeps a stray suggestion, and an earnings lookup no longer crashes the report. "
     "v4.63.123: Decide, Trading and Home read one source list. US is TradingView, Nasdaq, Stooq, Finnhub and SEC. India is Angel, Screener and TradingView. "
     "v4.63.122: NIFTY candles and the chain are warmed one worker at a time, so boot stays inside 2GB. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
@@ -27520,10 +27521,12 @@ async def generate_report(request: Request):
     try:
         data = await request.json()
         company = data.get("company_name", "").strip()
-        email = data.get("email", "").strip()
+        email = (data.get("email") or "").strip()
         
-        if not company or not email:
-            raise HTTPException(400, "company_name and email required")
+        if not company:
+            raise HTTPException(400, "Enter a stock ticker")
+        if not email:
+            email = "guest@" + ((request.client.host if request.client else None) or "local")
         
         # CHECK RATE LIMIT (inline — no separate API call needed)
         rate_check = check_rate_limit(email)
