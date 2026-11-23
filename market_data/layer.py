@@ -37,6 +37,27 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
+# One list per region and data type. Edit a tuple here to change a source.
+SOURCES = {
+    "US": {
+        "price": ("tradingview", "finnhub"),
+        "candle": ("tradingview", "nasdaq", "stooq", "finnhub"),
+        "fundamental": ("tradingview", "finnhub", "sec"),
+        "growth": ("sec", "finnhub", "tradingview"),
+    },
+    "IN": {
+        "price": ("angel", "tradingview"),
+        "candle": ("angel", "screener", "tradingview"),
+        "fundamental": ("screener", "tradingview"),
+        "growth": ("screener", "tradingview"),
+    },
+}
+FINANCIALS = {
+    "HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK", "BAJFINANCE",
+    "BAJAJFINSV", "INDUSINDBK", "BANDHANBNK", "FEDERALBNK", "IDFCFIRSTB",
+    "JPM", "BAC", "GS", "MS", "WFC", "C", "BLK", "AXP",
+}
+
 TIMEOUT = 8
 RETRIES = 1
 CANDLE_TIMEOUT = 5
@@ -504,6 +525,46 @@ def _cik_for(symbol: str) -> Optional[str]:
     return f"{cik:010d}" if cik else None
 
 
+def _annual_values(facts: dict, concepts: tuple[str, ...]) -> list[float]:
+    """Last annual values for a US-GAAP concept, oldest to newest."""
+    usgaap = ((facts.get("facts") or {}).get("us-gaap") or {}) if isinstance(facts, dict) else {}
+    for concept in concepts:
+        node = usgaap.get(concept) or {}
+        units = node.get("units") if isinstance(node, dict) else None
+        if not isinstance(units, dict):
+            continue
+        series = units.get("USD") or units.get("USD/shares") or units.get("shares") or []
+        annual = [row for row in series if isinstance(row, dict) and row.get("fp") == "FY" and row.get("form") in ("10-K", "10-K/A", "20-F")]
+        chosen = annual or [row for row in series if isinstance(row, dict)]
+        if not chosen:
+            continue
+        chosen.sort(key=lambda row: (str(row.get("end") or ""), str(row.get("filed") or "")))
+        by_end = {}
+        for row in chosen:
+            end = str(row.get("end") or "")
+            start = str(row.get("start") or "")
+            if start and end:
+                try:
+                    span = (datetime.fromisoformat(end) - datetime.fromisoformat(start)).days
+                except ValueError:
+                    span = 365
+                if span < 300 or span > 380:
+                    continue
+            if end:
+                by_end[end] = row
+        values = [_num(by_end[end].get("val")) for end in sorted(by_end)]
+        values = [value for value in values if value is not None]
+        if values:
+            return values
+    return []
+
+
+def _yoy(values: list[float]) -> Optional[float]:
+    if len(values) < 2 or values[-2] == 0:
+        return None
+    return (values[-1] - values[-2]) / abs(values[-2])
+
+
 def _latest_fact(facts: dict, concepts: tuple[str, ...]) -> Optional[float]:
     usgaap = ((facts.get("facts") or {}).get("us-gaap") or {}) if isinstance(facts, dict) else {}
     for concept in concepts:
@@ -524,8 +585,14 @@ def _latest_fact(facts: dict, concepts: tuple[str, ...]) -> Optional[float]:
 
 
 def _apply_sec(info: dict, sources: dict, symbol: str, as_of: str) -> None:
-    needed = [field for field in ("grossMargins", "profitMargins", "trailingPE", "returnOnEquity") if not info.get(field)]
-    if not needed or classify(symbol)["region"] != "US" or classify(symbol)["kind"] != "equity":
+    meta = classify(symbol)
+    if meta["region"] != "US" or meta["kind"] != "equity":
+        return
+    need = any(not info.get(field) for field in (
+        "grossMargins", "profitMargins", "trailingPE", "returnOnEquity",
+        "revenueGrowth", "earningsGrowth", "debtToEquity",
+    ))
+    if not need:
         return
     cik = _cik_for(symbol)
     if not cik:
@@ -533,18 +600,29 @@ def _apply_sec(info: dict, sources: dict, symbol: str, as_of: str) -> None:
     facts = _json(_SEC_FACTS.format(cik=cik), headers={"User-Agent": _sec_user_agent(), "Accept": "application/json"})
     if not isinstance(facts, dict):
         return
-    revenue = _latest_fact(facts, ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"))
+    revenue_series = _annual_values(facts, ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet", "InterestAndDividendIncomeOperating", "InterestIncomeExpenseNet"))
+    income_series = _annual_values(facts, ("NetIncomeLoss",))
+    revenue = revenue_series[-1] if revenue_series else None
+    income = income_series[-1] if income_series else None
     gross = _latest_fact(facts, ("GrossProfit",))
-    income = _latest_fact(facts, ("NetIncomeLoss",))
     equity = _latest_fact(facts, ("StockholdersEquity",))
+    debt = _latest_fact(facts, ("LongTermDebtNoncurrent", "LongTermDebt", "LongTermDebtAndCapitalLeaseObligations"))
     eps = _latest_fact(facts, ("EarningsPerShareDiluted", "EarningsPerShareBasic"))
     price = _num(info.get("currentPrice") or info.get("regularMarketPrice"))
+    rev_yoy = _yoy(revenue_series)
+    earn_yoy = _yoy(income_series)
+    if rev_yoy is not None:
+        _put_metric(info, sources, "revenueGrowth", rev_yoy, "sec", as_of)
+    if earn_yoy is not None:
+        _put_metric(info, sources, "earningsGrowth", earn_yoy, "sec", as_of)
     if gross is not None and revenue:
         _put_metric(info, sources, "grossMargins", gross / revenue, "sec", as_of)
     if income is not None and revenue:
         _put_metric(info, sources, "profitMargins", income / revenue, "sec", as_of)
     if income is not None and equity:
         _put_metric(info, sources, "returnOnEquity", income / equity, "sec", as_of)
+    if debt is not None and equity:
+        _put_metric(info, sources, "debtToEquity", debt / equity * 100.0, "sec", as_of)
     if eps and price and eps > 0:
         _put_metric(info, sources, "trailingPE", price / eps, "sec", as_of)
         _put_metric(info, sources, "trailingEps", eps, "sec", as_of)
@@ -590,6 +668,10 @@ def _apply_screener_html(info: dict, sources: dict, html: str, as_of: str) -> No
     roce = ratios.get("ROCE")
     if roce is not None:
         _put_metric(info, sources, "returnOnAssets", roce / 100.0, "screener", as_of)
+    for label, value in ratios.items():
+        low = label.lower()
+        if "debt" in low and "equity" in low:
+            _put_metric(info, sources, "debtToEquity", value, "screener", as_of)
     _put_metric(info, sources, "currentPrice", ratios.get("Current Price"), "screener", as_of)
     _put_metric(info, sources, "bookValue", ratios.get("Book Value"), "screener", as_of)
     dividend = ratios.get("Dividend Yield")
@@ -615,6 +697,108 @@ def _apply_screener_html(info: dict, sources: dict, html: str, as_of: str) -> No
             info["longName"] = name
             info["shortName"] = name
             sources["shortName"] = {"source": "screener", "as_of": as_of, "value": name}
+
+
+def _screener_rows(html: str, section_id: str) -> list[tuple[str, list[float]]]:
+    start = html.find(f'id="{section_id}"')
+    if start < 0:
+        return []
+    end = html.find("<section", start + 20)
+    chunk = html[start:end if end > start else start + 120000]
+    rows = []
+    for match in re.finditer(r"<tr[^>]*>(.*?)</tr>", chunk, flags=re.S):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", match.group(1), flags=re.S)
+        if len(cells) < 2:
+            continue
+        label = re.sub(r"<[^>]+>", " ", cells[0])
+        label = re.sub(r"&nbsp;", " ", label)
+        label = re.sub(r"\s+", " ", label).strip()
+        values = []
+        for cell in cells[1:]:
+            text = re.sub(r"<[^>]+>", " ", cell).replace(",", "").replace("%", "")
+            found = re.search(r"[+\-]?\d+(?:\.\d+)?", text)
+            values.append(float(found.group()) if found else None)
+        if label:
+            rows.append((label, [value for value in values if value is not None]))
+    return rows
+
+
+def _last_two_growth(values: list[float]) -> Optional[float]:
+    usable = [value for value in values if value is not None]
+    if len(usable) < 2 or usable[-2] == 0:
+        return None
+    return round((usable[-1] - usable[-2]) / abs(usable[-2]) * 100, 1)
+
+
+def _row_label(label: str) -> str:
+    text = label.lower().replace("&nbsp;", " ")
+    text = re.sub(r"[^a-z% ]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _screener_statement_metrics(html: str) -> dict:
+    """Growth and margins from Screener's P&L table, in percent."""
+    out = {}
+    annual = _screener_rows(html, "profit-loss")
+    for label, values in annual:
+        low = _row_label(label)
+        if low in {"sales", "revenue", "interest earned"} and "revenueGrowth" not in out:
+            growth = _last_two_growth(values)
+            if growth is not None:
+                out["revenueGrowth"] = growth
+        if values and (low in {"sales growth", "revenue growth"} or (low.startswith("yoy") and "growth" in low and ("sales" in low or "revenue" in low))):
+            out["revenueGrowth"] = round(values[-1], 1)
+        if "net profit" in low and "growth" not in low:
+            growth = _last_two_growth(values)
+            if growth is not None:
+                out["earningsGrowth"] = growth
+        if values and (low in {"profit growth", "net profit growth"} or (low.startswith("yoy") and "profit" in low)):
+            out["earningsGrowth"] = round(values[-1], 1)
+        if low.startswith("opm") and values:
+            out["operatingMargin"] = round(values[-1], 1)
+        if "financing margin" in low:
+            out["financial"] = True
+            # A bank NIM sits around 2-5%. Screener's financing-margin row is a
+            # different ratio and turns negative after some mergers, so only a
+            # value in that band is kept.
+            if values and 1 <= values[-1] <= 8:
+                out["nim"] = round(values[-1], 1)
+        if low in {"gross margin", "gross margin %"} and values:
+            out["grossMargin"] = round(values[-1], 1)
+    borrow = equity = reserves = None
+    for label, values in _screener_rows(html, "balance-sheet"):
+        low = _row_label(label)
+        if not values:
+            continue
+        if low.startswith("borrowing"):
+            borrow = values[-1]
+        elif low.startswith("equity capital"):
+            equity = values[-1]
+        elif low.startswith("reserve"):
+            reserves = values[-1]
+    base = (equity or 0) + (reserves or 0)
+    if borrow is not None and base:
+        out["debtToEquity"] = round(borrow / base * 100.0, 1)
+    return out
+
+
+def _apply_screener_statements(info: dict, sources: dict, html: str, as_of: str) -> None:
+    metrics = _screener_statement_metrics(html)
+    if metrics.get("revenueGrowth") is not None:
+        _put_metric(info, sources, "revenueGrowth", metrics["revenueGrowth"] / 100.0, "screener", as_of)
+    if metrics.get("earningsGrowth") is not None:
+        _put_metric(info, sources, "earningsGrowth", metrics["earningsGrowth"] / 100.0, "screener", as_of)
+    if metrics.get("operatingMargin") is not None:
+        _put_metric(info, sources, "operatingMargins", metrics["operatingMargin"] / 100.0, "screener", as_of)
+    if metrics.get("grossMargin") is not None:
+        _put_metric(info, sources, "grossMargins", metrics["grossMargin"] / 100.0, "screener", as_of)
+    if metrics.get("debtToEquity") is not None:
+        _put_metric(info, sources, "debtToEquity", metrics["debtToEquity"], "screener", as_of)
+    if metrics.get("nim") is not None:
+        info["nim"] = metrics["nim"]
+        sources["nim"] = {"source": "screener", "as_of": as_of, "value": metrics["nim"]}
+    if metrics.get("financial"):
+        info["financial"] = True
 
 
 def _apply_screener(info: dict, sources: dict, symbol: str, as_of: str) -> None:
@@ -1317,6 +1501,10 @@ def fundamentals(symbol: str, region: Optional[str] = None) -> dict:
             _apply_tv_fundamentals(info, sources, row, as_of)
         if html:
             _apply_screener_html(info, sources, html, as_of)
+            try:
+                _apply_screener_statements(info, sources, html, as_of)
+            except Exception:
+                pass
         try:
             _apply_sec(info, sources, symbol, as_of)
         except Exception:
@@ -1331,6 +1519,75 @@ def fundamentals(symbol: str, region: Optional[str] = None) -> dict:
         return {"ok": True, "data": info, "source": primary, "as_of": as_of, "stale": False, "metric_sources": sources}
 
     return _remember(key, TTL_FUND, load)
+
+
+def _as_percent(value) -> Optional[float]:
+    """Layer ratios are decimals: 0.15 is 15 percent, and 2.5 is 250 percent."""
+    number = _num(value)
+    if number is None:
+        return None
+    return round(number * 100.0, 1)
+
+
+def is_financial(symbol: str, info: Optional[dict] = None) -> bool:
+    """Banks and other lenders do not publish a product gross margin."""
+    info = info or {}
+    root = classify(symbol)["root"]
+    if root in FINANCIALS or info.get("financial") or info.get("nim") is not None:
+        return True
+    blob = " ".join(str(info.get(key) or "") for key in ("sector", "industry", "longName", "shortName")).lower()
+    return any(word in blob for word in ("bank", "financial", "nbfc", "lender", "insurance"))
+
+
+def investor_fundamentals(symbol: str, region: Optional[str] = None) -> dict:
+    """Margins, growth, PE, ROE and debt for the Decide page.
+
+    Percent fields are already in percent. A bank returns NIM, ROA and ROE
+    instead of a product gross margin. A failed load is not cached.
+    """
+    meta = classify(symbol, region)
+    env = fundamentals(symbol, region)
+    info = env.get("data") if isinstance(env, dict) else None
+    if not isinstance(info, dict):
+        return {"ok": False, "symbol": meta["root"], "region": meta["region"], "financial": meta["root"] in FINANCIALS}
+    financial = is_financial(symbol, info)
+    gross = _as_percent(info.get("grossMargins"))
+    roa = _as_percent(info.get("returnOnAssets"))
+    roe = _as_percent(info.get("returnOnEquity"))
+    nim = _num(info.get("nim"))
+    if nim is not None:
+        nim = round(nim, 1)
+    if financial:
+        # Bank ROA is only a couple of percent. A larger figure is a ROCE that
+        # was stored in the same field, so the verdict uses ROE instead.
+        if nim is not None:
+            quality = nim
+        elif roa is not None and roa < 4:
+            quality = roa
+        else:
+            quality = roe
+    else:
+        quality = gross
+    return {
+        "ok": True,
+        "symbol": meta["root"],
+        "region": meta["region"],
+        "source": env.get("source"),
+        "as_of": env.get("as_of"),
+        "financial": financial,
+        "grossMargin": gross,
+        "operatingMargin": _as_percent(info.get("operatingMargins")),
+        "profitMargin": _as_percent(info.get("profitMargins")),
+        "revenueGrowth": _as_percent(info.get("revenueGrowth")),
+        "earningsGrowth": _as_percent(info.get("earningsGrowth")),
+        "pe": _num(info.get("trailingPE")),
+        "roe": roe,
+        "roa": roa,
+        "debt": _num(info.get("debtToEquity")),
+        "nim": nim,
+        "quality": quality,
+        "marketCap": _num(info.get("marketCap")),
+    }
 
 
 def bundle(symbol: str, region: Optional[str] = None, period: str = "1y", interval: str = "1d") -> dict:

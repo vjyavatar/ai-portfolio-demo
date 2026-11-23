@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.122"
+APP_VERSION = "v4.63.123"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.123: Decide, Trading and Home read one source list. US is TradingView, Nasdaq, Stooq, Finnhub and SEC. India is Angel, Screener and TradingView. "
     "v4.63.122: NIFTY candles and the chain are warmed one worker at a time, so boot stays inside 2GB. "
     "v4.63.106: Research, trading, movers and options read Finnhub, Angel One, TradingView, Screener and SEC instead of Yahoo Finance. "
     "v4.63.105: Public India quotes and NIFTY/BANKNIFTY chains use Angel One when it is configured. Upstox is removed. "
@@ -14097,7 +14098,7 @@ async def fund_live():
 @app.get("/api/global-ticker")
 async def global_ticker():
     """Lightweight global indices ticker — parallel fetch with 2-min cache + dedup."""
-    # yfinance imported globally with 401 wrapper
+    # Quotes come from the market-data layer.
     
     # ═══ FAST PATH: serve from cache ═══
     global _ticker_cache, _ticker_cache_ts
@@ -14139,7 +14140,7 @@ async def global_ticker():
     gold_price = None
     silver_price = None
     
-    # ═══ PARALLEL FETCH with FALLBACK — yfinance → Yahoo HTTP v8 ═══
+    # ═══ PARALLEL FETCH — live board, then the market-data layer ═══
     def _fetch_index(ticker, meta):
         _ck = f"ticker_price_{ticker}"
         _cached = _smart_cache_get(_ck)
@@ -14183,7 +14184,7 @@ async def global_ticker():
         except Exception as gfe:
             pass
         
-        # Source 2: Yahoo v8 chart API (direct HTTP — backup)
+        # Source 2: chart provider
         try:
             _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
             r = _chart_response(ticker, interval="1d", range="2d")
@@ -14205,9 +14206,10 @@ async def global_ticker():
         except:
             pass
         
-        # Source 3: yfinance (last resort — most rate-limited)
+        # Source 3: daily candles from the layer
         try:
-            t = yf.Ticker(ticker)
+            from market_data.yfcompat import Ticker as _LayerTicker
+            t = _LayerTicker(ticker)
             hist = t.history(period="2d")
             if not hist.empty:
                 price = round(hist.iloc[-1]['Close'], 2)
@@ -15992,9 +15994,7 @@ def _movers_compute_one_ticker(symbol, region):
     """Fetch ~1Y of daily closes for one ticker; compute pct change for each window.
 
     Returns: {symbol, last, windows: {'1D': pct, '1W': pct, ...}, src} or None on failure.
-    Uses data_sources.get_price_history which already has region-aware fallback
-    (finnhub→yfinance→google for US; yfinance→nse_chart→google for IN) and 5-min
-    in-process caching, so calling it 200x in one scan is cheap on repeat runs.
+    Uses market_data.layer.candles, which picks the source from SOURCES.
 
     r63.96.1: relaxed — even if we only have ~20-30 trading days of history,
     emit the windows we DO have data for (1D, 1W, maybe 1M). Previously we
@@ -16002,15 +16002,13 @@ def _movers_compute_one_ticker(symbol, region):
     histories.
     """
     try:
-        ph = data_sources.get_price_history(symbol, region)
-        if not ph or not ph.get("closes"):
+        from market_data.layer import candles as _layer_candles
+        ph = _layer_candles(symbol, period="1y", interval="1d", region=region)
+        bars = ph.get("data") if isinstance(ph, dict) and ph.get("ok") else None
+        if not isinstance(bars, list) or len(bars) < 2:
             return None
-        closes = ph["closes"]
-        if not isinstance(closes, dict) or len(closes) < 2:
-            return None
-        # Sort dates desc; prices[0] = most recent close.
-        sorted_dates = sorted(closes.keys(), reverse=True)
-        prices = [closes[d] for d in sorted_dates if closes[d] and closes[d] > 0]
+        # Newest close first.
+        prices = [bar.get("close") for bar in reversed(bars) if isinstance(bar, dict) and bar.get("close") and bar.get("close") > 0]
         if len(prices) < 2:
             return None
         last = prices[0]
@@ -16035,7 +16033,7 @@ def _movers_compute_one_ticker(symbol, region):
             "last":   round(last, 2),
             "n_prices": len(prices),
             "windows": windows,
-            "src":    ph.get("_source", "?"),
+            "src":    ph.get("source") or "layer",
         }
     except Exception as _e:
         # r63.96.1: log per-ticker failures for diagnostics (was silent)
@@ -16064,19 +16062,26 @@ def _run_movers_scan(region):
         print(f"[MOVERS] {reg}: scanning {len(universe)} tickers (LARGE+ETF)…")
         t0 = time.time()
         results = []
-        n_workers = 1
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # Candle reads are network waits. Stop when the budget ends and keep what arrived.
+        n_workers = 4
+        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FuturesTimeout
         import web_background
-        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+        executor = ThreadPoolExecutor(max_workers=n_workers)
+        try:
             futures = {executor.submit(_movers_compute_one_ticker, s, reg): s for s in universe}
-            for fut in as_completed(futures, timeout=180):
-                try:
-                    r = fut.result()
-                    if r:
-                        results.append(r)
-                except Exception:
-                    pass
-                web_background.yield_worker()
+            try:
+                for fut in as_completed(futures, timeout=20):
+                    try:
+                        r = fut.result()
+                        if r:
+                            results.append(r)
+                    except Exception:
+                        pass
+                    web_background.yield_worker()
+            except _FuturesTimeout:
+                print(f"[MOVERS] {reg}: kept {len(results)} tickers when the budget ended")
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
         scan_time = time.time() - t0
         print(f"[MOVERS] {reg}: {len(results)}/{len(universe)} returned data in {scan_time:.1f}s")
 
@@ -16100,7 +16105,7 @@ def _run_movers_scan(region):
                              "_diagnostic": (
                                  f"Scan returned 0/{len(universe)} tickers with usable data. "
                                  "Likely causes: (1) data source rate-limited or IP-blocked "
-                                 "(Yahoo 401 / Finnhub rate cap / NSE IP ban on Render); "
+                                 "(provider rate cap or an NSE block on this host); "
                                  "(2) all 137 tickers failed simultaneously — usually transient. "
                                  "Try Refresh in 1-2 minutes."
                              )},
@@ -20547,11 +20552,10 @@ async def market_pulse():
 
 async def _market_pulse_page():
     """Lightweight market events — cached 5min, parallel fetches."""
-    # yfinance imported globally with 401 wrapper
     from datetime import datetime, timedelta
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
-    # ═══ 5-MINUTE CACHE — prevents hammering yfinance/NSE on every page load ═══
+    # ═══ CACHE — a page load reads the last snapshot ═══
     global _pulse_cache, _pulse_cache_ts
     now_ts = datetime.utcnow()
     if _pulse_cache and _pulse_cache_ts and (now_ts - _pulse_cache_ts).total_seconds() < 1800:
@@ -21698,7 +21702,7 @@ async def algo_batch(region: str = "IN"):
 
 async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: dict = None):
     """5-Layer Confluence Algorithm — ALL real data, ZERO hallucination."""
-    # yfinance imported globally with 401 wrapper
+    from market_data.yfcompat import Ticker as _LayerTicker
     from datetime import datetime, timedelta
     import math
     
@@ -21714,17 +21718,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
         elif symbol in known_in or (symbol in ALGO_INSTRUMENTS and ALGO_INSTRUMENTS[symbol].get("region") == "IN"):
             region = "IN"
         else:
-            # Try yfinance to detect
-            try:
-                test_tk = yf.Ticker(symbol)
-                test_info = test_tk.info or {}
-                exch = (test_info.get("exchange", "") or "").upper()
-                if any(x in exch for x in ["NSE", "BSE", "BOM"]):
-                    region = "IN"
-                else:
-                    region = "US"
-            except:
-                region = "IN"  # Default India
+            region = "IN"
     
     region = region.upper()
     is_us_region = region == "US"
@@ -21739,7 +21733,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
     
     yf_sym = inst["sym"]
     is_us = inst.get("region") == "US"
-    tk = yf.Ticker(yf_sym)
+    tk = _LayerTicker(yf_sym)
     csym = "$" if is_us else "₹"
     
     # ═══ FETCH ALL DATA IN PARALLEL ═══
@@ -22034,7 +22028,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
     except Exception as e:
         return {"success": False, "error": f"Data fetch failed: {e}"}
     
-    # 2. NSE Options data (India only — US stocks use yfinance options)
+    # 2. NSE Options data (India only — US option chains come from the configured provider)
     # The chain started this beside the candles. Do not wait again here.
     nse = {}
     is_us = inst.get("region") == "US"
@@ -22357,7 +22351,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
     add("Golden/Death Cross", "SUPPORTS" if sma50 > sma200 else "OPPOSES",
         f"{'Golden Cross — SMA50 > SMA200. Strongest bullish signal.' if sma50 > sma200 else 'Death Cross — bearish long-term.'}", "INDICATOR", 2.0)
     
-    # ─── LAYER 3: OPTIONS (NSE LIVE for India, yfinance for US) ───
+    # ─── LAYER 3: OPTIONS (NSE LIVE for India, configured provider for US) ───
     vix = 0; pcr = 0; max_pain = 0; atm_iv = 0
     ce_resist = []; pe_support = []
     
@@ -22393,7 +22387,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
             vix = round(float(((_vq or {}).get("data") or {}).get("price") or 0), 1)
         except Exception:
             pass
-        # Try yfinance options chain for US stocks
+        # US option chain from the configured provider
         try:
             opts = tk.options
             if opts:
@@ -22738,7 +22732,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
         except:
             pass
     
-    # Method 2: USA — from yfinance options
+    # Method 2: USA — from the configured option provider
     if is_us:
         try:
             us_opts = tk.options
@@ -35255,6 +35249,7 @@ def _compute_momentum_triggers(price, pa, vol):
 @app.get("/api/investor-decide")
 async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache: int = 0):
     """Premium Investor Decision Engine — Institutional-grade multi-model analysis"""
+    from market_data.yfcompat import Ticker as _LayerTicker
     import time as _inv_time
     _inv_start = _inv_time.time()
     print(f"\n{'='*60}")
@@ -35275,7 +35270,8 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         csym = "$" if is_us else "₹"
         _debug_log = []  # Track every data source attempt
         fund_holdings = {"institutions": [], "funds": [], "summary": {}}  # Init early to prevent NameError
-        _finviz_mcap_rescue = 0  # Will be set by non-Yahoo rescue if available
+        _is_financial = False
+        _alt_mcap = 0
         
         si = await stock_intel(symbol, region)
         _debug_log.append(f"stock_intel: {'✅' if si.get('success') else '❌'} dataQuality={si.get('dataQuality','?')}")
@@ -35315,6 +35311,38 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         pe = val.get("pe", 0) or 0
         fwd_pe = val.get("fwdPE", 0) or 0
         _debug_log.append(f"Initial extract: GM={gm:.1f} ROE={roe:.1f} NPM={npm:.1f} PE={pe:.1f} RevG={rev_g:.1f} DE={de:.1f}")
+        _layer_fund = {}
+        try:
+            from market_data.layer import investor_fundamentals
+            _layer_fund = await asyncio.to_thread(investor_fundamentals, symbol, region) or {}
+        except Exception as _layer_err:
+            print(f"  layer fundamentals skipped: {_layer_err}")
+            _layer_fund = {}
+
+        def _layer_fill(current, key):
+            if current:
+                return current
+            value = _layer_fund.get(key)
+            if isinstance(value, (int, float)) and value != 0:
+                return float(value)
+            return current
+
+        gm = _layer_fill(gm, "grossMargin")
+        om = _layer_fill(om, "operatingMargin")
+        npm = _layer_fill(npm, "profitMargin")
+        roe = _layer_fill(roe, "roe")
+        roce = _layer_fill(roce, "roa")
+        de = _layer_fill(de, "debt")
+        rev_g = _layer_fill(rev_g, "revenueGrowth")
+        earn_g = _layer_fill(earn_g, "earningsGrowth")
+        pe = _layer_fill(pe, "pe")
+        _is_financial = bool(_layer_fund.get("financial"))
+        if _layer_fund.get("marketCap") and not _alt_mcap:
+            _alt_mcap = _layer_fund.get("marketCap")
+        _debug_log.append(
+            f"layer source={_layer_fund.get('source')} financial={_is_financial} "
+            f"GM={gm:.1f} ROE={roe:.1f} RevG={rev_g:.1f} EarnG={earn_g:.1f} NIM={_layer_fund.get('nim')}"
+        )
         peg = val.get("peg", 0) or 0
         
         # ═══ MARKET CONTEXT — VIX + volatility (needed for adaptive rates, MoS, Kelly) ═══
@@ -35359,301 +35387,12 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         promoter = nse.get("promoterHolding", 0) or 0
         fii_hold = nse.get("fiiHolding", 0) or 0
         
-        # ═══ DEFENSIVE CHECK — If all fundamentals are zero, direct yfinance rescue ═══
-        _all_zero = (gm == 0 and roe == 0 and npm == 0 and pe == 0 and rev_g == 0)
-        _data_confident = True  # Assume data is good until proven otherwise
-        _si_dq = si.get("dataQuality", "HIGH")
-        if _si_dq in ["NONE", "LOW"]:
-            _data_confident = False
-            print(f"  ⚠️ stock_intel reported dataQuality={_si_dq} for {symbol}")
-        if _all_zero:
-            print(f"  ⚠️ ALL FUNDAMENTALS ZERO for {symbol} — attempting direct yfinance rescue")
-            try:
-                _rescue_sym = symbol if is_us else f"{symbol}.NS"
-                _loop_r = asyncio.get_event_loop()
-                def _rescue_fetch(sym=_rescue_sym):
-                    try:
-
-                        _tk = yf.Ticker(sym)
-                        return _tk.info or {}
-                    except: return {}
-                _rinfo = await _loop_r.run_in_executor(None, _rescue_fetch)
-                if _rinfo:
-                    def _rs(key, mult=1):
-                        try: return round(float(_rinfo.get(key, 0) or 0) * mult, 2)
-                        except: return 0
-                    if _rs("grossMargins", 100) > 0: gm = _rs("grossMargins", 100)
-                    if _rs("returnOnEquity", 100) > 0: roe = _rs("returnOnEquity", 100)
-                    if _rs("profitMargins", 100) > 0: npm = _rs("profitMargins", 100)
-                    if _rs("operatingMargins", 100) > 0: om = _rs("operatingMargins", 100)
-                    if _rs("trailingPE") > 0: pe = _rs("trailingPE")
-                    if _rs("forwardPE") > 0: fwd_pe = _rs("forwardPE")
-                    if _rs("priceToBook") > 0: pb = _rs("priceToBook")
-                    if _rs("debtToEquity") > 0: de = _rs("debtToEquity")
-                    if _rs("revenueGrowth", 100) != 0: rev_g = _rs("revenueGrowth", 100)
-                    if _rs("earningsGrowth", 100) != 0: earn_g = _rs("earningsGrowth", 100)
-                    # Prefer quarterly YoY growth if available (more accurate for fast-growers)
-                    _rqg = _rs("revenueQuarterlyGrowth", 100)
-                    if _rqg and abs(_rqg) > abs(rev_g): rev_g = _rqg
-                    _eqg = _rs("earningsQuarterlyGrowth", 100)
-                    if _eqg and abs(_eqg) > abs(earn_g): earn_g = _eqg
-                    if _rs("returnOnAssets", 150) > 0: roce = _rs("returnOnAssets", 150)
-                    if roce == 0 and roe > 0 and de >= 0:
-                        _eq_mult = 1 + de / 100 if de > 0 else 1
-                        roce = round(roe / _eq_mult, 1)
-                    if _rs("currentRatio") > 0: cr = _rs("currentRatio")
-                    if _rs("beta") > 0: beta = _rs("beta")
-                    if _rs("dividendYield", 100) > 0: div_y = _rs("dividendYield", 100)
-                    if _rs("targetMeanPrice") > 0: target_p = _rs("targetMeanPrice")
-                    if int(_rinfo.get("numberOfAnalystOpinions", 0) or 0) > 0: analyst_n = int(_rinfo.get("numberOfAnalystOpinions", 0))
-                    if _rs("pegRatio") > 0: peg = _rs("pegRatio")
-                    _rescued = sum(1 for x in [gm, roe, npm, pe, rev_g] if x != 0)
-                    print(f"  ✅ Rescued {_rescued}/5 key metrics for {symbol}: GM={gm:.1f}% ROE={roe:.1f}% PE={pe:.1f} RevG={rev_g:.1f}%")
-                    if _rescued < 2:
-                        _data_confident = False
-                        print(f"  ⚠️ DATA LOW CONFIDENCE — only {_rescued}/5 metrics rescued")
-                else:
-                    _data_confident = False
-                    print(f"  ⚠️ Rescue returned empty — DATA NOT AVAILABLE")
-            except Exception as _re:
-                _data_confident = False
-                print(f"  ❌ yfinance rescue failed for {symbol}: {_re}")
-            
-            # ═══ SECOND RESCUE: Yahoo direct API (different endpoint, may not be rate-limited) ═══
-            if not _data_confident or sum(1 for x in [gm, roe, npm, pe, rev_g] if x != 0) < 2:
-                print(f"  🔄 Attempting Yahoo direct API rescue for {symbol}...")
-                try:
-                    _yf_sym2 = symbol if is_us else f"{symbol}.NS"
-                    _yr2 = _summary_response(_yf_sym2)
-                    if _yr2.status_code == 200:
-                        _yd2 = _yr2.json().get("quoteSummary", {}).get("result", [{}])[0]
-                        _fd2 = _yd2.get("financialData", {})
-                        _ks2 = _yd2.get("defaultKeyStatistics", {})
-                        _sd2 = _yd2.get("summaryDetail", {})
-                        def _yv2(d, key):
-                            v = d.get(key, {})
-                            return (v.get("raw", 0) or 0) if isinstance(v, dict) else (float(v) if v else 0)
-                        if gm == 0 and _yv2(_fd2, "grossMargins") > 0: gm = round(_yv2(_fd2, "grossMargins") * 100, 1)
-                        if roe == 0 and _yv2(_fd2, "returnOnEquity") > 0: roe = round(_yv2(_fd2, "returnOnEquity") * 100, 1)
-                        if npm == 0 and _yv2(_fd2, "profitMargins") > 0: npm = round(_yv2(_fd2, "profitMargins") * 100, 1)
-                        if om == 0 and _yv2(_fd2, "operatingMargins") > 0: om = round(_yv2(_fd2, "operatingMargins") * 100, 1)
-                        if pe == 0 and _yv2(_sd2, "trailingPE") > 0: pe = round(_yv2(_sd2, "trailingPE"), 1)
-                        if de == 0 and _yv2(_fd2, "debtToEquity") > 0: de = round(_yv2(_fd2, "debtToEquity"), 1)
-                        if rev_g == 0 and _yv2(_fd2, "revenueGrowth") != 0: rev_g = round(_yv2(_fd2, "revenueGrowth") * 100, 1)
-                        if earn_g == 0 and _yv2(_fd2, "earningsGrowth") != 0: earn_g = round(_yv2(_fd2, "earningsGrowth") * 100, 1)
-                        if cr == 0 and _yv2(_fd2, "currentRatio") > 0: cr = round(_yv2(_fd2, "currentRatio"), 2)
-                        if target_p == 0 and _yv2(_fd2, "targetMeanPrice") > 0: target_p = round(_yv2(_fd2, "targetMeanPrice"), 2)
-                        if pb == 0 and _yv2(_ks2, "priceToBook") > 0: pb = round(_yv2(_ks2, "priceToBook"), 2)
-                        if beta <= 0 and _yv2(_ks2, "beta") > 0: beta = round(_yv2(_ks2, "beta"), 2)
-                        _r2 = sum(1 for x in [gm, roe, npm, pe, rev_g] if x != 0)
-                        if _r2 >= 2:
-                            _data_confident = True
-                            _debug_log.append(f"Yahoo v10: {_r2}/5 GM={gm:.1f} ROE={roe:.1f}")
-                            print(f"  ✅ Yahoo API rescue SUCCESS: {_r2}/5 metrics — GM={gm:.1f}% ROE={roe:.1f}% PE={pe:.1f}")
-                        else:
-                            print(f"  ⚠️ Yahoo API returned only {_r2}/5 metrics")
-                except Exception as _y2e:
-                    print(f"  ❌ Yahoo API rescue also failed: {_y2e}")
-            
-            # ═══ THIRD RESCUE: NSE direct data for Indian stocks ═══
-            if (not _data_confident or sum(1 for x in [gm, roe, npm, pe, rev_g] if x != 0) < 2) and not is_us:
-                print(f"  🔄 NSE rescue for {symbol} fundamentals...")
-                try:
-                    _nse_q = _nse_get(f"https://www.nseindia.com/api/quote-equity?symbol={symbol}&section=trade_info")
-                    _nse_fi = _nse_get(f"https://www.nseindia.com/api/quote-equity?symbol={symbol}")
-                    if _nse_fi:
-                        _pi = _nse_fi.get("priceInfo", {})
-                        _ind = _nse_fi.get("industryInfo", {})
-                        _pe_nse = float(_pi.get("pE", 0) or _nse_fi.get("metadata", {}).get("pdSectorPe", 0) or 0)
-                        _pb_nse = float(_pi.get("pB", 0) or 0)
-                        if pe == 0 and _pe_nse > 0: pe = round(_pe_nse, 1)
-                        if pb == 0 and _pb_nse > 0: pb = round(_pb_nse, 2)
-                    
-                    # Try Moneycontrol API for more data
-                    _mc_sym = symbol.replace("&", "%26")
-                    _mc = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.get(
-                        f"https://priceapi.moneycontrol.com/pricefeed/nse/equitycash/{_mc_sym}",
-                        headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.moneycontrol.com/"},
-                        timeout=5
-                    ))
-                    if _mc.status_code == 200:
-                        _mcd = _mc.json().get("data", {})
-                        if pe == 0 and float(_mcd.get("PE", 0) or 0) > 0: pe = round(float(_mcd.get("PE", 0)), 1)
-                        if pb == 0 and float(_mcd.get("PB", 0) or 0) > 0: pb = round(float(_mcd.get("PB", 0)), 2)
-                    
-                    # Use NSE Extra data already in si dict
-                    if npm == 0 and float(nse.get("operatingMargin", 0) or 0) > 0: npm = float(nse.get("operatingMargin", 0)); om = npm
-                    if roe == 0 and float(nse.get("roe", 0) or 0) > 0: roe = float(nse.get("roe", 0))
-                    if de == 0 and float(nse.get("debtEquity", 0) or 0) > 0: de = float(nse.get("debtEquity", 0))
-                    
-                    _r3 = sum(1 for x in [gm, roe, npm, pe, rev_g] if x != 0)
-                    if _r3 >= 2:
-                        _data_confident = True
-                        print(f"  ✅ NSE rescue SUCCESS: {_r3}/5 metrics — PE={pe:.1f} ROE={roe:.1f}% NPM={npm:.1f}%")
-                    elif pe > 0:
-                        # Even just PE is enough to run basic analysis
-                        _data_confident = True
-                        print(f"  ✅ NSE partial rescue: PE={pe:.1f} (minimum viable)")
-                except Exception as _nse_e:
-                    print(f"  ⚠️ NSE rescue failed: {_nse_e}")
-            
-            # ═══ FOURTH RESCUE: US stocks — Google Finance + yfinance financials ═══
-            if is_us and (not _data_confident or gm == 0 or rev_g == 0 or earn_g == 0):
-                print(f"  🔄 US rescue for {symbol} via Google Finance + yfinance financials...")
-                try:
-                    import re as _usre
-                    # Google Finance scrape for PE
-                    _gf_url = f"https://www.google.com/finance/quote/{symbol}:NASDAQ"
-                    _gf_r = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.get(_gf_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}, timeout=8))
-                    if _gf_r.status_code != 200:
-                        _gf_r = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.get(f"https://www.google.com/finance/quote/{symbol}:NYSE", headers={"User-Agent": "Mozilla/5.0"}, timeout=8))
-                    if _gf_r.status_code == 200:
-                        _gf_text = _gf_r.text
-                        # Extract PE ratio
-                        _pe_m = _usre.search(r'P/E ratio[^>]*>([0-9,.]+)', _gf_text)
-                        if _pe_m and pe == 0: pe = round(float(_pe_m.group(1).replace(",", "")), 1)
-                        # Extract dividend yield
-                        _dy_m = _usre.search(r'Dividend yield[^>]*>([0-9,.]+)%', _gf_text)
-                        if _dy_m and div_y == 0: div_y = round(float(_dy_m.group(1)), 2)
-                        # Market cap
-                        _mc_m = _usre.search(r'Market cap[^>]*>\$?([0-9,.]+)\s*([BMT])', _gf_text)
-                        if _mc_m and mcap == 0:
-                            _mc_v = float(_mc_m.group(1).replace(",", ""))
-                            _mc_u = _mc_m.group(2)
-                            mcap = _mc_v * (1e12 if _mc_u == 'T' else 1e9 if _mc_u == 'B' else 1e6)
-                        print(f"  ✅ Google Finance: PE={pe}, DivY={div_y}%")
-                except Exception as _gfe:
-                    print(f"  ⚠️ Google Finance scrape: {_gfe}")
-                
-                # Try yfinance .income_stmt + .balance_sheet (different endpoints from .info)
-                try:
-                    print(f"  📊 Attempting income_stmt for {symbol}...")
-                    _us_tk = yf.Ticker(symbol)
-                    _us_inc = _us_tk.income_stmt
-                    print(f"  📊 income_stmt result: type={type(_us_inc).__name__}, empty={getattr(_us_inc, 'empty', 'N/A')}, cols={len(_us_inc.columns) if _us_inc is not None and hasattr(_us_inc, 'columns') else 0}")
-                    if _us_inc is not None and hasattr(_us_inc, 'index'):
-                        print(f"  📊 income_stmt rows: {list(_us_inc.index[:5])}")
-                    _us_bs = _us_tk.balance_sheet
-                    if _us_inc is not None and len(_us_inc.columns) >= 1:
-                        _col = _us_inc.columns[0]
-                        _rev = float(_us_inc.at["Total Revenue", _col]) if "Total Revenue" in _us_inc.index else 0
-                        _ni = float(_us_inc.at["Net Income", _col]) if "Net Income" in _us_inc.index else 0
-                        _gp = float(_us_inc.at["Gross Profit", _col]) if "Gross Profit" in _us_inc.index else 0
-                        _oi = float(_us_inc.at["Operating Income", _col]) if "Operating Income" in _us_inc.index else 0
-                        if _rev > 0:
-                            if npm == 0 and _ni != 0 and _rev > 0: npm = round(_ni / _rev * 100, 1)
-                            if gm == 0 and _gp > 0 and _rev > 0: gm = round(_gp / _rev * 100, 1)
-                            if om == 0 and _oi != 0 and _rev > 0: om = round(_oi / _rev * 100, 1)
-                        # Revenue growth from 2 years
-                        if len(_us_inc.columns) >= 2 and rev_g == 0:
-                            _rev_prev = float(_us_inc.at["Total Revenue", _us_inc.columns[1]]) if "Total Revenue" in _us_inc.index else 0
-                            if _rev_prev > 0: rev_g = round((_rev - _rev_prev) / _rev_prev * 100, 1)
-                        # Earnings growth
-                        if len(_us_inc.columns) >= 2 and earn_g == 0:
-                            _ni_prev = float(_us_inc.at["Net Income", _us_inc.columns[1]]) if "Net Income" in _us_inc.index else 0
-                            if _ni_prev > 0: earn_g = round((_ni - _ni_prev) / _ni_prev * 100, 1)
-                        print(f"  ✅ yfinance income_stmt: NPM={npm:.1f}% GM={gm:.1f}% RevG={rev_g:.1f}%")
-                    
-                    # Also try quarterly_financials for YoY quarterly growth (more accurate for fast growers like MU)
-                    try:
-                        _us_q = _us_tk.quarterly_financials
-                        if _us_q is not None and len(_us_q.columns) >= 5 and "Total Revenue" in _us_q.index:
-                            _qrev_latest = float(_us_q.at["Total Revenue", _us_q.columns[0]])
-                            _qrev_yoy = float(_us_q.at["Total Revenue", _us_q.columns[4]])  # 4 quarters ago
-                            if _qrev_yoy > 0 and _qrev_latest > 0:
-                                _yoy_qg = round((_qrev_latest / _qrev_yoy - 1) * 100, 1)
-                                print(f"  📊 Quarterly YoY revenue growth: {_yoy_qg:.1f}% (latest={_qrev_latest/1e9:.2f}B vs yoy={_qrev_yoy/1e9:.2f}B)")
-                                # Use quarterly YoY if it's significantly different from TTM (fast grower detection)
-                                if abs(_yoy_qg) > abs(rev_g) * 1.5:
-                                    rev_g = _yoy_qg
-                                    print(f"  ✅ Using quarterly YoY growth: {rev_g:.1f}% (more representative)")
-                    except Exception as _qe:
-                        print(f"  ⚠️ Quarterly financials: {_qe}")
-                    if _us_bs is not None and len(_us_bs.columns) >= 1:
-                        _bcol = _us_bs.columns[0]
-                        _eq = float(_us_bs.at["Stockholders Equity", _bcol]) if "Stockholders Equity" in _us_bs.index else 0
-                        _td = float(_us_bs.at["Total Debt", _bcol]) if "Total Debt" in _us_bs.index else 0
-                        _ta = float(_us_bs.at["Total Assets", _bcol]) if "Total Assets" in _us_bs.index else 0
-                        if _eq > 0:
-                            if roe == 0 and _ni != 0: roe = round(_ni / _eq * 100, 1)
-                            if de == 0 and _td > 0: de = round(_td / _eq * 100, 1)
-                            if bv == 0: bv = round(_eq / max(mcap / max(price, 1), 1), 2)
-                        if _ta > 0 and roce == 0 and _ni != 0:
-                            roce = round(_ni / _ta * 100 * 1.5, 1)  # ROA * 1.5 as ROCE proxy
-                        print(f"  ✅ yfinance balance_sheet: ROE={roe:.1f}% D/E={de:.1f}%")
-                except Exception as _us_fs_err:
-                    print(f"  ⚠️ yfinance financials: {_us_fs_err}")
-                
-                _r4 = sum(1 for x in [gm, roe, npm, pe, rev_g] if x != 0)
-                if _r4 >= 2:
-                    _data_confident = True
-                    _debug_log.append(f"yfinance statements: {_r4}/5 GM={gm:.1f} ROE={roe:.1f} RevG={rev_g:.1f}")
-                    print(f"  ✅ US rescue SUCCESS: {_r4}/5 — PE={pe:.1f} ROE={roe:.1f}% GM={gm:.1f}% RevG={rev_g:.1f}%")
+        _filled = sum(1 for x in [gm, roe, npm, pe, rev_g, earn_g] if x)
+        _data_confident = _filled >= 2 or (pe > 0 and price > 0)
+        if _data_confident:
+            print(f"  {symbol} fundamentals from the data layer: GM={gm:.1f}% ROE={roe:.1f}% PE={pe:.1f} RevG={rev_g:.1f}% EarnG={earn_g:.1f}%")
         else:
-            _nonzero = sum(1 for x in [gm, roe, npm, pe, rev_g, earn_g, de] if x != 0)
-            if _nonzero < 2:
-                _data_confident = False
-                print(f"  ⚠️ Only {_nonzero}/7 metrics have data for {symbol}")
-                # US stocks: try Google Finance + financials rescue
-                if is_us:
-                    try:
-                        import re as _usre2
-                        _gf2 = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.get(f"https://www.google.com/finance/quote/{symbol}:NASDAQ", headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}, timeout=8))
-                        if _gf2.status_code != 200:
-                            _gf2 = await asyncio.get_event_loop().run_in_executor(None, lambda: requests.get(f"https://www.google.com/finance/quote/{symbol}:NYSE", headers={"User-Agent": "Mozilla/5.0"}, timeout=8))
-                        if _gf2.status_code == 200:
-                            _pm2 = _usre2.search(r'P/E ratio[^>]*>([0-9,.]+)', _gf2.text)
-                            if _pm2 and pe == 0: pe = round(float(_pm2.group(1).replace(",", "")), 1)
-
-                        _tk2 = yf.Ticker(symbol)
-                        _inc2 = _tk2.income_stmt
-                        if _inc2 is not None and len(_inc2.columns) >= 1:
-                            _c2 = _inc2.columns[0]
-                            _r2 = float(_inc2.at["Total Revenue", _c2]) if "Total Revenue" in _inc2.index else 0
-                            _n2 = float(_inc2.at["Net Income", _c2]) if "Net Income" in _inc2.index else 0
-                            _g2 = float(_inc2.at["Gross Profit", _c2]) if "Gross Profit" in _inc2.index else 0
-                            if _r2 > 0:
-                                if npm == 0: npm = round(_n2 / _r2 * 100, 1)
-                                if gm == 0 and _g2 > 0: gm = round(_g2 / _r2 * 100, 1)
-                            if len(_inc2.columns) >= 2 and rev_g == 0:
-                                _rp2 = float(_inc2.at["Total Revenue", _inc2.columns[1]]) if "Total Revenue" in _inc2.index else 0
-                                if _rp2 > 0: rev_g = round((_r2 - _rp2) / _rp2 * 100, 1)
-                        _bs2 = _tk2.balance_sheet
-                        if _bs2 is not None and len(_bs2.columns) >= 1:
-                            _eq2 = float(_bs2.at["Stockholders Equity", _bs2.columns[0]]) if "Stockholders Equity" in _bs2.index else 0
-                            if _eq2 > 0 and roe == 0 and _n2 != 0: roe = round(_n2 / _eq2 * 100, 1)
-                        _nr2 = sum(1 for x in [gm, roe, npm, pe, rev_g] if x != 0)
-                        if _nr2 >= 2: _data_confident = True; print(f"  ✅ US low-data rescue: {_nr2}/5 metrics recovered")
-                    except Exception as _usr2:
-                        print(f"  ⚠️ US rescue (non-zero path): {_usr2}")
-            else:
-                _data_confident = True
-                print(f"  📊 {symbol} fundamentals: GM={gm:.1f}% ROE={roe:.1f}% NPM={npm:.1f}% PE={pe:.1f} RevG={rev_g:.1f}%")
-        
-
-        # ═══ NON-YAHOO RESCUE (Finviz + CNBC + AlphaVantage) ═══
-        _iz = sum(1 for x in [gm, roe, npm, pe, rev_g] if x == 0)
-        if _iz >= 2 and is_us and price > 0:
-            print(f"  🌐 Non-Yahoo rescue for {symbol} ({_iz}/5 zeros)...")
-            try:
-                _ms = fetch_multi_source_fundamentals(symbol)
-                if _ms:
-                    if gm==0 and _ms.get("grossMargins",0)>0: gm=round(float(_ms["grossMargins"])*100,1)
-                    if npm==0 and _ms.get("profitMargins",0)!=0: npm=round(float(_ms["profitMargins"])*100,1)
-                    if roe==0 and _ms.get("returnOnEquity",0)!=0: roe=round(float(_ms["returnOnEquity"])*100,1)
-                    if pe==0 and _ms.get("trailingPE",0)>0: pe=round(float(_ms["trailingPE"]),1)
-                    if rev_g==0 and _ms.get("revenueGrowth",0)!=0: rev_g=round(float(_ms["revenueGrowth"])*100,1)
-                    if de==0 and _ms.get("debtToEquity",0)>0: de=round(float(_ms["debtToEquity"]),1)
-                    # Store marketCap for later segment classification
-                    if _ms.get("marketCap", 0):
-                        _finviz_mcap_rescue = int(_ms["marketCap"])
-                    _rms=sum(1 for x in [gm,roe,npm,pe,rev_g] if x!=0)
-                    if _rms>=2: _data_confident=True
-                    print(f"  ✅ Non-Yahoo: {_rms}/5 GM={gm:.1f} ROE={roe:.1f} PE={pe:.1f}")
-                    _debug_log.append(f"Non-Yahoo rescue: {_rms}/5 GM={gm:.1f} ROE={roe:.1f} NPM={npm:.1f} PE={pe:.1f} RevG={rev_g:.1f}")
-            except Exception as _mse:
-                print(f"  ⚠️ Non-Yahoo failed: {_mse}")
-                _debug_log.append(f"Non-Yahoo FAILED: {str(_mse)[:100]}")
+            print(f"  data layer returned {_filled} metrics for {symbol}")
 
         # ═══ DATA QUALITY SCORING (replaces lenient pe+price check) ═══
         _key_metrics = [gm, roe, npm, pe, rev_g]
@@ -35798,7 +35537,11 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                 _non_zero_count = sum(1 for x in [gm, roe, npm, pe, rev_g] if x != 0)
                 _data_quality_level = "HIGH" if _non_zero_count >= 4 else ("MEDIUM" if _non_zero_count >= 3 else ("LOW" if _non_zero_count >= 1 else "NONE"))
                 # Recalculate critical missing
-                _critical_metrics = {"Gross Margin": gm, "Revenue Growth": rev_g, "Earnings Growth": earn_g}
+                if _is_financial:
+                    _quality = _layer_fund.get("nim") or _layer_fund.get("roa") or roe
+                    _critical_metrics = {"NIM/ROA/ROE": _quality or 0, "Revenue Growth": rev_g, "Earnings Growth": earn_g}
+                else:
+                    _critical_metrics = {"Gross Margin": gm, "Revenue Growth": rev_g, "Earnings Growth": earn_g}
                 _critical_missing = [k for k, v in _critical_metrics.items() if v == 0]
                 _data_incomplete = len(_critical_missing) > 0
                 if not _data_incomplete:
@@ -35812,7 +35555,11 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         # Track which metrics are ACTUALLY available vs missing
         _raw_metrics = {"gm": gm, "roe": roe, "npm": npm, "pe": pe, "rev_g": rev_g, 
                         "earn_g": earn_g, "de": de, "eps": eps, "bv": bv, "roce": roce, "om": om}
-        _critical_metrics = {"Gross Margin": gm, "Revenue Growth": rev_g, "Earnings Growth": earn_g}
+        if _is_financial:
+            _quality = _layer_fund.get("nim") or _layer_fund.get("roa") or roe
+            _critical_metrics = {"NIM/ROA/ROE": _quality or 0, "Revenue Growth": rev_g, "Earnings Growth": earn_g}
+        else:
+            _critical_metrics = {"Gross Margin": gm, "Revenue Growth": rev_g, "Earnings Growth": earn_g}
         _minor_metrics = {"ROE": roe, "Net Margin": npm}
         _critical_missing = [k for k, v in _critical_metrics.items() if v == 0]
         _minor_missing = [k for k, v in _minor_metrics.items() if v == 0]
@@ -35857,14 +35604,14 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         elif promoter > 0 and promoter < 30 and not is_us: moat_flags.append({"t": f"Low promoter holding ({promoter:.0f}%) — governance risk", "g": False})
         if div_y > 1.5: moat_score += 4; moat_flags.append({"t": f"Dividend yield {div_y:.1f}% — rewards shareholders", "g": True})
         
-        # MISSING DATA GUARD — don't penalize moat for missing Yahoo data
+        # MISSING DATA GUARD — don't penalize moat when a margin was not published
         _moat_data_present = sum([1 if gm > 0 else 0, 1 if roe > 0 else 0, 1 if rev_g != 0 else 0, 1 if earn_g != 0 else 0])
         if _moat_data_present <= 2 and f_score >= 5:
             # Only 2 or fewer metrics available but F-Score is decent → give benefit of doubt
             _moat_baseline = min(20, round((f_score / 9) * 20))  # Conservative baseline  # Derive from F-Score
             if moat_score < _moat_baseline:
                 moat_score = _moat_baseline
-                moat_flags.append({"t": f"Moat boosted to {moat_score + 15} (baseline from F-Score {f_score}/9 — Yahoo didn't return growth/margin data)", "g": None})
+                moat_flags.append({"t": f"Moat boosted to {moat_score + 15} (baseline from F-Score {f_score}/9 — growth or margin data was not published)", "g": None})
                 _debug_log.append(f"Moat: boosted from {moat_score} to {_moat_baseline} — {4 - _moat_data_present}/4 metrics missing")
         
         moat_score = max(0, min(100, 15 + moat_score))
@@ -36030,7 +35777,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         hist_trend = {}; consistency = 0
         try:
             yf_sym_inv = symbol + (".NS" if not is_us else "")
-            tk_inv = yf.Ticker(yf_sym_inv)
+            tk_inv = _LayerTicker(yf_sym_inv)
             # Quarterly financials
             qf = tk_inv.quarterly_financials
             if qf is not None and len(qf.columns) >= 4:
@@ -36094,7 +35841,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                 for peer_sym in peers_list:
                     try:
                         p_yf = peer_sym + (".NS" if not is_us else "")
-                        p_info = yf.Ticker(p_yf).info
+                        p_info = _LayerTicker(p_yf).info
                         p_price = float(p_info.get("currentPrice") or p_info.get("regularMarketPrice") or 0)
                         p_eps = float(p_info.get("trailingEps") or p_info.get("epsTrailingTwelveMonths") or 0)
                         p_bvps = float(p_info.get("bookValue") or 0)
@@ -36484,7 +36231,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
             _yf_ticker = inst.get("yf", symbol)
             def _fetch_financials(sym=_yf_ticker):
 
-                _tk = yf.Ticker(sym)
+                _tk = _LayerTicker(sym)
                 _inc = _tk.income_stmt if hasattr(_tk, 'income_stmt') else (_tk.financials if hasattr(_tk, 'financials') else None)
                 _bs = _tk.balance_sheet if hasattr(_tk, 'balance_sheet') else None
                 _cf = _tk.cashflow if hasattr(_tk, 'cashflow') else None
@@ -37150,7 +36897,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
             if _data_incomplete and len(_critical_missing) >= 2:
                 inv_decision = "⚠️ DATA INSUFFICIENT"
                 inv_color = "#6366f1"
-                inv_explain = f"Cannot issue a verdict — {len(_critical_missing)} critical metrics missing: {', '.join(_critical_missing)}. All fallback data sources were tried (Yahoo, Finviz, CNBC, yfinance statements). Please retry in 2-3 minutes."
+                inv_explain = f"Cannot issue a verdict — {len(_critical_missing)} critical metrics missing: {', '.join(_critical_missing)}. The configured market-data sources did not publish them. Retry in a few minutes."
                 _dynamic_score = 0
                 _debug_log.append(f"VERDICT BLOCKED: {len(_critical_missing)} critical missing: {_critical_missing}")
             elif _data_incomplete and len(_critical_missing) == 1:
@@ -37257,7 +37004,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         except Exception as cm_err:
             print(f"  ⚠️ Cross-market: {cm_err}")
         
-        # ═══ NEWS SENTIMENT (from Yahoo Finance) ═══
+        # ═══ NEWS SENTIMENT ═══
         news_sentiment = {"score": 50, "label": "NEUTRAL", "articles": [], "themes": []}
         try:
             from market_data.layer import news as _provider_news
@@ -37349,7 +37096,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         dark_pool = {"detected": False, "score": 0, "signals": []}
         try:
             yf_sym_dp = symbol if is_us else f"{symbol}.NS"
-            _dp_ticker = yf.Ticker(yf_sym_dp)
+            _dp_ticker = _LayerTicker(yf_sym_dp)
             _dp_hist = _dp_ticker.history(period="1mo", interval="1d")
             if _dp_hist is not None and len(_dp_hist) > 5:
                 _dp_vols = [_np_safe(v) for v in _dp_hist['Volume'].values]
@@ -37423,7 +37170,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                 "Utilities": "XLU" if is_us else "NIFTYBEES.NS",
             }
             _etf_sym = _sector_etf_map.get(_sector, "SPY" if is_us else "NIFTYBEES.NS")
-            _etf_ticker = yf.Ticker(_etf_sym)
+            _etf_ticker = _LayerTicker(_etf_sym)
             _etf_hist = _etf_ticker.history(period="1mo", interval="1d")
             
             if _etf_hist is not None and len(_etf_hist) > 5:
@@ -37467,11 +37214,11 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         
         # ═══ MARKET CAP for segment classification ═══
         _market_cap = 0
-        # Try stock_intel result first (may have Finviz marketCap)
+        # Market cap already collected from the data layer
         _market_cap = int(si.get("marketCap", 0) or 0)
         if not _market_cap:
             try:
-                _mc_ticker = yf.Ticker(yf_sym_dp if "yf_sym_dp" in dir() else (symbol if is_us else f"{symbol}.NS"))
+                _mc_ticker = _LayerTicker(yf_sym_dp if "yf_sym_dp" in dir() else (symbol if is_us else f"{symbol}.NS"))
                 _mc_info = _mc_ticker.info
                 _market_cap = int(_np_safe(_mc_info.get("marketCap", 0)) or 0)
             except:
@@ -37479,12 +37226,12 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         if not _market_cap:
             # Fallback: estimate from PE and price
             try:
-                _finviz_mcap = si.get("fundamental", {}).get("marketCap", 0) or si.get("valuation", {}).get("marketCap", 0) or _finviz_mcap_rescue
-                if _finviz_mcap:
-                    _market_cap = int(_finviz_mcap)
+                _saved_mcap = si.get("fundamental", {}).get("marketCap", 0) or si.get("valuation", {}).get("marketCap", 0) or _alt_mcap
+                if _saved_mcap:
+                    _market_cap = int(_saved_mcap)
             except:
                 pass
-        _debug_log.append(f"marketCap={_market_cap} source={'si' if si.get('marketCap') else 'yf' if _market_cap > 0 else 'finviz' if _finviz_mcap_rescue else 'NONE'}")
+        _debug_log.append(f"marketCap={_market_cap} source={'layer' if _market_cap else 'none'}")
         
         # ─── RESPONSE DIAGNOSTIC LOG ───
         _tech_rsi = round(float(pa.get("rsi", 0) or si.get("technicals", {}).get("rsi", 0) or 0), 1)
@@ -37676,8 +37423,9 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         print(f"  📊 fundHoldings: {len(_id_result.get('fundHoldings',{}).get('institutions',[]))} institutions, inst%={_id_result.get('institutionalOwnership',0)}")
         print(f"  ⏱️ Total time: {_inv_elapsed}s")
         print(f"{'='*60}\n")
-        # Cache the result for 10 minutes
-        _smart_cache_set(_id_ck, _id_result, 1800)  # 30 min cache — fundamentals dont change fast
+        # A missing verdict is not a result. The next request tries the sources again.
+        if "INSUFFICIENT" not in str(_id_result.get("decision") or ""):
+            _smart_cache_set(_id_ck, _id_result, 1800)
         return _id_result
     except Exception as e:
         import traceback; traceback.print_exc()
@@ -62018,33 +61766,25 @@ async def education_module(topic: str = "basics"):
 
 _si_cache = {}  # {symbol_region: {ts, data}}
 _si_lock = None  # Legacy: single-region semaphore (kept for backward compat with any callers)
-# r38: Region-specific semaphores. India path uses NSE primary (low Yahoo load),
-# so 1 concurrent yfinance call is fine. US path has ONLY yfinance — gating it
-# serially with Semaphore(1) is the root cause of Dream Portfolio US timeouts.
-# Yahoo tolerates ~4-6 concurrent requests from a single IP before rate-limiting
-# if spread over a few seconds. We use 4 as a conservative institutional default.
-_si_lock_us = None   # Semaphore(4): US path (Yahoo-only)
-_si_lock_in = None   # Semaphore(1): India path (Yahoo is enrichment, not primary)
+# Region-specific semaphores. India starts from NSE. US reads the data layer.
+# Four US reads can run at once. India stays at one so the NSE session is not stampeded.
+_si_lock_us = None   # Semaphore(4): US path
+_si_lock_in = None   # Semaphore(1): India path
 
 @app.get("/api/stock-intel")
 async def stock_intel(symbol: str, region: str = "IN"):
-    """Complete Stock Intelligence — yfinance-backed, region-aware concurrency, rate-limit safe.
+    """Complete Stock Intelligence. Prices and fundamentals come from the market-data layer.
     
     r38: Changed from single global Semaphore(1) to region-specific semaphores.
-    India uses NSE primary with yfinance enrichment — serial access is fine.
-    US uses yfinance exclusively — Semaphore(4) allows institutional-grade
-    throughput (4 concurrent) without tripping Yahoo rate-limits.
-    
-    This is the root-cause fix for Dream Portfolio US timeouts: previously
-    12 scanner tasks all funneled through Semaphore(1) inside stock_intel,
-    causing 85% to hit the 20-sec task timeout before even getting yfinance.
+    India uses the NSE quote with the layer filling gaps.
+    US reads the layer directly. Semaphore(4) keeps four US reads in flight.
     """
     import asyncio
     global _si_lock_us, _si_lock_in
     is_us = region.upper() == "US"
     # Lazy init of both semaphores (async-loop binding requires this)
     if _si_lock_us is None:
-        _si_lock_us = asyncio.Semaphore(4)   # US: 4 concurrent Yahoo calls
+        _si_lock_us = asyncio.Semaphore(4)   # US: 4 concurrent reads
     if _si_lock_in is None:
         _si_lock_in = asyncio.Semaphore(1)   # IN: 1 concurrent (NSE is primary anyway)
     _sem = _si_lock_us if is_us else _si_lock_in
@@ -62069,15 +61809,16 @@ async def stock_intel(symbol: str, region: str = "IN"):
         return await _run_stock_intel(symbol, region, cache_key)
 
 async def _run_stock_intel(symbol, region, cache_key):
-    """Actual stock intel computation — NSE+MC for India, yfinance for USA"""
+    """Stock intel. India starts from the NSE quote. Both regions fill gaps from the data layer."""
+    from market_data.yfcompat import Ticker as _LayerTicker
     try:
-        # yfinance imported globally with 401 wrapper, math, time
+        # math, time
         import pandas as pd
         import numpy as np
         
         is_us = region.upper() == "US"
         csym = "$" if is_us else "₹"
-        info = {}  # Initialize for both paths — US fills from yfinance, India fills from NSE
+        info = {}  # US fills from the data layer, India fills from NSE
         _data_quality = "HIGH"  # Default — downgraded if data is missing
         
         if not is_us:
@@ -62085,12 +61826,12 @@ async def _run_stock_intel(symbol, region, cache_key):
             print(f"🇮🇳 Stock Intel INDIA: {symbol} — using NSE + Moneycontrol")
             nse = fetch_nse_stock_data(symbol)
             
-            # Get price history from yfinance (NSE doesn't have easy history API)
+            # Daily history from the data layer. NSE does not publish an easy history series.
             yf_sym = f"{symbol}.NS"
             hist = pd.DataFrame()
             try:
 
-                tk = yf.Ticker(yf_sym)
+                tk = _LayerTicker(yf_sym)
                 _lp = asyncio.get_event_loop()
                 hist = await _lp.run_in_executor(None, lambda _t=tk: _t.history(period="1y"))
             except:
@@ -62149,7 +61890,7 @@ async def _run_stock_intel(symbol, region, cache_key):
             eps = nse["eps"]
             book_value = nse["bookValue"]
             
-            # ═══ FILL MISSING INDIA FIELDS from yfinance .info or Yahoo API ═══
+            # ═══ FILL MISSING INDIA FIELDS from the data layer ═══
             # NSE/MC/Screener don't give: currentRatio, targetPrice, analysts, beta, grossMargins
             _needs_fill = (current_ratio == 0 or target_price == 0 or beta == 1.0 or gross_margin == 0)
             if _needs_fill:
@@ -62157,7 +61898,7 @@ async def _run_stock_intel(symbol, region, cache_key):
                     _yf_fill = f"{symbol}.NS"
                     _lp_fill = asyncio.get_event_loop()
                     def _fill_fetch(sym=_yf_fill):
-                        try: return yf.Ticker(sym).info or {}
+                        try: return _LayerTicker(sym).info or {}
                         except: return {}
                     _finfo = await _lp_fill.run_in_executor(None, _fill_fetch)
                     if _finfo and len(_finfo) > 5:
@@ -62184,9 +61925,9 @@ async def _run_stock_intel(symbol, region, cache_key):
                         if not industry and _finfo.get("industry"): industry = _finfo["industry"]
                         if free_cash_flow == 0 and _fs("freeCashflow") != 0: free_cash_flow = _fs("freeCashflow")
                         _filled = sum(1 for x in [current_ratio, target_price, gross_margin, beta] if x > 0)
-                        print(f"  ✅ yfinance fill for India: CR={current_ratio:.1f} Target=₹{target_price:.0f} β={beta:.2f} GM={gross_margin:.1f}%")
+                        print(f"  ✅ layer fill for India: CR={current_ratio:.1f} Target=₹{target_price:.0f} β={beta:.2f} GM={gross_margin:.1f}%")
                     else:
-                        # Fallback: Yahoo direct API
+                        # Same provider through the summary adapter, if .info was empty
                         _yr_fill = _summary_response(f"{symbol}.NS")
                         if _yr_fill.status_code == 200:
                             _yd_fill = _yr_fill.json().get("quoteSummary", {}).get("result", [{}])[0]
@@ -62200,7 +61941,7 @@ async def _run_stock_intel(symbol, region, cache_key):
                             if gross_margin == 0: gross_margin = round(_yv_f(_fd_f, "grossMargins") * 100, 1)
                             if roe == 0: roe = round(_yv_f(_fd_f, "returnOnEquity") * 100, 1)
                             if beta == 1.0: beta = round(_yv_f(_ks_f, "beta"), 2)
-                            print(f"  ✅ Yahoo API fill for India: CR={current_ratio:.1f} Target=₹{target_price:.0f}")
+                            print(f"  ✅ summary fill for India: CR={current_ratio:.1f} Target=₹{target_price:.0f}")
                 except Exception as _fill_err:
                     print(f"  ⚠️ India fill failed: {_fill_err}")
             
@@ -62210,8 +61951,8 @@ async def _run_stock_intel(symbol, region, cache_key):
             print(f"  📊 India final: {_india_fund_count}/7 metrics | ROE={roe:.1f}% PE={pe:.1f} GM={gross_margin:.1f}% CR={current_ratio:.1f} Target=₹{target_price:.0f} Quality={_data_quality}")
         
         else:
-            # ═══ USA: yfinance (PRIMARY) ═══
-            print(f"🇺🇸 Stock Intel USA: {symbol} — using yfinance")
+            # ═══ USA: data layer ═══
+            print(f"🇺🇸 Stock Intel USA: {symbol} — using the data layer")
             yf_sym = symbol
             delivery_pct = 0; promoter_holding = 0; fii_holding = 0; dii_holding = 0
             sector_pe = 0; quarterly_results = []; eps = 0; book_value = 0
@@ -62223,7 +61964,7 @@ async def _run_stock_intel(symbol, region, cache_key):
                 for attempt in range(2):
                     try:
 
-                        _tk = yf.Ticker(sym)
+                        _tk = _LayerTicker(sym)
                         _hist = _tk.history(period="1y")
                         if len(_hist) == 0: raise Exception("Empty")
                         try: _info = _tk.info or {}
@@ -62235,10 +61976,10 @@ async def _run_stock_intel(symbol, region, cache_key):
             _lp2 = asyncio.get_event_loop()
             info, hist = await _lp2.run_in_executor(None, _fetch_yf_data)
             
-            # ═══ CRITICAL FALLBACK: If yfinance .info is empty, try Yahoo direct API for fundamentals ═══
+            # ═══ If the first read was thin, ask the summary adapter for the same provider ═══
             _info_count = sum(1 for k in ["trailingPE","returnOnEquity","profitMargins","grossMargins","revenueGrowth"] if info.get(k))
             if _info_count < 2:
-                print(f"  ⚠️ yfinance .info nearly empty ({_info_count}/5) for {symbol} — trying Yahoo direct API")
+                print(f"  ⚠️ layer info nearly empty ({_info_count}/5) for {symbol} — trying the summary adapter")
                 try:
                     _yapi_r = _summary_response(yf_sym)
                     if _yapi_r.status_code == 200:
@@ -62277,9 +62018,9 @@ async def _run_stock_intel(symbol, region, cache_key):
                             info["industry"] = _ydata["assetProfile"].get("industry", "")
                             info["shortName"] = _ydata.get("price", {}).get("shortName", symbol)
                         _rescued_count = sum(1 for k in ["trailingPE","returnOnEquity","profitMargins","grossMargins","revenueGrowth"] if info.get(k))
-                        print(f"  ✅ Yahoo API rescue: {_rescued_count}/5 fundamentals recovered for {symbol}")
+                        print(f"  ✅ summary rescue: {_rescued_count}/5 fundamentals recovered for {symbol}")
                 except Exception as _yapi_err:
-                    print(f"  ⚠️ Yahoo API fallback failed: {_yapi_err}")
+                    print(f"  ⚠️ summary fallback failed: {_yapi_err}")
             
             # ═══ DATA QUALITY SIGNAL ═══
             
@@ -62290,7 +62031,7 @@ async def _run_stock_intel(symbol, region, cache_key):
             if not info.get("returnOnEquity") or not info.get("debtToEquity"):
                 try:
 
-                    _tk3 = yf.Ticker(yf_sym)
+                    _tk3 = _LayerTicker(yf_sym)
                     # Income statement → Net Income → ROE
                     if not info.get("returnOnEquity"):
                         _inc3 = _tk3.income_stmt
@@ -62373,32 +62114,31 @@ async def _run_stock_intel(symbol, region, cache_key):
             if _safe(info.get("trailingEps")) > 0: eps = _safe(info.get("trailingEps"))
             if _safe(info.get("bookValue")) > 0: book_value = _safe(info.get("bookValue"))
             
-            # ═══ NON-YAHOO RESCUE for stock_intel (Finviz+CNBC+AlphaVantage) ═══
-            _szf = sum(1 for x in [gross_margin, profit_margin, roe, pe, rev_growth] if x == 0)
-            if _szf >= 2 and is_us and price > 0:
-                print(f"  🌐 stock_intel non-Yahoo for {symbol} ({_szf}/5 zeros)...")
-                try:
-                    _mssi = fetch_multi_source_fundamentals(symbol)
-                    if _mssi:
-                        if gross_margin == 0 and _mssi.get("grossMargins",0) > 0: gross_margin = round(float(_mssi["grossMargins"]) * 100, 1)
-                        if profit_margin == 0 and _mssi.get("profitMargins",0) != 0: profit_margin = round(float(_mssi["profitMargins"]) * 100, 1)
-                        if roe == 0 and _mssi.get("returnOnEquity",0) != 0: roe = round(float(_mssi["returnOnEquity"]) * 100, 1)
-                        if pe == 0 and _mssi.get("trailingPE",0) > 0: pe = round(float(_mssi["trailingPE"]), 1)
-                        if rev_growth == 0 and _mssi.get("revenueGrowth",0) != 0: rev_growth = round(float(_mssi["revenueGrowth"]) * 100, 1)
-                        if debt_equity == 0 and _mssi.get("debtToEquity",0) > 0: debt_equity = round(float(_mssi["debtToEquity"]), 1)
-                        if operating_margin == 0 and _mssi.get("operatingMargins",0) != 0: operating_margin = round(float(_mssi["operatingMargins"]) * 100, 1)
-                        if beta == 1.0 and _mssi.get("beta",0) > 0: beta = round(float(_mssi["beta"]), 2)
-                        if fwd_pe == 0 and _mssi.get("forwardPE",0) > 0: fwd_pe = round(float(_mssi["forwardPE"]), 1)
-                        # Get marketCap from Finviz if available
-                        if _mssi.get("marketCap", 0) and not result.get("marketCap"):
-                            result["marketCap"] = int(_mssi["marketCap"])
-                        _rsi2 = sum(1 for x in [gross_margin, profit_margin, roe, pe, rev_growth] if x != 0)
-                        _data_quality = "HIGH" if _rsi2 >= 4 else ("MEDIUM" if _rsi2 >= 3 else "LOW")
-                        print(f"  ✅ stock_intel non-Yahoo: {_rsi2}/5 GM={gross_margin} ROE={roe} PE={pe} DE={debt_equity}")
-                        _data_quality = "HIGH" if _rsi2 >= 4 else ("MEDIUM" if _rsi2 >= 3 else "LOW")
-                except Exception as _mse2:
-                    print(f"  ⚠️ stock_intel non-Yahoo failed: {_mse2}")
-        
+        # Growth and margins for both regions come from the one source list.
+        try:
+            from market_data.layer import investor_fundamentals as _intel_fund
+            _lf = _intel_fund(symbol, region) or {}
+
+            def _take(current, key):
+                if current:
+                    return current
+                value = _lf.get(key)
+                if isinstance(value, (int, float)) and value != 0:
+                    return float(value)
+                return current
+
+            rev_growth = _take(rev_growth, "revenueGrowth")
+            earn_growth = _take(earn_growth, "earningsGrowth")
+            roe = _take(roe, "roe")
+            pe = _take(pe, "pe")
+            debt_equity = _take(debt_equity, "debt")
+            profit_margin = _take(profit_margin, "profitMargin")
+            operating_margin = _take(operating_margin, "operatingMargin")
+            if not _lf.get("financial"):
+                gross_margin = _take(gross_margin, "grossMargin")
+        except Exception as _lf_err:
+            print(f"  layer fundamentals skipped: {_lf_err}")
+
         # ═══ 1. FUNDAMENTAL ANALYSIS ═══
         
         fund_score = 50; fund_flags = []
@@ -62759,7 +62499,8 @@ async def _run_stock_intel(symbol, region, cache_key):
             "metricSources": (info.get("_metric_sources") if isinstance(info, dict) else None) or {},
             "dataAsOf": (info.get("_as_of") if isinstance(info, dict) else None),
         }
-        _si_cache[cache_key] = {"ts": datetime.utcnow(), "data": _si_result}
+        if _data_quality != "NONE":
+            _si_cache[cache_key] = {"ts": datetime.utcnow(), "data": _si_result}
         if len(_si_cache) > 50:
             oldest = min(_si_cache, key=lambda k: _si_cache[k]["ts"])
             del _si_cache[oldest]
@@ -62801,8 +62542,8 @@ if __name__ == "__main__":
     print(f"🚀 Starting Celesys AI on {'https' if use_ssl else 'http'}://0.0.0.0:{port}")
     print(f"   HTTPS: {'✅ Enabled' if use_ssl else '❌ Disabled (set SSL_CERT + SSL_KEY env vars)'}")
     print(f"   Performance: connection pool, thread pool (15), smart cache, background prefetch")
-    print(f"   India data: NSE → Moneycontrol → Screener.in → yfinance → Google Finance")
-    print(f"   USA data: yfinance → Yahoo v8 → Google Finance")
+    print(f"   India data: Angel, Screener, TradingView")
+    print(f"   USA data: TradingView, Nasdaq, Stooq, Finnhub, SEC")
     print(f"   Journal: SQLite ({_journal_db})")
     print(f"   Auth: Server-side email verification (/api/auth/verify)")
     
