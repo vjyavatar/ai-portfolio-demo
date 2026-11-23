@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.128"
+APP_VERSION = "v4.63.129"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.129: Each market sparkline sits under the percent, so it no longer covers the price. "
     "v4.63.128: The home strip always prints NIFTY and SENSEX, and a move is shown only when it matches the prior daily close. "
     "v4.63.127: Price charts load with the home page again. "
     "v4.63.126: Home is a market strip, one Analyze action, a one-line brief and movers. The research-standard list and the three duplicate cards are gone. "
