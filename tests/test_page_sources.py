@@ -50,6 +50,16 @@ PHASE2 = {
     "price_tick",
     "execution_score_v2",
     "trade_ticket",
+    "fund_live",
+    "structural_change_signal",
+    "performance_leaderboard",
+    "health_check",
+    "options_flow",
+    "validate_trades",
+    "opportunity_runway",
+    "market_why",
+    "master_decision",
+    "stock_news",
 }
 
 PHASE1 = {
@@ -109,6 +119,16 @@ class PageSourceTests(unittest.TestCase):
             self.assertIn("quote_batch_clock", text, node.name)
             wanted.remove(node.name)
         self.assertEqual(wanted, set())
+        cards = {"imdf_decision", "imdf_themes", "red_flag_scan"}
+        for node in tree.body:
+            if not isinstance(node, ast.AsyncFunctionDef) or node.name not in cards:
+                continue
+            text = ast.get_source_segment(API, node) or ""
+            self.assertNotIn("2026-06-10", text, node.name)
+            self.assertNotIn("2026-06-08", text, node.name)
+            self.assertIn("quote_batch_clock", text, node.name)
+            cards.remove(node.name)
+        self.assertEqual(cards, set())
 
     def test_aapl_is_us_and_hdfcbank_is_india_when_region_is_omitted(self):
         self.assertEqual(layer.classify("AAPL")["region"], "US")

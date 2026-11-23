@@ -1492,10 +1492,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.140"
+APP_VERSION = "v4.63.141"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.141: Theme list, the one-name decision card and the one-name red-flag card stamp the exchange quote time and refuse a quote older than five days. Fund live, structural change, the leaderboard, health, options flow, trade validation, opportunity runway, market why, the master decision and stock news read the quote batch. "
     "v4.63.140: Institutional terminal, options setup, market daily, regional reports, the EMA signal, GIFT Nifty, the US premarket, the price tick, execution score and the trade ticket read the quote batch. "
     "v4.63.139: Runway top, the red-flag screen and multibagger discovery stamp the exchange quote time and refuse a quote older than five days. Multibagger discovery reads that one quote batch. "
     "v4.63.138: Live scan, runway, red flags, themes and asset intel read the quote batch. A scan still does not open a candle per symbol. "
@@ -14165,7 +14166,7 @@ async def fund_live():
     if _fund_cache and _fund_cache_ts and (now - _fund_cache_ts).total_seconds() < 1800:
         return _fund_cache
     
-    # Map display names to yfinance tickers
+    # Map display names to layer tickers
     TICKERS = {
         # India ETFs
         "MON100": "MAFANG.NS", "NETFIT": "NETFIT.NS", "ICICIN50": "ICICNIFTY.NS",
@@ -14183,7 +14184,7 @@ async def fund_live():
     def _fetch_fund(display_name, yf_ticker):
         try:
 
-            tk = yf.Ticker(yf_ticker)
+            tk = _QuoteOnly(yf_ticker)
             hist = tk.history(period="5y", interval="1mo")
             if hist is None or len(hist) < 3:
                 return display_name, None
@@ -17500,26 +17501,26 @@ async def structural_change_signal(symbol: str = "", region: str = "US", nocache
 
     t0 = time.time()
     try:
-        import market_data.yfcompat as yf
+        pass
     except Exception as e:
-        return {"success": False, "error": f"yfinance unavailable: {e}", "symbol": sym, "region": reg}
+        return {"success": False, "error": f"layer unavailable: {e}", "symbol": sym, "region": reg}
 
     yf_sym = sym if reg == "US" else f"{sym}.NS"
     try:
         try: pass
         except Exception: pass
-        tk = yf.Ticker(yf_sym)
+        tk = _QuoteOnly(yf_sym)
         info = {}
         try:
             info = tk.info or {}
         except Exception as _e:
             info = {}
     except Exception as e:
-        return {"success": False, "error": f"yfinance.Ticker failed: {type(e).__name__}: {str(e)[:120]}", "symbol": sym, "region": reg}
+        return {"success": False, "error": f"layer.Ticker failed: {type(e).__name__}: {str(e)[:120]}", "symbol": sym, "region": reg}
 
     # Compute all 5 categories
     # r63.99.4: per-category timing + exception capture, so we can diagnose
-    # which sub-signal is failing for a given ticker (typical cause: yfinance
+    # which sub-signal is failing for a given ticker (typical cause: layer
     # rate-limit on tk.income_stmt / cashflow / balance_sheet / institutional_holders).
     _cat_diag = {}
     def _safe_cat(name, fn):
@@ -21411,7 +21412,7 @@ async def regional_reports():
 @app.get("/api/performance-leaderboard")
 async def performance_leaderboard():
     """YTD + 5-year yearly returns for indices, ETFs, mutual funds, and top stocks."""
-    # yfinance imported globally with 401 wrapper
+    # layer imported globally with 401 wrapper
     from datetime import datetime, timedelta
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
@@ -21456,7 +21457,7 @@ async def performance_leaderboard():
     def fetch_yearly(ticker, name):
         """Fetch 6-year history, compute YTD + yearly returns."""
         try:
-            t = yf.Ticker(ticker)
+            t = _QuoteOnly(ticker)
             hist = t.history(period="6y", interval="1mo")
             if hist.empty or len(hist) < 12:
                 return None
@@ -21646,18 +21647,18 @@ async def health_check():
     except Exception as e:
         results["nse_optionchain"] = {"status": "FAIL", "reason": str(e)[:150]}
     
-    # Test 3: yfinance
+    # Test 3: layer
     try:
         t0 = _ht.time()
 
-        tk = yf.Ticker("^NSEI")
+        tk = _QuoteOnly("^NSEI")
         h = tk.history(period="5d")
         if h is not None and len(h) > 0:
-            results["yfinance"] = {"status": "OK", "price": round(float(h["Close"].iloc[-1]), 2), "bars": len(h), "ms": round((_ht.time()-t0)*1000)}
+            results["layer"] = {"status": "OK", "price": round(float(h["Close"].iloc[-1]), 2), "bars": len(h), "ms": round((_ht.time()-t0)*1000)}
         else:
-            results["yfinance"] = {"status": "FAIL", "reason": "Empty/None (Yahoo 401 blocked)"}
+            results["layer"] = {"status": "FAIL", "reason": "Empty/None (quote feed 401 blocked)"}
     except Exception as e:
-        results["yfinance"] = {"status": "FAIL", "reason": str(e)[:150]}
+        results["layer"] = {"status": "FAIL", "reason": str(e)[:150]}
     
     # Test 4: Google Finance
     try:
@@ -21675,11 +21676,11 @@ async def health_check():
     working = [k for k, v in results.items() if v.get("status") == "OK"]
     fix = ""
     if len(working) == 0:
-        fix = "CRITICAL: No data sources reachable. Try: pip install yfinance --upgrade --break-system-packages && restart"
-    elif "yfinance" not in working and any("nse" in w for w in working):
-        fix = "NSE working, Yahoo blocked. System OK — using NSE as primary."
-    elif "yfinance" in working:
-        fix = "yfinance working. All good!"
+        fix = "CRITICAL: No data sources reachable. Try: pip install layer --upgrade --break-system-packages && restart"
+    elif "layer" not in working and any("nse" in w for w in working):
+        fix = "NSE working, quote feed blocked. System OK — using NSE as primary."
+    elif "layer" in working:
+        fix = "layer working. All good!"
     else:
         fix = "Partial sources available."
     return {"sources": results, "working": working, "count": len(working), "fix": fix}
@@ -25637,12 +25638,12 @@ async def options_flow(region: str = "IN"):
     is_us = region.upper() == "US"
     
     if is_us:
-        # USA: yfinance has real options chains
+        # USA: layer has real options chains
         syms = ["SPY","QQQ","AAPL","MSFT","NVDA","TSLA","AMZN","META","AMD","GOOGL"]
         
         def _scan_us(sym):
             try:
-                t = yf.Ticker(sym)
+                t = _QuoteOnly(sym)
                 info = t.info or {}
                 price = float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
                 if price <= 0: return None
@@ -25701,7 +25702,7 @@ async def options_flow(region: str = "IN"):
                 except: pass
     
     else:
-        # INDIA: Use our NSE options API (yfinance has NO Indian options chains)
+        # INDIA: Use our NSE options API (layer has NO Indian options chains)
         results = []
         nse_syms = ["NIFTY", "BANKNIFTY", "SENSEX"]
         
@@ -28912,7 +28913,7 @@ async def validate_trades(request: Request):
                     continue
                 
                 # Fetch actual intraday data for that date
-                t = yf.Ticker(ticker)
+                t = _QuoteOnly(ticker)
                 trade_date = datetime.strptime(date_str, '%Y-%m-%d')
                 next_day = trade_date + timedelta(days=1)
                 hist = t.history(start=date_str, end=next_day.strftime('%Y-%m-%d'), interval="1h")
@@ -28920,7 +28921,7 @@ async def validate_trades(request: Request):
                 if hist.empty:
                     hist = t.history(start=date_str, end=(trade_date + timedelta(days=3)).strftime('%Y-%m-%d'))
                 
-                # Fallback: Yahoo v8 chart API
+                # Fallback: quote feed v8 chart API
                 if hist.empty:
                     try:
                         _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
@@ -31517,16 +31518,25 @@ async def opportunity_runway(symbol: str = "", region: str = "US"):
         except Exception:
             return default
 
-    stock = await _b(_mcoc_fetch, yf_sym, timeout=11)
+    def _quote_stock(sym):
+        frame = _quote_frame(sym, region=region)
+        if frame is None or getattr(frame, "empty", True) or len(frame) < 2:
+            return None
+        return {
+            "closes": [float(x) for x in frame["Close"].tolist()],
+            "volumes": [float(x) for x in frame["Volume"].tolist()],
+            "highs": [float(x) for x in frame["High"].tolist()],
+            "lows": [float(x) for x in frame["Low"].tolist()],
+        }
+    stock = await _b(_quote_stock, yf_sym, timeout=8)
     if not stock:
         return {"success": False, "symbol": symbol, "region": region,
-                "error": "price history unavailable", "_engine": "opportunity_runway_v1"}
-    bench = await _b(_mcoc_fetch, bench_sym, timeout=9)
+                "error": "No current quote", "_engine": "opportunity_runway_v1"}
+    bench = await _b(_quote_stock, bench_sym, timeout=8)
 
     def _info():
         try:
-            import market_data.yfcompat as yf
-            return yf.Ticker(yf_sym).info or {}
+            return _QuoteOnly(yf_sym).info or {}
         except Exception:
             return {}
     info = await _b(_info, timeout=9, default={}) or {}
@@ -32343,7 +32353,7 @@ async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0
     region = (region or "IN").upper()
     symbol = (symbol or "NIFTY").upper().strip()
 
-    # Symbol aliases — friendly names → yfinance symbols
+    # Symbol aliases — friendly names → layer symbols
     _ALIASES = {
         "NIFTY": "^NSEI", "NIFTY50": "^NSEI",
         "BANKNIFTY": "^NSEBANK", "BANKN": "^NSEBANK",
@@ -32389,8 +32399,7 @@ async def market_why(symbol: str = "NIFTY", region: str = "IN", refresh: int = 0
         # Detect asset type
         def _detect_asset_type():
             try:
-                import market_data.yfcompat as yf
-                tk = yf.Ticker(yf_sym)
+                tk = _QuoteOnly(yf_sym)
                 qt = (tk.info or {}).get("quoteType", "EQUITY").upper()
                 if qt in ("INDEX",) or yf_sym.startswith("^"):
                     return "INDEX"
@@ -40378,8 +40387,9 @@ async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
         return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE, DIXON)."}
     if yf is None:
         return {"success": False, "error": "layer unavailable"}
+    from market_data.layer import quote_date_ok
     ck = "imdf_%s_%s" % (region, sym)
-    if not refresh and ck in _IMDF_CACHE and (_t.time() - _IMDF_CACHE[ck][0] < _IMDF_TTL):
+    if not refresh and ck in _IMDF_CACHE and quote_date_ok(_IMDF_CACHE[ck][1].get("as_of")) and (_t.time() - _IMDF_CACHE[ck][0] < _IMDF_TTL):
         return _IMDF_CACHE[ck][1]
     _lp = asyncio.get_event_loop()
     _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "SPX": "^GSPC", "NDX": "^NDX"}
@@ -40387,93 +40397,38 @@ async def imdf_decision(symbol: str = "", region: str = "US", refresh: int = 0):
     bench = "SPY" if region == "US" else "^NSEI"
 
     def _fetch():
-        try: pass
-        except Exception: pass
+        from market_data.layer import scan_quotes
         try:
-            return _quote_frame(tickers="%s %s" % (yf_sym, bench), period="1y", interval="1d",
-                               group_by="ticker", auto_adjust=True, threads=True, progress=False, region=region)
+            return scan_quotes([yf_sym], region)
         except Exception:
-            return None
+            return {}
     try:
-        hist = await asyncio.wait_for(_lp.run_in_executor(None, _fetch), timeout=8)
+        book = await asyncio.wait_for(_lp.run_in_executor(None, _fetch), timeout=8) or {}
     except Exception:
-        hist = None
-
-    def _sub(ys):
-        try:
-            cols = hist.columns
-            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
-                s = hist[ys].dropna()
-                return s if (s is not None and len(s) >= 60) else None
-        except Exception:
-            pass
-        return None
-
-    tech = {"price": None, "ma50": None, "ma200": None, "atr": None, "rs_vs_bench": None,
-            "vol_ratio": None, "near_high": None}
-    sub = _sub(yf_sym)
-    if sub is None:
-        return {"success": False, "error": "No price history for %s (%s). Check symbol/region." % (sym, yf_sym)}
-    try:
-        c = list(sub["Close"].dropna()); h = list(sub["High"].dropna())
-        lo = list(sub["Low"].dropna()); v = list(sub["Volume"].dropna())
-        tech["price"] = round(float(c[-1]), 2)
-        if len(c) >= 50: tech["ma50"] = sum(c[-50:]) / 50
-        if len(c) >= 200: tech["ma200"] = sum(c[-200:]) / 200
-        if len(c) >= 15 and len(h) >= 15 and len(lo) >= 15:
-            trs = []
-            for i in range(-14, 0):
-                tr = max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1]))
-                trs.append(tr)
-            tech["atr"] = round(sum(trs) / len(trs), 2) if trs else None
-        if len(v) >= 20:
-            avg = sum(v[-20:]) / 20
-            tech["vol_ratio"] = round(v[-1] / avg, 2) if avg > 0 else None
-        if len(h) >= 252: tech["near_high"] = bool(c[-1] >= 0.92 * max(h[-252:]))
-        elif len(h) >= 20: tech["near_high"] = bool(c[-1] >= 0.97 * max(h[-20:]))
-        bs = _sub(bench)
-        if len(c) >= 21 and c[-21] > 0:
-            r20 = (c[-1] - c[-21]) / c[-21] * 100
-            if bs is not None:
-                bc = list(bs["Close"].dropna())
-                if len(bc) >= 21 and bc[-21] > 0:
-                    tech["rs_vs_bench"] = round(r20 - (bc[-1] - bc[-21]) / bc[-21] * 100, 2)
-    except Exception as _e:
-        return {"success": False, "error": "technical computation failed: %s" % str(_e)[:120]}
-
-    def _fund():
-        f = {}
-        try:
-            if region == "IN":
-                d = fetch_nse_stock_data(sym) or {}
-                for k in ("revGrowth", "earningsGrowth", "roce", "debtEquity", "promoterHolding", "deliveryPct"):
-                    if d.get(k) not in (None, 0): f[k] = d.get(k)
-                f["sector"] = d.get("sector") or ""; f["name"] = d.get("companyName") or sym
-                pe = d.get("pe"); eg = d.get("earningsGrowth")
-                if pe and eg and eg > 0: f["peg"] = round(pe / eg, 2)
-                if d.get("mcap"): f["marketCap"] = d.get("mcap")
-            else:
-                d = fetch_multi_source_fundamentals(sym) or {}
-                if (d.get("revenue_growth") or d.get("revGrowth")) not in (None, 0): f["revGrowth"] = d.get("revenue_growth") or d.get("revGrowth")
-                if (d.get("earnings_growth") or d.get("earningsGrowth")) not in (None, 0): f["earningsGrowth"] = d.get("earnings_growth") or d.get("earningsGrowth")
-                if (d.get("roe") or d.get("roce")) not in (None, 0): f["roce"] = d.get("roe") or d.get("roce")
-                if d.get("debt_to_equity") is not None: f["debtEquity"] = d.get("debt_to_equity")
-                f["sector"] = d.get("sector") or ""; f["industry"] = d.get("industry") or ""
-                f["name"] = d.get("name") or d.get("companyName") or sym
-                pe = d.get("pe") or d.get("pe_ratio"); eg = f.get("earningsGrowth")
-                if pe and eg and eg > 0: f["peg"] = round(float(pe) / float(eg), 2)
-                if d.get("market_cap") or d.get("marketCap"): f["marketCap"] = d.get("market_cap") or d.get("marketCap")
-        except Exception:
-            pass
-        return f
-    try:
-        fund = await asyncio.wait_for(_lp.run_in_executor(None, _fund), timeout=4)
-    except Exception:
-        fund = {}
+        book = {}
+    from market_data.layer import quote_batch_clock
+    clock = quote_batch_clock(book)
+    if not clock["ok"]:
+        return {"success": False, "symbol": sym, "region": region, "as_of": clock.get("as_of"), "error": clock["error"]}
+    row = book.get(yf_sym) or book.get(sym) or {}
+    price = row.get("price")
+    high = row.get("high52") or 0
+    tech = {
+        "price": round(float(price), 2) if price else None,
+        "ma50": None, "ma200": None, "atr": None, "rs_vs_bench": None, "vol_ratio": None,
+        "near_high": bool(price and high and float(price) >= 0.92 * float(high)),
+    }
+    fund = {}
+    if row.get("roe") not in (None, 0):
+        fund["roce"] = row["roe"]
+    if row.get("name"):
+        fund["name"] = row["name"]
+    if row.get("mcap"):
+        fund["marketCap"] = row["mcap"]
 
     meta = _imdf_infer_meta(sym, region, fund)
     card = _imdf_score(meta, fund, tech)
-    out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym, **card}
+    out = {"success": True, "as_of": clock["as_of"], "yf_sym": yf_sym, **card}
     _IMDF_CACHE[ck] = (_t.time(), out)
     return out
 
@@ -40485,8 +40440,9 @@ async def imdf_themes(region: str = "ALL", refresh: int = 0):
     """IMDF Score™ — Stage-1 theme discovery. Top 3 names per theme ranked by a live
     momentum + curated quality/opportunity screen. Tap a name for the full fundamental decision."""
     import time as _t
+    from market_data.layer import quote_date_ok
     ck = "imdfth_" + region
-    if not refresh and ck in _IMDF_THEMES_CACHE and (_t.time() - _IMDF_THEMES_CACHE[ck][0] < 1800):
+    if not refresh and ck in _IMDF_THEMES_CACHE and quote_date_ok(_IMDF_THEMES_CACHE[ck][1].get("as_of")) and (_t.time() - _IMDF_THEMES_CACHE[ck][0] < 1800):
         return _IMDF_THEMES_CACHE[ck][1]
     if yf is None:
         return {"success": False, "error": "layer unavailable"}
@@ -40496,61 +40452,30 @@ async def imdf_themes(region: str = "ALL", refresh: int = 0):
     def _yf(s, reg): return s if reg == "US" else "%s.NS" % s
 
     def _batch():
-        try: pass
-        except Exception: pass
-        tickers = [_yf(s, m["region"]) for s, m in syms] + ["SPY", "^NSEI"]
+        from market_data.layer import scan_quotes
+        tickers = [_yf(s, m["region"]) for s, m in syms]
         try:
-            return _quote_frame(tickers=" ".join(tickers), period="1y", interval="1d",
-                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+            return scan_quotes(tickers, None if region == "ALL" else region)
         except Exception:
-            return None
-    hist = await _lp.run_in_executor(None, _batch)
+            return {}
+    book = await _lp.run_in_executor(None, _batch) or {}
+    from market_data.layer import quote_batch_clock
+    clock = quote_batch_clock(book)
+    if not clock["ok"]:
+        return {"success": False, "region": region, "as_of": clock.get("as_of"), "error": clock["error"]}
 
-    def _sub(ys):
-        try:
-            cols = hist.columns
-            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
-                d = hist[ys].dropna()
-                return d if (d is not None and len(d) >= 60) else None
-        except Exception:
-            pass
-        return None
-
-    def _bret(ys):
-        d = _sub(ys)
-        try:
-            c = list(d["Close"].dropna())
-            return (c[-1] - c[-21]) / c[-21] * 100 if len(c) >= 21 and c[-21] > 0 else None
-        except Exception:
-            return None
-    spy, nsei = _bret("SPY"), _bret("^NSEI")
+    def _row(s, m):
+        return book.get(_yf(s, m["region"])) or book.get(s) or {}
 
     def _tech(s, m):
-        d = _sub(_yf(s, m["region"]))
-        out = {"price": None, "ma50": None, "ma200": None, "atr": None,
-               "rs_vs_bench": None, "vol_ratio": None, "near_high": None}
-        if d is None: return out
-        try:
-            c = list(d["Close"].dropna()); h = list(d["High"].dropna())
-            lo = list(d["Low"].dropna()); v = list(d["Volume"].dropna())
-            out["price"] = round(float(c[-1]), 2)
-            if len(c) >= 50: out["ma50"] = sum(c[-50:]) / 50
-            if len(c) >= 200: out["ma200"] = sum(c[-200:]) / 200
-            if len(c) >= 15 and len(h) >= 15 and len(lo) >= 15:
-                trs = [max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1])) for i in range(-14, 0)]
-                out["atr"] = round(sum(trs) / len(trs), 2) if trs else None
-            if len(v) >= 20:
-                avg = sum(v[-20:]) / 20
-                out["vol_ratio"] = round(v[-1] / avg, 2) if avg > 0 else None
-            if len(h) >= 252: out["near_high"] = bool(c[-1] >= 0.92 * max(h[-252:]))
-            elif len(h) >= 20: out["near_high"] = bool(c[-1] >= 0.97 * max(h[-20:]))
-            if len(c) >= 21 and c[-21] > 0:
-                r20 = (c[-1] - c[-21]) / c[-21] * 100
-                b = spy if m["region"] == "US" else nsei
-                out["rs_vs_bench"] = round(r20 - b, 2) if b is not None else None
-        except Exception:
-            pass
-        return out
+        row = _row(s, m)
+        price = row.get("price")
+        high = row.get("high52") or 0
+        return {
+            "price": round(float(price), 2) if price else None,
+            "ma50": None, "ma200": None, "atr": None, "rs_vs_bench": None, "vol_ratio": None,
+            "near_high": bool(price and high and float(price) >= 0.92 * float(high)),
+        }
 
     by_theme = {}
     for s, m in syms:
@@ -40578,7 +40503,7 @@ async def imdf_themes(region: str = "ALL", refresh: int = 0):
         themes.append({"theme": th, "count": len(rows), "top": rows[:3]})
     themes.sort(key=lambda t: -(t["top"][0]["screen_score"] if t["top"] else 0))
 
-    out = {"success": True, "region": region, "as_of": _MB_DISCOVERY_ASOF,
+    out = {"success": True, "region": region, "as_of": clock["as_of"],
            "themes": themes, "theme_count": len(themes),
            "note": ("Stage-1 discovery: ranked by a LIVE Driehaus-momentum + curated business-quality/opportunity "
                     "screen (fundamentals & valuation are pending here for speed). Tap any name to run the full "
@@ -40586,7 +40511,6 @@ async def imdf_themes(region: str = "ALL", refresh: int = 0):
     _IMDF_THEMES_CACHE[ck] = (_t.time(), out)
     return out
 
-_MB_DISCOVERY_ASOF = "2026-06-10"
 _MB_CACHE = {}
 _MB_TTL = 1800
 
@@ -40875,8 +40799,9 @@ async def red_flag_scan(symbol: str = "", region: str = "US", refresh: int = 0):
         return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE, DIXON)."}
     if yf is None:
         return {"success": False, "error": "layer unavailable"}
+    from market_data.layer import quote_date_ok
     ck = "rf_%s_%s" % (region, sym)
-    if not refresh and ck in _REDFLAG_CACHE and (_t.time() - _REDFLAG_CACHE[ck][0] < _REDFLAG_TTL):
+    if not refresh and ck in _REDFLAG_CACHE and quote_date_ok(_REDFLAG_CACHE[ck][1].get("as_of")) and (_t.time() - _REDFLAG_CACHE[ck][0] < _REDFLAG_TTL):
         return _REDFLAG_CACHE[ck][1]
     _lp = asyncio.get_event_loop()
     _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "SPX": "^GSPC", "NDX": "^NDX"}
@@ -40884,94 +40809,36 @@ async def red_flag_scan(symbol: str = "", region: str = "US", refresh: int = 0):
     bench = "SPY" if region == "US" else "^NSEI"
 
     def _fetch():
-        try: pass
-        except Exception: pass
+        from market_data.layer import scan_quotes
         try:
-            return _quote_frame(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
-                               group_by="ticker", auto_adjust=True, threads=True, progress=False)
+            return scan_quotes([yf_sym], region)
         except Exception:
-            return None
-    hist = await _lp.run_in_executor(None, _fetch)
-
-    def _sub(ys):
-        try:
-            cols = hist.columns
-            if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
-                s = hist[ys].dropna()
-                return s if (s is not None and len(s) >= 60) else None
-        except Exception:
-            pass
-        return None
-
-    sub = _sub(yf_sym)
-    if sub is None:
-        return {"success": False, "error": "No price history for %s (%s). Check symbol/region." % (sym, yf_sym)}
-    tech = {}
-    try:
-        c = list(sub["Close"].dropna()); h = list(sub["High"].dropna())
-        lo = list(sub["Low"].dropna()); v = list(sub["Volume"].dropna())
-        tech["price"] = round(float(c[-1]), 2)
-        if len(c) >= 50: tech["ma50"] = sum(c[-50:]) / 50
-        if len(c) >= 200:
-            tech["ma200"] = sum(c[-200:]) / 200
-            if len(c) >= 221:
-                tech["ma200_prev"] = sum(c[-221:-21]) / 200
-        if len(c) >= 15 and len(h) >= 15 and len(lo) >= 15:
-            trs = []
-            for i in range(-14, 0):
-                tr = max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1]))
-                trs.append(tr)
-            atr = sum(trs) / len(trs) if trs else None
-            if atr and tech.get("price"): tech["atr_pct"] = round(atr / tech["price"] * 100, 2)
-        if len(c) >= 21 and c[-21] > 0:
-            tech["ret_20d"] = round((c[-1] - c[-21]) / c[-21] * 100, 2)
-        win = c[-252:] if len(c) >= 252 else c
-        hi = max(win); low = min(win)
-        if hi > 0: tech["drawdown_pct"] = round((c[-1] - hi) / hi * 100, 2)
-        if low > 0: tech["near_52w_low"] = bool(c[-1] <= 1.10 * low)
-        if len(c) >= 30 and len(v) >= 30:
-            avgv = sum(v[-30:]) / 30
-            dist_days = 0
-            for i in range(-10, 0):
-                if c[i] < c[i - 1] and v[i] > 1.25 * avgv: dist_days += 1
-            tech["distribution"] = bool(dist_days >= 3)
-        bs = _sub(bench)
-        if tech.get("ret_20d") is not None and bs is not None:
-            bc = list(bs["Close"].dropna())
-            if len(bc) >= 21 and bc[-21] > 0:
-                tech["rs_vs_bench"] = round(tech["ret_20d"] - (bc[-1] - bc[-21]) / bc[-21] * 100, 2)
-    except Exception as _e:
-        return {"success": False, "error": "technical computation failed: %s" % str(_e)[:120]}
-
-    def _fund():
-        f = {}
-        try:
-            if region == "IN":
-                d = fetch_nse_stock_data(sym) or {}
-                for k in ("debtEquity", "promoterHolding", "currentRatio", "roce"):
-                    if d.get(k) not in (None, 0): f[k] = d.get(k)
-                f["name"] = d.get("companyName") or sym; f["sector"] = d.get("sector") or ""
-                if d.get("pe"): f["pe"] = d.get("pe")
-                if d.get("pledgedPct") is not None: f["pledgedPct"] = d.get("pledgedPct")
-            else:
-                d = fetch_multi_source_fundamentals(sym) or {}
-                if d.get("debt_to_equity") is not None: f["debtEquity"] = d.get("debt_to_equity")
-                pe = d.get("pe") or d.get("pe_ratio")
-                if pe:
-                    try: f["pe"] = float(pe)
-                    except Exception: pass
-                ps = d.get("price_to_sales") or d.get("priceToSales")
-                if ps: f["priceToSales"] = ps
-                if d.get("current_ratio"): f["currentRatio"] = d.get("current_ratio")
-                if d.get("beta"): f["beta"] = d.get("beta")
-                f["name"] = d.get("name") or d.get("companyName") or sym; f["sector"] = d.get("sector") or ""
-        except Exception:
-            pass
-        return f
-    fund = await _lp.run_in_executor(None, _fund)
+            return {}
+    book = await _lp.run_in_executor(None, _fetch) or {}
+    from market_data.layer import quote_batch_clock
+    clock = quote_batch_clock(book)
+    if not clock["ok"]:
+        return {"success": False, "symbol": sym, "region": region, "as_of": clock.get("as_of"), "error": clock["error"]}
+    row = book.get(yf_sym) or book.get(sym) or {}
+    price = row.get("price") or 0
+    high = row.get("high52") or 0
+    low = row.get("low52") or 0
+    tech = {"price": round(float(price), 2)}
+    if high:
+        tech["drawdown_pct"] = round((float(price) - float(high)) / float(high) * 100, 2)
+        tech["near_high"] = bool(float(price) >= 0.92 * float(high))
+    if low:
+        tech["near_52w_low"] = bool(float(price) <= 1.10 * float(low))
+    fund = {}
+    if row.get("pe"):
+        fund["pe"] = row["pe"]
+    if row.get("roe") not in (None, 0):
+        fund["roce"] = row["roe"]
+    if row.get("name"):
+        fund["name"] = row["name"]
 
     meta = {"symbol": sym, "name": fund.get("name") or sym, "region": region}
-    out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym, **_redflag_scan(meta, tech, fund)}
+    out = {"success": True, "as_of": clock["as_of"], "yf_sym": yf_sym, **_redflag_scan(meta, tech, fund)}
     _REDFLAG_CACHE[ck] = (_t.time(), out)
     return out
 
@@ -42121,7 +41988,7 @@ async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0
     if not sym:
         return {"success": False, "error": "Enter a symbol (e.g. MU, NVDA, RELIANCE)."}
     if yf is None:
-        return {"success": False, "error": "yfinance unavailable"}
+        return {"success": False, "error": "layer unavailable"}
     region = (region or "US").upper()
     _lp = asyncio.get_event_loop()
     _idx = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN"}
@@ -42129,8 +41996,7 @@ async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0
 
     def _hist():
         try:
-            from market_data.yfcompat import history_frame
-            return history_frame(yf_sym, period="1y", interval="1d", region=region)
+            return _quote_frame(yf_sym, region=region)
         except Exception:
             return None
 
@@ -42170,8 +42036,8 @@ async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0
             vols = [float(x) for x in list(h["Volume"].fillna(0))]
     except Exception:
         pass
-    if len(closes) < 30:
-        return {"success": False, "error": "Not enough price history for %s." % sym}
+    if len(closes) < 2:
+        return {"success": False, "error": "No current quote for %s." % sym}
     try:
         fund = await asyncio.wait_for(_fund_fut, timeout=max(0.2, 8 - (time.time() - _md_started)))
     except Exception:
@@ -42184,7 +42050,7 @@ async def master_decision(symbol: str = "", region: str = "US", refresh: int = 0
         if region != "US":
             return {}
         try:
-            tk = yf.Ticker(yf_sym); exps = list(getattr(tk, "options", []) or [])
+            tk = _QuoteOnly(yf_sym); exps = list(getattr(tk, "options", []) or [])
             if not exps:
                 return {}
             exp = exps[0]
@@ -62723,7 +62589,7 @@ async def stock_news(symbol: str = "RELIANCE", region: str = "IN"):
     
     def _fetch():
         try:
-            tk = yf.Ticker(yf_sym)
+            tk = _QuoteOnly(yf_sym)
             news = tk.news or []
             items = []
             for n in news[:10]:
