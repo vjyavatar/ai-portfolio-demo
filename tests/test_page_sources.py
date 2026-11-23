@@ -147,6 +147,9 @@ class PageSourceTests(unittest.TestCase):
 
     def test_home_page_drops_the_repeated_blocks(self):
         html = (ROOT / "index.html").read_text()
+        self.assertIn("_live_from_layer", API)
+        self.assertIn('900, 3, "haiku"', API)
+        self.assertNotIn('35, "sonnet"', API)
         self.assertIn("Unlock Decide", html)
         self.assertNotIn("Email, optional", html)
         self.assertIn('id="home-brief"', html)
