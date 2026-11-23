@@ -10234,7 +10234,7 @@ fc+=_mc('ROCE',d.fundamental.roce,'%',function(v){return v>12},function(v){retur
 fc+=_mc('Debt/Equity',d.fundamental.debtEquity,'%',function(v){return v<50},function(v){return v>150},function(v){return v<30?'💚 Low debt':v<100?'OK':'🚨 Heavy debt — risky'});
 fc+='</div>';
 if(d.fundamental.revGrowth===0&&d.fundamental.roe===0&&d.fundamental.profitMargin===0){
-fc+='<div style="padding:8px;border-radius:6px;background:#d9770608;border:1px solid #d9770615;margin-top:6px;font-size:9px;color:#d97706">⚠️ Limited fundamental data from Yahoo Finance for this stock. The scoring relies more on price action (45% weight). Try the Overview tab after analyzing this stock for more data.</div>';
+fc+='<div style="padding:8px;border-radius:6px;background:#d9770608;border:1px solid #d9770615;margin-top:6px;font-size:9px;color:#d97706">Limited fundamental data for this stock. The scoring relies more on price action (45% weight). Try the Overview tab after analyzing this stock for more data.</div>';
 }
 h+=siSection('Fundamental Analysis — Is the business good?','📊',fc);
 
@@ -10257,7 +10257,7 @@ vc+='<div style="text-align:right"><div style="font-size:16px;font-weight:900;co
 vc+='</div>';
 }
 if(d.valuation.pe===0&&d.valuation.fwdPE===0){
-vc+='<div style="padding:8px;border-radius:6px;background:#d9770608;border:1px solid #d9770615;margin-top:6px;font-size:9px;color:#d97706">⚠️ Valuation data not available — likely an index or ETF, or Yahoo Finance didn\'t return PE data for this stock.</div>';
+vc+='<div style="padding:8px;border-radius:6px;background:#d9770608;border:1px solid #d9770615;margin-top:6px;font-size:9px;color:#d97706">⚠️ Valuation data not available — likely an index or ETF, or the source did not publish a PE for this stock.</div>';
 }
 h+=siSection('Valuation — Am I paying a fair price?','💰',vc);
 
@@ -27810,7 +27810,7 @@ h+='<div style="font-family:JetBrains Mono,monospace;font-size:36px;font-weight:
 h+='<div style="font-size:12px;color:#3D4F6F;max-width:600px;margin:0 auto 16px;line-height:1.7">'+d.explain+'</div>';
 h+='<div style="font-size:9px;color:#4a6fa5;max-width:520px;margin:0 auto 12px;line-height:1.6;padding:8px 14px;border-radius:8px;background:#F8FAFC;border:1px solid #E2E8F0">📊 <strong style="color:#5E6F8E">This verdict is a fundamental quality + value score</strong> — it measures business strength (F-Score, Moat, ROE), valuation (PE, DCF upside), and earnings quality. It answers: <em>"Is this a good business at a fair price?"</em> For timing and risk signals, see the Institutional Analysis Stack and Consensus sections below.</div>';
 if(d.decision&&d.decision.indexOf('INSUFFICIENT')>=0){
-  h+='<div style="margin:0 auto 12px;text-align:center"><button onclick="delete _apiCache[\''+('/api/investor-decide?symbol='+encodeURIComponent(d.symbol||sym)+'&region='+reg).replace(/'/g,"\\'")+'\']; loadInvestorDE(\''+d.symbol+'\');" style="padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">🔄 Retry Analysis (bypass cache)</button><div style="font-size:9px;color:#4a6fa5;margin-top:4px">Yahoo Finance sometimes fails to return metrics. Retrying often fixes it.</div></div>';
+  h+='<div style="margin:0 auto 12px;text-align:center"><button onclick="delete _apiCache[\''+('/api/investor-decide?symbol='+encodeURIComponent(d.symbol||sym)+'&region='+reg).replace(/'/g,"\\'")+'\']; loadInvestorDE(\''+d.symbol+'\');" style="padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">🔄 Retry Analysis (bypass cache)</button><div style="font-size:9px;color:#4a6fa5;margin-top:4px">A source sometimes omits a metric. Retrying reads it again.</div></div>';
 }
 h+='<div style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap">';
 h+=_progressRing(d.confidence,100,dC,'Confidence',80);
@@ -33103,7 +33103,7 @@ var fmt=idx.name==='GSR'?idx.price.toFixed(1)+'x':isVix?idx.price.toFixed(1):(id
 return '<span class="ti"><span style="font-size:11px">'+(idx.flag||'')+'</span><span class="tn">'+(idx.name||'')+'</span><span class="tp">'+fmt+'</span><span class="tc '+cls+'">'+arrow+(Math.abs(idx.change_pct)||0).toFixed(2)+'%</span></span>';
 }
 
-// Fetch from our API — it pulls real Yahoo Finance data server-side
+// Fetch from our API — the server reads the market-data layer
 var loaded=false;
 try{
 var r=await fetch('/api/global-ticker');var d=await r.json();
@@ -35574,7 +35574,7 @@ h+='<div style="font-size:7px;color:'+_tm+'">Auto-refresh 15s</div></div>';
 h+='<div style="flex:1;padding:10px;border-radius:10px;background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.15);text-align:center">';
 h+='<div style="font-size:7px;color:'+_tm+';font-weight:700">DATA LATENCY</div>';
 h+='<div style="font-size:14px;font-weight:900;color:#1A3A78">~15s</div>';
-h+='<div style="font-size:7px;color:'+_tm+'">Yahoo Finance</div></div>';
+h+='<div style="font-size:7px;color:'+_tm+'">Market data</div></div>';
 h+='<div style="flex:1;padding:10px;border-radius:10px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.15);text-align:center">';
 h+='<div style="font-size:7px;color:'+_tm+';font-weight:700">OI UPDATES</div>';
 h+='<div style="font-size:14px;font-weight:900;color:#f59e0b">3min</div>';
@@ -35585,7 +35585,7 @@ h+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">';
 ['Price Tick','Volume','RSI','MACD','OI Change','IV','Greeks','Signals'].forEach(function(feed){
 h+='<span style="padding:3px 8px;border-radius:6px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.12);font-size:8px;font-weight:700;color:#10b981"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#10b981;margin-right:3px;animation:pulse 2s infinite"></span>'+feed+'</span>';});
 h+='</div>';
-h+='<div style="padding:8px 12px;border-radius:6px;border-left:3px solid #3b82f6;background:rgba(59,130,246,.08);margin-top:4px;font-size:10px;font-weight:600;color:'+_ts+';line-height:1.7">💡 <strong style="color:#3b82f6">Streaming Active:</strong> Price updates every <strong>15 seconds</strong> via Yahoo Finance. OI/IV refreshes every <strong>3 minutes</strong> from NSE. All signals auto-recalculate on new data. <strong>No manual refresh needed</strong> — the system watches the market for you and alerts on direction changes.</div>';
+h+='<div style="padding:8px 12px;border-radius:6px;border-left:3px solid #3b82f6;background:rgba(59,130,246,.08);margin-top:4px;font-size:10px;font-weight:600;color:'+_ts+';line-height:1.7">💡 <strong style="color:#3b82f6">Streaming Active:</strong> Price updates every <strong>15 seconds</strong> from the market-data layer. OI/IV refreshes every <strong>3 minutes</strong> from NSE. All signals auto-recalculate on new data. <strong>No manual refresh needed</strong> — the system watches the market for you and alerts on direction changes.</div>';
 h+='</div>';
 
 // ═══ CHART 25: Trade Journal ═══
