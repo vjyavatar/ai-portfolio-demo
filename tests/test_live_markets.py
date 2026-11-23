@@ -178,7 +178,7 @@ class RouterTests(unittest.TestCase):
         page = markets_page()
         body = page.body.decode()
         self.assertEqual(page.status_code, 200)
-        self.assertIn("v4.63.129", body)
+        self.assertIn("v4.63.130", body)
         self.assertIn("Not financial advice", body)
         bad = live_quote("<script>")
         self.assertFalse(bad["success"])

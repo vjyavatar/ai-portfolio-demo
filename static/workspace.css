@@ -170,7 +170,16 @@ body.ws-unified{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 .ws-unified .ws-analysis-entry{padding:16px 18px!important}
 .ws-unified #ws-legacy-search .icard{max-width:none!important;margin:0!important}
 .ws-unified #ws-legacy-search #ticker{font-size:18px!important;height:56px!important}
-.home-account{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--ws-line,#e7e5e4)}
+.home-account{display:block;margin-top:14px;padding-top:12px;border-top:1px solid var(--ws-line,#e7e5e4)}
+.home-unlock-title{margin:0;font-size:14px;font-weight:700;color:var(--ws-ink)}
+.home-unlock-note{margin:4px 0 10px;font-size:12px;color:var(--ws-muted)}
+.home-unlock-row{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+.home-unlock-row label{flex:1;min-width:180px;max-width:none}
+#home-code{height:36px;min-width:140px}
+#home-access{margin:8px 0 0;font-size:12px;font-weight:650}
+.ws-nav.is-locked{opacity:.8}
+.ws-nav[data-access="locked"]::after{content:'Locked';margin-left:8px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#b91c1c}
+.ws-nav[data-access="unlocked"]::after{content:'Open';margin-left:8px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#087b68}
 .home-account label{display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:650;color:var(--ws-muted);min-width:0;flex:1;max-width:280px}
 .home-account .ipt{height:36px!important;min-height:36px!important;font-size:13px!important}
 .ws-unified .live-chip__name{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ws-muted)}

@@ -5,7 +5,7 @@
     <meta http-equiv="cache-control" content="no-cache, must-revalidate, max-age=0">
     <meta http-equiv="pragma" content="no-cache">
     <meta http-equiv="expires" content="0">
-<meta name="celesys-version" content="v4.63.129">
+<meta name="celesys-version" content="v4.63.130">
 <meta name="celesys-build" content="2026-11-22 08:45:00 UTC">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1181,9 +1181,9 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
   <button class="ws-nav active" data-ws-home><span>◈</span> Overview</button>
   <a class="ws-nav" href="/markets"><span>◉</span> Live markets</a>
   <button class="ws-nav" data-ws-mode="stock"><span>▥</span> Stock research</button>
-  <a class="ws-nav" href="#ws-tool-directory"><span>◎</span> Decide · Decision engines</a>
-  <a class="ws-nav" href="/trading/"><span>▤</span> Professional trading desk</a>
-  <button class="ws-nav" data-ws-mode="trading"><span>↗</span> Trading setups</button>
+  <a class="ws-nav" href="#ws-tool-directory" data-lock="decide"><span>◎</span> Decide · Decision engines</a>
+  <a class="ws-nav" href="/trading/" data-lock="trading"><span>▤</span> Professional trading desk</a>
+  <button class="ws-nav" data-ws-mode="trading" data-lock="trading"><span>↗</span> Trading setups</button>
   <button class="ws-nav" data-ws-mode="options"><span>⇄</span> Options chain</button>
   <button class="ws-nav" data-ws-directory><span>⊞</span> All tools <small id="ws-tool-count">48</small></button>
   <p class="ws-nav-caption">TOOL LIBRARY</p><details class="ws-library"><summary>Browse by category <span>+</span></summary><div id="ws-group-links"></div></details>
@@ -1226,7 +1226,7 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 <div class="rlbar"><div class="rlbf" id="rlProgress" style="width:0%"></div></div>
 </div>
 </div>
-<div class="home-account" aria-label="Account and watchlist"><label for="email">Email, optional<input class="ipt" type="text" id="email" name="celesys-report-email" inputmode="email" aria-label="Email, optional, for your report limit" placeholder="name@email.com" autocomplete="off" data-lpignore="true" data-1p-ignore="true"></label><button type="button" id="home-watch">Watchlist</button></div>
+<div class="home-account" aria-label="Unlock Decide and Trading"><div class="home-unlock"><p class="home-unlock-title">Unlock Decide &amp; Trading</p><p class="home-unlock-note">Analyze does not need an email. Sign in only to open Decide and Trading.</p><div class="home-unlock-row"><label for="email">Sign-in email<input class="ipt" type="text" id="email" name="celesys-report-email" inputmode="email" aria-label="Sign-in email for Decide and Trading" placeholder="name@email.com" autocomplete="off" data-lpignore="true" data-1p-ignore="true"></label><input class="ipt" id="home-code" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="8-digit code" aria-label="Sign-in code" hidden><button type="button" id="home-unlock">Unlock</button><button type="button" id="home-watch">Watchlist</button></div><p id="home-access" role="status">Decide locked · Trading locked</p></div></div>
 </div></section>
   <details id="ws-quick-controls" class="ws-command"><summary><span><strong id="ws-query-title">Prefer a quick brief?</strong><small id="ws-query-description">A focused review of the evidence, risks and next steps.</small></span></summary><div class="ws-command-body"><div class="ws-mode-tabs" role="group" aria-label="Choose a task"><button data-ws-mode="stock" class="active" aria-pressed="true">Stock research</button><button data-ws-mode="trading" aria-pressed="false">Trading setup</button><button data-ws-mode="options" aria-pressed="false">Options chain</button></div>
   <form id="ws-search"><label>Market<select id="ws-region"><option value="US">United States · USD</option><option value="IN">India · INR</option></select></label><label class="ws-symbol-label">Symbol<input id="ws-symbol" value="AAPL" maxlength="20" required autocomplete="off" pattern="[A-Za-z][A-Za-z0-9.\-]{0,19}" placeholder="AAPL or RELIANCE"></label><button type="button" id="ws-dictate" class="ws-mic" aria-label="Speak a stock symbol">Mic</button><button id="ws-run" class="ws-primary">Quick stock brief <span>↗</span></button></form><div class="ws-examples" id="ws-examples"></div><p id="ws-status" class="ws-status" role="status" aria-live="polite">Choose a market and symbol. Research runs when you request it.</p><button id="ws-manual-plan" type="button" class="ws-text-button">Open position calculator →</button></div></details>

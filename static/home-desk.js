@@ -158,4 +158,83 @@ function loadMovers(){
   }).catch(function(){ paint([], 'Movers are refreshing'); });
 }
 if (row) loadMovers();
+var unlockBtn = document.getElementById('home-unlock');
+var codeBox = document.getElementById('home-code');
+var accessLine = document.getElementById('home-access');
+var codeStep = false;
+function paintAccess(decide, trading){
+  if (accessLine) accessLine.textContent = 'Decide ' + (decide ? 'unlocked' : 'locked') + ' · Trading ' + (trading ? 'unlocked' : 'locked');
+  document.querySelectorAll('[data-lock]').forEach(function(el){
+    var open = el.getAttribute('data-lock') === 'decide' ? decide : trading;
+    el.classList.toggle('is-locked', !open);
+    el.setAttribute('data-access', open ? 'unlocked' : 'locked');
+  });
+}
+function emailValue(){
+  var field = document.getElementById('email');
+  return field ? (field.dataset.real || field.value || '').trim().toLowerCase() : '';
+}
+function applyExistingGate(){
+  var field = document.getElementById('email');
+  if (field) field.dispatchEvent(new Event('blur'));
+  if (typeof window.checkTradesAccess === 'function') window.checkTradesAccess();
+}
+function allowlistUnlock(){
+  var email = emailValue();
+  if (!email || email.indexOf('@') < 0) {
+    if (accessLine) accessLine.textContent = 'Enter the email that has Decide or Trading. Analyze stays open.';
+    return;
+  }
+  fetch('/api/auth/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:email})})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var trading = !!(data && (data.premium || data.tradingOnly));
+      var decide = !!(data && data.premium && !data.tradingOnly);
+      applyExistingGate();
+      paintAccess(decide, trading);
+      if (!trading && accessLine) accessLine.textContent = 'That email does not unlock Decide or Trading. Analyze stays open.';
+    })
+    .catch(function(){ if (accessLine) accessLine.textContent = 'Sign-in did not answer. Analyze stays open.'; });
+}
+if (unlockBtn) {
+  paintAccess(false, false);
+  fetch('/api/access/status').then(function(r){ return r.json(); }).then(function(status){
+    if (status && status.verified && status.access) {
+      paintAccess(!!(status.access.full || status.access.dream), !!(status.access.full || status.access.trades || status.access.dream));
+    }
+    if (status && status.configured) unlockBtn.textContent = 'Send code';
+  }).catch(function(){});
+  unlockBtn.addEventListener('click', function(){
+    var email = emailValue();
+    if (!email || email.indexOf('@') < 0) {
+      if (accessLine) accessLine.textContent = 'Enter the email that has Decide or Trading. Analyze stays open.';
+      return;
+    }
+    fetch('/api/access/status').then(function(r){ return r.json(); }).then(function(status){
+      if (!status || !status.configured) { allowlistUnlock(); return; }
+      if (!codeStep) {
+        return fetch('/api/access/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:email})})
+          .then(function(r){ return r.json().then(function(body){ return {ok:r.ok, body:body}; }); })
+          .then(function(result){
+            if (!result.ok) throw new Error((result.body && result.body.detail) || 'Code was not sent.');
+            codeStep = true;
+            if (codeBox) codeBox.hidden = false;
+            unlockBtn.textContent = 'Confirm code';
+            if (accessLine) accessLine.textContent = result.body.message || 'If this account has access, a code will arrive shortly.';
+          });
+      }
+      var code = codeBox ? codeBox.value.trim() : '';
+      return fetch('/api/access/confirm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:email, code:code})})
+        .then(function(r){ return r.json().then(function(body){ return {ok:r.ok, body:body}; }); })
+        .then(function(result){
+          if (!result.ok) throw new Error('That code did not unlock the account.');
+          var access = (result.body && result.body.access) || {};
+          applyExistingGate();
+          paintAccess(!!(access.full || access.dream), !!(access.full || access.trades || access.dream));
+        });
+    }).catch(function(error){
+      if (accessLine) accessLine.textContent = error.message || 'Sign-in did not answer. Analyze stays open.';
+    });
+  });
+}
 })();
