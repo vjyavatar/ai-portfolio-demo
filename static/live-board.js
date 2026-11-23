@@ -54,6 +54,7 @@ function spark(values, direction) {
   }).join(' ');
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('class', 'live-spark');
   svg.setAttribute('aria-hidden', 'true');
   const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
