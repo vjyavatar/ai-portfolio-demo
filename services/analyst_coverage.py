@@ -121,7 +121,7 @@ def _fetch_one_ticker(ticker: str, region: str) -> Optional[dict]:
     Returns dict with actions list + targets, or None on failure.
     """
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         try:
             from api import _provider_slot_wait
             _provider_slot_wait()

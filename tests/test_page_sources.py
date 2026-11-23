@@ -70,6 +70,12 @@ PHASE2 = {
     "earnings_calendar",
     "microcap_hunter",
     "journal_list",
+    "_smart_exit_impl",
+    "_portfolio_risk_impl",
+    "_directional_options_impl",
+    "_inst_360_compute",
+    "nse_options",
+    "algo_backtest",
 }
 
 PHASE1 = {

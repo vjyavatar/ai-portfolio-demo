@@ -47,7 +47,7 @@ try:
         _nse_get,
         fetch_google_finance,
     )
-    import market_data.yfcompat as yf
+    import market_data.layer as yf
     _CELESYS_INTEGRATED = True
 except ImportError:
     _CELESYS_INTEGRATED = False
@@ -70,7 +70,7 @@ except ImportError:
     def diag_log(ch, ev, meta=None): pass
     def _nse_get(url, retries=2): return None
     def fetch_google_finance(t): return None
-    try: import market_data.yfcompat as yf
+    try: import market_data.layer as yf
     except ImportError: yf = None
 
 

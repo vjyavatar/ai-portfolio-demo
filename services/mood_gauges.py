@@ -128,7 +128,7 @@ def _fetch_ticker_history(yf_symbol: str, period: str = "60d") -> Optional[dict]
     """Fetch closes + volumes for an index/ETF/stock. Hard 4s timeout."""
     def _go():
         try:
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             try:
                 from api import _provider_slot_wait
                 _provider_slot_wait()
@@ -151,7 +151,7 @@ def _fetch_vix(region: str) -> Optional[float]:
     vix_sym = _VIX_INDEX.get(region.upper(), ("^VIX", "VIX"))[0]
     def _go():
         try:
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             try:
                 from api import _provider_slot_wait
                 _provider_slot_wait()
