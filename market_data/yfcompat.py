@@ -345,19 +345,28 @@ def download(tickers="AAPL", period="1mo", interval="1d", group_by="column", thr
         symbols = [str(part) for part in tickers if str(part).strip()]
     if not symbols:
         return _empty()
+    # Scans share this helper. A candle chain per symbol filled the home strip's slots.
+    book = layer.scan_quotes(symbols, region)
     frames = {}
-    if threads and len(symbols) > 1:
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=min(8, len(symbols))) as pool:
-            jobs = {pool.submit(Ticker(symbol).history, period=period, interval=interval, start=start, end=end, region=region): symbol for symbol in symbols}
-            for job, symbol in list(jobs.items()):
-                try:
-                    frames[symbol] = job.result()
-                except Exception:
-                    frames[symbol] = _empty()
-    else:
-        for symbol in symbols:
-            frames[symbol] = Ticker(symbol).history(period=period, interval=interval, start=start, end=end, region=region)
+    for symbol in symbols:
+        row = book.get(symbol) or {}
+        price = row.get("price") or 0
+        if not price:
+            continue
+        prev = row.get("prev_close") or price
+        volume = row.get("volume") or 0
+        stamp = pd.Timestamp.now().normalize()
+        frames[symbol] = pd.DataFrame(
+            {
+                "Open": [prev, price],
+                "High": [max(prev, price), max(prev, price)],
+                "Low": [min(prev, price), min(prev, price)],
+                "Close": [prev, price],
+                "Adj Close": [prev, price],
+                "Volume": [volume, volume],
+            },
+            index=pd.DatetimeIndex([stamp - pd.Timedelta(days=1), stamp]),
+        )
     usable = {symbol: frame for symbol, frame in frames.items() if isinstance(frame, pd.DataFrame) and not frame.empty}
     if not usable:
         return _empty()

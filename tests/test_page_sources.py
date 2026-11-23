@@ -20,6 +20,16 @@ PHASE2 = {
     "smart_exit_v2",
     "momentum_leaders",
     "etf_scanner",
+    "early_momentum_radar",
+    "earnings_this_week",
+    "cross_market_match",
+    "decide_top_investments",
+    "sector_intel",
+    "l0_scan",
+    "cds_batch",
+    "etf_analyze",
+    "dd_returns_snapshot",
+    "catalyst_scan",
 }
 
 PHASE1 = {
