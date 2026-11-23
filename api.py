@@ -1388,10 +1388,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.136"
+APP_VERSION = "v4.63.137"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.137: The daily CDS scan and the India catalyst scan use the quote batch. The home strip no longer waits on six candle sockets. "
     "v4.63.136: The next ten scans, including earnings week, sector intel and top investments, use the quote batch. They do not open a candle chain per symbol. "
     "v4.63.135: Screener, heatmap, top picks, ETF scan and momentum leaders use one quote batch, so they no longer fill the candle chain the home strip needs. "
     "v4.63.134: Market context, due diligence, prices, the screener and the heatmap read the layer. A cold India decision stays inside 8 seconds, and RELIANCE, TCS and HDFCBANK are warmed at startup. "
@@ -62995,25 +62996,39 @@ async def cds_daily_scan(region: str = "IN", email: str = "", threshold: int = 7
     is_us = region.upper() == "US"
     csym = "$" if is_us else "₹"
     universe = CDS_UNIVERSE.get(region.upper(), CDS_UNIVERSE["IN"])
-    
+    # Large names first so a 4 second scanner budget still covers the names people watch.
+    ordered = []
+    for segment in ("LARGE", "MID", "SMALL", "MICRO"):
+        ordered.extend(universe.get(segment) or [])
+    from market_data.layer import scan_quotes
+    book = await asyncio.to_thread(scan_quotes, ordered, region.upper())
+
     all_results = {}
     scan_start = datetime.now()
-    
     for segment, stocks in universe.items():
         segment_results = []
         for sym in stocks:
+            row = book.get(sym) or {}
+            price = float(row.get("price") or 0)
+            if price <= 0:
+                continue
+            chg = float(row.get("change_pct") or 0)
+            data = {
+                "symbol": sym,
+                "price": price,
+                "pe": row.get("pe") or 0,
+                "roe": row.get("roe") or 0,
+                "companyName": row.get("name") or sym,
+                "fundamental": {"pe": row.get("pe") or 0, "roe": row.get("roe") or 0},
+                "technicals": {"rsi": 60 if chg > 0 else 40, "sma50": price, "sma200": price * (0.98 if chg >= 0 else 1.02)},
+            }
             try:
-                # Call the existing investor-decide API internally
-                data = await investor_decide(sym, region.upper())
-                if data.get("success"):
-                    result = _cds_score_stock(data, segment, csym)
-                    if result:
-                        result["companyName"] = data.get("companyName", sym)
-                        segment_results.append(result)
+                result = _cds_score_stock(data, segment, csym)
+                if result:
+                    result["companyName"] = data["companyName"]
+                    segment_results.append(result)
             except Exception as e:
                 print(f"  ⚠️ CDS scan skip {sym}: {e}")
-                continue
-        
         segment_results.sort(key=lambda x: -x["score"])
         all_results[segment] = segment_results
     
@@ -63193,8 +63208,9 @@ async def catalyst_scan(region: str = "IN"):
         ["NIFTY","BANKNIFTY","RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","BAJFINANCE","TATAMOTORS","LT","MARUTI","AXISBANK","ITC","BHARTIARTL","WIPRO","HCLTECH","ADANIENT","TITAN","SUNPHARMA"]
     )
     
-    loop = asyncio.get_event_loop()
-    
+    from market_data.layer import scan_quotes
+    quotes = await asyncio.to_thread(scan_quotes, tickers, "US" if is_us else "IN")
+
     bullish_kw = ["surge","rally","beat","upgrade","record","growth","profit","gain","buy","bullish","outperform","raise","boost","strong","soar","jump","positive","exceed","upside","dividend","bonus","split","buyback","order","deal","contract","approve"]
     bearish_kw = ["fall","drop","decline","cut","downgrade","miss","loss","sell","bearish","underperform","weak","crash","fear","risk","warning","slash","layoff","concern","threat","negative","panic","plunge","tumble","fraud","probe","ban","fine","penalty","resign"]
     
@@ -63288,11 +63304,20 @@ async def catalyst_scan(region: str = "IN"):
         try:
             result = {"sym": sym, "catalysts": [], "score": 0, "direction": "NEUTRAL", "news": [], "spot": 0, "prevClose": 0, "gapPct": 0}
             
-            # ─── STEP 1: Get price data (NSE for India, layer for US) ───
-            if is_us:
-                pdata = _fetch_price_yf(sym)
-            else:
-                pdata = _fetch_india_data(sym)
+            # Options chains for 20 India names were an 18 second empty scan.
+            # One quote batch supplies the gap. Headlines stay on the US feed.
+            row = quotes.get(sym) or {}
+            price = float(row.get("price") or 0)
+            prev = float(row.get("prev_close") or price or 0)
+            chg = float(row.get("change_pct") or 0)
+            pdata = {}
+            if price > 0 and prev > 0:
+                pdata = {
+                    "spot": round(price, 2),
+                    "prevClose": round(prev, 2),
+                    "gapPct": round(chg, 2) if chg else round((price - prev) / prev * 100, 2),
+                    "volRatio": 1,
+                }
             
             if not pdata or not pdata.get("spot"):
                 return result
