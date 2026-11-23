@@ -35,7 +35,7 @@ from datetime import datetime, timedelta
 import hashlib
 print("[STARTUP] Core imports OK")
 
-import market_data.yfcompat as _yf_original
+import market_data.layer as _yf_original
 from universe_classifier import UC  # r60: centralized ticker classification
 import data_sources  # r60.2: centralized region-aware fallback
 import finnhub_handlers as _fh
@@ -153,12 +153,12 @@ print("✅ yfinance 401-resilient wrapper active — no more console spam")
 
 def _layer_ticker(symbol):
     """Quote, history and news for one symbol, read through the market-data layer."""
-    from market_data.yfcompat import Ticker as _Bars
+    from market_data.layer import Ticker as _Bars
     return _Bars(symbol)
 
 def _layer_tickers(symbols):
     """The same layer read for a batch of symbols."""
-    from market_data.yfcompat import Tickers as _Many
+    from market_data.layer import Tickers as _Many
     return _Many(symbols)
 
 class _QuoteOnly:
@@ -1492,10 +1492,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.143"
+APP_VERSION = "v4.63.144"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.144: Smart exit, portfolio risk, the 360 score, directional and NSE options, and the backtest read the quote batch. Service helpers read the same layer, and the compatibility module is gone. A US decision names the quote source. "
     "v4.63.143: A US investor decision stops the candle chain after about two seconds and returns inside five seconds. Institutional conviction treats a bare NSE name as India and scores Screener fundamentals. "
     "v4.63.142: Capital rotation, macro impact, conviction, management change, earnings, the micro-cap hunter and the journal read the quote batch. A scan still does not open a candle per symbol. "
     "v4.63.141: Theme list, the one-name decision card and the one-name red-flag card stamp the exchange quote time and refuse a quote older than five days. Fund live, structural change, the leaderboard, health, options flow, trade validation, opportunity runway, market why, the master decision and stock news read the quote batch. "
@@ -3821,7 +3822,7 @@ async def dd_returns_snapshot(symbol: str = "", region: str = "US"):
 
     # Path 1: layer period="10y" interval="1d" — works for most US large/mid caps
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         yf_sym = sym if reg == "US" else f"{sym}.NS"
         try: pass
         except Exception: pass
@@ -3841,7 +3842,7 @@ async def dd_returns_snapshot(symbol: str = "", region: str = "US"):
     monthly_closes = None
     if closes is None or len(closes) < 2520:
         try:
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             yf_sym = sym if reg == "US" else f"{sym}.NS"
             try: pass
             except Exception: pass
@@ -4352,7 +4353,7 @@ async def _stock_dashboard_impl(symbol: str = "", region: str = "US", refresh: i
     }
 
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         import asyncio as _aio
     except ImportError:
         return {"success": False, "error": "yfinance not available"}
@@ -6050,8 +6051,8 @@ async def smart_exit_v2(symbol: str = "", region: str = "US", entry_price: float
 
     def _hist(sym, period="1y"):
         try:
-            h = _layer_ticker(sym).history(period=period, interval="1d", auto_adjust=True, timeout=8)
-            if h is None or h.empty or len(h) < 40:
+            h = _quote_frame(sym, region=region)
+            if h is None or getattr(h, "empty", True) or len(h) < 2:
                 return None
             return {"closes": [float(x) for x in h["Close"].dropna()],
                     "volumes": [float(x) for x in h["Volume"].dropna()],
@@ -6062,7 +6063,7 @@ async def smart_exit_v2(symbol: str = "", region: str = "US", entry_price: float
 
     def _info():
         try:
-            return _layer_ticker(yf_sym).info or {}
+            return _QuoteOnly(yf_sym).info or {}
         except Exception:
             return {}
 
@@ -6152,9 +6153,8 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
         "warnings": [], "_engine": "smart_exit_v1",
     }
 
-    # Fetch price/fundamentals via yfinance
+    # Fetch price/fundamentals via layer
     try:
-        import market_data.yfcompat as yf
         import asyncio as _aio
         try: pass
         except Exception: pass
@@ -6162,7 +6162,7 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
 
         def _fetch():
             try:
-                tk = yf.Ticker(yf_sym)
+                tk = _QuoteOnly(yf_sym)
                 info = {}
                 try: info = tk.info or {}
                 except Exception: info = {}
@@ -6176,7 +6176,7 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
         _lp = _aio.get_event_loop()
         info, hist = await _lp.run_in_executor(None, _fetch)
     except ImportError:
-        return {"success": False, "error": "yfinance not available"}
+        return {"success": False, "error": "layer not available"}
 
     if not isinstance(info, dict): info = {}
     price = _eng_ds_num(info.get("regularMarketPrice")) or _eng_ds_num(info.get("currentPrice"))
@@ -6189,7 +6189,7 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
         out["action_now"] = {
             "action": "PRICE DATA UNAVAILABLE",
             "urgency": "WAIT",
-            "rationale": "yfinance returned no current price. Cannot compute exit confidence without it.",
+            "rationale": "layer returned no current price. Cannot compute exit confidence without it.",
             "color": "amber",
         }
         out["elapsed_sec"] = round(_time.time() - t0, 2)
@@ -6241,7 +6241,7 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
                 try:
                     def _fetch_sector():
                         try:
-                            stk = yf.Ticker(sector_etf)
+                            stk = _QuoteOnly(sector_etf)
                             sh = stk.history(period="1y", interval="1d", auto_adjust=True)
                             if sh is None or sh.empty: return None
                             scl = list(sh["Close"].dropna())
@@ -6282,7 +6282,7 @@ async def _smart_exit_impl(symbol, region, entry_price, refresh):
         else:
             t2["evidence"].append(f"Only {len(closes)} closes available — insufficient for 6m RS")
     else:
-        t2["evidence"].append("Price history unavailable from yfinance")
+        t2["evidence"].append("Price history unavailable from layer")
     out["triggers"].append(t2)
 
     # ───────── TRIGGER 3: VALUATION STRETCHED ─────────
@@ -6504,7 +6504,6 @@ async def _portfolio_risk_impl(payload):
 
     # Fetch sector + beta for each holding
     try:
-        import market_data.yfcompat as yf
         import asyncio as _aio
         try: pass
         except Exception: pass
@@ -6514,7 +6513,7 @@ async def _portfolio_risk_impl(payload):
             for sym, reg in syms_regions:
                 yf_sym = sym if reg == "US" else f"{sym}.NS"
                 try:
-                    tk = yf.Ticker(yf_sym)
+                    tk = _QuoteOnly(yf_sym)
                     info = tk.info or {}
                 except Exception as e:
                     info = {"_err": str(e)[:80]}
@@ -6607,7 +6606,7 @@ async def _portfolio_risk_impl(payload):
         r3["score"] = 2; r3["verdict"] = "BALANCED"
         r3["evidence"].append("No sector over 25% — well-diversified")
     if "Unknown" in sector_wt and sector_wt["Unknown"] > 10:
-        r3["evidence"].append(f"⚠ {round(sector_wt['Unknown'], 1)}% in Unknown sector (yfinance metadata gap)")
+        r3["evidence"].append(f"⚠ {round(sector_wt['Unknown'], 1)}% in Unknown sector (layer metadata gap)")
     out["components"].append(r3)
 
     # ───────── R4: Region concentration ─────────
@@ -6654,7 +6653,7 @@ async def _portfolio_risk_impl(payload):
             r5["score"] = 2; r5["verdict"] = "BALANCED"
     else:
         r5["score"] = 0; r5["verdict"] = "UNKNOWN"
-        r5["evidence"].append("Beta unavailable for all holdings — yfinance metadata gap")
+        r5["evidence"].append("Beta unavailable for all holdings — layer metadata gap")
 
     out["components"].append(r5)
 
@@ -8680,7 +8679,7 @@ def _scanner_fetch_vix(region):
     """
     vix_sym = "^INDIAVIX" if region == "IN" else "^VIX"
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         tk = yf.Ticker(vix_sym)
         hist = tk.history(period="10d", interval="1d", auto_adjust=True)
         if hist is None or hist.empty or len(hist) < 2:
@@ -8927,7 +8926,7 @@ def _sie_chain_map(symbol, yf_sym, region, dte, direction):
     try:
         from datetime import datetime
         if region == "US":
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             tk = yf.Ticker(yf_sym)
             exps = list(getattr(tk, "options", []) or [])
             if not exps:
@@ -9585,7 +9584,7 @@ def _score_directional_ticker(symbol, region, benchmark_ret_20d, prefetched=None
       symbol, sector, price, ce_score (0-100), pe_score (0-100), ce_signals,
       pe_signals, indicators, options_hint, data_quality
     """
-    import market_data.yfcompat as yf
+    import market_data.layer as yf
     # r100.2: index/ETF-proxy symbols use verbatim yf sym (no .NS suffix).
     _is_index = (symbol in _INDEX_SYMBOLS or symbol.startswith("^"))
     if _is_index:
@@ -10012,7 +10011,7 @@ def _chain_strike_greeks(yf_sym, spot, strike, dte, direction, vix_val):
     try:
         if direction not in ("CE", "PE") or not spot or not strike:
             return None
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         from datetime import datetime
         T = _GREEK_THRESHOLDS
         r = T["risk_free"]
@@ -10293,7 +10292,7 @@ _OI_SNAP_DIR = "/tmp/celesys_oi_snap"
 def _oi_total_for_symbol(yf_sym):
     """Sum calls+puts open interest from the nearest expiry. None on failure."""
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         tk = yf.Ticker(yf_sym)
         exps = list(getattr(tk, "options", []) or [])
         if not exps:
@@ -10776,14 +10775,13 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
 
     # ───────── Fetch VIX + benchmark in parallel ─────────
     try:
-        import market_data.yfcompat as yf
         try: pass
         except Exception: pass
         bench_sym = "SPY" if region == "US" else "^NSEI"
 
         def _bench_ret():
             try:
-                bh = yf.Ticker(bench_sym).history(period="2mo", interval="1d", auto_adjust=True)
+                bh = _QuoteOnly(bench_sym).history(period="2mo", interval="1d", auto_adjust=True)
                 if bh is None or bh.empty or len(bh) < 21:
                     return None, None
                 bcl = list(bh["Close"].dropna())
@@ -10800,7 +10798,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         vix_val, vix_5d_avg, vix_trend_pct = await _lp.run_in_executor(
             None, _scanner_fetch_vix, region)
     except ImportError:
-        return {"success": False, "error": "yfinance not available"}
+        return {"success": False, "error": "layer not available"}
 
     # Classify VIX zone + combined signal
     vix_zone          = _classify_vix_zone(vix_val, vix_trend_pct, region)
@@ -10817,7 +10815,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
         try: pass
         except Exception: pass
         try:
-            return yf.download(tickers=" ".join(yf_syms), period="1y", interval="1d",
+            return _quote_frame(tickers=" ".join(yf_syms), period="1y", interval="1d",
                                group_by="ticker", auto_adjust=True, threads=True, progress=False)
         except Exception:
             return None
@@ -11048,7 +11046,7 @@ async def _directional_options_impl(region, top_n, min_score, refresh, symbol=""
     pe_top.sort(key=_grade_key)
 
     # US-only: best-effort overlay of REAL per-strike IV + OI + Greeks from the
-    # Yahoo option chain (parallel, time-budgeted). Falls back to model Greeks.
+    # quote feed option chain (parallel, time-budgeted). Falls back to model Greeks.
     bubbles = {"short_covering": [], "long_unwinding": []}
     if region == "US":
         try:
@@ -11312,7 +11310,7 @@ async def _csa_extract_features(symbol_clean, region):
     """
     import time as _t
     import asyncio as _aio
-    import market_data.yfcompat as yf
+    import market_data.layer as yf
     yf_sym = symbol_clean if region == "US" else f"{symbol_clean}.NS"
 
     def _fetch():
@@ -12393,14 +12391,13 @@ async def _inst_360_compute(symbol, region, cache_key):
     import asyncio as _aio
     t0 = _time.time()
     try:
-        import market_data.yfcompat as yf
         try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
 
         def _fetch():
             try:
-                tk = yf.Ticker(yf_sym)
+                tk = _QuoteOnly(yf_sym)
                 info = {}
                 try: info = tk.info or {}
                 except Exception: info = {}
@@ -12417,7 +12414,7 @@ async def _inst_360_compute(symbol, region, cache_key):
         bench_sym = "SPY" if region == "US" else "^NSEI"
         def _bench():
             try:
-                bh = yf.Ticker(bench_sym).history(period="2mo", interval="1d", auto_adjust=True)
+                bh = _QuoteOnly(bench_sym).history(period="2mo", interval="1d", auto_adjust=True)
                 if bh is None or bh.empty or len(bh) < 21: return None
                 bcl = list(bh["Close"].dropna())
                 if len(bcl) < 21: return None
@@ -12426,7 +12423,7 @@ async def _inst_360_compute(symbol, region, cache_key):
                 return None
         benchmark_ret_20d = await _lp.run_in_executor(None, _bench)
     except ImportError:
-        return {"success": False, "error": "yfinance not available"}
+        return {"success": False, "error": "layer not available"}
 
     if not isinstance(info, dict):
         info = {}
@@ -12452,7 +12449,7 @@ async def _inst_360_compute(symbol, region, cache_key):
         except Exception as _e:
             dashboard_data = {"success": False, "error": f"dashboard error: {str(_e)[:80]}"}
 
-        # r99.46: surface yfinance info into dashboard_data so PEG fallback can use it.
+        # r99.46: surface layer info into dashboard_data so PEG fallback can use it.
         if isinstance(dashboard_data, dict) and "info" not in dashboard_data:
             dashboard_data["info"] = info
 
@@ -12620,7 +12617,7 @@ def _get_insider_activity_proper(symbol, region, lookback_days=180):
     """
     from datetime import datetime, timedelta
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
         tk = yf.Ticker(yf_sym)
     except Exception as e:
@@ -14117,10 +14114,10 @@ async def nse_options(symbol: str = "NIFTY"):
         # Step 4: Previous day data for CPR
         try:
             if symbol in ["NIFTY", "BANKNIFTY", "NIFTY BANK"]:
-                # yfinance imported globally with 401 wrapper
+                # layer imported globally with 401 wrapper
                 tk_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "NIFTY BANK": "^NSEBANK"}
 
-                tk = yf.Ticker(tk_map.get(symbol, f"{symbol}.NS"))
+                tk = _QuoteOnly(tk_map.get(symbol, f"{symbol}.NS"))
                 hist = tk.history(period="5d", interval="1d")
                 if len(hist) >= 2:
                     prev = hist.iloc[-2]
@@ -14438,7 +14435,7 @@ async def global_ticker():
         
         # Source 3: daily candles from the layer
         try:
-            from market_data.yfcompat import Ticker as _LayerTicker
+            from market_data.layer import Ticker as _LayerTicker
             t = _LayerTicker(ticker)
             hist = t.history(period="2d")
             if not hist.empty:
@@ -15974,7 +15971,7 @@ def _run_bottom_nav_scan(reg):
             print(f"[BOTTOM-NAV] 🇮🇳 India: Direct scoring {len(candidates)} tickers (no yf pre-filter)...")
         else:
             # ═══ US: Stage 1 yf pre-filter, then Stage 2 full scoring ═══
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             yf_symbols = list(us_yf_map.values())
             print(f"[BOTTOM-NAV] 🇺🇸 Stage 1: Batch download {len(yf_symbols)} US tickers...")
             data = yf.download(yf_symbols, period="2d", interval="1d", group_by="ticker", threads=True, progress=False)
@@ -16480,7 +16477,7 @@ def _premium_yf_block(symbol, region):
         "dividend_quality":    None,
     }
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
     except Exception as e:
         out["_yf_error"] = f"yfinance import failed: {e}"
         return out
@@ -17723,7 +17720,7 @@ def _scs_batch_compute_one(symbol, region):
     of success/failure so the scanner sees a definitive outcome."""
     try:
         try:
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
         except Exception:
             return None
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
@@ -18689,7 +18686,7 @@ def _compute_situational_signals(region):
 
     def _session_from_candles(symbol, market):
         try:
-            from market_data.yfcompat import history_frame
+            from market_data.layer import history_frame
             frame = history_frame(symbol, period="1y", interval="1d", region=market)
         except Exception:
             return None
@@ -21940,7 +21937,7 @@ async def algo_batch(region: str = "IN"):
 
 async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: dict = None):
     """5-Layer Confluence Algorithm — ALL real data, ZERO hallucination."""
-    from market_data.yfcompat import Ticker as _LayerTicker
+    from market_data.layer import Ticker as _LayerTicker
     from datetime import datetime, timedelta
     import math
     
@@ -21983,7 +21980,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
     _region = inst.get("region")
 
     def _load_intraday():
-        from market_data.yfcompat import history_many
+        from market_data.layer import history_many
         return history_many(yf_sym, [("5d", "5m"), ("1mo", "15m"), ("1mo", "60m")], region=_region)
 
     def _load_info():
@@ -22008,7 +22005,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = "", progress: d
     _info_fut = _loop.run_in_executor(None, _load_info)
     _opt_fut = None if is_us else _loop.run_in_executor(None, _load_options)
     import pandas as pd
-    from market_data.yfcompat import Ticker as _HistoryTicker
+    from market_data.layer import Ticker as _HistoryTicker
     try:
         if not is_us:
             daily = await _loop.run_in_executor(None, lambda _s=yf_sym: _HistoryTicker(_s).history(period="1y", interval="1d"))
@@ -25818,7 +25815,7 @@ async def options_flow(region: str = "IN"):
 @app.get("/api/algo-backtest")
 async def algo_backtest(symbol: str = "NIFTY", years: int = 3):
     """Backtest the 5-layer confluence algo on historical data."""
-    # yfinance imported globally with 401 wrapper
+    # layer imported globally with 401 wrapper
     import pandas as pd
     import numpy as np
     from datetime import datetime, timedelta
@@ -25831,7 +25828,7 @@ async def algo_backtest(symbol: str = "NIFTY", years: int = 3):
     
     try:
 
-        tk = yf.Ticker(yf_sym)
+        tk = _QuoteOnly(yf_sym)
         hist = tk.history(period=f"{years}y", interval="1d")
         if hist is None or len(hist) < 200:
             return {"success": False, "error": f"Insufficient data for {symbol} ({len(hist) if hist is not None else 0} days)"}
@@ -29574,7 +29571,7 @@ _VIX_SYMS = {"US": "^VIX", "IN": "^INDIAVIX"}
 def _mw_fetch_ohlcv(yf_sym, period="5d"):
     """Fetch last N days OHLCV from market_data.layer."""
     try:
-        from market_data.yfcompat import history_frame
+        from market_data.layer import history_frame
         import numpy as np
         hist = history_frame(yf_sym, period="30d", interval="1d")
         if hist is None or hist.empty or len(hist) < 2:
@@ -29631,7 +29628,7 @@ def _mw_fetch_ohlcv(yf_sym, period="5d"):
 def _mw_fetch_vix(region):
     """Return VIX value + regime string. Never raises."""
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         sym = _VIX_SYMS.get(region, "^VIX")
         tk = yf.Ticker(sym)
         hist = tk.history(period="2d", interval="1d", auto_adjust=True, timeout=8)
@@ -29798,7 +29795,7 @@ def _mw_fetch_rate_context(region):
     if region != "US":
         return None
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         tk = yf.Ticker("^TNX")
         hist = tk.history(period="5d", interval="1d", auto_adjust=False)
         if hist is None or hist.empty or len(hist) < 2:
@@ -30173,7 +30170,7 @@ def _mw_fetch_news(yf_sym, max_items=5):
     Returns list of {title, publisher, link, ago, sentiment, is_fallback}.
     """
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         from datetime import datetime, timedelta
         # Strip .NS / .BO suffix for display symbol
         display_sym = yf_sym.replace(".NS","").replace(".BO","").replace("^","")
@@ -30436,7 +30433,7 @@ def _mcoc_ret(closes, n):
 def _mcoc_fetch(yf_sym, region=None):
     """9-month daily history from the shared candle chain. Returns dict of arrays or None."""
     try:
-        from market_data.yfcompat import history_frame
+        from market_data.layer import history_frame
         hist = history_frame(yf_sym, period="9mo", interval="1d", region=region)
         if hist is None or hist.empty or len(hist) < 40:
             return None
@@ -31102,7 +31099,7 @@ def _wilson_ci(k, n, z=1.96):
 def _dna_fetch(yf_sym, period="3y"):
     """Longer-history fetch for the DNA backtest. Timeout-bounded."""
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         tk = yf.Ticker(yf_sym)
         hist = tk.history(period=period, interval="1d", auto_adjust=True, timeout=8)
         if hist is None or hist.empty or len(hist) < 300:
@@ -31467,7 +31464,7 @@ def _d360_fundamentals(ys):
     """Best-effort fundamentals via yfinance .info. Real when reachable; None on
     failure (commonly blocked on this host) — never faked."""
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         info = yf.Ticker(ys).info or {}
         if not isinstance(info, dict) or not info.get("symbol") and not info.get("shortName"):
             return None
@@ -35591,6 +35588,19 @@ def _investor_on_budget(symbol: str, region: str) -> dict:
     else:
         decision = "MONITOR — EARNINGS UNCLEAR"
     full = bool(fund.get("ok") and (fund.get("pe") or fund.get("roe") or fund.get("revenueGrowth")))
+    source = str(fund.get("source") or "").strip()
+    if str(region).upper() == "US":
+        note = (
+            f"Returned from the {source} quote and fundamentals."
+            if full and source
+            else "Returned inside the 5 second budget from the US quote and fundamentals."
+        )
+    else:
+        note = (
+            "Returned from Screener and Angel fundamentals."
+            if full
+            else "Returned inside the 8 second budget from the quote and fundamentals."
+        )
     return {
         "success": True,
         "symbol": symbol,
@@ -35598,7 +35608,7 @@ def _investor_on_budget(symbol: str, region: str) -> dict:
         "decision": decision,
         "price": price,
         "data_status": "full" if full else "partial",
-        "note": "Returned from Screener and Angel fundamentals." if full else "Returned inside the 8 second budget from the quote and fundamentals.",
+        "note": note,
         "fundamental": {
             "pe": fund.get("pe") or 0,
             "roe": roe or 0,
@@ -35651,7 +35661,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
             }
         finally:
             _investor_budgeted.reset(token)
-    from market_data.yfcompat import Ticker as _LayerTicker
+    from market_data.layer import Ticker as _LayerTicker
     import time as _inv_time
     _inv_start = _inv_time.time()
     print(f"\n{'='*60}")
@@ -43873,7 +43883,7 @@ async def _momentum_scan_single_with_hist(sym, region, hist):
         return None  # insufficient history from batch
     
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         yf_sym = sym if region == "US" else sym + ".NS"
         tk = yf.Ticker(yf_sym)
         info = {}
@@ -43938,7 +43948,7 @@ async def _momentum_scan_single(sym, region):
     New code path uses batched history via _momentum_scan_single_with_hist.
     """
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         yf_sym = sym if region == "US" else sym + ".NS"
         tk = yf.Ticker(yf_sym)
         hist = None
@@ -44706,7 +44716,7 @@ def _fetch_etf_holdings_multi_source(symbol, region):
 
     # SOURCE 1: yfinance funds_data (works for many US ETFs; spotty on India)
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         try: pass
         except Exception: pass
         tk = yf.Ticker(symbol)
@@ -44733,7 +44743,7 @@ def _fetch_etf_holdings_multi_source(symbol, region):
     # SOURCE 2: yfinance get_institutional_holders fallback (sometimes has ETF holdings via different path)
     if not holdings:
         try:
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             tk = yf.Ticker(symbol)
             try:
                 info = tk.info or {}
@@ -44817,7 +44827,7 @@ def _fetch_holding_fundamentals(symbol):
             return cached["data"]
     out = {}
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         try: pass
         except Exception: pass
         tk = yf.Ticker(symbol)
@@ -45168,7 +45178,7 @@ async def etf_analyze(symbol: str = "", region: str = "US", refresh: int = 0):
             resp["_cache_age_sec"] = int(time.time() - cached["ts"])
             return resp
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         try: pass
         except Exception: pass
         # Pick benchmark for region
@@ -45591,7 +45601,7 @@ def _resolve_360_fields(symbol, region):
     Source order: yfinance.info → curated fallback. (Investor-decide internal data is
     pulled separately in the universe-scan path; here we use yfinance for parallelism.)
     """
-    import market_data.yfcompat as yf
+    import market_data.layer as yf
     yf_sym = symbol if region == "US" else (symbol + ".NS" if "." not in symbol else symbol)
     fields = {}
     sources_used = set()
@@ -46394,7 +46404,7 @@ async def intraday_setups(
     t0 = time.time()
 
     from concurrent.futures import ThreadPoolExecutor
-    from market_data.yfcompat import history_many
+    from market_data.layer import history_many
     candidates = []
     skipped = 0
     specs = []
@@ -47363,7 +47373,7 @@ async def trade_ticket(
     try:
         import numpy as np
         from datetime import datetime as _dt
-        from market_data.yfcompat import history_frame
+        from market_data.layer import history_frame
         from concurrent.futures import ThreadPoolExecutor
         yf_sym = symbol if region == "US" else symbol + ".NS"
         tk = _QuoteOnly(yf_sym)
@@ -47761,7 +47771,7 @@ def _screen_microcap_for_picks(target_count=6, region="US"):
       US: <$300M mcap, $500K daily $vol, price > $1
       IN: <₹1,000Cr mcap, ₹2Cr daily ₹vol, price > ₹10. NSE .NS suffix.
     """
-    import market_data.yfcompat as yf
+    import market_data.layer as yf
     import numpy as np
     from datetime import datetime as _dt
     
@@ -48291,7 +48301,7 @@ async def microcap_challenge_status(email: str = "", region: str = "US"):
     
     # Refresh prices — use yf_symbol if present (India needs .NS), fallback to symbol
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         from datetime import datetime as _dt
         symbols_yf = [p.get("yf_symbol", p["symbol"]) for p in state["positions"]]
         if symbols_yf:
@@ -48389,7 +48399,7 @@ async def microcap_challenge_exit(email: str = "", symbol: str = "", region: str
     
     # Get current price for exit (use yf_symbol for India .NS)
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         sym_yf = target_pos.get("yf_symbol", symbol)
         tk = yf.Ticker(sym_yf)
         cp = float(tk.history(period="2d")['Close'].iloc[-1])
@@ -56227,7 +56237,7 @@ def _r6345_compute_sector_heat(region):
     # r63.64: BATCH yf.download for all ETFs at once (one HTTP call)
     # Replaces 10 sequential yf.Ticker.history() calls (15s) with one batch (2s)
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         etf_to_name = {info["etf"]: name for name, info in sectors.items()}
         all_etfs = list(etf_to_name.keys())
         batch_data = yf.download(
@@ -56611,7 +56621,7 @@ def _r6364_batch_score_sector_stocks(stocks_list, region, benchmark_data=None):
     
     Falls back to per-stock if batch fails (Yahoo intermittent).
     """
-    import market_data.yfcompat as yf
+    import market_data.layer as yf
     import pandas as pd
     
     if not stocks_list:
@@ -61910,7 +61920,7 @@ def _intel_from_layer(symbol, region):
 
 async def _run_stock_intel(symbol, region, cache_key):
     """Stock intel. India starts from the NSE quote. Both regions fill gaps from the data layer."""
-    from market_data.yfcompat import Ticker as _LayerTicker
+    from market_data.layer import Ticker as _LayerTicker
     try:
         # math, time
         import pandas as pd
@@ -63505,7 +63515,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         
         if is_india_index:
             # Fallback: use yfinance for basic spot + VIX data (indices only)
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             yf_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "FINNIFTY": "NIFTY_FIN_SERVICE.NS", "MIDCPNIFTY": "NIFTY_MID_SELECT.NS"}
             yf_sym = yf_map.get(sym, f"^NSEI")
             print(f"[OPTIONS-QUICK] yfinance fallback: {yf_sym}")
@@ -63601,7 +63611,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
             # hits this branch and returns failure without trying yfinance.
             # Now: try yfinance here too. Same .NS/^ mapping as stocks path.
             try:
-                import market_data.yfcompat as yf
+                import market_data.layer as yf
                 if sym in ("NIFTY", "NIFTY 50"):
                     yf_idx_sym = "^NSEI"
                 elif sym in ("BANKNIFTY", "NIFTY BANK"):
@@ -63816,7 +63826,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
             yf_spot = 0
             yf_bars = []
             try:
-                import market_data.yfcompat as yf
+                import market_data.layer as yf
                 # Map symbol to yfinance convention
                 if sym in ("NIFTY", "NIFTY 50"):
                     yf_india_sym = "^NSEI"
@@ -63904,7 +63914,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         
         print(f"[OPTIONS-QUICK] Fetching {yf_sym} via Yahoo Finance")
         
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         tk = yf.Ticker(yf_sym)
         
         # Get stock info
@@ -64262,7 +64272,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # ═══ US MARKET IMPACT — For India tickers, show how US markets are doing ═══
         if region == 'IN':
             try:
-                import market_data.yfcompat as yf
+                import market_data.layer as yf
                 _sp500 = yf.Ticker("^GSPC")
                 _sp_hist = _sp500.history(period='5d')
                 if _sp_hist is not None and len(_sp_hist) >= 2:
@@ -64303,7 +64313,7 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         sym = symbol.upper().strip()
         reg = region.upper().strip()
         
-        from market_data.yfcompat import history_many
+        from market_data.layer import history_many
         
         # Determine yfinance ticker
         india_index_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "FINNIFTY": "^CNXFIN", "MIDCPNIFTY": "^NSEI"}
@@ -64566,7 +64576,7 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
 # ═══════════════════════════════════════════════════════════════════════════
 # Smart Money Scanner — added manually 2026-05-13
 # ═══════════════════════════════════════════════════════════════════════════
-import market_data.yfcompat as _smi_yf
+import market_data.layer as _smi_yf
 import time as _smi_time
 from concurrent.futures import ThreadPoolExecutor as _SmiPool, as_completed as _smi_done
 from collections import defaultdict as _smi_dd
@@ -64667,7 +64677,7 @@ def smart_money_scanner(region: str = "US", mcap: str = "large", email: str = ""
 # Smart Money Scanner v2 — replaces v1 (added 2026-05-13)
 # Improvements: real multi-signal verdict, sorted by BUY-first, no fake fields
 # ═══════════════════════════════════════════════════════════════════════════
-import market_data.yfcompat as _smi_yf
+import market_data.layer as _smi_yf
 import time as _smi_time
 from concurrent.futures import ThreadPoolExecutor as _SmiPool, as_completed as _smi_done
 from collections import defaultdict as _smi_dd

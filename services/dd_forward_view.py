@@ -65,7 +65,7 @@ def _fetch_with_timeout(fn, timeout_sec: float, default=None):
 def _safe_yahoo_ticker(ticker: str, region: str):
     """Construct yfinance Ticker handle with rate-limit respect. Returns None on failure."""
     try:
-        import market_data.yfcompat as yf
+        import market_data.layer as yf
         try:
             from api import _provider_slot_wait
             _provider_slot_wait()

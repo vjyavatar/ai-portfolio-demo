@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timezone
 
 from market_data import layer
-from market_data.yfcompat import Ticker, _empty
+from market_data.layer import Ticker, _empty
 
 
 class SafetyTests(unittest.TestCase):

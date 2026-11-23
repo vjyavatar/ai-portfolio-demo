@@ -143,7 +143,7 @@ def _safe_history(symbol: str, period: str = "1y"):
     """Fetch yfinance OHLCV history with rate-limit respect. Hard 5s timeout. Returns dict or None."""
     def _go():
         try:
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             try:
                 from api import _provider_slot_wait
                 _provider_slot_wait()
@@ -168,7 +168,7 @@ def _safe_info_and_insiders(symbol: str):
     """Fetch info + insider transactions for a stock. Hard 6s timeout."""
     def _go():
         try:
-            import market_data.yfcompat as yf
+            import market_data.layer as yf
             try:
                 from api import _provider_slot_wait
                 _provider_slot_wait()

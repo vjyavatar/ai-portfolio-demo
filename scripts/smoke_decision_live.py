@@ -1,7 +1,7 @@
 """Smoke decision routes.
 
 Local mode checks market_data.layer candles without the network name celesys.ai.
-Live mode curls the deployed decision engine after v4.63.143 is on the host.
+Live mode curls the deployed decision engine after v4.63.144 is on the host.
 
     PYTHONPATH=. python3 scripts/smoke_decision_live.py --local
     python3 scripts/smoke_decision_live.py --live https://celesys.ai
@@ -27,7 +27,7 @@ SYMBOLS = [
 
 
 def local() -> int:
-    from market_data.yfcompat import history_frame
+    from market_data.layer import history_frame
     failed = 0
     print("| symbol | source | bars | close | seconds |")
     print("| --- | --- | --- | --- | --- |")
@@ -86,7 +86,7 @@ def _get(url: str) -> bytes:
 
 
 def _get_status(url: str) -> tuple[int, bytes]:
-    request = urllib.request.Request(url, headers={"User-Agent": "CelesysSmoke/4.63.143", "Accept": "application/json"})
+    request = urllib.request.Request(url, headers={"User-Agent": "CelesysSmoke/4.63.144", "Accept": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=40) as response:
             return response.status, response.read()
