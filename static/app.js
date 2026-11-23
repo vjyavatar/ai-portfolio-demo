@@ -1028,12 +1028,14 @@ return d;
 });
 }
 const TI=document.getElementById('ticker'),AC=document.getElementById('autocomplete');
-let _tickerTyped=false;
-TI.addEventListener('keydown',function(){_tickerTyped=true});
-TI.addEventListener('paste',function(){_tickerTyped=true});
+let _ignoreAutofill=true;
+function _armTicker(){_ignoreAutofill=false}
+TI.addEventListener('focus',_armTicker);
+TI.addEventListener('keydown',_armTicker);
+TI.addEventListener('paste',_armTicker);
 TI.value='';
 var _em0=document.getElementById('email');if(_em0&&String(_em0.value).indexOf('*')>=0)_em0.value='';
-TI.addEventListener('input',function(){if(!_tickerTyped){this.value='';AC.classList.remove('show');return}const v=this.value.trim().toUpperCase();AC.innerHTML='';if(!v){AC.classList.remove('show');return}
+TI.addEventListener('input',function(){if(_ignoreAutofill){this.value='';AC.classList.remove('show');return}const v=this.value.trim().toUpperCase();AC.innerHTML='';if(!v){AC.classList.remove('show');return}
 const m=stocks.filter(s=>s.t.includes(v)||s.n.toUpperCase().includes(v)).slice(0,10);if(!m.length){AC.classList.remove('show');return}
 m.forEach(s=>{const d=document.createElement('div');d.className='aci';d.innerHTML=`<span class="act">${s.t}</span><span class="acn">${s.n}</span>`;d.onclick=()=>{TI.value=s.t;AC.classList.remove('show')};AC.appendChild(d)});AC.classList.add('show')});
 document.addEventListener('click',e=>{if(e.target!==TI)AC.classList.remove('show')});

@@ -1276,11 +1276,12 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 <!-- SEARCH CARD — The centerpiece -->
 <div class="icard" style="max-width:680px;margin:0 auto 18px;text-align:left">
 <div class="irow">
+<label class="iwrap" for="email" style="display:flex;flex-direction:column;justify-content:flex-end;gap:4px;font-size:10px;font-weight:700;color:var(--text3)">Email, optional
+<input class="ipt" type="text" id="email" name="celesys-report-email" inputmode="email" aria-label="Email, optional, for your report limit" placeholder="name@email.com" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
+</label>
 <div class="iwrap"><input class="ipt" type="text" id="ticker" name="celesys-symbol" aria-label="Stock ticker or company name" placeholder="Search any stock... AAPL, RELIANCE" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" data-lpignore="true" data-1p-ignore="true"><div class="ac" id="autocomplete"></div></div>
 <button class="btn" id="btn" type="button" aria-label="Analyze stock" onclick="analyze()">Analyze &#8594;</button>
 </div>
-<label for="email" style="display:block;margin-top:8px;font-size:10px;color:var(--text3);font-weight:600">Email, optional, only for your report limit</label>
-<input class="ipt" type="text" id="email" name="celesys-report-email" inputmode="email" aria-label="Email, optional" placeholder="name@email.com" autocomplete="off" data-lpignore="true" data-1p-ignore="true" style="margin-top:4px;max-width:280px">
 
 <div class="search-help" style="margin-top:10px;font-size:10px;color:var(--text3);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
 <span>&#128293; <strong style="color:var(--text2)">NIFTY 500 + S&amp;P 500</strong> coverage</span>
