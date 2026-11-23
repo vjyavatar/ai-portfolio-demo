@@ -87,6 +87,19 @@ class PageSourceTests(unittest.TestCase):
                     self.assertNotIn(token, folded, f"{node.name} still contains {token}")
         self.assertEqual(seen, PHASE2)
 
+    def test_scan_screens_do_not_stamp_the_june_snapshot(self):
+        tree = ast.parse(API)
+        wanted = {"runway_top", "red_flag_screen", "multibagger_discovery"}
+        for node in tree.body:
+            if not isinstance(node, ast.AsyncFunctionDef) or node.name not in wanted:
+                continue
+            text = ast.get_source_segment(API, node) or ""
+            self.assertNotIn("2026-06-08", text, node.name)
+            self.assertNotIn("2026-06-10", text, node.name)
+            self.assertIn("quote_batch_clock", text, node.name)
+            wanted.remove(node.name)
+        self.assertEqual(wanted, set())
+
     def test_aapl_is_us_and_hdfcbank_is_india_when_region_is_omitted(self):
         self.assertEqual(layer.classify("AAPL")["region"], "US")
         self.assertEqual(layer.classify("HDFCBANK")["region"], "IN")

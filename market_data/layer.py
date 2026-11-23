@@ -92,8 +92,10 @@ _TV_COLUMNS = [
     "gross_margin", "net_margin", "operating_margin", "market_cap_basic",
     "beta_1_year", "price_52_week_high", "price_52_week_low",
     "book_value_per_share_fq", "earnings_per_share_basic_ttm", "current_ratio",
-    "Recommend.All", "average_volume_10d_calc",
+    "Recommend.All", "average_volume_10d_calc", "last_bar_update_time",
 ]
+
+QUOTE_MAX_AGE = 5 * 24 * 3600
 
 _INDIA_EQUITY = {
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "TATAMOTORS",
@@ -946,7 +948,60 @@ def _quote_from_tv_fields(symbol: str, fields: dict, price: float) -> dict:
         "volume": _num(fields.get("volume")) or 0,
         "high52": _num(fields.get("price_52_week_high")) or 0,
         "low52": _num(fields.get("price_52_week_low")) or 0,
+        "as_of": _quote_time_text(fields.get("last_bar_update_time")),
     }
+
+
+def _quote_time_text(raw) -> Optional[str]:
+    """Exchange clock from the scanner. Missing or unreadable stays missing."""
+    try:
+        moment = datetime.fromtimestamp(float(raw), timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+    return moment.isoformat()
+
+
+def _parse_quote_time(text) -> Optional[datetime]:
+    if not text:
+        return None
+    try:
+        moment = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc)
+
+
+def quote_batch_clock(book: dict) -> dict:
+    """Newest exchange time in a quote batch. Empty or old batches are a refusal."""
+    newest = None
+    priced = 0
+    for row in (book or {}).values():
+        if not isinstance(row, dict) or not row.get("price"):
+            continue
+        priced += 1
+        moment = _parse_quote_time(row.get("as_of"))
+        if moment and (newest is None or moment > newest):
+            newest = moment
+    if priced == 0 or newest is None:
+        return {"ok": False, "as_of": None, "error": "No current quote. Refusing to serve a saved snapshot."}
+    age = (datetime.now(timezone.utc) - newest).total_seconds()
+    day = newest.date().isoformat()
+    if age > QUOTE_MAX_AGE:
+        return {
+            "ok": False,
+            "as_of": day,
+            "error": "Quotes are from %s, %d days old. Refusing to serve them." % (day, int(age // 86400)),
+        }
+    return {"ok": True, "as_of": day, "error": None}
+
+
+def quote_date_ok(text) -> bool:
+    moment = _parse_quote_time(str(text)[:10] if text else None)
+    if moment is None:
+        return False
+    return (datetime.now(timezone.utc) - moment).total_seconds() <= QUOTE_MAX_AGE
 
 
 def scan_quotes(symbols: list, region: Optional[str] = None) -> dict[str, dict]:
@@ -961,9 +1016,9 @@ def scan_quotes(symbols: list, region: Optional[str] = None) -> dict[str, dict]:
         if not text or text in seen:
             continue
         seen.add(text)
-        tv = (classify(text, region).get("tv") or [None])[0]
-        if tv:
-            ordered.append((text, tv))
+        for tv in classify(text, region).get("tv") or []:
+            if tv:
+                ordered.append((text, tv))
     if not ordered:
         return {}
     chunks = [ordered[index:index + 40] for index in range(0, len(ordered), 40)]
@@ -998,6 +1053,8 @@ def scan_quotes(symbols: list, region: Optional[str] = None) -> dict[str, dict]:
                         by_tv[row.get("s")] = fields | {"_price": price}
             found = {}
             for symbol, tv in chunk:
+                if symbol in found:
+                    continue
                 fields = by_tv.get(tv)
                 if not fields:
                     continue
@@ -1014,7 +1071,8 @@ def scan_quotes(symbols: list, region: Optional[str] = None) -> dict[str, dict]:
         try:
             for job in as_completed(jobs, timeout=4):
                 try:
-                    found.update(job.result())
+                    for symbol, row in job.result().items():
+                        found.setdefault(symbol, row)
                 except Exception:
                     pass
         except _FuturesTimeout:

@@ -288,6 +288,27 @@ class SafetyTests(unittest.TestCase):
         self.assertIsNone(bars)
         self.assertLess(time.perf_counter() - started, 0.5)
 
+    def test_quote_clock_rejects_a_june_snapshot(self):
+        old = layer.quote_batch_clock({"NVDA": {"price": 100, "as_of": "2026-06-10T20:00:00+00:00"}})
+        self.assertFalse(old["ok"])
+        self.assertIn("2026-06-10", old["error"])
+        self.assertEqual(old["as_of"], "2026-06-10")
+        empty = layer.quote_batch_clock({})
+        self.assertFalse(empty["ok"])
+        self.assertIsNone(empty["as_of"])
+        missing_clock = layer.quote_batch_clock({"NVDA": {"price": 100}})
+        self.assertFalse(missing_clock["ok"])
+
+    def test_quote_clock_accepts_a_recent_bar(self):
+        moment = datetime.now(timezone.utc).isoformat()
+        fresh = layer.quote_batch_clock({"NVDA": {"price": 125, "as_of": moment}})
+        self.assertTrue(fresh["ok"])
+        self.assertEqual(fresh["as_of"], moment[:10])
+        self.assertTrue(layer.quote_date_ok(moment[:10]))
+        self.assertFalse(layer.quote_date_ok("2026-06-08"))
+        row = layer._quote_from_tv_fields("NVDA", {"change_abs": -1, "last_bar_update_time": 1795223700}, 125.53)
+        self.assertEqual(row["as_of"][:10], "2026-11-21")
+
     def test_tradingview_packets_keep_bar_rows(self):
         body = '{"m":"series_loading","p":[]}'
         blob = f"~m~{len(body)}~m~{body}"
