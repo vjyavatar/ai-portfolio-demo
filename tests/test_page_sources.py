@@ -145,6 +145,13 @@ class PageSourceTests(unittest.TestCase):
         self.assertEqual(layer.classify("HDFCBANK")["region"], "IN")
         self.assertEqual(layer.classify("RELIANCE")["region"], "IN")
         self.assertEqual(layer.classify("AAPL", "IN")["region"], "IN")
+        self.assertEqual(layer.classify("RELIANCE")["region"], "IN")
+        conviction = next(item for item in ast.parse(API).body if isinstance(item, ast.AsyncFunctionDef) and item.name == "_inst_conviction_impl")
+        body = ast.get_source_segment(API, conviction) or ""
+        self.assertIn("classify(symbol)", body)
+        self.assertIn("investor_fundamentals", body)
+        route = next(item for item in ast.parse(API).body if isinstance(item, ast.AsyncFunctionDef) and item.name == "institutional_conviction")
+        self.assertIn('region: str = ""', ast.get_source_segment(API, route) or "")
 
     def test_investor_decide_keeps_a_twelve_second_budget(self):
         tree = ast.parse(API)
@@ -152,6 +159,7 @@ class PageSourceTests(unittest.TestCase):
         text = ast.get_source_segment(API, node)
         self.assertIn("timeout=7", text)
         self.assertIn("_investor_wall = 8.0", text)
+        self.assertIn("_investor_wall = 4.8", text)
         self.assertIn("_warm_india_decisions", API)
         self.assertIn("_india_investor_snapshot", text)
         self.assertIn("_investor_on_budget", text)

@@ -1492,10 +1492,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.142"
+APP_VERSION = "v4.63.143"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.143: A US investor decision stops the candle chain after about two seconds and returns inside five seconds. Institutional conviction treats a bare NSE name as India and scores Screener fundamentals. "
     "v4.63.142: Capital rotation, macro impact, conviction, management change, earnings, the micro-cap hunter and the journal read the quote batch. A scan still does not open a candle per symbol. "
     "v4.63.141: Theme list, the one-name decision card and the one-name red-flag card stamp the exchange quote time and refuse a quote older than five days. Fund live, structural change, the leaderboard, health, options flow, trade validation, opportunity runway, market why, the master decision and stock news read the quote batch. "
     "v4.63.140: Institutional terminal, options setup, market daily, regional reports, the EMA signal, GIFT Nifty, the US premarket, the price tick, execution score and the trade ticket read the quote batch. "
@@ -6713,8 +6714,42 @@ _inst_conviction_cache = {}
 _INST_CONVICTION_TTL = 1800
 
 
+def _conviction_quality(fund: dict) -> int:
+    """0-100 from Screener ratios. A missing input adds nothing."""
+    score = 0
+    roe = fund.get("roe") or 0
+    if roe >= 18:
+        score += 30
+    elif roe >= 12:
+        score += 20
+    elif roe > 0:
+        score += 8
+    margin = fund.get("operatingMargin") or fund.get("profitMargin") or 0
+    if margin >= 15:
+        score += 25
+    elif margin >= 8:
+        score += 15
+    elif margin > 0:
+        score += 6
+    growth = fund.get("earningsGrowth") or fund.get("revenueGrowth") or 0
+    if growth >= 12:
+        score += 25
+    elif growth >= 5:
+        score += 15
+    elif growth > 0:
+        score += 6
+    debt = fund.get("debt")
+    if isinstance(debt, (int, float)):
+        ratio = debt / 100.0 if debt > 5 else debt
+        if ratio < 0.5:
+            score += 20
+        elif ratio < 1.5:
+            score += 10
+    return min(100, score)
+
+
 @app.get("/api/institutional-conviction")
-async def institutional_conviction(symbol: str = "", region: str = "US", refresh: int = 0):
+async def institutional_conviction(symbol: str = "", region: str = "", refresh: int = 0):
     """Institutional Conviction Score. Aggregator over available signals."""
     try:
         return await _inst_conviction_impl(symbol, region, refresh)
@@ -6728,11 +6763,16 @@ async def institutional_conviction(symbol: str = "", region: str = "US", refresh
 
 async def _inst_conviction_impl(symbol, region, refresh):
     import time as _time
+    from market_data.layer import classify, investor_fundamentals
     symbol = (symbol or "").strip().upper()
-    region = (region or "US").upper()
-    if region not in ("US", "IN"): region = "US"
     if not symbol:
         return {"success": False, "error": "symbol required"}
+    if not (region or "").strip():
+        region = classify(symbol)["region"]
+    else:
+        region = region.strip().upper()
+    if region not in ("US", "IN"):
+        region = classify(symbol)["region"]
 
     cache_key = f"{symbol}_{region}"
     if not refresh and cache_key in _inst_conviction_cache:
@@ -6761,13 +6801,30 @@ async def _inst_conviction_impl(symbol, region, refresh):
     decision = dash.get("decision") or {}
     analysis = dash.get("analysis") or {}
 
-    # Component 1: Quality score from dashboard (0-100) → mapped to 0-30
+    # Component 1: Quality score from dashboard (0-100) → mapped to 0-30.
+    # India statements are not on that feed, so a bare NSE name uses Screener.
     qs = decision.get("quality_score", 0) or 0
+    quality_source = "stock-dashboard.decision.quality_score"
+    quality_note = f"ROIC/FCF/leverage/growth quality composite ({qs}/100)"
+    if region == "IN":
+        screen = await asyncio.to_thread(investor_fundamentals, symbol, "IN") or {}
+        scored = _conviction_quality(screen) if screen.get("ok") else 0
+        if scored:
+            qs = scored
+            quality_source = "screener"
+            quality_note = (
+                "Screener ROE %.0f%%, margin %.0f%%, growth %.0f%%"
+                % (
+                    screen.get("roe") or 0,
+                    screen.get("operatingMargin") or screen.get("profitMargin") or 0,
+                    screen.get("earningsGrowth") or screen.get("revenueGrowth") or 0,
+                )
+            )
     c1_score = round(qs * 30 / 100)
     out["components"].append({
         "name": "Fundamental Quality", "score": c1_score, "max": 30,
-        "raw": qs, "source": "stock-dashboard.decision.quality_score",
-        "note": f"ROIC/FCF/leverage/growth quality composite ({qs}/100)"
+        "raw": qs, "source": quality_source,
+        "note": quality_note,
     })
 
     # Component 2: Valuation score (0-100) → mapped to 0-25
@@ -35564,9 +35621,14 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
     if not _investor_budgeted.get():
         token = _investor_budgeted.set(True)
         _investor_wall = 8.0
+        if region == "US":
+            _investor_wall = 4.8
         _investor_started = time.monotonic()
         try:
-            return await asyncio.wait_for(investor_decide(symbol, region, nocache), timeout=7)
+            return await asyncio.wait_for(
+                investor_decide(symbol, region, nocache),
+                timeout=7 if region != "US" else 4.2,
+            )
         except asyncio.TimeoutError:
             _left = _investor_wall - (time.monotonic() - _investor_started)
             if _left > 0.35:
@@ -36192,15 +36254,17 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
                         peers_list = [s for s in stocks if s != symbol][:3]
                         break
                 
+                from market_data.layer import scan_quotes as _peer_quotes
+                _peer_book = _peer_quotes([p + (".NS" if not is_us else "") for p in peers_list], region)
                 for peer_sym in peers_list:
                     try:
                         p_yf = peer_sym + (".NS" if not is_us else "")
-                        p_info = _LayerTicker(p_yf).info
-                        p_price = float(p_info.get("currentPrice") or p_info.get("regularMarketPrice") or 0)
-                        p_eps = float(p_info.get("trailingEps") or p_info.get("epsTrailingTwelveMonths") or 0)
-                        p_bvps = float(p_info.get("bookValue") or 0)
-                        p_roe = float(p_info.get("returnOnEquity") or 0)
-                        p_pe = float(p_info.get("trailingPE") or 0)
+                        p_row = _peer_book.get(p_yf) or {}
+                        p_price = float(p_row.get("price") or 0)
+                        p_eps = 0
+                        p_bvps = 0
+                        p_roe = float(p_row.get("roe") or 0)
+                        p_pe = float(p_row.get("pe") or 0)
                         # Simple Graham-style fair value for peer
                         p_upside = 0
                         if p_price > 0 and p_eps > 0:
@@ -37468,8 +37532,22 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
         dark_pool = {"detected": False, "score": 0, "signals": []}
         try:
             yf_sym_dp = symbol if is_us else f"{symbol}.NS"
-            _dp_ticker = _LayerTicker(yf_sym_dp)
-            _dp_hist = _dp_ticker.history(period="1mo", interval="1d")
+            _dp_last_vol = float(pa.get("last_volume") or 0)
+            _dp_avg_vol = float(pa.get("avg_volume") or 1)
+            _dp_hist = None
+            if _dp_last_vol <= 0 and not is_us:
+                _dp_ticker = _LayerTicker(yf_sym_dp)
+                _dp_hist = _dp_ticker.history(period="1mo", interval="1d")
+            elif _dp_last_vol > 0:
+                _dp_vol_ratio = _dp_last_vol / max(_dp_avg_vol, 1)
+                if _dp_vol_ratio > 1.5:
+                    dark_pool["score"] += 20
+                    dark_pool["signals"].append(f"Volume {_dp_vol_ratio:.1f}x the recent average")
+                dark_pool["score"] = min(100, dark_pool["score"])
+                dark_pool["detected"] = dark_pool["score"] >= 30
+                dark_pool["avgVolume"] = round(_dp_avg_vol)
+                dark_pool["lastVolume"] = round(_dp_last_vol)
+                dark_pool["volRatio"] = round(_dp_vol_ratio, 2)
             if _dp_hist is not None and len(_dp_hist) > 5:
                 _dp_vols = [_np_safe(v) for v in _dp_hist['Volume'].values]
                 _dp_closes = [_np_safe(v) for v in _dp_hist['Close'].values]
@@ -37542,8 +37620,17 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
                 "Utilities": "XLU" if is_us else "NIFTYBEES.NS",
             }
             _etf_sym = _sector_etf_map.get(_sector, "SPY" if is_us else "NIFTYBEES.NS")
-            _etf_ticker = _LayerTicker(_etf_sym)
-            _etf_hist = _etf_ticker.history(period="1mo", interval="1d")
+            from market_data.layer import scan_quotes as _etf_quotes
+            _etf_row = (_etf_quotes([_etf_sym], "US" if is_us else "IN").get(_etf_sym) or {})
+            _etf_hist = None
+            if _etf_row.get("price") and _etf_row.get("prev_close"):
+                _chg = (_etf_row["price"] - _etf_row["prev_close"]) / _etf_row["prev_close"] * 100
+                etf_flow["hasData"] = True
+                etf_flow["etfSymbol"] = _etf_sym
+                etf_flow["etfReturn5d"] = round(_chg, 2)
+                etf_flow["score"] = 60 if _chg > 0.5 else (20 if _chg < -0.5 else 45)
+                etf_flow["direction"] = "inflow" if _chg > 0.5 else ("outflow" if _chg < -0.5 else "neutral")
+                etf_flow["signals"].append(f"Sector ETF ({_etf_sym}) {_chg:+.1f}% on the latest quote")
             
             if _etf_hist is not None and len(_etf_hist) > 5:
                 _etf_closes = [_np_safe(v) for v in _etf_hist['Close'].values]
@@ -61975,18 +62062,64 @@ async def _run_stock_intel(symbol, region, cache_key):
             
             info = {}; hist = pd.DataFrame()
             def _fetch_yf_data(sym=yf_sym):
-                _info = {}; _hist = pd.DataFrame()
-                for attempt in range(2):
+                """Quote and fundamentals now. Candles get two seconds, and do not retry."""
+                from concurrent.futures import ThreadPoolExecutor
+                from market_data.layer import candles, investor_fundamentals, quote
+                def _bars():
                     try:
-
-                        _tk = _LayerTicker(sym)
-                        _hist = _tk.history(period="1y")
-                        if len(_hist) == 0: raise Exception("Empty")
-                        try: _info = _tk.info or {}
-                        except: _info = {}
-                        break
-                    except:
-                        if attempt < 1: time.sleep(1)
+                        return candles(sym, "1y", "1d", "US", retry=False, budget=2.2)
+                    except Exception:
+                        return None
+                with ThreadPoolExecutor(max_workers=3) as pool:
+                    bar_job = pool.submit(_bars)
+                    fund_job = pool.submit(investor_fundamentals, sym, "US")
+                    quote_job = pool.submit(quote, sym, "US")
+                    try:
+                        env = bar_job.result(timeout=2.2)
+                    except Exception:
+                        env = None
+                    try:
+                        fund = fund_job.result(timeout=2.5) or {}
+                    except Exception:
+                        fund = {}
+                    try:
+                        spot = quote_job.result(timeout=1.5) or {}
+                    except Exception:
+                        spot = {}
+                bars = env.get("data") if isinstance(env, dict) and env.get("ok") else None
+                _hist = pd.DataFrame()
+                if isinstance(bars, list) and len(bars) >= 5:
+                    _hist = pd.DataFrame({
+                        "Open": [bar.get("open") for bar in bars],
+                        "High": [bar.get("high") for bar in bars],
+                        "Low": [bar.get("low") for bar in bars],
+                        "Close": [bar.get("close") for bar in bars],
+                        "Volume": [bar.get("volume") or 0 for bar in bars],
+                    }).dropna(subset=["Close"])
+                qdata = spot.get("data") if isinstance(spot, dict) else {}
+                price = float((qdata or {}).get("price") or 0)
+                def _dec(value):
+                    try:
+                        number = float(value or 0)
+                    except (TypeError, ValueError):
+                        return 0
+                    return number / 100.0 if number else 0
+                _info = {
+                    "currentPrice": price,
+                    "regularMarketPrice": price,
+                    "trailingPE": fund.get("pe") or 0,
+                    "returnOnEquity": _dec(fund.get("roe")),
+                    "returnOnAssets": _dec(fund.get("roa")),
+                    "profitMargins": _dec(fund.get("profitMargin")),
+                    "grossMargins": _dec(fund.get("grossMargin")),
+                    "operatingMargins": _dec(fund.get("operatingMargin")),
+                    "revenueGrowth": _dec(fund.get("revenueGrowth")),
+                    "earningsGrowth": _dec(fund.get("earningsGrowth")),
+                    "debtToEquity": fund.get("debt") or 0,
+                    "marketCap": fund.get("marketCap") or 0,
+                    "shortName": (qdata or {}).get("name") or sym,
+                    "sector": "",
+                }
                 return _info, _hist
             _lp2 = asyncio.get_event_loop()
             info, hist = await _lp2.run_in_executor(None, _fetch_yf_data)
@@ -62079,19 +62212,6 @@ async def _run_stock_intel(symbol, region, cache_key):
                 except Exception as _fs_err:
                     print(f"  ⚠️ Financial statement fallback failed for {symbol}: {_fs_err}")
             
-            if hist is None or getattr(hist, 'empty', False) or (not hasattr(hist, 'empty') and len(hist) == 0):
-                try:
-                    r = _chart_response(yf_sym, range="1y", interval="1d")
-                    data = r.json().get("chart", {}).get("result", [{}])[0]
-                    ts = data.get("timestamp", [])
-                    quotes = data.get("indicators", {}).get("quote", [{}])[0]
-                    if ts and quotes:
-                        hist = pd.DataFrame({"Close": quotes.get("close", []), "Open": quotes.get("open", []), "High": quotes.get("high", []), "Low": quotes.get("low", []), "Volume": quotes.get("volume", [])}).dropna()
-                except:
-                    pass
-            
-            if hist is None or getattr(hist, 'empty', False) or (not hasattr(hist, 'empty') and len(hist) == 0):
-                hist = _layer_history_frame(symbol, "US")
             if hist is None or getattr(hist, 'empty', False) or (not hasattr(hist, 'empty') and len(hist) == 0):
                 return _intel_from_layer(symbol, "US")
             
