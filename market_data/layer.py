@@ -715,7 +715,7 @@ def _screener_rows(html: str, section_id: str) -> list[tuple[str, list[float]]]:
     if start < 0:
         return []
     end = html.find("<section", start + 20)
-    chunk = html[start:end if end > start else start + 120000]
+    chunk = html[start:end if 0 < end - start < 30000 else start + 30000]
     rows = []
     for match in re.finditer(r"<tr[^>]*>(.*?)</tr>", chunk, flags=re.S):
         cells = re.findall(r"<td[^>]*>(.*?)</td>", match.group(1), flags=re.S)

@@ -52,7 +52,8 @@ class PageSourceTests(unittest.TestCase):
         tree = ast.parse(API)
         node = next(item for item in tree.body if isinstance(item, ast.AsyncFunctionDef) and item.name == "investor_decide")
         text = ast.get_source_segment(API, node)
-        self.assertIn("timeout=10", text)
+        self.assertIn("timeout=7", text)
+        self.assertIn("_india_investor_snapshot", text)
         self.assertIn("_investor_on_budget", text)
         self.assertIn("_intel_from_layer", (ROOT / "api.py").read_text())
 
@@ -147,9 +148,13 @@ class PageSourceTests(unittest.TestCase):
 
     def test_home_page_drops_the_repeated_blocks(self):
         html = (ROOT / "index.html").read_text()
-        self.assertIn("_live_from_layer", API)
-        self.assertIn('900, 3, "haiku"', API)
-        self.assertNotIn('35, "sonnet"', API)
+        report = next(item for item in ast.parse(API).body if isinstance(item, ast.AsyncFunctionDef) and item.name == "generate_report")
+        report_text = ast.get_source_segment(API, report)
+        self.assertIn("_live_from_layer", report_text)
+        self.assertIn("timeout=4.5", report_text)
+        self.assertIn("9.0 -", report_text)
+        self.assertNotIn("get_live_stock_data", report_text)
+        self.assertNotIn('35, "sonnet"', report_text)
         self.assertIn("Unlock Decide", html)
         self.assertNotIn("Email, optional", html)
         self.assertIn('id="home-brief"', html)

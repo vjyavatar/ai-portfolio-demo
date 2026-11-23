@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.131"
+APP_VERSION = "v4.63.132"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.132: India Investor Decide stays inside 8 seconds, and Analyze has a hard 10 second deadline for every symbol. "
     "v4.63.131: Analyze returns from the layer snapshot. The long model wait is no longer on the path. "
     "v4.63.130: Home sign-in is Unlock Decide and Trading. Analyze still runs without an email. "
     "v4.63.129: Each market sparkline sits under the percent, so it no longer covers the price. "
@@ -27575,18 +27576,25 @@ def _live_from_layer(company_name: str) -> dict:
         except Exception:
             return None
 
+    import time as _layer_time
+    from concurrent.futures import wait as _wait_done
+    deadline = _layer_time.perf_counter() + 4
     with ThreadPoolExecutor(max_workers=3) as pool:
         jobs = {
-            "quote": pool.submit(safe, quote, symbol, region),
-            "fund": pool.submit(safe, investor_fundamentals, symbol, region),
-            "bars": pool.submit(safe, candles, symbol, "1y", "1d", region),
+            pool.submit(safe, quote, symbol, region): "quote",
+            pool.submit(safe, investor_fundamentals, symbol, region): "fund",
+            pool.submit(safe, candles, symbol, "1y", "1d", region): "bars",
         }
-        got = {}
-        for name, job in jobs.items():
-            try:
-                got[name] = job.result(timeout=5)
-            except Exception:
-                got[name] = None
+        got = {"quote": None, "fund": None, "bars": None}
+        pending = set(jobs)
+        while pending and _layer_time.perf_counter() < deadline:
+            done, pending = _wait_done(pending, timeout=max(0.05, deadline - _layer_time.perf_counter()))
+            for job in done:
+                try:
+                    got[jobs[job]] = job.result()
+                except Exception:
+                    got[jobs[job]] = None
+        pool.shutdown(wait=False, cancel_futures=True)
     quote_env = got.get("quote") if isinstance(got.get("quote"), dict) else {}
     data = quote_env.get("data") if isinstance(quote_env.get("data"), dict) else {}
     price = data.get("price")
@@ -27679,12 +27687,14 @@ async def generate_report(request: Request):
                 content=rate_check
             )
         
-        # Core snapshot from the layer. The slow provider chain is only the fallback.
+        # One wall clock for the snapshot. The old provider chain is not a fallback:
+        # RELIANCE in particular can sit in Angel and Screener well past 10 seconds.
         _t1 = _time.time()
         loop = asyncio.get_event_loop()
-        live_data = await loop.run_in_executor(_thread_pool, _live_from_layer, company)
-        if not live_data.get("success"):
-            live_data = await loop.run_in_executor(_thread_pool, get_live_stock_data, company)
+        try:
+            live_data = await asyncio.wait_for(loop.run_in_executor(_thread_pool, _live_from_layer, company), timeout=4.5)
+        except asyncio.TimeoutError:
+            live_data = {"success": False, "error": "Market data is temporarily unavailable"}
         _t2 = _time.time()
         print(f"⏱️ report snapshot: {_t2-_t1:.1f}s source={live_data.get('data_source')}")
         
@@ -28547,14 +28557,19 @@ Based on real-time price of {_f_price}:
                     continue
             return None, "none"
         
-        _ai_models = [
-            ("claude-haiku-4-5-20251001", 900, 3, "haiku"),
-        ]
-        
-        # Run AI in thread pool — doesn't block event loop while waiting 5-45s
-        report, ai_model_used = await loop.run_in_executor(
-            _thread_pool, _run_ai_call, prompt, ANTHROPIC_API_KEY, _ai_models
-        )
+        _left = 9.0 - (_time.time() - _t0)
+        report, ai_model_used = None, "none"
+        if _left >= 1.2:
+            _ai_models = [
+                ("claude-haiku-4-5-20251001", 900, min(3, _left - 0.3), "haiku"),
+            ]
+            try:
+                report, ai_model_used = await asyncio.wait_for(
+                    loop.run_in_executor(_thread_pool, _run_ai_call, prompt, ANTHROPIC_API_KEY, _ai_models),
+                    timeout=max(0.5, _left - 0.2),
+                )
+            except asyncio.TimeoutError:
+                report, ai_model_used = None, "none"
         
         # ═══ FALLBACK 3: Template report (no AI) — ALWAYS succeeds ═══
         if not report:
@@ -35383,13 +35398,89 @@ def _compute_momentum_triggers(price, pa, vol):
 _investor_budgeted = __import__("contextvars").ContextVar("investor_budgeted", default=False)
 
 
+def _india_investor_snapshot(symbol: str) -> dict:
+    """India Decide snapshot. Screener, Angel and bars run together."""
+    from concurrent.futures import ThreadPoolExecutor
+    from market_data.layer import candles, investor_fundamentals, quote
+
+    def safe(fn, *args):
+        try:
+            return fn(*args)
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        quote_job = pool.submit(safe, quote, symbol, "IN")
+        fund_job = pool.submit(safe, investor_fundamentals, symbol, "IN")
+        bar_job = pool.submit(safe, candles, symbol, "1y", "1d", "IN")
+        spot = quote_job.result() or {}
+        fund = fund_job.result() or {}
+        bars = bar_job.result() or {}
+    data = spot.get("data") if isinstance(spot, dict) else {}
+    price = float((data or {}).get("price") or 0)
+    closes = [float(bar["close"]) for bar in (bars.get("data") or []) if isinstance(bar, dict) and bar.get("close")]
+    if price <= 0 and closes:
+        price = closes[-1]
+    if price <= 0 and not fund.get("ok"):
+        return {"success": False, "error": "India market data is temporarily unavailable"}
+
+    def avg(count):
+        if len(closes) < count:
+            return price
+        return round(sum(closes[-count:]) / count, 2)
+
+    return {
+        "success": True,
+        "symbol": symbol,
+        "region": "IN",
+        "price": price,
+        "companyName": symbol,
+        "sector": "",
+        "dataQuality": "HIGH" if fund.get("ok") else "LOW",
+        "marketCap": fund.get("marketCap") or 0,
+        "fundamental": {
+            "revGrowth": fund.get("revenueGrowth") or 0,
+            "earnGrowth": fund.get("earningsGrowth") or 0,
+            "grossMargin": fund.get("grossMargin") or 0,
+            "operatingMargin": fund.get("operatingMargin") or 0,
+            "profitMargin": fund.get("profitMargin") or 0,
+            "roe": fund.get("roe") or 0,
+            "roce": fund.get("roa") or 0,
+            "debtEquity": fund.get("debt") or 0,
+            "beta": 1.0,
+            "divYield": 0,
+            "marketCap": fund.get("marketCap") or 0,
+        },
+        "valuation": {"pe": fund.get("pe") or 0, "fwdPE": 0, "pb": 0, "peg": 0, "evEbitda": 0, "targetPrice": 0, "analystCount": 0},
+        "priceAction": {
+            "rsi": 0,
+            "sma50": avg(50),
+            "sma200": avg(200),
+            "high52": max(closes[-252:]) if closes else price,
+            "low52": min(closes[-252:]) if closes else price,
+            "volatility": 0,
+            "last_volume": 0,
+            "avg_volume": 0,
+            "vol_ratio": 0,
+        },
+        "technicals": {},
+        "nseExtra": {},
+        "advCharts": {},
+        "metricSources": {"fundamentals": fund.get("source")},
+    }
+
+
 def _investor_on_budget(symbol: str, region: str) -> dict:
-    """A verdict from the layer when the full page does not finish inside 12s."""
+    """Full layer fundamentals when the page is still running at the deadline."""
+    from concurrent.futures import ThreadPoolExecutor
     from market_data.layer import investor_fundamentals, quote
-    spot = quote(symbol, region)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        spot_job = pool.submit(quote, symbol, region)
+        fund_job = pool.submit(investor_fundamentals, symbol, region)
+        spot = spot_job.result()
+        fund = fund_job.result() or {}
     quote_data = spot.get("data") if isinstance(spot, dict) else {}
     price = float((quote_data or {}).get("price") or 0)
-    fund = investor_fundamentals(symbol, region) or {}
     rev = fund.get("revenueGrowth") or 0
     earn = fund.get("earningsGrowth") or 0
     roe = fund.get("roe") or 0
@@ -35399,14 +35490,15 @@ def _investor_on_budget(symbol: str, region: str) -> dict:
         decision = "HOLD / REVIEW"
     else:
         decision = "MONITOR — EARNINGS UNCLEAR"
+    full = bool(fund.get("ok") and (fund.get("pe") or fund.get("roe") or fund.get("revenueGrowth")))
     return {
         "success": True,
         "symbol": symbol,
         "region": region,
         "decision": decision,
         "price": price,
-        "data_status": "partial",
-        "note": "Returned inside the 12 second budget from the quote and fundamentals.",
+        "data_status": "full" if full else "partial",
+        "note": "Returned from Screener and Angel fundamentals." if full else "Returned inside the 12 second budget from the quote and fundamentals.",
         "fundamental": {
             "pe": fund.get("pe") or 0,
             "roe": roe or 0,
@@ -35429,7 +35521,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
     if not _investor_budgeted.get():
         token = _investor_budgeted.set(True)
         try:
-            return await asyncio.wait_for(investor_decide(symbol, region, nocache), timeout=10)
+            return await asyncio.wait_for(investor_decide(symbol, region, nocache), timeout=7)
         except asyncio.TimeoutError:
             return _investor_on_budget(symbol, region)
         finally:
@@ -35458,7 +35550,10 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
         _is_financial = False
         _alt_mcap = 0
         
-        si = await stock_intel(symbol, region)
+        if region == "IN":
+            si = await asyncio.to_thread(_india_investor_snapshot, symbol)
+        else:
+            si = await stock_intel(symbol, region)
         _debug_log.append(f"stock_intel: {'✅' if si.get('success') else '❌'} dataQuality={si.get('dataQuality','?')}")
         print(f"  📊 stock_intel returned: success={si.get('success')} price={si.get('price',0)} dq={si.get('dataQuality','?')} advCharts={list(si.get('advCharts',{}).keys())}")
         if not si.get("success"):
@@ -35532,7 +35627,7 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
         
         # ═══ MARKET CONTEXT — VIX + volatility (needed for adaptive rates, MoS, Kelly) ═══
         vix = float(nse.get("vix", 0) or 0)
-        if vix <= 0 and not is_us:
+        if vix <= 0 and not is_us and not _layer_fund.get("ok"):
             try:
                 _vd = _nse_get("https://www.nseindia.com/api/allIndices")
                 if _vd:
@@ -36380,7 +36475,8 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
         peer_result = {}
         peer_comparison = []
         try:
-            peer_result = await _fetch_peers(symbol, region)
+            if region != "IN":
+                peer_result = await _fetch_peers(symbol, region)
             if peer_result.get("success") and peer_result.get("peers"):
                 for pd_item in peer_result["peers"]:
                     if pd_item["pe"] > 0:
@@ -36421,8 +36517,11 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
                 _bs = _tk.balance_sheet if hasattr(_tk, 'balance_sheet') else None
                 _cf = _tk.cashflow if hasattr(_tk, 'cashflow') else None
                 return _inc, _bs, _cf
-            _lp3 = asyncio.get_event_loop()
-            ann_income, ann_bs, ann_cf = await _lp3.run_in_executor(None, _fetch_financials)
+            if region == "IN":
+                ann_income = ann_bs = ann_cf = None
+            else:
+                _lp3 = asyncio.get_event_loop()
+                ann_income, ann_bs, ann_cf = await _lp3.run_in_executor(None, _fetch_financials)
             
             if ann_income is not None and len(ann_income.columns) >= 2:
                 for col in ann_income.columns[:10]:  # Up to 10 years
