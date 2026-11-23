@@ -930,6 +930,100 @@ def _angel_headers() -> Optional[dict]:
         return None
 
 
+def _quote_from_tv_fields(symbol: str, fields: dict, price: float) -> dict:
+    change = _num(fields.get("change_abs"))
+    prev = price - change if change is not None else price
+    pct = ((price - prev) / prev * 100.0) if prev else _num(fields.get("change"))
+    return {
+        "symbol": symbol,
+        "price": price,
+        "prev_close": prev,
+        "change_pct": round(pct, 2) if pct is not None else 0,
+        "name": fields.get("description") or symbol,
+        "pe": _num(fields.get("price_earnings_ttm")) or 0,
+        "mcap": _num(fields.get("market_cap_basic")) or 0,
+        "roe": _num(fields.get("return_on_equity")) or 0,
+        "volume": _num(fields.get("volume")) or 0,
+        "high52": _num(fields.get("price_52_week_high")) or 0,
+        "low52": _num(fields.get("price_52_week_low")) or 0,
+    }
+
+
+def scan_quotes(symbols: list, region: Optional[str] = None) -> dict[str, dict]:
+    """Prices for a scan. One scanner request per chunk, never the candle chain.
+
+    Two requests run at a time on a pool the home strip does not use.
+    """
+    ordered: list[tuple[str, str]] = []
+    seen = set()
+    for symbol in symbols or []:
+        text = str(symbol or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        tv = (classify(text, region).get("tv") or [None])[0]
+        if tv:
+            ordered.append((text, tv))
+    if not ordered:
+        return {}
+    chunks = [ordered[index:index + 40] for index in range(0, len(ordered), 40)]
+
+    def one(chunk: list[tuple[str, str]]) -> dict[str, dict]:
+        if not _scan_slots.acquire(timeout=0.4):
+            return {}
+        try:
+            body = json.dumps({
+                "symbols": {"tickers": [tv for _symbol, tv in chunk]},
+                "columns": _TV_COLUMNS,
+            }).encode()
+            payload = _json(
+                _TV,
+                data=body,
+                headers={"Content-Type": "application/json", "Origin": "https://www.tradingview.com"},
+                timeout=3,
+                retries=0,
+            )
+            rows = payload.get("data") if isinstance(payload, dict) else None
+            by_tv = {}
+            if isinstance(rows, list):
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    values = row.get("d")
+                    if not isinstance(values, list) or len(values) < 5:
+                        continue
+                    fields = dict(zip(_TV_COLUMNS, values))
+                    price = _num(fields.get("close"))
+                    if price and price > 0:
+                        by_tv[row.get("s")] = fields | {"_price": price}
+            found = {}
+            for symbol, tv in chunk:
+                fields = by_tv.get(tv)
+                if not fields:
+                    continue
+                found[symbol] = _quote_from_tv_fields(symbol, fields, fields["_price"])
+            return found
+        finally:
+            _scan_slots.release()
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as _FuturesTimeout
+    found: dict[str, dict] = {}
+    pool = ThreadPoolExecutor(max_workers=2)
+    try:
+        jobs = [pool.submit(one, chunk) for chunk in chunks]
+        try:
+            for job in as_completed(jobs, timeout=4):
+                try:
+                    found.update(job.result())
+                except Exception:
+                    pass
+        except _FuturesTimeout:
+            pass
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    return found
+
+
 def quote(symbol: str, region: Optional[str] = None) -> dict:
     meta = classify(symbol, region)
     key = f"quote:{meta['region']}:{meta['root']}"
@@ -1534,7 +1628,12 @@ def _candle_steps(symbol: str, meta: dict, interval_name: str) -> list:
     return steps
 
 
-def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None) -> dict:
+_candle_inflight = 0
+_candle_inflight_lock = threading.Lock()
+_scan_slots = threading.Semaphore(2)
+
+
+def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None, retry: bool = True) -> dict:
     meta = classify(symbol, region)
     interval_name = "60m" if interval in {"60m", "1h"} else (interval or "1d")
     # Period does not change the fetch window, so 3mo and 1y share one cache entry.
@@ -1542,13 +1641,23 @@ def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optio
     del period
 
     def load():
-        steps = _candle_steps(symbol, meta, interval_name)
-        bars = _run_chain(meta["root"], steps)
-        if bars:
-            return bars
-        print(f"  candle {meta['root']}: no source returned bars, retrying the chain once")
-        time.sleep(0.25)
-        return _run_chain(meta["root"], steps)
+        global _candle_inflight
+        with _candle_inflight_lock:
+            _candle_inflight += 1
+            crowded = _candle_inflight > 2
+        try:
+            steps = _candle_steps(symbol, meta, interval_name)
+            bars = _run_chain(meta["root"], steps)
+            if bars or not retry or crowded:
+                if not bars and (not retry or crowded):
+                    print(f"  candle {meta['root']}: no chain retry")
+                return bars
+            print(f"  candle {meta['root']}: no source returned bars, retrying the chain once")
+            time.sleep(0.25)
+            return _run_chain(meta["root"], steps)
+        finally:
+            with _candle_inflight_lock:
+                _candle_inflight -= 1
 
     env = _remember(key, TTL_CANDLE, load)
     if env.get("ok") and isinstance(env.get("data"), list):
