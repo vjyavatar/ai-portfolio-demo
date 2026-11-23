@@ -1376,10 +1376,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.126"
+APP_VERSION = "v4.63.127"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.127: Price charts load with the home page again. "
     "v4.63.126: Home is a market strip, one Analyze action, a one-line brief and movers. The research-standard list and the three duplicate cards are gone. "
     "v4.63.125: Investor Decide returns a verdict inside 12 seconds. A missing candle series no longer blocks the page when a quote or fundamentals exist, and AAPL is read as a US symbol. "
     "v4.63.124: Analyze works without the email box. The ticker field no longer keeps a stray suggestion, and an earnings lookup no longer crashes the report. "
