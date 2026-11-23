@@ -55,6 +55,8 @@ class PageSourceTests(unittest.TestCase):
         self.assertIn("timeout=7", text)
         self.assertIn("_india_investor_snapshot", text)
         self.assertIn("_investor_on_budget", text)
+        self.assertIn("Value: neutral 8/20", text)
+        self.assertIn("profitCagr", text)
         self.assertIn("_intel_from_layer", (ROOT / "api.py").read_text())
 
     def test_one_source_list_per_region(self):
@@ -77,6 +79,26 @@ class PageSourceTests(unittest.TestCase):
         self.assertEqual(metrics["revenueGrowth"], 10.0)
         self.assertEqual(metrics["earningsGrowth"], 25.0)
         self.assertEqual(metrics["operatingMargin"], 19.0)
+
+    def test_screener_decide_pack_keeps_book_value_and_profit_history(self):
+        html = """
+        <div id="top-ratios">
+          <span class="name">Book Value</span><span class="number">698</span>
+          <span class="name">Dividend Yield</span><span class="number">0.40%</span>
+        </div>
+        <a title="Broad Sector">Energy</a>
+        <section id="profit-loss"><table>
+        <tr><td>Sales</td><td>100</td><td>110</td><td>140</td><td>180</td></tr>
+        <tr><td>Net Profit</td><td>10</td><td>12</td><td>16</td><td>20</td></tr>
+        <tr><td>OPM %</td><td>10%</td><td>11%</td><td>12%</td><td>13%</td></tr>
+        </table></section>
+        """
+        pack = layer.screener_decide_from_html(html)
+        self.assertEqual(pack["bookValue"], 698)
+        self.assertEqual(pack["sector"], "Energy")
+        self.assertEqual(len(pack["annualHistory"]), 4)
+        self.assertGreater(pack["profitCagr"], 20)
+        self.assertEqual(pack["annualHistory"][-1]["margin"], 13)
 
     def test_a_bank_uses_nim_instead_of_gross_margin(self):
         html = """
