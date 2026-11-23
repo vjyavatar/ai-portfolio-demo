@@ -9,6 +9,19 @@ from market_data import layer
 ROOT = Path(__file__).resolve().parents[1]
 API = (ROOT / "api.py").read_text()
 
+PHASE2 = {
+    "market_context_v3",
+    "investor_due_diligence",
+    "batch_prices",
+    "stock_quick",
+    "top_picks",
+    "screener",
+    "heatmap",
+    "smart_exit_v2",
+    "momentum_leaders",
+    "etf_scanner",
+}
+
 PHASE1 = {
     "decision_engine",
     "investor_decide",
@@ -42,6 +55,18 @@ class PageSourceTests(unittest.TestCase):
                     self.assertNotIn(token, folded, f"{node.name} still contains {token}")
         self.assertEqual(seen, PHASE1)
 
+    def test_high_traffic_routes_read_the_layer(self):
+        tree = ast.parse(API)
+        seen = set()
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in PHASE2:
+                seen.add(node.name)
+                text = ast.get_source_segment(API, node) or ""
+                folded = text.lower()
+                for token in FORBIDDEN:
+                    self.assertNotIn(token, folded, f"{node.name} still contains {token}")
+        self.assertEqual(seen, PHASE2)
+
     def test_aapl_is_us_and_hdfcbank_is_india_when_region_is_omitted(self):
         self.assertEqual(layer.classify("AAPL")["region"], "US")
         self.assertEqual(layer.classify("HDFCBANK")["region"], "IN")
@@ -53,6 +78,8 @@ class PageSourceTests(unittest.TestCase):
         node = next(item for item in tree.body if isinstance(item, ast.AsyncFunctionDef) and item.name == "investor_decide")
         text = ast.get_source_segment(API, node)
         self.assertIn("timeout=7", text)
+        self.assertIn("_investor_wall = 8.0", text)
+        self.assertIn("_warm_india_decisions", API)
         self.assertIn("_india_investor_snapshot", text)
         self.assertIn("_investor_on_budget", text)
         self.assertIn("Value: neutral 8/20", text)

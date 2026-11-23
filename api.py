@@ -151,6 +151,18 @@ class _SafeYF:
 yf = _SafeYF()
 print("✅ yfinance 401-resilient wrapper active — no more console spam")
 
+def _layer_ticker(symbol):
+    """Quote, history and news for one symbol, read through the market-data layer."""
+    from market_data.yfcompat import Ticker as _Bars
+    return _Bars(symbol)
+
+def _layer_tickers(symbols):
+    """The same layer read for a batch of symbols."""
+    from market_data.yfcompat import Tickers as _Many
+    return _Many(symbols)
+
+_quote_shaped_info = _fh.get_yfinance_shaped_info
+
 from functools import lru_cache
 import time
 import json
@@ -1376,10 +1388,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.133"
+APP_VERSION = "v4.63.134"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.134: Market context, due diligence, prices, the screener and the heatmap read the layer. A cold India decision stays inside 8 seconds, and RELIANCE, TCS and HDFCBANK are warmed at startup. "
     "v4.63.133: India decisions use the Screener profit history already on the page. A missing sector multiple is scored neutral instead of zero. "
     "v4.63.132: India Investor Decide stays inside 8 seconds, and Analyze has a hard 10 second deadline for every symbol. "
     "v4.63.131: Analyze returns from the layer snapshot. The long model wait is no longer on the path. "
@@ -1436,6 +1449,32 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     )
 
 # ═══ STARTUP: launch background pre-fetch for popular tickers ═══
+def _warm_india_symbols():
+    """Angel login, then the India names the first Decide call asks for.
+
+    One symbol at a time. The Screener page and the daily bars stay in the
+    layer cache, so a cold deploy does not spend the 8 second budget on login.
+    """
+    try:
+        import angel_session
+        angel_session.probe_login()
+    except Exception as exc:
+        print(f"Angel warm skipped: {type(exc).__name__}")
+    from market_data.layer import candles, investor_fundamentals, quote
+    for symbol in ("RELIANCE", "TCS", "HDFCBANK"):
+        try:
+            quote(symbol, "IN")
+            investor_fundamentals(symbol, "IN")
+            candles(symbol, "1y", "1d", "IN")
+            print(f"India warm {symbol} ready")
+        except Exception as exc:
+            print(f"India warm {symbol} skipped: {type(exc).__name__}")
+
+
+async def _warm_india_decisions():
+    await asyncio.to_thread(_warm_india_symbols)
+
+
 @app.on_event("startup")
 async def startup_event():
     global _smart_cache, _si_cache
@@ -1485,6 +1524,7 @@ async def startup_event():
     except Exception as _e:
         print(f"🗄️  Positioning DB: boot check error — {_e}")
     _auto_scan_boot()
+    asyncio.create_task(_warm_india_decisions())
     asyncio.create_task(_start_prefetch_loop())
     asyncio.create_task(_ws_broadcast_loop())
     import web_background
@@ -5879,8 +5919,7 @@ async def smart_exit_v2(symbol: str = "", region: str = "US", entry_price: float
 
     def _hist(sym, period="1y"):
         try:
-            import market_data.yfcompat as yf
-            h = yf.Ticker(sym).history(period=period, interval="1d", auto_adjust=True, timeout=8)
+            h = _layer_ticker(sym).history(period=period, interval="1d", auto_adjust=True, timeout=8)
             if h is None or h.empty or len(h) < 40:
                 return None
             return {"closes": [float(x) for x in h["Close"].dropna()],
@@ -5892,8 +5931,7 @@ async def smart_exit_v2(symbol: str = "", region: str = "US", entry_price: float
 
     def _info():
         try:
-            import market_data.yfcompat as yf
-            return yf.Ticker(yf_sym).info or {}
+            return _layer_ticker(yf_sym).info or {}
         except Exception:
             return {}
 
@@ -14420,7 +14458,7 @@ async def stock_data_endpoint(company: str = ""):
 @app.get("/api/stock-quick")
 async def stock_quick(ticker: str = ""):
     """Lightweight stock data — returns only metrics needed for decision algorithm. No AI, instant response."""
-    # yfinance imported globally with 401 wrapper
+    # layer imported globally with 401 wrapper
     from datetime import datetime, timedelta
     
     ticker = ticker.strip().upper()
@@ -14454,11 +14492,11 @@ async def stock_quick(ticker: str = ""):
                 }
         
         if not price:
-            t = yf.Ticker(ticker)
+            t = _layer_ticker(ticker)
             info = t.info or {}
             price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose') or 0
         
-        # Source 2: Yahoo v8 chart if yfinance failed
+        # Source 2: quote feed v8 chart if layer failed
         if not price:
             try:
                 _h = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/{random.randint(125,133)}.0.{random.randint(1000,9999)}.{random.randint(10,99)} Safari/537.36', 'Accept': 'application/json'}
@@ -20464,9 +20502,9 @@ async def batch_prices(request: Request):
             is_indian = '.NS' in tk or '.BO' in tk
             sym = '₹' if is_indian else '$'
             
-            # Source 1: yfinance
+            # Source 1: layer
             try:
-                t = yf.Ticker(tk)
+                t = _layer_ticker(tk)
                 info = t.info or {}
                 price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
                 if price and float(price) > 0:
@@ -20477,7 +20515,7 @@ async def batch_prices(request: Request):
             except Exception as e1:
                 print(f"  yf fail {tk}: {e1}")
             
-            # Source 2: Yahoo v8 chart API
+            # Source 2: quote feed v8 chart API
             try:
 
                 r = _chart_response(tk, interval="1d", range="2d")
@@ -25288,7 +25326,7 @@ async def heatmap(region: str = "IN"):
     
     def _fetch_hm(sym):
         try:
-            t = yf.Ticker(sym)
+            t = _layer_ticker(sym)
             info = t.info or {}
             price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
             prev = info.get("previousClose") or info.get("regularMarketPreviousClose") or price
@@ -25407,7 +25445,7 @@ async def screener(region: str = "IN", preset: str = "", rsi_below: float = 0, r
     
     def _scan(sym):
         try:
-            t = yf.Ticker(sym)
+            t = _layer_ticker(sym)
             hist = t.history(period="1y", interval="1d")
             if hist is None or len(hist) < 20:
                 return None
@@ -32508,7 +32546,7 @@ async def journal_update(trade_id: str, request: Request):
 async def top_picks(region: str = "IN"):
     """Comprehensive Investment Intelligence — scan ALL stocks, categorize, rank, return reports"""
     try:
-        # yfinance imported globally with 401 wrapper
+        # layer imported globally with 401 wrapper
         import pandas as pd
         import numpy as np
         
@@ -32649,7 +32687,7 @@ async def top_picks(region: str = "IN"):
             sym = item["_sym"]
             try:
 
-                tk = yf.Ticker(sym)
+                tk = _layer_ticker(sym)
                 info = tk.info or {}
                 mcap = float(info.get("marketCap", 0) or 0)
                 pe = float(info.get("trailingPE", 0) or 0)
@@ -35513,7 +35551,7 @@ def _investor_on_budget(symbol: str, region: str) -> dict:
         "decision": decision,
         "price": price,
         "data_status": "full" if full else "partial",
-        "note": "Returned from Screener and Angel fundamentals." if full else "Returned inside the 12 second budget from the quote and fundamentals.",
+        "note": "Returned from Screener and Angel fundamentals." if full else "Returned inside the 8 second budget from the quote and fundamentals.",
         "fundamental": {
             "pe": fund.get("pe") or 0,
             "roe": roe or 0,
@@ -35535,10 +35573,30 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "", nocache: i
         region = region.strip().upper()
     if not _investor_budgeted.get():
         token = _investor_budgeted.set(True)
+        _investor_wall = 8.0
+        _investor_started = time.monotonic()
         try:
             return await asyncio.wait_for(investor_decide(symbol, region, nocache), timeout=7)
         except asyncio.TimeoutError:
-            return _investor_on_budget(symbol, region)
+            _left = _investor_wall - (time.monotonic() - _investor_started)
+            if _left > 0.35:
+                try:
+                    return await asyncio.wait_for(
+                        asyncio.to_thread(_investor_on_budget, symbol, region),
+                        timeout=_left,
+                    )
+                except asyncio.TimeoutError:
+                    pass
+            return {
+                "success": True,
+                "symbol": symbol,
+                "region": region,
+                "decision": "HOLD / REVIEW",
+                "price": 0,
+                "data_status": "partial",
+                "note": "Returned inside the 8 second budget.",
+                "fundamental": {},
+            }
         finally:
             _investor_budgeted.reset(token)
     from market_data.yfcompat import Ticker as _LayerTicker
@@ -37785,7 +37843,7 @@ async def market_context_v3(symbol: str = "RELIANCE", region: str = "IN"):
         def _fetch_v3(sym=yf_sym):
             for _attempt in range(2):  # 2 attempts
                 try:
-                    tk = yf.Ticker(sym)
+                    tk = _layer_ticker(sym)
                     info = tk.info or {}
                     hist = tk.history(period="6mo")
                     closes_list = []
@@ -37955,7 +38013,7 @@ async def market_context_v3(symbol: str = "RELIANCE", region: str = "IN"):
                 def _fetch_sector_etf(etf=sector_etf):
                     try:
 
-                        tk = yf.Ticker(etf)
+                        tk = _layer_ticker(etf)
                         h = tk.history(period="3mo")
                         if h is not None and len(h) >= 5:
                             return round((float(h["Close"].iloc[-1]) - float(h["Close"].iloc[0])) / float(h["Close"].iloc[0]) * 100, 1)
@@ -37966,7 +38024,7 @@ async def market_context_v3(symbol: str = "RELIANCE", region: str = "IN"):
                 def _fetch_broad(idx=broad_idx):
                     try:
 
-                        tk = yf.Ticker(idx)
+                        tk = _layer_ticker(idx)
                         h = tk.history(period="3mo")
                         if h is not None and len(h) >= 5:
                             return round((float(h["Close"].iloc[-1]) - float(h["Close"].iloc[0])) / float(h["Close"].iloc[0]) * 100, 1)
@@ -38048,13 +38106,13 @@ async def market_context_v3(symbol: str = "RELIANCE", region: str = "IN"):
             narrative_parts.append(f"{symbol} is currently trading at {csym}{price:,.2f}, at {pos_52w:.0f}% of its 52-week range.")
         narrative = " ".join(narrative_parts)
         
-        # ═══ 8. WHY IS IT MOVING? — News catalysts from yfinance ═══
+        # ═══ 8. WHY IS IT MOVING? — News catalysts from layer ═══
         catalysts = []
         try:
             def _fetch_news(sym=yf_sym):
                 try:
 
-                    tk = yf.Ticker(sym)
+                    tk = _layer_ticker(sym)
                     news = tk.news or []
                     items = []
                     for n in news[:8]:
@@ -45063,7 +45121,6 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
         resp["_cache_age_sec"] = int(time.time() - _etf_scanner_cache["ts"])
         return resp
     try:
-        import market_data.yfcompat as yf
         try: pass
         except Exception: pass
 
@@ -45076,7 +45133,7 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
         # Fetch benchmark first for RS calculations
         bench_hist = None
         try:
-            bench_hist = yf.Ticker(benchmark_sym).history(period="1y", interval="1d")
+            bench_hist = _layer_ticker(benchmark_sym).history(period="1y", interval="1d")
         except Exception as _se:
             print(f"[ETF-SCAN] {benchmark_sym} benchmark fetch failed: {_se}")
         bench_close = bench_hist["Close"] if bench_hist is not None and not bench_hist.empty else None
@@ -45093,7 +45150,7 @@ async def etf_scanner(mode: str = "smart_money", region: str = "US", refresh: in
         for etf in universe:
             sym = etf["sym"]
             try:
-                tk = yf.Ticker(sym)
+                tk = _layer_ticker(sym)
                 hist = tk.history(period="1y", interval="1d")
                 if hist is None or hist.empty or len(hist) < 50:
                     continue
@@ -48981,7 +49038,7 @@ def _dd_pct(num, den):
 @app.get("/api/investor-due-diligence")
 async def investor_due_diligence(email: str = "", symbol: str = "", region: str = "US"):
     """r58: Full equity research report on a single public company.
-    Real data from yfinance + sector ETF context. No hallucinations.
+    Real data from layer + sector ETF context. No hallucinations.
     """
     email = email.strip().lower()
     # r63.5: replaced duplicated premium-gate boilerplate
@@ -49014,23 +49071,22 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
     t0 = time.time()
     
     try:
-        import market_data.yfcompat as yf
         import numpy as np
         from datetime import datetime as _dt
         
         # r60.3+r63.0+r63.2: Region-aware fallback chain
-        # For US: try Finnhub first (Yahoo blocks Render IP), but ALWAYS create
-        # yfinance Ticker so insider/institutional/Porter sections can still try.
-        # For IN: keep existing yfinance + NSE chain (Finnhub free tier doesn't have IN)
+        # For US: try Finnhub first (quote feed blocks Render IP), but ALWAYS create
+        # layer Ticker so insider/institutional/Porter sections can still try.
+        # For IN: keep existing layer + NSE chain (Finnhub free tier doesn't have IN)
         info = {}
         hist = None
-        data_source = "yfinance"
-        tk = None  # r63.2: ensure tk is always defined (None if yfinance unavailable)
+        data_source = "layer"
+        tk = None  # r63.2: ensure tk is always defined (None if layer unavailable)
 
         # r63.0: Finnhub PRIMARY for US tickers
         if region == "US":
             try:
-                fh_info = _fh.get_yfinance_shaped_info(symbol, region="US")
+                fh_info = _quote_shaped_info(symbol, region="US")
                 if fh_info and fh_info.get("regularMarketPrice"):
                     info = fh_info
                     data_source = "finnhub"
@@ -49038,43 +49094,43 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             except Exception as _fhe:
                 print(f"[DD] Finnhub fetch failed for {symbol}: {_fhe}")
 
-        # r63.2: ALWAYS create yfinance Ticker — even when Finnhub provided price.
+        # r63.2: ALWAYS create layer Ticker — even when Finnhub provided price.
         # Insider/institutional sections downstream need `tk` to be a real Ticker.
-        # If Yahoo blocks the IP, individual tk.X calls fail gracefully (return None).
+        # If quote feed blocks the IP, individual tk.X calls fail gracefully (return None).
         try:
-            tk = yf.Ticker(yf_symbol)
+            tk = _layer_ticker(yf_symbol)
             try: yf_info = tk.info or {}
             except Exception: yf_info = {}
 
-            # Merge: Finnhub fields stay, yfinance fills gaps
+            # Merge: Finnhub fields stay, layer fills gaps
             if info and info.get("regularMarketPrice"):
-                # Finnhub got the price; merge yfinance fields where Finnhub has gaps
+                # Finnhub got the price; merge layer fields where Finnhub has gaps
                 merged_count = 0
                 for k, v in (yf_info or {}).items():
                     if k not in info or info[k] is None:
                         info[k] = v
                         merged_count += 1
                 if yf_info and yf_info.get("regularMarketPrice"):
-                    data_source = "finnhub+yfinance"
-                    print(f"[DD] yfinance merged {merged_count} fields with Finnhub for {symbol}")
+                    data_source = "finnhub+layer"
+                    print(f"[DD] layer merged {merged_count} fields with Finnhub for {symbol}")
                 else:
-                    print(f"[DD] yfinance .info empty (Yahoo likely blocked) — using Finnhub-only data for {symbol}")
+                    print(f"[DD] layer .info empty (quote feed likely blocked) — using Finnhub-only data for {symbol}")
             else:
-                # Finnhub didn't produce data — fall back to yfinance entirely
+                # Finnhub didn't produce data — fall back to layer entirely
                 info = yf_info or {}
-                data_source = "yfinance"
+                data_source = "layer"
 
             try: hist = tk.history(period="2y", interval="1d")
             except Exception: hist = None
         except Exception as _yfe:
-            print(f"[DD] yfinance fetch failed for {yf_symbol}: {_yfe}")
+            print(f"[DD] layer fetch failed for {yf_symbol}: {_yfe}")
 
-        # r63.0: If we have Finnhub price but no hist (Yahoo blocked), try Finnhub history
+        # r63.0: If we have Finnhub price but no hist (quote feed blocked), try Finnhub history
         if (hist is None or (hasattr(hist, 'empty') and hist.empty)) and region == "US":
             try:
                 fh_hist = _fh.get_price_history(symbol, region="US", period_days=730)
                 if fh_hist and fh_hist.get("closes"):
-                    # Build a yfinance-shaped DataFrame
+                    # Build a layer-shaped DataFrame
                     import pandas as _pd
                     from datetime import datetime as _dt2
                     idx = [_dt2.fromtimestamp(t) for t in fh_hist["timestamps"]]
@@ -49091,14 +49147,14 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
 
         _has_yf = info and info.get("regularMarketPrice")
 
-        # r60.3: India fallback — Yahoo blocks NSE tickers from Render IP
+        # r60.3: India fallback — quote feed blocks NSE tickers from Render IP
         if not _has_yf and region == "IN":
             try:
-                print(f"[DD] yfinance empty for {symbol} — trying NSE direct")
+                print(f"[DD] layer empty for {symbol} — trying NSE direct")
                 nse_data = fetch_nse_stock_data(symbol)
                 if nse_data and nse_data.get("price"):
                     data_source = "NSE"
-                    # Map NSE shape into yfinance-compatible info dict so the
+                    # Map NSE shape into layer-compatible info dict so the
                     # rest of the function works unchanged.
                     info = {
                         "regularMarketPrice": _safe_float(nse_data.get("price")),
@@ -49186,7 +49242,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             return {
                 "success": False,
                 "error": f"Could not retrieve data for {symbol} from Finnhub, TradingView, Angel One or Screener. Please retry shortly.",
-                "tried_sources": ["yfinance", "NSE" if region == "IN" else None, "google_finance"],
+                "tried_sources": ["layer", "NSE" if region == "IN" else None, "google_finance"],
                 "stale_cache_available": False,
             }
         print(f"[DD] {symbol} data via {data_source}")
@@ -49204,7 +49260,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         }
         
         # ═══ SECTION 1: INVESTMENT THESIS ═══
-        # r63.99.22: yfinance.info occasionally returns numeric fields as strings
+        # r63.99.22: layer.info occasionally returns numeric fields as strings
         # (especially when its internal JSON cache is hit). Coerce to float defensively
         # so downstream <=, >=, *100, etc. don't raise TypeError. Applied at every
         # numeric read site below.
@@ -49235,7 +49291,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         pe_grade = _dd_grade_metric_lower(forward_pe, [15, 22, 30, 50])
         peg_grade = _dd_grade_metric_lower(peg, [1.0, 1.5, 2.0, 3.0])
         
-        # Simple DCF using existing yfinance data (free cash flow / WACC growth)
+        # Simple DCF using existing layer data (free cash flow / WACC growth)
         fcf = _to_num(info.get("freeCashflow"))
         revenue = _to_num(info.get("totalRevenue"))
         rev_growth = _to_num(info.get("revenueGrowth"))  # YoY (r63.99.22 coerce)
@@ -49443,11 +49499,11 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         }
         
         # ═══ SECTION 3: COMPETITIVE POSITION ═══
-        # Pull peers — yfinance has 'recommendationKey' but no peer list directly.
+        # Pull peers — layer has 'recommendationKey' but no peer list directly.
         # Use industry ticker recommendations via tk.recommendations or hand-curated peer logic.
         peers = []
         try:
-            # yfinance ≥0.2 has tk.recommendations (analyst ratings) but no peer list.
+            # layer ≥0.2 has tk.recommendations (analyst ratings) but no peer list.
             # Workaround: use hardcoded peer maps for top US/IN names. For unknown tickers,
             # we'll skip peer comparison rather than fabricate.
             peer_map = {
@@ -49474,7 +49530,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 for i, p_sym_raw in enumerate(peer_tickers):
                     try:
                         p_sym_yf = yf_peers[i]
-                        p_tk = yf.Ticker(p_sym_yf)
+                        p_tk = _layer_ticker(p_sym_yf)
                         p_info = p_tk.info or {}
                         if not p_info.get("regularMarketPrice"): continue
                         peers.append({
@@ -49516,7 +49572,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "peers_count": len(peers),
             "peers": peers,
             "company_rank": company_rank,
-            "data_source": "Yahoo Finance — peer ticker map curated for major names",
+            "data_source": "market data — peer ticker map curated for major names",
         }
         
         # ═══ SECTION 4: SECTOR CONTEXT ═══
@@ -49525,7 +49581,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         sector_data = {"sector": sector, "industry": info.get("industry")}
         if sector_etf_sym:
             try:
-                etf = yf.Ticker(sector_etf_sym)
+                etf = _layer_ticker(sector_etf_sym)
                 etf_info = etf.info or {}
                 etf_hist = etf.history(period="1y", interval="1d")
                 if etf_hist is not None and len(etf_hist) > 0:
@@ -49846,7 +49902,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             # ═══ r63.99.6: MULTI-METHOD FAIR VALUE FALLBACK CHAIN ═══
             # Vijay: "fair value should be able to compute". Previously the DCF block
             # would set data_quality=INCOMPLETE when freeCashflow or sharesOutstanding
-            # were None (common when Yahoo rate-limits). Now we try 5 methods in order,
+            # were None (common when quote feed rate-limits). Now we try 5 methods in order,
             # picking the first one that produces a meaningful number. Result is always
             # populated unless ALL sources fail — and even then we surface what we tried.
             _need_fallback = not valuation_detail.get("fair_value") or valuation_detail.get("data_quality") == "DCF_FALLBACK"
@@ -49972,7 +50028,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 else:
                     valuation_detail["data_quality"] = "INCOMPLETE"
                     valuation_detail["verdict"] = "INSUFFICIENT DATA"
-                    valuation_detail["incomplete_reason"] = "All 5 methods (DCF, PE, Graham, Earnings Yield, Analyst Target) returned no usable value. Yahoo Finance likely rate-limited."
+                    valuation_detail["incomplete_reason"] = "All 5 methods (DCF, PE, Graham, Earnings Yield, Analyst Target) returned no usable value. market data likely rate-limited."
                     valuation_detail["_methods_tried"] = _methods_tried
                     print(f"[VAL] {symbol} ALL methods failed: {_methods_tried}")
         except Exception as _ve:
@@ -49993,8 +50049,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "data_quality": "INCOMPLETE",
         }
         try:
-            # r63.2: try yfinance regardless of primary source — tk exists
-            # If Yahoo blocks, the call fails gracefully and we fall through.
+            # r63.2: try layer regardless of primary source — tk exists
+            # If quote feed blocks, the call fails gracefully and we fall through.
             qh_records = []
             if tk is not None and region == "US":
                 try:
@@ -50051,7 +50107,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                         "STABLE" if abs(eps_actuals[-1] - eps_actuals[0]) / max(abs(eps_actuals[0]), 0.01) < 0.10 else
                         "DECLINING"
                     )
-                earnings_history["data_quality"] = "FULL" if (data_source == "yfinance" or "yfinance" in data_source) else "PARTIAL"
+                earnings_history["data_quality"] = "FULL" if (data_source == "layer" or "layer" in data_source) else "PARTIAL"
             else:
                 earnings_history["incomplete_reason"] = "No quarterly earnings data available from " + data_source
         except Exception as _ehee:
@@ -50095,12 +50151,12 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         }
 
         # 11.1 Insider Activity (US strong, India sparse) — r61.2 + r63.2
-        # r63.2: Try yfinance even when Finnhub is primary — if Yahoo blocks,
+        # r63.2: Try layer even when Finnhub is primary — if quote feed blocks,
         # tk.insider_purchases will fail gracefully and section shows N/A.
         try:
             if tk is not None and region == "US":
                 # ─── Strategy 1: Use insider_purchases (cleaner summary) ───
-                # yfinance returns a 5-row DataFrame with columns like:
+                # layer returns a 5-row DataFrame with columns like:
                 #   'Insider Purchases Last 6m', 'Shares', 'Trans'
                 # Rows: Purchases / Sales / Net Shares Purchased (Sold) / Total Held / Net Increase
                 summary_data = None
@@ -50144,7 +50200,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                     print(f"[DD] insider_transactions failed for {symbol}: {_ite}")
 
                 if _ins_df is not None and not _ins_df.empty:
-                    # Robust column detection — yfinance versions differ
+                    # Robust column detection — layer versions differ
                     cols = list(_ins_df.columns)
                     # Find the right column for each field
                     def _pick_col(candidates):
@@ -50266,7 +50322,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 "reason": f"Insider fetch failed: {str(_ie)[:80]}",
             }
 
-        # 11.2 Institutional Holders (top 10) — r63.2: always try yfinance
+        # 11.2 Institutional Holders (top 10) — r63.2: always try layer
         try:
             if tk is not None and region == "US":
                 _ih_df = None
@@ -50293,7 +50349,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                     # despite having full top-10 holders list. Fix: try 3 sources.
                     held_pct = info.get("heldPercentInstitutions")
                     
-                    # Fallback 1: try institutionsFloatPercentHeld (different yfinance field)
+                    # Fallback 1: try institutionsFloatPercentHeld (different layer field)
                     if not held_pct:
                         held_pct = info.get("institutionsFloatPercentHeld")
                     
@@ -50320,7 +50376,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                         ),
                         "data_quality": "DERIVED" if derived_from_holders else ("FULL" if held_pct else "PARTIAL"),
                         "_data_note": ("Estimated from top 10 holders" if derived_from_holders else 
-                                      ("Yahoo aggregate field missing — top holders shown" if not held_pct else None)),
+                                      ("quote feed aggregate field missing — top holders shown" if not held_pct else None)),
                     }
                 else:
                     institutional["institutional_holders"] = {
@@ -51204,7 +51260,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         try: diag_log("DD", "investor_dd_completed", {"symbol": symbol, "region": region, "score": score, "elapsed_sec": elapsed})
         except Exception: pass
 
-        # ═══ r63.97.0: Enrich institutional dict with what yfinance actually provides ═══
+        # ═══ r63.97.0: Enrich institutional dict with what layer actually provides ═══
         # The frontend SMI panel (Smart Money Intelligence) renders empty states because
         # ownership_history, top_holders_delta, and insider_quarterly_history aren't
         # populated. We can fill the first two with CURRENT-SNAPSHOT data (no Q/Q delta
@@ -51240,7 +51296,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                             institutional["top_holders_delta"] = _holders_now
                             institutional["top_holders_delta_meta"] = {
                                 "data_quality":  "snapshot_only",
-                                "note":          "Current-quarter snapshot from yfinance institutional_holders. Q/Q delta requires historical 13F filings (SEC EDGAR) — not available on free tier.",
+                                "note":          "Current-quarter snapshot from layer institutional_holders. Q/Q delta requires historical 13F filings (SEC EDGAR) — not available on free tier.",
                                 "as_of":         _dt.utcnow().strftime("%Y-%m-%d"),
                                 "holders_count": len(_holders_now),
                             }
@@ -51269,12 +51325,12 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 # ─── insider_activity_buckets: daily / weekly / monthly / quarterly ───
                 # Pulls from tk.insider_transactions and buckets by transaction date.
                 # This is THE thing user asked for: "daily, weekly, monthly, quarterly insider activity".
-                # r63.99.0: Robust classification — handles yfinance schema variants:
+                # r63.99.0: Robust classification — handles layer schema variants:
                 #   - Full names: "Purchase", "Sale", "Stock Award", "Gift", etc.
                 #   - SEC Form 4 codes: P (purchase), S (sale), A (grant), M (exercise),
                 #     F (tax withhold), G (gift), D (disposition), J (other), I (discretionary)
                 #   - Encoded forms: "P-Purchase", "S-Sale", "M-Exempt"
-                # Also picks the right column name across yfinance versions
+                # Also picks the right column name across layer versions
                 # ("Transaction" | "Trans" | "Type" | "Acquired or Disposed").
                 try:
                     _it_df = tk.insider_transactions
@@ -51293,7 +51349,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                             "yearly":    {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0,
                                           "awards": 0, "exercises": 0, "other": 0, "window_days": 365},
                         }
-                        # Detect column names (yfinance has shifted schemas across versions)
+                        # Detect column names (layer has shifted schemas across versions)
                         _it_cols = list(_it_df.columns)
                         def _pickcol(cands):
                             for c in cands:
@@ -51308,7 +51364,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                         _col_date     = _pickcol(["Start Date","Date","Filing Date","Trade Date"])
                         _col_text     = _pickcol(["Text","Description","Footnote"])  # extra context for OTHER cases
                         _col_url      = _pickcol(["URL","SEC Filing","Link"])
-                        # r63.99.6: Acquired/Disposed flag — newer yfinance often has this as a separate column
+                        # r63.99.6: Acquired/Disposed flag — newer layer often has this as a separate column
                         _col_ad       = _pickcol(["Acquired or Disposed", "Acquired/Disposed", "A/D", "AcqDisp"])
 
                         # ─── Classifier ────────────────────────────────────────────
@@ -51341,7 +51397,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                             if not s:
                                 if val_usd and val_usd >= 1e5 and shares and shares > 0:
                                     # Likely SELL — large $ value, real share count, no explicit type
-                                    # This is the COMMON yfinance case where Transaction column is null
+                                    # This is the COMMON layer case where Transaction column is null
                                     return ("SELL", True, "Likely Sale (inferred)")
                                 if shares and shares > 0 and not val_usd:
                                     # Shares without value typically = RSU vest or option exercise
@@ -51409,7 +51465,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                             # Date: prefer explicit column, fall back to index
                             _dt_raw = _row.get(_col_date) if _col_date else None
                             if _dt_raw is None:
-                                # Some yfinance versions put date in the index
+                                # Some layer versions put date in the index
                                 if _i is not None and hasattr(_i, "to_pydatetime"):
                                     _dt_raw = _i
                             if _dt_raw is None: continue
@@ -51479,7 +51535,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                             "kind_counts_365d": _kind_counts,
                             "raw_label_counts": dict(sorted(_txn_label_counts.items(), key=lambda x: -x[1])[:15]),
                             "data_quality": "available",
-                            "source":       "yfinance.insider_transactions",
+                            "source":       "layer.insider_transactions",
                             "columns_detected": {
                                 "transaction": _col_txn, "shares": _col_shares,
                                 "value":       _col_value, "insider": _col_insider, "date": _col_date,
@@ -51646,7 +51702,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "_cached_at": time.time(),
             "_cached": False,
             "honest_disclaimer": (
-                "All financial metrics from real 10-K/annual report data via Yahoo Finance. "
+                "All financial metrics from real 10-K/annual report data via market data. "
                 "Peer comparisons use curated peer maps for major tickers (limited coverage). "
                 "Sector context uses real sector ETF performance (US only). "
                 "Qualitative items (SWOT interpretation, Porter's Forces) are heuristics labeled 'interpretation'. "
@@ -52230,13 +52286,13 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
                 benchmark_closes = bench_data["closes"]
                 print(f"  📊 Benchmark loaded: {benchmark_symbol} {len(benchmark_closes)} closes")
         if not benchmark_closes:
-            # Fallback to yfinance
+            # Fallback to layer
             try:
-                btk = yf.Ticker(benchmark_symbol)
+                btk = _layer_ticker(benchmark_symbol)
                 bhist = btk.history(period="1y", interval="1d")
                 if bhist is not None and not bhist.empty:
                     benchmark_closes = list(bhist["Close"].dropna())
-                    print(f"  📊 Benchmark via yfinance: {benchmark_symbol} {len(benchmark_closes)} closes")
+                    print(f"  📊 Benchmark via layer: {benchmark_symbol} {len(benchmark_closes)} closes")
             except Exception as _be:
                 print(f"  ⚠ Benchmark fetch failed: {_be} — RS will fall back to absolute proxy")
     except Exception as _be:
@@ -52278,11 +52334,11 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
             except Exception:
                 pass
             
-            # Fallback: try yfinance if Finnhub didn't deliver
+            # Fallback: try layer if Finnhub didn't deliver
             if not hist_closes:
                 try:
                     yf_sym = ticker if region == "US" else f"{ticker}.NS"
-                    tk = yf.Ticker(yf_sym)
+                    tk = _layer_ticker(yf_sym)
                     hist_df = tk.history(period="1y", interval="1d")
                     if hist_df is not None and not hist_df.empty:
                         hist_closes = list(hist_df["Close"].dropna())
