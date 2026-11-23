@@ -54,14 +54,16 @@ test('desktop homepage exposes the original email, symbol and Analyze controls',
  expect(width.document<=width.viewport+2,JSON.stringify(width)).toBe(true);
  await expect(page.locator('#ws-sidebar .ws-nav.active')).toHaveCount(1);
  await expect(page.locator('#ws-sidebar .ws-nav.active')).toContainText('Overview');
- await expect(page.locator('#ws-start-cards .ws-start-card')).toHaveCount(3);
- for(const card of await page.locator('#ws-start-cards .ws-start-card').all())await expect(card).toBeVisible();
+ await expect(page.locator('#ws-start-cards')).toBeHidden();
+ await expect(page.locator('#home-brief')).toBeVisible();
+ await expect(page.locator('.home-tries [data-try="AAPL"]')).toBeVisible();
  for(const id of ['ws-quick-controls','tw-panel','ws-options','ws-plan'])await expect(page.locator('#'+id)).toBeHidden();
 });
 test('mobile homepage keeps the original analysis form usable',async({page})=>{
  await page.setViewportSize({width:390,height:844});await boot(page);await expect(page.locator('#ws-account #btn')).toBeVisible();
  await expect(page.locator('#tw-panel')).toBeHidden();await expect(page.locator('#ws-quick-controls')).toBeHidden();
- for(const card of await page.locator('#ws-start-cards .ws-start-card').all())await expect(card).toBeVisible();
+ await expect(page.locator('#ws-start-cards')).toBeHidden();
+ await expect(page.locator('#home-brief')).toBeVisible();
  await page.screenshot({path:'qa-output/home-mobile.png',fullPage:true});
  const overflow=await page.evaluate(()=>({viewport:innerWidth,width:document.documentElement.scrollWidth,elements:[...document.querySelectorAll('body *')].filter(el=>{const r=el.getBoundingClientRect();const css=getComputedStyle(el);return r.height>0&&r.width>0&&css.visibility!=='hidden'&&css.display!=='none'&&r.right>innerWidth+2;}).slice(0,30).map(el=>({tag:el.tagName,id:el.id,class:typeof el.className==='string'?el.className:'',right:Math.round(el.getBoundingClientRect().right)}))}));
  expect(overflow.width<=overflow.viewport+2,JSON.stringify(overflow,null,2)).toBe(true);

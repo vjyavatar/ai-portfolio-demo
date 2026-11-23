@@ -19,32 +19,50 @@ const freshness = row => {
     : quality === 'INSUFFICIENT_DATA' ? 'Insufficient data'
     : 'Freshness unverified';
 };
+const HOME_TILES = [
+  {label:'NIFTY', test:n => /^nifty( 50)?$/i.test(n)},
+  {label:'SENSEX', test:n => /sensex/i.test(n)},
+  {label:'S&P 500', test:n => /s&p|spx/i.test(n)},
+  {label:'NASDAQ', test:n => /nasdaq/i.test(n) && !/vix/i.test(n)},
+  {label:'USD/INR', test:n => /usd\s*\/\s*inr|usd-inr/i.test(n)},
+  {label:'GOLD', test:n => /^gold\b/i.test(n)},
+];
+function pickTiles(rows) {
+  const chosen = [];
+  const used = new Set();
+  for (const spec of HOME_TILES) {
+    const row = rows.find((item, index) => {
+      if (used.has(index) || !item) return false;
+      const name = text(item.name) || text(item.symbol);
+      return spec.test(name);
+    });
+    if (!row) continue;
+    used.add(rows.indexOf(row));
+    chosen.push(Object.assign({tile:spec.label}, row));
+  }
+  return chosen;
+}
 function chip(row) {
   const pct = typeof row.change_pct === 'number' && Number.isFinite(row.change_pct) ? row.change_pct : null;
   const article = document.createElement('article');
   article.className = 'live-chip live-chip--refined';
-  const top = document.createElement('div'); top.className = 'live-chip__top';
   const name = document.createElement('span'); name.className = 'live-chip__name';
-  name.textContent = (text(row.flag) ? row.flag + ' ' : '') + (text(row.name) || text(row.symbol) || 'Unknown instrument');
-  const quality = document.createElement('span'); quality.className = 'live-chip__quality';
-  const qualityText = freshness(row);
-  quality.textContent = qualityText;
-  quality.dataset.state = qualityText.startsWith('Live') ? 'live'
-    : qualityText.includes('delayed') || qualityText === 'Delayed' ? 'delayed' : 'unknown';
-  top.append(name, quality);
+  name.textContent = row.tile || text(row.name) || text(row.symbol) || 'Market';
   const price = document.createElement('strong'); price.className = 'live-chip__price'; price.textContent = num(row.price);
   const change = document.createElement('span'); change.className = 'live-chip__change';
   change.classList.add(pct === null ? 'flat' : pct > 0 ? 'up' : pct < 0 ? 'dn' : 'flat');
-  change.textContent = pct === null ? 'Change unavailable' : (pct > 0 ? '+' : '') + num(pct) + '%';
-  const foot = document.createElement('div'); foot.className = 'live-chip__foot';
-  const source = document.createElement('span');
-  // Never claim Finnhub or Angel One unless the backend actually identifies it.
-  const provider = text(row.provider) || text(row.source);
-  source.textContent = provider ? 'Source: ' + provider : 'Source not verified';
-  const session = document.createElement('span'); session.textContent = text(row.session) || 'Session unknown';
-  foot.append(source, session);
-  article.append(top, price, change, foot);
+  change.textContent = pct === null ? '—' : (pct > 0 ? '+' : '') + num(pct) + '%';
+  article.append(name, price, change);
   return article;
+}
+function skeleton() {
+  root.replaceChildren();
+  for (let i = 0; i < 6; i += 1) {
+    const article = document.createElement('article');
+    article.className = 'live-chip live-chip--skeleton';
+    article.setAttribute('aria-hidden', 'true');
+    root.append(article);
+  }
 }
 const toolbar = document.createElement('div'); toolbar.className = 'live-board-toolbar';
 const status = document.createElement('p'); status.className = 'live-board-status'; status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
@@ -59,19 +77,22 @@ async function load(){
   controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const response = await fetch('/api/live/overview', {signal:controller.signal, cache:'no-store'});
+    const response = await fetch('/api/home-strip', {signal:controller.signal, cache:'no-store'});
     if (!response.ok) throw Error('HTTP ' + response.status);
     const data = await response.json();
     if (!data || !Array.isArray(data.indices)) throw Error('Unexpected response');
-    const sessions = data.sessions || {}, ex = sessions.exchanges || {}, c = sessions.clocks || {};
-    clocks.textContent = 'US ' + (text(c.et) || 'time unavailable') + ' · ' + (text(ex.US && ex.US.session) || 'session unknown') +
-      '  |  India ' + (text(c.ist) || 'time unavailable') + ' · ' + (text(ex.IN && ex.IN.session) || 'session unknown');
+    clocks.textContent = '';
+    const tiles = pickTiles(data.indices.filter(row => row && typeof row === 'object'));
     const fragment = document.createDocumentFragment();
-    data.indices.forEach(row => { if (row && typeof row === 'object') fragment.append(chip(row)); });
+    tiles.forEach(row => fragment.append(chip(row)));
     root.replaceChildren(fragment);
     lastSuccess = new Date();
-    status.textContent = root.childElementCount
-      ? 'Updated ' + lastSuccess.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + ' · Data quality shown per instrument'
+    const providers = [...new Set(tiles.map(row => text(row.provider) || text(row.source)).filter(Boolean))];
+    const nifty = tiles.find(row => row.tile === 'NIFTY');
+    status.textContent = tiles.length
+      ? 'Updated ' + lastSuccess.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+        + ' · Source: ' + (providers.join(', ') || 'market data')
+        + (nifty && Number.isFinite(nifty.price) ? ' · NIFTY ' + num(nifty.price) : '')
       : 'No market quotes available. Please try again later.';
   } catch(e) {
     status.textContent = 'Unable to refresh market data' + (lastSuccess
@@ -86,6 +107,7 @@ async function load(){
   }
 }
 refresh.addEventListener('click', load);
+skeleton();
 load();
 setInterval(() => { if (!document.hidden) load(); }, 60000);
 })();
