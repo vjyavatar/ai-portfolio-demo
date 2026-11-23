@@ -1449,11 +1449,21 @@ def _within(loader, seconds: float) -> tuple:
     return box["value"]
 
 
-def _run_chain(symbol: str, steps: list) -> Optional[dict]:
-    """Try every source. A timeout or a fast failure cannot skip the rest."""
+def _run_chain(symbol: str, steps: list, budget: Optional[float] = None) -> Optional[dict]:
+    """Try every source. A timeout or a fast failure cannot skip the rest.
+
+    When budget is set, a later source does not start after the clock runs out.
+    """
+    deadline = time.perf_counter() + budget if budget else None
     for name, step in steps:
+        if deadline is not None and time.perf_counter() >= deadline:
+            print(f"  candle {symbol}: budget spent before {name}")
+            break
+        limit = CANDLE_TIMEOUT
+        if deadline is not None:
+            limit = min(CANDLE_TIMEOUT, max(0.2, deadline - time.perf_counter()))
         started = time.perf_counter()
-        bars, reason = _within(step, CANDLE_TIMEOUT)
+        bars, reason = _within(step, limit)
         elapsed = time.perf_counter() - started
         if bars:
             print(f"  candle {symbol}: {name} ok {len(bars['data'])} bars in {elapsed:.2f}s")
@@ -1691,7 +1701,7 @@ _candle_inflight_lock = threading.Lock()
 _scan_slots = threading.Semaphore(2)
 
 
-def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None, retry: bool = True) -> dict:
+def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optional[str] = None, retry: bool = True, budget: Optional[float] = None) -> dict:
     meta = classify(symbol, region)
     interval_name = "60m" if interval in {"60m", "1h"} else (interval or "1d")
     # Period does not change the fetch window, so 3mo and 1y share one cache entry.
@@ -1705,14 +1715,14 @@ def candles(symbol: str, period: str = "1y", interval: str = "1d", region: Optio
             crowded = _candle_inflight > 2
         try:
             steps = _candle_steps(symbol, meta, interval_name)
-            bars = _run_chain(meta["root"], steps)
-            if bars or not retry or crowded:
-                if not bars and (not retry or crowded):
+            bars = _run_chain(meta["root"], steps, budget)
+            if bars or not retry or crowded or budget:
+                if not bars and (not retry or crowded or budget):
                     print(f"  candle {meta['root']}: no chain retry")
                 return bars
             print(f"  candle {meta['root']}: no source returned bars, retrying the chain once")
             time.sleep(0.25)
-            return _run_chain(meta["root"], steps)
+            return _run_chain(meta["root"], steps, budget)
         finally:
             with _candle_inflight_lock:
                 _candle_inflight -= 1
