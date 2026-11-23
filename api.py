@@ -161,6 +161,49 @@ def _layer_tickers(symbols):
     from market_data.yfcompat import Tickers as _Many
     return _Many(symbols)
 
+class _QuoteOnly:
+    """A ticker stand-in. History is the two-row quote, not the candle chain."""
+    def __init__(self, symbol, *args, **kwargs):
+        self.symbol = symbol
+        self._frame = None
+
+    def history(self, *args, **kwargs):
+        if self._frame is None:
+            self._frame = _quote_frame(self.symbol)
+        return self._frame
+
+    def _price(self):
+        frame = self.history()
+        try:
+            return float(frame["Close"].iloc[-1])
+        except Exception:
+            return 0
+
+    @property
+    def info(self):
+        price = self._price()
+        prev = price
+        try:
+            prev = float(self.history()["Close"].iloc[0])
+        except Exception:
+            pass
+        return {"regularMarketPrice": price, "currentPrice": price, "previousClose": prev, "shortName": str(self.symbol)}
+
+    @property
+    def fast_info(self):
+        price = self._price()
+        return {"lastPrice": price, "last_price": price, "previousClose": price, "previous_close": price}
+
+    @property
+    def options(self):
+        return ()
+
+    def option_chain(self, *args, **kwargs):
+        import pandas as pd
+        empty = pd.DataFrame()
+        return type("Chain", (), {"calls": empty, "puts": empty})()
+
+
 def _quote_frame(*args, **kwargs):
     """Scanner prices as a two-row table. Scans must not open the candle chain."""
     from market_data.layer import scan_quotes
@@ -1449,10 +1492,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.139"
+APP_VERSION = "v4.63.140"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.140: Institutional terminal, options setup, market daily, regional reports, the EMA signal, GIFT Nifty, the US premarket, the price tick, execution score and the trade ticket read the quote batch. "
     "v4.63.139: Runway top, the red-flag screen and multibagger discovery stamp the exchange quote time and refuse a quote older than five days. Multibagger discovery reads that one quote batch. "
     "v4.63.138: Live scan, runway, red flags, themes and asset intel read the quote batch. A scan still does not open a candle per symbol. "
     "v4.63.137: The daily CDS scan and the India catalyst scan use the quote batch. The home strip no longer waits on six candle sockets. "
@@ -19196,7 +19240,6 @@ _gift_nifty_cache = {"data": None, "time": 0}
 async def gift_nifty():
     """Pre-market indicator for India — Gift Nifty + global cues."""
     try:
-        import market_data.yfcompat as yf
         import time as _time
         
         # Check cache (5 min)
@@ -19227,7 +19270,7 @@ async def gift_nifty():
         results = {}
         for key, sym in symbols.items():
             try:
-                tk = yf.Ticker(sym)
+                tk = _QuoteOnly(sym)
                 hist = tk.history(period="2d")
                 if len(hist) >= 1:
                     current = float(hist['Close'].iloc[-1])
@@ -19372,7 +19415,6 @@ async def gift_nifty():
 async def us_premarket():
     """US pre/post-market indicator — futures + global cues."""
     try:
-        import market_data.yfcompat as yf
         import time as _time
         
         _t0 = _time.time()
@@ -19395,7 +19437,7 @@ async def us_premarket():
         results = {}
         for key, sym in symbols.items():
             try:
-                tk = yf.Ticker(sym)
+                tk = _QuoteOnly(sym)
                 hist = tk.history(period="2d")
                 if len(hist) >= 1:
                     current = float(hist['Close'].iloc[-1])
@@ -20147,7 +20189,6 @@ _EMA_CACHE_TTL = 60  # seconds
 async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
     """EMA 9/21 crossover + RSI signal for trading tab."""
     try:
-        import market_data.yfcompat as yf
         import numpy as np
         import time as _time
         
@@ -20165,7 +20206,7 @@ async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
         if region == 'IN' and yf_sym not in ['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY','^NSEI','^NSEBANK','^BSESN']:
             yf_sym = symbol.upper() + '.NS'
         
-        tk = yf.Ticker(yf_sym)
+        tk = _QuoteOnly(yf_sym)
         hist = tk.history(period='5d', interval='5m')
         
         # Fallback: if 5-min data insufficient, try 15-min then daily
@@ -21079,7 +21120,7 @@ async def regional_reports():
 
     def _safe_info(sym):
         try:
-            t = yf.Ticker(sym)
+            t = _QuoteOnly(sym)
             h = t.history(period="5d")
             if h is None or h.empty:
                 return {}
@@ -29041,7 +29082,7 @@ _market_daily_ts = None
 @app.get("/api/market-daily")
 async def market_daily():
     """Comprehensive daily analysis for Nifty, Bank Nifty, Sensex with technicals + options."""
-    # yfinance imported globally with 401 wrapper
+    # layer imported globally with 401 wrapper
     from datetime import datetime, timedelta
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import numpy as np
@@ -29141,7 +29182,7 @@ async def market_daily():
     
     def analyze_index(ticker_sym, info):
         try:
-            t = yf.Ticker(ticker_sym)
+            t = _QuoteOnly(ticker_sym)
             hist = t.history(period="6mo")
             if hist.empty:
                 return info["short"], None
@@ -32981,46 +33022,18 @@ async def price_tick(symbol: str = "NIFTY", region: str = "IN"):
         day_open = 0
         volume = 0
         
-        # Method 1: Direct Yahoo HTTP (fastest — no yfinance overhead)
-        try:
-            ticker = yf_sym.replace("^", "%5E")
-
-            r = _chart_response(ticker, interval="1d", range="2d")
-            if r.status_code == 200:
-                data = r.json()
-                meta = data.get("chart", {}).get("result", [{}])[0].get("meta", {})
-                price = round(float(meta.get("regularMarketPrice", 0)), 2)
-                prev_close = round(float(meta.get("chartPreviousClose", meta.get("previousClose", 0))), 2)
-                day_high = round(float(meta.get("regularMarketDayHigh", price)), 2)
-                day_low = round(float(meta.get("regularMarketDayLow", price)), 2)
-                volume = int(meta.get("regularMarketVolume", 0))
-        except:
-            pass
-        
-        # Method 2: yfinance fast_info fallback
+        # One quote. This refresh must not open the candle chain.
         if price <= 0:
             try:
                 _loop = asyncio.get_event_loop()
 
-                tk = yf.Ticker(yf_sym)
+                tk = _QuoteOnly(yf_sym)
                 fi = await _loop.run_in_executor(None, lambda: tk.fast_info)
                 price = round(float(fi.get("lastPrice", fi.get("last_price", 0))), 2)
                 prev_close = round(float(fi.get("previousClose", fi.get("previous_close", 0))), 2)
             except:
                 pass
         
-        if price <= 0:
-            try:
-                from live_markets.service import price_tick_quote
-                alt = price_tick_quote(symbol, "US" if is_us else "IN")
-            except Exception:
-                alt = None
-            if alt and alt.get("price"):
-                price = alt["price"]
-                prev_close = alt.get("prev_close") or price
-                volume = alt.get("volume") or volume
-                day_high = alt.get("day_high") or price
-                day_low = alt.get("day_low") or price
         if price <= 0:
             return {"success": False, "error": f"Could not fetch price for {symbol}"}
         
@@ -42284,7 +42297,7 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
     if not sym:
         return {"success": False, "error": "Enter a symbol (e.g. NVDA, RELIANCE, DIXON)."}
     if yf is None:
-        return {"success": False, "error": "yfinance unavailable"}
+        return {"success": False, "error": "layer unavailable"}
     region = (region or "US").upper()
     ck = "it_%s_%s" % (region, sym)
     if not refresh and ck in _INST_TERM_CACHE and (_t.time() - _INST_TERM_CACHE[ck][0] < _INST_TERM_TTL):
@@ -42298,7 +42311,7 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
         try: pass
         except Exception: pass
         try:
-            return yf.download(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
+            return _quote_frame(tickers="%s %s" % (yf_sym, bench), period="2y", interval="1d",
                                group_by="ticker", auto_adjust=True, threads=True, progress=False)
         except Exception:
             return None
@@ -42309,7 +42322,7 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
             cols = hist.columns
             if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
                 d = hist[ys].dropna()
-                return d if (d is not None and len(d) >= 60) else None
+                return d if (d is not None and len(d) >= 2) else None
         except Exception:
             pass
         return None
@@ -42425,7 +42438,7 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
             try: pass
             except Exception: pass
             try:
-                return yf.download(tickers=" ".join(idx + sects), period="1y", interval="1d",
+                return _quote_frame(tickers=" ".join(idx + sects), period="1y", interval="1d",
                                    group_by="ticker", auto_adjust=True, threads=True, progress=False)
             except Exception:
                 return None
@@ -42488,7 +42501,12 @@ async def institutional_terminal(symbol: str = "", region: str = "US", refresh: 
     except Exception:
         pass
 
-    out = {"success": True, "as_of": _MB_DISCOVERY_ASOF, "yf_sym": yf_sym,
+    from market_data.layer import quote_batch_clock
+    clock = quote_batch_clock((getattr(hist, "attrs", {}) or {}).get("quote_book") or {})
+    if not clock["ok"]:
+        return {"success": False, "symbol": sym, "region": region, "as_of": clock.get("as_of"), "error": clock["error"]}
+
+    out = {"success": True, "as_of": clock["as_of"], "yf_sym": yf_sym,
            "market_regime": regime, "sector_rotation": rotation, **_inst_terminal(meta, tech, fund)}
     _INST_TERM_CACHE[ck] = (_t.time(), out)
     return out
@@ -47051,7 +47069,7 @@ async def options_setup_detector(email: str = "", region: str = "US"):
     """r52: Detect stocks with unusual options activity suggesting short-term moves.
     
     Auto-selects data source:
-      - US: Yahoo (15-min delayed) — always available
+      - US: quote feed (15-min delayed) — always available
       - IN: Existing NSE snapshot feed, when available
     """
     email = email.strip().lower()
@@ -47067,7 +47085,7 @@ async def options_setup_detector(email: str = "", region: str = "US"):
     if region == "IN":
         return await _options_setup_india_nse(email)
 
-    # 15-min cache (matches Yahoo delay)
+    # 15-min cache (matches quote feed delay)
     cache = _options_setup_cache.get(region, {})
     if cache.get("data") and time.time() - cache.get("ts", 0) < 900:
         return cache["data"]
@@ -47089,11 +47107,10 @@ async def options_setup_detector(email: str = "", region: str = "US"):
     yf_symbols = universe  # US region — no suffix
     
     # Batch price history
-    import market_data.yfcompat as yf
     try:
         hist_all = await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: yf.download(
+            lambda: _quote_frame(
                 tickers=" ".join(yf_symbols),
                 period="3mo", interval="1d",
                 group_by="ticker", progress=False, threads=True, auto_adjust=False,
@@ -47127,7 +47144,7 @@ async def options_setup_detector(email: str = "", region: str = "US"):
                 
                 def _blocking_fetch():
                     try:
-                        tk = yf.Ticker(sym)
+                        tk = _QuoteOnly(sym)
                         info = tk.info or {}
                         expiries = tk.options
                         if not expiries or len(expiries) == 0:
@@ -47188,7 +47205,7 @@ async def options_setup_detector(email: str = "", region: str = "US"):
         "bullish": bullish,
         "bearish": bearish,
         "total_candidates": len(candidates),
-        "data_freshness": "15-min delayed (Yahoo free tier)",
+        "data_freshness": "15-min delayed (quote feed free tier)",
         "honest_disclaimer": (
             "⚠ CRITICAL: This uses 15-MIN DELAYED data. It is a SCREENER, NOT a live trade feed. "
             "For actual execution: use your broker's real-time quotes (your broker). "
@@ -47395,13 +47412,12 @@ async def trade_ticket(
     t0 = time.time()
     
     try:
-        import market_data.yfcompat as yf
         import numpy as np
         from datetime import datetime as _dt
         from market_data.yfcompat import history_frame
         from concurrent.futures import ThreadPoolExecutor
         yf_sym = symbol if region == "US" else symbol + ".NS"
-        tk = yf.Ticker(yf_sym)
+        tk = _QuoteOnly(yf_sym)
         
         # ── Fetch price history (60d for ATR, RSI, MA calcs) ──
         _info_pool = ThreadPoolExecutor(max_workers=1)
@@ -55438,7 +55454,7 @@ async def execution_score_v2(symbol: str = "", region: str = "US", email: str = 
     ema50_slope = 0
     last_10_std_pct = None
     try:
-        _tk = yf.Ticker(symbol if region == "US" else f"{symbol}.NS")
+        _tk = _QuoteOnly(symbol if region == "US" else f"{symbol}.NS")
         _hist = _tk.history(period="40d", interval="1d")
         if _hist is not None and len(_hist) >= 25:
             closes = _hist["Close"].values.tolist()

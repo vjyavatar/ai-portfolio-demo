@@ -40,6 +40,16 @@ PHASE2 = {
     "red_flag_screen",
     "high_prob_setups",
     "asset_intelligence",
+    "institutional_terminal",
+    "options_setup_detector",
+    "market_daily",
+    "regional_reports",
+    "ema_signal",
+    "gift_nifty",
+    "us_premarket",
+    "price_tick",
+    "execution_score_v2",
+    "trade_ticket",
 }
 
 PHASE1 = {
