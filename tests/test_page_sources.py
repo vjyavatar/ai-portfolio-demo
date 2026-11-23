@@ -60,6 +60,16 @@ PHASE2 = {
     "market_why",
     "master_decision",
     "stock_news",
+    "_capital_rotation_impl",
+    "_macro_impact_impl",
+    "_inst_conviction_impl",
+    "_mgmt_change_impl",
+    "_earnings_pred_impl",
+    "_multibagger_prob_impl",
+    "earnings_setup",
+    "earnings_calendar",
+    "microcap_hunter",
+    "journal_list",
 }
 
 PHASE1 = {

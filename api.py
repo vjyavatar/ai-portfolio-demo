@@ -1492,10 +1492,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.141"
+APP_VERSION = "v4.63.142"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.142: Capital rotation, macro impact, conviction, management change, earnings, the micro-cap hunter and the journal read the quote batch. A scan still does not open a candle per symbol. "
     "v4.63.141: Theme list, the one-name decision card and the one-name red-flag card stamp the exchange quote time and refuse a quote older than five days. Fund live, structural change, the leaderboard, health, options flow, trade validation, opportunity runway, market why, the master decision and stock news read the quote batch. "
     "v4.63.140: Institutional terminal, options setup, market daily, regional reports, the EMA signal, GIFT Nifty, the US premarket, the price tick, execution score and the trade ticket read the quote batch. "
     "v4.63.139: Runway top, the red-flag screen and multibagger discovery stamp the exchange quote time and refuse a quote older than five days. Multibagger discovery reads that one quote batch. "
@@ -6811,15 +6812,14 @@ async def _inst_conviction_impl(symbol, region, refresh):
     })
 
     # Component 6: Institutional ownership (from /api/smart-exit-engine signal)
-    # Light proxy from yfinance.info — score 0-10
+    # Light proxy from layer.info — score 0-10
     try:
-        import market_data.yfcompat as yf
         import asyncio as _aio
         try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
         def _f():
-            try: return (yf.Ticker(yf_sym).info or {})
+            try: return (_QuoteOnly(yf_sym).info or {})
             except Exception: return {}
         info_inst = await _aio.get_event_loop().run_in_executor(None, _f)
     except Exception:
@@ -6841,7 +6841,7 @@ async def _inst_conviction_impl(symbol, region, refresh):
         out["warnings"].append("13F institutional ownership not retrievable — scored 5/10 neutral")
     out["components"].append({
         "name": "Institutional Ownership", "score": c6_score, "max": 10,
-        "raw": held_pct, "source": "yfinance.info.heldPercentInstitutions",
+        "raw": held_pct, "source": "layer.info.heldPercentInstitutions",
         "note": c6_note
     })
 
@@ -6870,7 +6870,7 @@ async def _inst_conviction_impl(symbol, region, refresh):
                 accum = smv3_data.get("accumulation", "?")
                 c7_note = f"smv3 score {smv3_score} · {stage} stage · {accum} accumulation · {action}"
             else:
-                c7_note = "smv3 returned no score (likely insufficient yfinance data)"
+                c7_note = "smv3 returned no score (likely insufficient layer data)"
                 out["warnings"].append("Smart Money v3 returned no score — Component 7 scored neutral")
         else:
             c7_note = "smv3 returned None (data fetch failed)"
@@ -6904,7 +6904,7 @@ async def _inst_conviction_impl(symbol, region, refresh):
         out["verdict"] = "EXIT ZONE"; out["color"] = "red"
 
     out["elapsed_sec"] = round(_time.time() - t0, 2)
-    out["_inputs_from"] = "stock-dashboard + yfinance + smart-money-v3 (r99.41)"
+    out["_inputs_from"] = "stock-dashboard + layer + smart-money-v3 (r99.41)"
     out["_future_inputs"] = [
         "dd-positioning-intelligence (FII/DII, block trades) — needs services/ module",
         "Options put/call skew — F&O feed integration r99.42+",
@@ -6993,28 +6993,26 @@ async def _capital_rotation_impl(region, lookback_days, refresh):
     }
 
     try:
-        import market_data.yfcompat as yf
-        import asyncio as _aio
-        try: pass
-        except Exception: pass
+        sector_universe = _SECTOR_ETFS.get(region, _SECTOR_ETFS["US"])
+        frame = _quote_frame([sym for sym, _label in sector_universe], region=region)
 
-        def _fetch_etf(yf_sym):
+        def _closes(ys):
             try:
-                tk = yf.Ticker(yf_sym)
-                hist = tk.history(period=f"{lookback_days + 10}d", interval="1d", auto_adjust=True)
-                if hist is None or hist.empty:
+                if frame is None or len(frame) == 0:
                     return None
-                closes = list(hist["Close"].dropna())
-                if len(closes) < 5: return None
-                return closes
+                cols = frame.columns
+                if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                    sub = frame[ys]
+                else:
+                    return None
+                closes = [float(x) for x in list(sub["Close"].dropna())]
+                return closes if len(closes) >= 2 else None
             except Exception:
                 return None
 
-        _lp = _aio.get_event_loop()
-        sector_universe = _SECTOR_ETFS.get(region, _SECTOR_ETFS["US"])
         for yf_sym, label in sector_universe:
-            closes = await _lp.run_in_executor(None, _fetch_etf, yf_sym)
-            if not closes or len(closes) < 5:
+            closes = _closes(yf_sym)
+            if not closes or len(closes) < 2:
                 out["sectors"].append({
                     "etf": yf_sym, "sector": label, "return_pct": None,
                     "note": "data unavailable"
@@ -7028,7 +7026,7 @@ async def _capital_rotation_impl(region, lookback_days, refresh):
                 "last_price": round(closes[-1], 2),
             })
     except ImportError:
-        out["warnings"].append("yfinance not available")
+        out["warnings"].append("layer not available")
 
     # Identify benchmark return
     benchmark_label = "S&P 500" if region == "US" else "Nifty 50"
@@ -7311,13 +7309,12 @@ async def _multibagger_prob_impl(symbol, region, refresh):
     c6 = {"name": "Ownership Quality", "max": 15, "score": 0,
           "evidence": [], "verdict": "UNKNOWN"}
     try:
-        import market_data.yfcompat as yf
         import asyncio as _aio
         try: pass
         except Exception: pass
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
         def _f():
-            try: return (yf.Ticker(yf_sym).info or {})
+            try: return (_QuoteOnly(yf_sym).info or {})
             except Exception: return {}
         info_for_own = await _aio.get_event_loop().run_in_executor(None, _f)
     except Exception:
@@ -7349,7 +7346,7 @@ async def _multibagger_prob_impl(symbol, region, refresh):
     out["components"].append(c6)
 
     # ───────── C7: Insider Buying (10 pts) ─────────
-    # r99.41: Wired to yfinance.insider_transactions via _get_insider_activity_proper.
+    # r99.41: Wired to layer.insider_transactions via _get_insider_activity_proper.
     # Replaces r99.40 placeholder that scored neutral 5/10. Honest fallback
     # if data unavailable.
     c7 = {"name": "Insider Buying Signal", "max": 10, "score": 0,
@@ -7390,7 +7387,7 @@ async def _multibagger_prob_impl(symbol, region, refresh):
             c7["evidence"].append(f"${sv:,} sold by {sc} insider(s) — bearish insider signal")
     else:
         c7["score"] = 5; c7["verdict"] = "DATA UNAVAILABLE"
-        c7["evidence"].append(f"yfinance fetch failed: {insider_data.get('error', 'unknown')}")
+        c7["evidence"].append(f"layer fetch failed: {insider_data.get('error', 'unknown')}")
         c7["evidence"].append("Scored neutral 5/10 (no positive or negative signal)")
         out["warnings"].append("Insider data fetch failed — C7 scored neutral")
     out["components"].append(c7)
@@ -7689,7 +7686,6 @@ async def _earnings_pred_impl(symbol, region, refresh):
     }
 
     try:
-        import market_data.yfcompat as yf
         import asyncio as _aio
         try: pass
         except Exception: pass
@@ -7697,7 +7693,7 @@ async def _earnings_pred_impl(symbol, region, refresh):
 
         def _fetch():
             try:
-                tk = yf.Ticker(yf_sym)
+                tk = _QuoteOnly(yf_sym)
                 info = tk.info or {}
                 cal = None
                 try: cal = tk.calendar
@@ -7713,7 +7709,7 @@ async def _earnings_pred_impl(symbol, region, refresh):
                 return {"_err": str(_e)[:120]}, None, None, None
         info, cal, recs, ehist = await _aio.get_event_loop().run_in_executor(None, _fetch)
     except ImportError:
-        return {"success": False, "error": "yfinance not available"}
+        return {"success": False, "error": "layer not available"}
 
     if not isinstance(info, dict): info = {}
 
@@ -7743,7 +7739,7 @@ async def _earnings_pred_impl(symbol, region, refresh):
             out["earnings_date"] = str(next_earnings)
 
     if out["days_to_earnings"] is None:
-        out["warnings"].append("Next earnings date not retrievable from yfinance calendar")
+        out["warnings"].append("Next earnings date not retrievable from layer calendar")
 
     # ───────── SIGNAL 1: Historical beat pattern (25 pts) ─────────
     s1 = {"name": "Historical Beat Pattern", "score": 12, "max": 25,
@@ -7773,7 +7769,7 @@ async def _earnings_pred_impl(symbol, region, refresh):
         except Exception as e:
             s1["evidence"].append(f"Parse error: {str(e)[:60]}")
     else:
-        s1["evidence"].append("Earnings history unavailable from yfinance")
+        s1["evidence"].append("Earnings history unavailable from layer")
     out["signals"].append(s1)
 
     # ───────── SIGNAL 2: Analyst recommendation trend (25 pts) ─────────
@@ -7913,7 +7909,7 @@ async def _earnings_pred_impl(symbol, region, refresh):
         out["color"] = "red"
 
     out["_future_inputs"] = [
-        "Options put/call ratio (sentiment) — needs exchange / Yahoo options chain wiring",
+        "Options put/call ratio (sentiment) — needs exchange / quote feed options chain wiring",
         "IV expansion (implied move) — r99.41 options-IV time-series",
         "Form 4 insider transactions (US) / SEBI insider (IN) — r99.41",
         "Pre-earnings news sentiment NLP — r99.42",
@@ -7993,38 +7989,39 @@ async def _macro_impact_impl(symbol, region, refresh):
     }
 
     try:
-        import market_data.yfcompat as yf
         import asyncio as _aio
         try: pass
         except Exception: pass
 
         yf_sym = symbol if region == "US" else f"{symbol}.NS"
 
-        def _fetch_history(yf_ticker):
+        factors = _MACRO_FACTORS.get(region, _MACRO_FACTORS["US"])
+        frame = _quote_frame([yf_sym] + [factor["ticker"] for factor in factors], region=region)
+
+        def _rets(ys):
             try:
-                tk = yf.Ticker(yf_ticker)
-                hist = tk.history(period="6mo", interval="1d", auto_adjust=True)
-                if hist is None or hasattr(hist, 'empty') and hist.empty:
+                if frame is None or len(frame) == 0:
                     return None
-                closes = list(hist["Close"].dropna())
-                if len(closes) < 30: return None
-                # Daily returns
-                rets = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))
-                        if closes[i-1] != 0]
-                return rets
+                cols = frame.columns
+                if hasattr(cols, "get_level_values") and ys in set(cols.get_level_values(0)):
+                    sub = frame[ys]
+                else:
+                    return None
+                closes = [float(x) for x in list(sub["Close"].dropna())]
+                if len(closes) < 2:
+                    return None
+                return [(closes[i] - closes[i - 1]) / closes[i - 1] for i in range(1, len(closes)) if closes[i - 1]]
             except Exception:
                 return None
 
-        _lp = _aio.get_event_loop()
-        stock_rets = await _lp.run_in_executor(None, _fetch_history, yf_sym)
-        if not stock_rets or len(stock_rets) < 30:
+        stock_rets = _rets(yf_sym)
+        if not stock_rets:
             out["success"] = False
-            out["error"] = "Insufficient price history for stock (need 30+ daily bars)"
+            out["error"] = "No current quote for the stock"
             return out
 
-        factors = _MACRO_FACTORS.get(region, _MACRO_FACTORS["US"])
         for factor in factors:
-            macro_rets = await _lp.run_in_executor(None, _fetch_history, factor["ticker"])
+            macro_rets = _rets(factor["ticker"])
             f_out = {
                 # r99.42: frontend reads name/score/interpretation. Provide both
                 # the legacy keys (factor/impact_score/verdict) AND the names the
@@ -8036,9 +8033,9 @@ async def _macro_impact_impl(symbol, region, refresh):
                 "correlation": None, "impact_score": 0, "score": 0,
                 "verdict": "UNKNOWN",
             }
-            if not macro_rets or len(macro_rets) < 30:
+            if not macro_rets:
                 f_out["verdict"] = "DATA UNAVAILABLE"
-                f_out["interpretation"] = "Macro factor data unavailable from yfinance — likely rate-limited or symbol unsupported on this IP"
+                f_out["interpretation"] = "Macro factor data unavailable from layer — likely rate-limited or symbol unsupported on this IP"
                 out["factors"].append(f_out)
                 continue
             # Align lengths — take the shorter
@@ -8067,10 +8064,10 @@ async def _macro_impact_impl(symbol, region, refresh):
             # Mirror into the frontend-expected keys
             f_out["score"] = f_out["impact_score"]
             # Richer interpretation combining context + verdict
-            f_out["interpretation"] = f"{f_out['verdict']} correlation ({corr:+.2f}) over 90 days. Context: {factor['interpret_high']}"
+            f_out["interpretation"] = f"{f_out['verdict']} correlation ({corr:+.2f}) on the latest quote. Context: {factor['interpret_high']}"
             out["factors"].append(f_out)
     except ImportError:
-        return {"success": False, "error": "yfinance not available"}
+        return {"success": False, "error": "layer not available"}
 
     # Net macro score = sum of impact scores
     valid = [f for f in out["factors"] if f.get("correlation") is not None]
@@ -8161,7 +8158,6 @@ async def _mgmt_change_impl(symbol, region, refresh):
     }
 
     try:
-        import market_data.yfcompat as yf
         import asyncio as _aio
         try: pass
         except Exception: pass
@@ -8169,7 +8165,7 @@ async def _mgmt_change_impl(symbol, region, refresh):
 
         def _fetch():
             try:
-                tk = yf.Ticker(yf_sym)
+                tk = _QuoteOnly(yf_sym)
                 info = tk.info or {}
                 actions = None
                 try: actions = tk.actions
@@ -8180,7 +8176,7 @@ async def _mgmt_change_impl(symbol, region, refresh):
 
         info, actions = await _aio.get_event_loop().run_in_executor(None, _fetch)
     except ImportError:
-        return {"success": False, "error": "yfinance not available"}
+        return {"success": False, "error": "layer not available"}
 
     if not isinstance(info, dict): info = {}
 
@@ -8198,7 +8194,7 @@ async def _mgmt_change_impl(symbol, region, refresh):
             })
 
     if not out["current_officers"]:
-        out["warnings"].append("Company officer roster unavailable from yfinance")
+        out["warnings"].append("Company officer roster unavailable from layer")
 
     # Structural change PROXIES (best we can do without 8-K integration):
     proxies = []
@@ -48019,7 +48015,7 @@ async def microcap_hunter(
     if region not in ("US", "IN"):
         return {"success": False, "error": "region must be US or IN"}
 
-    # 30-min cache to avoid hammering Yahoo on every visit
+    # 30-min cache to avoid hammering quote feed on every visit
     _cache_key = f"microcap_hunter_v1:{region}:{min_score}:{limit}"
     cached = _smart_cache_get(_cache_key)
     if cached:
@@ -48036,17 +48032,25 @@ async def microcap_hunter(
     print(f"\n🎯 r62.0 Micro-Cap Hunter scan — {region} ({len(universe)} tickers)")
     t0 = time.time()
 
-    import market_data.yfcompat as yf
     candidates = []
     skipped_count = 0
     skipped_reasons = {}
+    from market_data.layer import scan_quotes
+    book = scan_quotes([sym + suffix for sym in universe], region)
 
-    for i, sym in enumerate(universe):
+    for sym in universe:
         yf_sym = sym + suffix
         try:
-            tk = yf.Ticker(yf_sym)
-            info = tk.info or {}
-            if not info or not info.get("regularMarketPrice"):
+            row = book.get(yf_sym) or {}
+            price = row.get("price") or 0
+            info = {
+                "regularMarketPrice": price,
+                "currentPrice": price,
+                "shortName": row.get("name") or sym,
+                "marketCap": row.get("mcap") or 0,
+                "averageVolume": row.get("volume") or 0,
+            }
+            if not info.get("regularMarketPrice"):
                 skipped_count += 1
                 skipped_reasons[sym] = "no_price"
                 continue
@@ -52021,7 +52025,7 @@ async def earnings_calendar(symbol: str = "", region: str = "US", email: str = "
     Returns historical earnings (last 4 Q via Finnhub /stock/earnings) +
     forward earnings (next 90 days via Finnhub /calendar/earnings if available).
     
-    For India: only past results from NSE-via-yfinance fallback. No forward dates.
+    For India: only past results from NSE-via-layer fallback. No forward dates.
     """
     import time
     
@@ -52082,12 +52086,12 @@ async def earnings_calendar(symbol: str = "", region: str = "US", email: str = "
         except Exception as e:
             print(f"[earnings-cal] upcoming fetch failed for {symbol}: {e}")
     
-        # r63.72.24: yfinance fallback if Finnhub returned nothing forward
+        # r63.72.24: layer fallback if Finnhub returned nothing forward
         # (free tier is unreliable for non-mega-caps like CSCO, IBM, ACN, etc.)
         if not upcoming:
             try:
                 import datetime as _dtR72_24
-                tk_fb = yf.Ticker(symbol)
+                tk_fb = _QuoteOnly(symbol)
                 info_fb = tk_fb.info or {}
                 ts_fb = info_fb.get("earningsTimestamp") or info_fb.get("earningsTimestampStart")
                 if ts_fb:
@@ -52106,13 +52110,13 @@ async def earnings_calendar(symbol: str = "", region: str = "US", email: str = "
                         "hour":         hour_str_fb,
                         "quarter":      None,
                         "year":         ed_fb.year,
-                        "_source":      "yfinance_fallback",
+                        "_source":      "layer_fallback",
                     })
-                    print(f"[earnings-cal r63.72.24] yfinance fallback succeeded for {symbol}")
+                    print(f"[earnings-cal r63.72.24] layer fallback succeeded for {symbol}")
                 else:
-                    print(f"[earnings-cal r63.72.24] yfinance fallback: no earnings timestamp for {symbol}")
+                    print(f"[earnings-cal r63.72.24] layer fallback: no earnings timestamp for {symbol}")
             except Exception as e:
-                print(f"[earnings-cal r63.72.24] yfinance fallback failed for {symbol}: {e}")
+                print(f"[earnings-cal r63.72.24] layer fallback failed for {symbol}: {e}")
     
     response = {
         "success":      True,
@@ -52128,7 +52132,7 @@ async def earnings_calendar(symbol: str = "", region: str = "US", email: str = "
         "data_note":    (
             "Finnhub free tier: forward dates available for US, sparse for India. Past 4-8 quarters typically present."
             if region == "US" else
-            "India free-tier coverage: past quarters via NSE/yfinance, NO forward dates. Upgrade to paid tier for full calendar."
+            "India free-tier coverage: past quarters via NSE/layer, NO forward dates. Upgrade to paid tier for full calendar."
         ),
         "_cached":      False,
     }
@@ -53792,7 +53796,7 @@ async def journal_list(email: str = ""):
         current_spot = None
         try:
             ticker_sym = symbol if region == "US" else f"{symbol}.NS"
-            tk = yf.Ticker(ticker_sym)
+            tk = _QuoteOnly(ticker_sym)
             info = tk.info or {}
             current_spot = _safe_float(info.get("regularMarketPrice") or info.get("currentPrice"))
         except Exception:
@@ -55949,7 +55953,7 @@ async def earnings_setup(symbol: str = "", region: str = "US", email: str = ""):
     # Get spot
     try:
         tk_sym = symbol if region == "US" else f"{symbol}.NS"
-        tk = yf.Ticker(tk_sym)
+        tk = _QuoteOnly(tk_sym)
         info = tk.info or {}
         spot = float(info.get("regularMarketPrice") or info.get("currentPrice") or 0)
     except Exception:
