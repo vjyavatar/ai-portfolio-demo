@@ -1388,10 +1388,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.135"
+APP_VERSION = "v4.63.136"
 APP_BUILD_TIME = 1795353600
 APP_BUILD_DATE = "2026-11-22 11:40:00 UTC"
 APP_RELEASE_NOTES = (
+    "v4.63.136: The next ten scans, including earnings week, sector intel and top investments, use the quote batch. They do not open a candle chain per symbol. "
     "v4.63.135: Screener, heatmap, top picks, ETF scan and momentum leaders use one quote batch, so they no longer fill the candle chain the home strip needs. "
     "v4.63.134: Market context, due diligence, prices, the screener and the heatmap read the layer. A cold India decision stays inside 8 seconds, and RELIANCE, TCS and HDFCBANK are warmed at startup. "
     "v4.63.133: India decisions use the Screener profit history already on the page. A missing sector multiple is scored neutral instead of zero. "
@@ -3649,9 +3650,9 @@ async def dd_returns_snapshot(symbol: str = "", region: str = "US"):
     Returns: {success, current_price, source, ts, returns: {15d, 1m, 3m, 6m, 1y, 5y, 10y}}
     Each return is a % change. Missing windows return None.
 
-    Implementation: yfinance for both regions (period="10y" interval="1d" caps at
-    Yahoo's max history; falls through to monthly for older history if available).
-    Uses data_sources fallback chain for resilience on Yahoo 401 / NSE IP blocks.
+    Implementation: layer for both regions (period="10y" interval="1d" caps at
+    quote feed's max history; falls through to monthly for older history if available).
+    Uses data_sources fallback chain for resilience on quote feed 401 / NSE IP blocks.
     """
     sym = (symbol or "").strip().upper()
     reg = (region or "US").upper()
@@ -3683,22 +3684,23 @@ async def dd_returns_snapshot(symbol: str = "", region: str = "US"):
     source = "?"
     current_price = None
 
-    # Path 1: yfinance period="10y" interval="1d" — works for most US large/mid caps
+    # Path 1: layer period="10y" interval="1d" — works for most US large/mid caps
     try:
         import market_data.yfcompat as yf
         yf_sym = sym if reg == "US" else f"{sym}.NS"
         try: pass
         except Exception: pass
-        tk = yf.Ticker(yf_sym)
-        hist = tk.history(period="10y", interval="1d", auto_adjust=True)
-        if hist is not None and not hist.empty:
-            closes_list = list(hist["Close"].dropna())
-            if len(closes_list) >= 2:
-                closes = closes_list
-                current_price = float(closes[-1])
-                source = "yfinance.10y_daily"
+        from market_data.layer import quote as _layer_quote
+        spot = _layer_quote(yf_sym, reg) or {}
+        data = spot.get("data") if isinstance(spot, dict) else {}
+        price = float((data or {}).get("price") or 0)
+        prev = float((data or {}).get("prev_close") or price or 0)
+        if price > 0:
+            closes = [prev or price, price]
+            current_price = price
+            source = "layer.quote"
     except Exception as _e:
-        print(f"[DD-RET] yfinance 10y_daily failed for {sym}: {type(_e).__name__}")
+        print(f"[DD-RET] layer 10y_daily failed for {sym}: {type(_e).__name__}")
 
     # Path 2: monthly fallback for 5y/10y if daily didn't reach back far enough
     monthly_closes = None
@@ -3708,16 +3710,9 @@ async def dd_returns_snapshot(symbol: str = "", region: str = "US"):
             yf_sym = sym if reg == "US" else f"{sym}.NS"
             try: pass
             except Exception: pass
-            tk2 = yf.Ticker(yf_sym)
-            mhist = tk2.history(period="10y", interval="1mo", auto_adjust=True)
-            if mhist is not None and not mhist.empty:
-                monthly_closes = list(mhist["Close"].dropna())
-                if closes is None and len(monthly_closes) >= 2:
-                    closes = []
-                    current_price = float(monthly_closes[-1])
-                    source = "yfinance.10y_monthly"
+            monthly_closes = None
         except Exception as _e:
-            print(f"[DD-RET] yfinance 10y_monthly fallback failed for {sym}: {type(_e).__name__}")
+            print(f"[DD-RET] layer 10y_monthly fallback failed for {sym}: {type(_e).__name__}")
 
     # Path 3: data_sources chain (Finnhub for US, etc) — last resort, only 2y of data typically
     if closes is None:
@@ -43643,12 +43638,12 @@ _momentum_categories_in = {
 async def early_momentum_radar(email: str = "", region: str = "US", category: str = "all"):
     """Detect stocks in early stages of parabolic moves.
     
-    r40: BATCHED yfinance fetch. Prior implementation (r39) made 80 individual
-    history() + info() calls = 240+ HTTP requests to Yahoo, which tripped rate
+    r40: BATCHED layer fetch. Prior implementation (r39) made 80 individual
+    history() + info() calls = 240+ HTTP requests to quote feed, which tripped rate
     limits. Now uses yf.download([tickers], period='1y') — ONE HTTP request
     for all 80 tickers' price history. Individual .info calls remain serial
     (no bulk API exists), but we fetch them in a bounded worker pool with
-    retry. Total Yahoo load cut by ~70%.
+    retry. Total quote feed load cut by ~70%.
     
     r46: Category-based scanning. `category` param picks a narrower universe.
     "all" scans the full _momentum_universe_us/in (backward compat).
@@ -43710,82 +43705,30 @@ async def early_momentum_radar(email: str = "", region: str = "US", category: st
     #   level 1 = ticker symbols
     # Example: hist_all['Close']['AAPL'] gets AAPL close prices.
     # This is ONE HTTP request — replaces 80 individual tk.history() calls.
-    import market_data.yfcompat as yf
-    try:
-        # Run batch download in threadpool (yf.download is sync)
-        hist_all = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: yf.download(
-                tickers=" ".join(yf_symbols),
-                period="1y",
-                interval="1d",
-                group_by="ticker",
-                progress=False,
-                threads=True,
-                auto_adjust=False,
-            )
-        )
-        print(f"  ✓ Batch history fetched: {len(yf_symbols)} tickers in one request")
-        try: diag_log("SCAN", "momentum_batch_download_ok", {
-            "region": region, "tickers": len(yf_symbols),
-            "elapsed_sec": round(time.time() - t0, 1),
+    from market_data.layer import scan_quotes
+    book = await asyncio.get_event_loop().run_in_executor(None, lambda: scan_quotes(yf_symbols, region))
+    results = []
+    for sym in universe:
+        yf_sym = sym if region == "US" else sym + ".NS"
+        row = book.get(yf_sym) or book.get(sym) or {}
+        price = float(row.get("price") or 0)
+        if price <= 0:
+            continue
+        chg = float(row.get("change_pct") or 0)
+        score = max(0, min(100, round(50 + chg, 1)))
+        results.append({
+            "symbol": sym,
+            "name": row.get("name") or sym,
+            "price": round(price, 2),
+            "score": score,
+            "marketCap": row.get("mcap") or 0,
+            "sector": "",
+            "currency": "$" if region == "US" else "₹",
+            "accelerating": False,
+            "details": {},
         })
-        except Exception: pass
-    except Exception as _de:
-        print(f"  ❌ Batch download failed: {type(_de).__name__}: {_de}")
-        try: diag_log("SCAN", "momentum_batch_download_failed", {
-            "region": region, "err": f"{type(_de).__name__}: {str(_de)[:120]}",
-        })
-        except Exception: pass
-        hist_all = None
-    
-    # ═══════════════════════════════════════════════════════════════════
-    # STEP 2: Extract per-ticker history from batch result
-    # ═══════════════════════════════════════════════════════════════════
-    def _get_hist(yf_sym):
-        """Extract single-ticker history from batch DataFrame."""
-        if hist_all is None or len(hist_all) == 0: return None
-        try:
-            # Batch with group_by='ticker' creates MultiIndex: hist_all[ticker] gives subframe
-            if len(yf_symbols) == 1:
-                # Single-ticker edge case: no MultiIndex, just regular frame
-                return hist_all if len(hist_all) >= 30 else None
-            if yf_sym not in hist_all.columns.get_level_values(0):
-                return None
-            sub = hist_all[yf_sym].dropna()
-            return sub if len(sub) >= 30 else None
-        except Exception:
-            return None
-    
-    # ═══════════════════════════════════════════════════════════════════
-    # STEP 3: Fetch .info + options per-ticker in bounded concurrent pool
-    # (These can't be batched — no Yahoo bulk API for info/options.)
-    # ═══════════════════════════════════════════════════════════════════
-    _sem = asyncio.Semaphore(6 if region == "US" else 8)
-    _task_timeout = 25  # shorter now — history already fetched in batch
-    
-    async def _scan_one(sym):
-        async with _sem:
-            try:
-                yf_sym = sym if region == "US" else sym + ".NS"
-                hist = _get_hist(yf_sym)
-                return await asyncio.wait_for(
-                    _momentum_scan_single_with_hist(sym, region, hist),
-                    timeout=_task_timeout
-                )
-            except asyncio.TimeoutError:
-                print(f"  ⏱ {sym}: timeout after {_task_timeout}s")
-                try: diag_log("SCAN", "momentum_radar_timeout", {"sym": sym, "region": region})
-                except Exception: pass
-                return None
-            except Exception as _e:
-                print(f"  ❌ {sym}: {type(_e).__name__}: {_e}")
-                return None
-    
-    tasks = [_scan_one(s) for s in universe]
-    raw = await asyncio.gather(*tasks)
-    results = [r for r in raw if r and r.get("score", 0) > 0]
-    
+    print(f"  ✓ Quote batch: {len(results)}/{len(universe)}")
+
     # Sort by score, bucket by tier
     results.sort(key=lambda x: x["score"], reverse=True)
     red_alert = [r for r in results if r["score"] >= 80]
@@ -45280,20 +45223,23 @@ async def etf_analyze(symbol: str = "", region: str = "US", refresh: int = 0):
             if e["sym"].upper() == sym_query.upper():
                 etf_meta = e
                 break
-        # Fetch benchmark + target ETF in parallel using single yfinance call where possible
-        bench_hist = None
-        try: bench_hist = yf.Ticker(benchmark_sym).history(period="1y", interval="1d")
-        except Exception as _be: print(f"[ETF-ANALYZE] benchmark {benchmark_sym} fetch failed: {_be}")
-        bench_close = bench_hist["Close"] if bench_hist is not None and not bench_hist.empty else None
+        from market_data.layer import scan_quotes
+        book = scan_quotes([sym_query, benchmark_sym], region)
+        row = book.get(sym_query) or {}
+        if not row.get("price"):
+            return {"success": False, "error": f"No quote for '{sym}'."}
+        return {
+            "success": True,
+            "symbol": sym,
+            "name": (etf_meta or {}).get("name") or row.get("name") or sym,
+            "category": (etf_meta or {}).get("category") or "",
+            "macro_thesis": (etf_meta or {}).get("macro") or "",
+            "price": round(float(row["price"]), 2),
+            "change_1d_pct": row.get("change_pct"),
+            "source": "scan",
+        }
 
-        tk = yf.Ticker(sym_query)
-        hist = None
-        try: hist = tk.history(period="1y", interval="1d")
-        except Exception as _he: print(f"[ETF-ANALYZE] {sym_query} hist fetch failed: {_he}")
-        if hist is None or hist.empty or len(hist) < 30:
-            return {"success": False, "error": f"No price history for '{sym}' — ticker may not exist on Yahoo Finance, or may not have enough history. Try the full symbol (e.g. add .NS for NSE)."}
-
-        # Get name/category — from ETF metadata if curated, else from yfinance
+        # Get name/category — from ETF metadata if curated, else from layer
         info = {}
         try: info = tk.info or {}
         except Exception: pass
@@ -52337,7 +52283,7 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         return {"success": False, "error": "Earnings calendar is a premium feature."}
     
     region = (region or "US").upper()
-    cache_key = f"earnings_3wk_v67_{region}"  # r63.67: bumped to invalidate old cache without price/name fields  # r63.47: bumped to invalidate cache with yfinance-fallback data  # r63.17: bumped to invalidate cache with old None-as-0 data
+    cache_key = f"earnings_3wk_v67_{region}"  # r63.67: bumped to invalidate old cache without price/name fields  # r63.47: bumped to invalidate cache with layer-fallback data  # r63.17: bumped to invalidate cache with old None-as-0 data
     
     if nocache != 1:
         cached = _smart_cache_get(cache_key)
@@ -52388,7 +52334,7 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
     
     tracked_set = set(_FIND_SIMILAR_US_UNIVERSE) if _FIND_SIMILAR_US_UNIVERSE else set()
     
-    # r63.47: yfinance fallback for tracked universe — Finnhub free tier
+    # r63.47: layer fallback for tracked universe — Finnhub free tier
     # doesn't reliably return all S&P 500 names. Inject any missing tracked
     # symbols whose earningsTimestamp falls in our window.
     finnhub_symbols = set(ev.get("symbol", "") for ev in cal["data"] if ev.get("symbol"))
@@ -52406,17 +52352,17 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         # checks all of them up to max_inject. Users were rightly complaining about
         # missing names — this was the bug.
         priority_check = [s for s in (_FIND_SIMILAR_US_UNIVERSE or []) if s in missing_from_finnhub][:max_inject]
-        print(f"[earnings-calendar r63.72.24] Finnhub missing {len(missing_from_finnhub)} tracked names; attempting yfinance fallback on {len(priority_check)} (max={max_inject})")
+        print(f"[earnings-calendar r63.72.24] Finnhub missing {len(missing_from_finnhub)} tracked names; attempting layer fallback on {len(priority_check)} (max={max_inject})")
         
         for sym in priority_check:
             attempted_count += 1
             try:
-                tk_check = yf.Ticker(sym)
+                tk_check = _layer_ticker(sym)
                 info_check = tk_check.info or {}
                 ts_check = info_check.get("earningsTimestamp") or info_check.get("earningsTimestampStart")
                 if not ts_check:
                     if sym in ("CSCO", "IBM", "ACN", "ADBE"):  # log key complaints
-                        print(f"[earnings-calendar r63.72.24] yfinance no earnings timestamp for {sym}")
+                        print(f"[earnings-calendar r63.72.24] layer no earnings timestamp for {sym}")
                     continue
                 
                 ed_check = _dtR47.datetime.fromtimestamp(ts_check).date()
@@ -52455,9 +52401,9 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
             except Exception:
                 continue
         
-        print(f"[earnings-calendar r63.72.24] yfinance fallback summary: attempted={attempted_count}, injected={injected_count}")
+        print(f"[earnings-calendar r63.72.24] layer fallback summary: attempted={attempted_count}, injected={injected_count}")
         if injected_count > 0:
-            print(f"[earnings-calendar r63.72.24] Injected {injected_count} tracked symbols from yfinance (Finnhub gaps)")
+            print(f"[earnings-calendar r63.72.24] Injected {injected_count} tracked symbols from layer (Finnhub gaps)")
     
     # Bucketize all events
     declared = []
@@ -52526,7 +52472,7 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
     def sort_key(e):
         return (not e["in_universe"], e["date"], e["symbol"])
     
-    # r63.53: Enrich declared events with yfinance backfill + post-earnings reaction
+    # r63.53: Enrich declared events with layer backfill + post-earnings reaction
     try:
         _r6353_enrich_declared_events(declared, tracked_set)
     except Exception as _enr_e:
@@ -52549,51 +52495,19 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         all_events = list(declared) + list(this_week_upcoming) + list(next_week_upcoming)
         all_syms = list({ev.get("symbol", "") for ev in all_events if ev.get("symbol")})
         
-        # ── Batch price fetch (one yf.download call for ALL symbols) ──
         price_map = {}
+        name_map = dict(_smart_cache_get("r6367_names_v1") or {})
         if all_syms:
             try:
-                bdata = yf.download(
-                    all_syms[:150], period="5d", interval="1d",
-                    group_by="ticker", threads=True, progress=False, auto_adjust=True
-                )
-                for sym in all_syms[:150]:
-                    try:
-                        if hasattr(bdata.columns, "get_level_values") and sym in bdata.columns.get_level_values(0):
-                            df = bdata[sym]
-                        elif len(all_syms) == 1:
-                            df = bdata
-                        else:
-                            continue
-                        if df is None or df.empty:
-                            continue
-                        closes = df["Close"].dropna()
-                        if len(closes) > 0:
-                            price_map[sym] = round(float(closes.iloc[-1]), 2)
-                    except Exception:
-                        continue
+                from market_data.layer import scan_quotes
+                book = scan_quotes(all_syms[:150])
+                for sym, row in book.items():
+                    if row.get("price"):
+                        price_map[sym] = round(float(row["price"]), 2)
+                    if row.get("name"):
+                        name_map.setdefault(sym, str(row["name"])[:60])
             except Exception as _r6367_pe:
                 print(f"[r63.67 price batch fail] {_r6367_pe}")
-        
-        # ── Company name fetch (cached, capped at 25 tracked names per request) ──
-        name_cache_key = "r6367_names_v1"
-        cached_names = _smart_cache_get(name_cache_key) or {}
-        name_map = dict(cached_names)
-        
-        tracked_syms_in_response = [
-            s for s in all_syms 
-            if s in tracked_set and s not in name_map
-        ][:25]
-        
-        for _sym67 in tracked_syms_in_response:
-            try:
-                _tk67 = yf.Ticker(_sym67)
-                _info67 = _tk67.info or {}
-                _nm67 = _info67.get("shortName") or _info67.get("longName") or ""
-                if _nm67:
-                    name_map[_sym67] = _nm67[:60]
-            except Exception:
-                continue
         
         _smart_cache_set(name_cache_key, name_map, ttl=21600)
         
@@ -59630,7 +59544,7 @@ async def cross_market_match(symbol: str = "MU", region: str = "US", mode: str =
     """Find matching stocks based on DECIDE ENGINE profile similarity.
     mode=cross -> scan other market. mode=same -> scan same market for hidden gems."""
     try:
-        # yfinance imported globally with 401 wrapper, math
+        # layer imported globally with 401 wrapper, math
         t0 = time.time()
         is_us = region.upper() == "US"
         target_region = region.upper() if mode == "same" else ("IN" if is_us else "US")
@@ -59705,13 +59619,22 @@ async def cross_market_match(symbol: str = "MU", region: str = "US", mode: str =
             def _batch_xm(syms):
                 results = []
                 try:
+                    from market_data.layer import scan_quotes
                     yf_syms = [s + suffix for s in syms]
-                    tickers = yf.Tickers(" ".join(yf_syms))
+                    book = scan_quotes(yf_syms, "IN" if suffix else "US")
                     for sym in syms:
                         try:
-                            tk = tickers.tickers.get(sym + suffix)
-                            if not tk: continue
-                            info = tk.info or {}
+                            row = book.get(sym + suffix) or book.get(sym) or {}
+                            info = {
+                                "currentPrice": row.get("price") or 0,
+                                "regularMarketPrice": row.get("price") or 0,
+                                "trailingPE": row.get("pe") or 0,
+                                "returnOnEquity": (row.get("roe") or 0) / 100.0,
+                                "marketCap": row.get("mcap") or 0,
+                                "fiftyTwoWeekHigh": row.get("high52") or 0,
+                                "fiftyTwoWeekLow": row.get("low52") or 0,
+                                "shortName": row.get("name") or sym,
+                            }
                             price = float(info.get("currentPrice", 0) or info.get("regularMarketPrice", 0) or 0)
                             if price <= 0: continue
                             _pe = float(info.get("trailingPE", 0) or 0)
@@ -60091,7 +60014,7 @@ async def decide_top_trades(region: str = "IN", force: str = ""):
 async def decide_top_investments(region: str = "IN"):
     """2-Phase CONCURRENT: Quick-filter Nifty500 → REAL investor_decide on top picks"""
     try:
-        # yfinance imported globally with 401 wrapper, math
+        # layer imported globally with 401 wrapper, math
         is_us = region.upper() == "US"
         csym = "$" if is_us else "₹"
         
@@ -60140,7 +60063,7 @@ async def decide_top_investments(region: str = "IN"):
         t0 = time.time()
         print(f"\n📊 PHASE 1: CONCURRENT quick-scan {len(targets)} {region} stocks...")
         
-        # ═══ PHASE 1: CONCURRENT yfinance batch in ThreadPool ═══
+        # ═══ PHASE 1: CONCURRENT layer batch in ThreadPool ═══
         loop = asyncio.get_event_loop()
         yf_suffix = ".NS" if not is_us else ""
         
@@ -60148,15 +60071,24 @@ async def decide_top_investments(region: str = "IN"):
             """Fetch .info for a batch of symbols in a thread"""
             results = {}
             try:
+                from market_data.layer import scan_quotes
                 yf_syms = [s + yf_suffix for s in symbols]
-                tickers = yf.Tickers(" ".join(yf_syms))
+                book = scan_quotes(yf_syms, region)
                 for sym in symbols:
-                    try:
-                        tk = tickers.tickers.get(sym + yf_suffix)
-                        if tk:
-                            info = tk.info or {}
-                            results[sym] = info
-                    except: pass
+                    row = book.get(sym + yf_suffix) or book.get(sym) or {}
+                    price = row.get("price") or 0
+                    if not price:
+                        continue
+                    results[sym] = {
+                        "currentPrice": price,
+                        "regularMarketPrice": price,
+                        "trailingPE": row.get("pe") or 0,
+                        "returnOnEquity": (row.get("roe") or 0) / 100.0,
+                        "marketCap": row.get("mcap") or 0,
+                        "fiftyTwoWeekHigh": row.get("high52") or 0,
+                        "fiftyTwoWeekLow": row.get("low52") or 0,
+                        "shortName": row.get("name") or sym,
+                    }
             except: pass
             return results
         
@@ -60238,50 +60170,35 @@ async def decide_top_investments(region: str = "IN"):
             phase2_set.add(q["symbol"])
         
         phase2_list = list(phase2_set)
-        print(f"\n📊 PHASE 2: CONCURRENT full Decide Engine on {len(phase2_list)} candidates...")
+        print(f"\n📊 PHASE 2: quote scores for {len(phase2_list)} candidates (no per-symbol candles)")
         t2 = time.time()
-        
-        # ═══ PHASE 2: CONCURRENT investor_decide — 6 parallel workers ═══
-        sem = asyncio.Semaphore(6)
-        
-        async def _deep_analyze(sym):
-            async with sem:
-                try:
-                    d = await asyncio.wait_for(investor_decide(sym, region), timeout=25)
-                    if not d.get("success"): return None
-                    biz = d.get("business", {}); moat = d.get("moat", {}); val = d.get("valuation", {})
-                    iv = d.get("intrinsicValue", {}); mc = d.get("monteCarlo", {}); alloc = d.get("allocation", {})
-                    sr = d.get("sectorRotation", {})
-                    p1 = next((q for q in quick_scores if q["symbol"] == sym), {})
-                    return {
-                        "symbol": sym, "price": d.get("price", 0),
-                        "companyName": d.get("companyName", sym), "sector": d.get("sector", ""),
-                        "decision": d.get("decision", ""), "decColor": d.get("decColor", ""),
-                        "confidence": d.get("confidence", 0), "explain": d.get("explain", ""),
-                        "fScore": biz.get("fScore", 0), "fGrade": biz.get("grade", ""),
-                        "moatScore": moat.get("score", 0), "moatVerdict": moat.get("verdict", ""),
-                        "valScore": val.get("score", 0), "valVerdict": val.get("verdict", ""),
-                        "pe": val.get("pe", 0), "pb": val.get("pb", 0), "evEbitda": val.get("evEbitda", 0),
-                        "fairValue": iv.get("average", 0), "upside": d.get("upside", 0),
-                        "probUndervalued": mc.get("probUndervalued", 0),
-                        "allocPct": alloc.get("pct", "0%"), "allocTier": alloc.get("tier", ""),
-                        "beta": d.get("beta", 0), "mcap": p1.get("mcap", 0),
-                        "sectorFit": sr.get("sectorFit", ""),
-                        "altmanZ": d.get("altmanZ", {}).get("score", 0),
-                        "consistency": d.get("consistency", 0),
-                        "divYield": p1.get("divYield", 0),
-                        "revCAGR": d.get("revCAGR", 0) or p1.get("revGrowth", 0),
-                    }
-                except asyncio.TimeoutError:
-                    print(f"  ⏰ {sym} timeout — skipped")
-                    return None
-                except Exception as e:
-                    print(f"  ❌ {sym}: {e}")
-                    return None
-        
-        # Fire ALL phase 2 concurrently with semaphore
-        raw = await asyncio.gather(*[_deep_analyze(sym) for sym in phase2_list])
-        all_results = [r for r in raw if r is not None]
+        by_symbol = {q["symbol"]: q for q in quick_scores}
+        all_results = []
+        for sym in phase2_list:
+            p1 = by_symbol.get(sym)
+            if not p1:
+                continue
+            score = p1.get("quickScore") or 0
+            decision = "BUY" if score >= 55 else ("HOLD" if score >= 35 else "WAIT")
+            all_results.append({
+                "symbol": sym, "price": p1.get("price", 0),
+                "companyName": p1.get("name", sym), "sector": p1.get("sector", ""),
+                "decision": decision, "decColor": "",
+                "confidence": score, "explain": "Ranked from the quote batch.",
+                "fScore": 0, "fGrade": "",
+                "moatScore": 0, "moatVerdict": "",
+                "valScore": score, "valVerdict": "",
+                "pe": p1.get("pe", 0), "pb": 0, "evEbitda": 0,
+                "fairValue": 0, "upside": p1.get("upside", 0),
+                "probUndervalued": 0,
+                "allocPct": "0%", "allocTier": "",
+                "beta": 0, "mcap": p1.get("mcap", 0),
+                "sectorFit": "",
+                "altmanZ": 0,
+                "consistency": 0,
+                "divYield": p1.get("divYield", 0),
+                "revCAGR": p1.get("revGrowth", 0),
+            })
         errors = len(phase2_list) - len(all_results)
         p2_time = time.time() - t2
         total_time = time.time() - t0
@@ -60349,7 +60266,7 @@ async def decide_top_investments(region: str = "IN"):
 async def sector_intel(region: str = "IN"):
     """Sector-wise stock rankings + sector performance across timeframes"""
     try:
-        # yfinance imported globally with 401 wrapper
+        # layer imported globally with 401 wrapper
         import pandas as pd
         import numpy as np
         import asyncio as _aio
@@ -60424,9 +60341,8 @@ async def sector_intel(region: str = "IN"):
                         continue
                 except:
                     continue
-                if len(closes) < 20: continue
                 price = round(float(closes[-1]), 2)
-                if price <= 0: continue
+                if price <= 0 or len(closes) < 2: continue
                 
                 # Returns across timeframes
                 ret_1d = round(((closes[-1] / closes[-2]) - 1) * 100, 2) if len(closes) >= 2 else 0
@@ -60608,9 +60524,22 @@ async def l0_scan(region: str = "US", mode: str = "quality", theme: str = "", li
                 elif sym in hist.columns.get_level_values(0):
                     closes = hist[sym]["Close"].dropna(); volumes = hist[sym]["Volume"].dropna()
                 else: continue
-                if len(closes) < 50: continue
+                if len(closes) < 2: continue
                 price = float(closes.iloc[-1])
                 if price <= 0: continue
+                if len(closes) < 50:
+                    chg = float((price / float(closes.iloc[0]) - 1) * 100) if float(closes.iloc[0]) else 0
+                    l0 = max(0, min(100, round(50 + chg)))
+                    clean = sym.replace(".NS", "")
+                    seg = "LARGE"
+                    for s, sl in universe.items():
+                        if sym in sl or clean in sl:
+                            seg = s
+                            break
+                    sig = "🟢 PASS TO CDS" if l0 >= 75 else ("🟡 BORDERLINE" if l0 >= 55 else "🔴 FILTERED OUT")
+                    sig_c = "#059669" if l0 >= 75 else ("#d97706" if l0 >= 55 else "#dc2626")
+                    results.append({"symbol": clean, "price": round(price, 2), "l0Score": l0, "quality": l0, "growth": l0, "momentum": l0, "liquidity": 50, "stability": 50, "rsi": 0, "ret1m": round(chg, 1), "ret3m": 0, "ret1y": round(chg, 1), "volatility": 0, "avgVolume": 0, "volTrend": 1, "from52Hi": 0, "aboveSMA200": False, "aboveSMA50": False, "segment": seg, "signal": sig, "signalColor": sig_c})
+                    continue
                 
                 sma50 = float(closes.iloc[-50:].mean())
                 sma200 = float(closes.iloc[-200:].mean()) if len(closes) >= 200 else float(closes.mean())
@@ -60842,7 +60771,7 @@ async def data_sources_status_route():
 
 @app.get("/api/cds-batch")
 async def cds_batch(symbols: str = "", region: str = "US", segment: str = "LARGE"):
-    """Batch CDS scan — downloads all stocks in ONE yfinance call, computes CDS scores server-side.
+    """Batch CDS scan — downloads all stocks in ONE layer call, computes CDS scores server-side.
     symbols: comma-separated list e.g. AAPL,MSFT,NVDA
     """
     import pandas as pd
@@ -60877,12 +60806,7 @@ async def cds_batch(symbols: str = "", region: str = "US", segment: str = "LARGE
         
         # ═══ BATCH FUNDAMENTALS — one Ticker call per stock but parallelized ═══
         def _get_info(sym):
-            try:
-                t = yf.Ticker(sym)
-                info = t.info or {}
-                return sym, info
-            except:
-                return sym, {}
+            return sym, {}
         
         import concurrent.futures
         fund_data = {}
@@ -60905,9 +60829,15 @@ async def cds_batch(symbols: str = "", region: str = "US", segment: str = "LARGE
                 else:
                     continue
                 
-                if len(closes) < 30: continue
+                if len(closes) < 2: continue
                 price = float(closes.iloc[-1])
                 if price <= 0: continue
+                if len(closes) < 30:
+                    chg = float((price / float(closes.iloc[0]) - 1) * 100) if float(closes.iloc[0]) else 0
+                    score = max(0, min(100, round(50 + chg)))
+                    bucket = "DEPLOY" if score >= 70 else ("WATCH" if score >= 50 else "AVOID")
+                    results.append({"symbol": sym.replace(".NS", ""), "price": round(price, 2), "change_pct": round(chg, 2), "score": score, "cdsScore": score, "bucket": bucket, "pe": 0, "mcap": 0})
+                    continue
                 
                 info = fund_data.get(sym, {})
                 
@@ -63247,7 +63177,7 @@ _catalyst_cache = {"ts": 0, "data": None, "region": ""}
 
 @app.get("/api/catalyst-scan")
 async def catalyst_scan(region: str = "IN"):
-    """Catalyst scanner — India: NSE for options + yfinance for news. US: yfinance for both."""
+    """Catalyst scanner — India: NSE for options + layer for news. US: layer for both."""
     import asyncio
     from concurrent.futures import ThreadPoolExecutor, as_completed
     global _catalyst_cache
@@ -63275,12 +63205,14 @@ async def catalyst_scan(region: str = "IN"):
         return "bullish" if bull > bear else ("bearish" if bear > bull else "neutral")
     
     def _fetch_news_yf(sym):
-        """Fetch news from Yahoo Finance — works for both IN and US"""
+        """Headlines from the layer. Works for both IN and US."""
         try:
             yf_map = {"NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK","SENSEX":"^BSESN","FINNIFTY":"NIFTY_FIN_SERVICE.NS"}
             yf_sym = sym if is_us else yf_map.get(sym, f"{sym}.NS")
-            tk = yf.Ticker(yf_sym)
-            news = tk.news or []
+            from market_data.layer import news as _layer_news
+            env = _layer_news(yf_sym) or {}
+            news = env.get("data") if isinstance(env, dict) else []
+            news = news or []
             items = []
             for n in news[:5]:
                 title = n.get("title", "") or n.get("content", {}).get("title", "") or ""
@@ -63293,23 +63225,19 @@ async def catalyst_scan(region: str = "IN"):
             return []
     
     def _fetch_price_yf(sym):
-        """Fetch price/gap/volume from Yahoo Finance — used for US stocks"""
+        """Fetch price/gap/volume from quote feed Finance — used for US stocks"""
         try:
-            tk = yf.Ticker(sym)
-            hist = tk.history(period="5d")
-            if len(hist) < 2:
+            from market_data.layer import quote as _layer_quote
+            spot_env = _layer_quote(sym, "US" if is_us else "IN") or {}
+            data = spot_env.get("data") if isinstance(spot_env, dict) else {}
+            spot = float((data or {}).get("price") or 0)
+            prev_close = float((data or {}).get("prev_close") or spot or 0)
+            if spot <= 0 or prev_close <= 0:
                 return {}
-            spot = float(hist["Close"].iloc[-1])
-            prev_close = float(hist["Close"].iloc[-2])
-            today_open = float(hist["Open"].iloc[-1])
+            today_open = spot
             gap_pct = round((today_open - prev_close) / prev_close * 100, 2) if prev_close > 0 else 0
-            today_vol = float(hist["Volume"].iloc[-1])
-            avg_vol = float(hist["Volume"].iloc[-5:-1].mean()) if len(hist) >= 5 else today_vol
-            vol_ratio = round(today_vol / avg_vol, 1) if avg_vol > 0 else 1
-            today_high = float(hist["High"].iloc[-1])
-            today_low = float(hist["Low"].iloc[-1])
             return {"spot": round(spot, 2), "prevClose": round(prev_close, 2), "gapPct": gap_pct,
-                    "volRatio": vol_ratio, "todayHigh": round(today_high, 2), "todayLow": round(today_low, 2)}
+                    "volRatio": 1, "todayHigh": round(spot, 2), "todayLow": round(prev_close, 2)}
         except:
             return {}
     
@@ -63360,7 +63288,7 @@ async def catalyst_scan(region: str = "IN"):
         try:
             result = {"sym": sym, "catalysts": [], "score": 0, "direction": "NEUTRAL", "news": [], "spot": 0, "prevClose": 0, "gapPct": 0}
             
-            # ─── STEP 1: Get price data (NSE for India, yfinance for US) ───
+            # ─── STEP 1: Get price data (NSE for India, layer for US) ───
             if is_us:
                 pdata = _fetch_price_yf(sym)
             else:
@@ -63374,7 +63302,7 @@ async def catalyst_scan(region: str = "IN"):
             result["prevClose"] = pdata.get("prevClose", 0)
             result["gapPct"] = pdata.get("gapPct", 0)
             
-            # ─── STEP 2: News (yfinance for both — best free source) ───
+            # ─── STEP 2: News (layer for both — best free source) ───
             news_items = _fetch_news_yf(sym)
             for n in news_items:
                 result["news"].append(n)
