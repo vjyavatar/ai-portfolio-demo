@@ -183,8 +183,55 @@ function renderReadiness() {
   $("coverage-state").textContent = $("auto-refresh").checked ? (document.hidden ? "Paused · hidden tab" : sample ? "Paused · sample mode" : "Every 5 min · one instrument") : "Manual · one instrument";
   $("coverage-detail").textContent = "Selected: " + $("symbol").value.toUpperCase() + " · checks stop when this page closes";
 }
+function renderGuidance() {
+  const action = $("guided-action"), why = $("guided-why"), next = $("guided-next");
+  const source = $("guided-source"), clock = $("guided-clock"), checks = $("guided-confidence");
+  const stages = Array.isArray(report?.stages) ? report.stages : [];
+  const passed = stages.filter(s => s.status === "pass").length;
+  const isFresh = !sample && report && fresh(report);
+  const sessionOpen = report?.market_status === "OPEN";
+  const verifiedOption = !sample && region === "US" && Boolean(optionView(optionsResult).valid);
+  let title = "WAIT — RUN RESEARCH";
+  let reason = "Choose an instrument, run research and verify data freshness before considering an entry.";
+  let step = "Run research on a selected instrument. No quote or contract is assumed.";
+  if (sample) {
+    title = "SAMPLE — NOT TRADEABLE";
+    reason = "Synthetic examples are for learning only, never live trade instructions.";
+    step = "Use the paper journal to practice. Select a live symbol to restart.";
+  } else if (report && (!isFresh || !sessionOpen)) {
+    title = "NO TRADE — SESSION / DATA";
+    reason = !isFresh ? "The price evidence is stale or unverified." : "The underlying regular session is closed or unverified.";
+    step = "Do not act on this snapshot. Recheck when the market is open and source timestamps are current.";
+  } else if (report?.verdict === "LONG_RESEARCH") {
+    title = verifiedOption ? "REVIEW CALL CONTRACT" : "BULLISH WATCH — NO OPTION ENTRY";
+    reason = verifiedOption
+      ? "Underlying research and the separate US contract check have qualifying evidence; confirm broker quotes and event risk before any action."
+      : "Bullish underlying research alone does not validate a call option or its expiry, strike and spread.";
+    step = verifiedOption
+      ? "Open the options panel below, verify current bid/ask, strike, expiry, spread and maximum premium risk."
+      : "Check the risk scenario; wait for independently verified option evidence before considering a call.";
+  } else if (report?.verdict === "BEARISH_RESEARCH") {
+    title = verifiedOption ? "REVIEW PUT CONTRACT" : "BEARISH WATCH — NO OPTION ENTRY";
+    reason = verifiedOption
+      ? "Underlying research and separate contract checks qualify for review; verify broker quotes before any action."
+      : "Bearish underlying research alone is not a verified put option entry.";
+    step = verifiedOption ? "Review the verified put contract and risk before deciding." : "No put entry: contract pricing, liquidity and expiry must be verified first.";
+  } else if (report) {
+    title = "NO TRADE — SETUP NOT READY";
+    reason = report.reason || "Required setup checks have not passed.";
+    step = "Wait for a fresh five-minute close and rerun research. Do not force an entry.";
+  }
+  action.textContent = title;
+  action.classList.toggle("action-review", verifiedOption && isFresh && sessionOpen);
+  why.textContent = reason;
+  next.textContent = step;
+  source.textContent = sample ? "SOURCE · SAMPLE" : "SOURCE · " + (report?.provider_status?.code || "UNVERIFIED");
+  clock.textContent = "BAR CLOSE · " + (report ? time(report.bar_close_time) : "UNKNOWN");
+  checks.textContent = "CHECKS · " + (stages.length ? passed + "/" + stages.length : "NOT RUN");
+}
 function render() {
   renderReadiness();
+  renderGuidance();
   const a = activeAccount();
   riskPct =
     Number.isFinite(a.riskPct) && a.riskPct >= 0.1 && a.riskPct <= 2
@@ -351,6 +398,7 @@ async function scan() {
       }
     } else optionsResult = {reason:'Options candidates currently support SPY and QQQ only.'};
     renderOptions();
+    renderGuidance();
   } catch (e) {
     if (id !== scanId) return;
     report = null;
@@ -495,6 +543,7 @@ setInterval(() => {
     });
   renderReadiness();
   renderOptions();
+  renderGuidance();
   if (report && !sample) {
     $("freshness").textContent = fresh(report) ? "Recent timestamp" : "Stale / unknown";
     if (!fresh(report)) {
