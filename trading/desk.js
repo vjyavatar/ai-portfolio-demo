@@ -370,7 +370,7 @@ async function scan() {
     scanRegion = region;
   controller = new AbortController();
   const currentController = controller;
-  const timeout = setTimeout(() => currentController.abort(), 20000);
+  const timeout = setTimeout(() => currentController.abort(), scanRegion === "IN" ? 45000 : 20000);
   $("scan-button").disabled = true;
   $("scan-button").textContent = "Researching…";
   notify("Checking data, session, trend, setup and risk.");
