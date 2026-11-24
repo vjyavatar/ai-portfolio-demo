@@ -1,0 +1,65 @@
+name: Celesys page, trading and performance QA
+
+on:
+  pull_request:
+    paths:
+      - "api.py"
+      - "start.py"
+      - "market_batch.py"
+      - "qa/browser.spec.cjs"
+      - "tests/test_market_batch_performance.py"
+      - "tests/test_web_route_regression.py"
+      - ".github/workflows/production-page-qa.yml"
+  workflow_dispatch:
+
+jobs:
+  python-backend:
+    name: Backend and outage tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install minimal offline route test dependencies
+        run: pip install fastapi==0.115.6 httpx==0.27.2 requests==2.32.3 pyotp==2.9.0
+      - name: Compile production code
+        run: python -m py_compile api.py start.py market_batch.py
+      - name: Check concurrency, provider guards and RAM settings
+        run: python -m unittest discover -s tests -p "test_market_batch_performance.py" -v
+      - name: Check every public page and Trading Desk outage behavior
+        run: python -m unittest discover -s tests -p "test_web_route_regression.py" -v
+
+  browser-lanes:
+    name: Browser QA / ${{ matrix.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [all-menus, trading-decide, research-home]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright
+        run: |
+          npm install --no-save --package-lock=false @playwright/test@1.65.1
+          npx playwright install --with-deps chromium
+      - name: Menu inventory — public access and premium navigation
+        if: matrix.lane == 'all-menus'
+        run: npx playwright test --config qa/playwright.config.cjs --grep "^menu "
+      - name: Trading, Decide, options and failure recovery
+        if: matrix.lane == 'trading-decide'
+        run: npx playwright test --config qa/playwright.config.cjs --grep "Decide|trading brief|trade|chain|options|market notifications|Active Trading"
+      - name: Homepage, Stock Research and cross-device layout
+        if: matrix.lane == 'research-home'
+        run: npx playwright test --config qa/playwright.config.cjs --grep "homepage|stock|technical|voice|chart|window focus|quick controls|market sound"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failed-${{ matrix.lane }}-${{ github.run_id }}
+          path: qa-output/
+          retention-days: 3
