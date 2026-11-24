@@ -89,7 +89,9 @@ class DecideTests(unittest.TestCase):
         pool=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_decision_pool')
         segment=ast.get_source_segment(Path('api.py').read_text(), pool)
         self.assertIn('ProcessPoolExecutor', segment)
-        self.assertIn('max_workers=2', segment)
+        # One resident decision process is the safe 2 GiB default; do not fork two.
+        self.assertIn('max_workers=1', segment)
+        self.assertNotIn('max_workers=2', segment)
         self.assertIn('fork', segment)
         self.assertNotIn('spawn', segment)
         background=next(n for n in TREE.body if isinstance(n, ast.FunctionDef) and n.name=='_background_pool')
