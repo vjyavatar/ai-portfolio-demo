@@ -759,11 +759,13 @@ def _smart_cache_set(key: str, data, ttl: int = 120):
     """Set cache with TTL in seconds."""
     _smart_cache[key] = {'data': data, 'ts': time.time(), 'ttl': ttl}
     # Evict old entries periodically (keep cache under 5000 items)
-    if len(_smart_cache) > 5000:
-        cutoff = time.time() - 600  # Remove anything older than 10 min
-        expired = [k for k, v in _smart_cache.items() if v['ts'] < cutoff]
+    if len(_smart_cache) > 256:
+        # Hard capacity, not just a best-effort expiry sweep.
+        expired = [k for k, v in list(_smart_cache.items()) if time.time() - v.get("ts", 0) >= v.get("ttl", 0)]
         for k in expired:
-            del _smart_cache[k]
+            _smart_cache.pop(k, None)
+        while len(_smart_cache) > 256:
+            _smart_cache.pop(next(iter(_smart_cache)), None)
 
 
 # ═══ v4.61.11: Disk-backed cache for DD responses ═══════════════════
@@ -851,7 +853,7 @@ def _dd_disk_cache_stats():
 
 
 # 4. SHARED THREAD POOL — for all blocking IO (yfinance, HTTP scrapes)
-_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="celesys")
+_thread_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="celesys")
 
 # 5. OPTIONAL POPULAR TICKER PRE-FETCH — disabled by default; on-demand data remains available
 _POPULAR_TICKERS_IN = [
@@ -1639,8 +1641,10 @@ async def startup_event():
     except Exception as _e:
         print(f"🗄️  Positioning DB: boot check error — {_e}")
     _auto_scan_boot()
-    asyncio.create_task(_warm_india_decisions())
-    asyncio.create_task(_start_prefetch_loop())
+    if os.getenv("CELESYS_WARM_INDIA", "0") == "1":
+        asyncio.create_task(_warm_india_decisions())
+    if os.getenv("CELESYS_PREFETCH", "").lower() == "true":
+        asyncio.create_task(_start_prefetch_loop())
     asyncio.create_task(_ws_broadcast_loop())
     import web_background
     asyncio.create_task(web_background.monitor())
@@ -2077,22 +2081,8 @@ def _fetch_multi_source_fundamentals_body(ticker):
                     try: result["trailingPE"]=float(str(_cq[0]["PE"]).replace(",","")); print(f"  ✅ CNBC PE={result.get('trailingPE','?')}")
                     except: pass
     except Exception as _ce: print(f"  ⚠️ CNBC: {_ce}")
-    try:
-        _ar = requests.get(f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey=RIBXT3XYLI69PC0Q", headers={"User-Agent":"Mozilla/5.0"}, timeout=8)
-        if _ar.status_code == 200:
-            _ad = _ar.json()
-            if _ad.get("PERatio") and _ad["PERatio"] not in ["None","-","0"]:
-                if not result.get("trailingPE"): result["trailingPE"]=float(_ad["PERatio"])
-                if not result.get("returnOnEquity") and _ad.get("ReturnOnEquityTTM") and _ad["ReturnOnEquityTTM"]!="None": result["returnOnEquity"]=float(_ad["ReturnOnEquityTTM"])
-                if not result.get("profitMargins") and _ad.get("ProfitMargin") and _ad["ProfitMargin"]!="None": result["profitMargins"]=float(_ad["ProfitMargin"])
-                if not result.get("revenueGrowth") and _ad.get("QuarterlyRevenueGrowthYOY") and _ad["QuarterlyRevenueGrowthYOY"]!="None": result["revenueGrowth"]=float(_ad["QuarterlyRevenueGrowthYOY"])
-                if not result.get("grossMargins") and _ad.get("GrossProfitTTM") and _ad.get("RevenueTTM"):
-                    try: result["grossMargins"]=round(float(_ad["GrossProfitTTM"])/float(_ad["RevenueTTM"]),4)
-                    except: pass
-                if not result.get("debtToEquity") and _ad.get("DebtToEquity"): result["debtToEquity"]=float(_ad["DebtToEquity"])
-                if not result.get("beta") and _ad.get("Beta") and _ad["Beta"]!="None": result["beta"]=float(_ad["Beta"])
-                print(f"  ✅ AlphaVantage: {sum(1 for k in ['trailingPE','returnOnEquity','profitMargins','grossMargins','revenueGrowth'] if result.get(k))}/5 GM={result.get('grossMargins',0)} RevG={result.get('revenueGrowth',0)}")
-    except Exception as _ae: print(f"  ⚠️ AlphaVantage: {_ae}")
+    # Alpha Vantage fallback disabled: redundant HTTP work and a legacy embedded key.
+    # Primary US data is Finnhub; Finviz/CNBC remain optional fundamentals fallbacks.
     return result if result else None
 
 _msf_cache = {}
@@ -2117,6 +2107,8 @@ def fetch_multi_source_fundamentals(ticker):
     if "v" not in box:
         return hit[1] if hit else None
     _msf_cache[ticker] = (now, box["v"])
+    while len(_msf_cache) > 64:
+        _msf_cache.pop(next(iter(_msf_cache)), None)
     return box["v"]
 
 def fetch_stockanalysis_fundamentals(ticker: str) -> dict:
@@ -20677,23 +20669,10 @@ async def batch_prices(request: Request):
             
             return tk, None
         
-        # Fetch ALL tickers in parallel — dedicated pool so we don't block other endpoints
-        results = {}
-        failed = []
-        with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
-            futs = {pool.submit(_fetch_one, t): t for t in tickers}
-            for f in as_completed(futs, timeout=15):
-                try:
-                    tk, price_data = f.result(timeout=8)
-                    if price_data:
-                        results[tk] = price_data
-                    else:
-                        failed.append(futs[f])
-                except:
-                    failed.append(futs[f])
-        
-        print(f"📊 batch-prices: {len(results)}/{len(tickers)} OK, {len(failed)} failed")
-        return {"success": True, "prices": results, "fetched": len(results), "cached": 0, "failed": failed[:10]}
+        # Do not block the ASGI loop with synchronous provider scans.
+        # The shared admission gate prevents overlapping multi-symbol bursts.
+        from market_batch import run_bounded_batch
+        return await asyncio.to_thread(run_bounded_batch, tickers, _fetch_one)
     except Exception as e:
         print(f"❌ batch-prices error: {e}")
         return {"success": False, "error": str(e)[:100]}
@@ -33189,7 +33168,7 @@ def _decision_child_init():
     os.environ["CELESYS_DISABLE_BACKGROUND"] = "1"
     os.environ["CELESYS_DECISION_WORKER"] = "1"
     global _thread_pool
-    _thread_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="decision-child")
+    _thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="decision-child")
 
 
 def _decision_child_ping():
@@ -33213,14 +33192,14 @@ def _reset_decision_pool():
 
 
 def _decision_pool():
-    """Two processes for the life of the server. Fork copies the import; it does not re-import per request."""
+    """One decision process on a 2 GiB Render instance; avoid duplicate heavy model state."""
     global _decision_executor
     if os.environ.get("CELESYS_DECISION_WORKER") == "1":
         raise RuntimeError("the decision worker cannot start another worker")
     if _decision_executor is None:
         import multiprocessing
         ctx = multiprocessing.get_context("fork")
-        _decision_executor = ProcessPoolExecutor(max_workers=2, mp_context=ctx, initializer=_decision_child_init)
+        _decision_executor = ProcessPoolExecutor(max_workers=1, mp_context=ctx, initializer=_decision_child_init)
     return _decision_executor
 
 
@@ -33246,12 +33225,12 @@ def _warm_decision(symbol, region):
 
 
 def warm_decision_worker():
-    """Fork both decision workers, warm NIFTY in each, and record memory."""
+    """Warm the single decision worker when explicitly enabled; record memory."""
     global _decision_worker_pids, _decision_memory
     if os.environ.get("CELESYS_DECISION_WORKER") == "1":
         return None
     pool = _decision_pool()
-    pings = [pool.submit(_decision_child_ping) for _ in range(2)]
+    pings = [pool.submit(_decision_child_ping) for _ in range(1)]
     _decision_worker_pids = []
     for ping in pings:
         try:
@@ -33321,7 +33300,7 @@ def _background_child_init():
     os.environ["CELESYS_BACKGROUND_WORKER"] = "1"
     os.environ["CELESYS_DECISION_WORKER"] = "1"
     global _thread_pool
-    _thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="background-child")
+    _thread_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="background-child")
 
 
 def _background_pool():
@@ -60667,13 +60646,15 @@ async def _run_dd_preseed():
 @app.on_event("startup")
 async def _v4_61_11_hydrate_disk_cache():
     """Load DD responses from disk in the background process."""
-    _spawn_background("hydrate", None)
+    if os.getenv("CELESYS_DD_HYDRATE", "0") == "1":
+        _spawn_background("hydrate", None)
 
 # ═══ v4.61.11: Pre-seed cache for top tickers (best-effort) ═══
 @app.on_event("startup")
 async def _v4_61_11_preseed_top_tickers():
     """Warm a few reports in the background process, not in this one."""
-    _spawn_background("preseed", None)
+    if os.getenv("CELESYS_DD_PRESEED", "0") == "1":
+        _spawn_background("preseed", None)
 
 
 @app.get("/api/debug/loop-lag")

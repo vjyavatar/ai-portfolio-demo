@@ -588,3 +588,18 @@ test('original Decide labels reused chain analytics as a returned-strike subset 
  await page.clock.fastForward(61000);expect(requested).toEqual(['2026-10-15','2026-10-22']);
  const width=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));expect(width.document<=width.viewport+2,JSON.stringify(width)).toBe(true);
 });
+
+test('Decide Trader handles HTTP 502 as unavailable without inventing a trade',async({page})=>{
+ await boot(page);await profile(page,'full');
+ await page.route('**/api/decision-engine?**',route=>route.fulfill({
+  status:502,contentType:'application/json',
+  body:JSON.stringify({success:false,error:'QA forced upstream 502'})
+ }));
+ await page.evaluate(()=>{
+  window._deMode='trader';window._deRegion='US';window.loadDE('SPY');
+ });
+ await expect(page.locator('#deResult')).toContainText('Could not load trade data');
+ await expect(page.locator('#deResult')).toContainText('API 502');
+ await expect(page.locator('#deResult')).not.toContainText('TRADE ALLOWED');
+ await expect(page.locator('#deResult')).not.toContainText('Buy now');
+});
