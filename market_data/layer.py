@@ -69,6 +69,9 @@ ANGEL_CANDLE_TIMEOUT = 2
 TTL_QUOTE = 20
 TTL_CANDLE = 5 * 60
 TTL_FUND = 18 * 3600
+# Protect the 2 GiB web instance from simultaneous heavy financial-data fetches.
+_FUND_LOAD_SLOTS = threading.BoundedSemaphore(2)
+_CACHE_MAX_ENTRIES = 64
 
 _USER_AGENT = "Celesys Research/4.63 (+https://celesys.ai)"
 _TV = "https://scanner.tradingview.com/global/scan"
@@ -205,7 +208,7 @@ def _cache_put(key: str, value: dict) -> dict:
     stored["stale"] = False
     with _lock:
         _cache[key] = {"stored_at": _now(), "value": stored}
-        if len(_cache) > 256:
+        while len(_cache) > _CACHE_MAX_ENTRIES:
             oldest = min(_cache, key=lambda item: _cache[item]["stored_at"])
             _cache.pop(oldest, None)
     return deepcopy(stored)
@@ -241,7 +244,12 @@ def _remember(key: str, ttl: float, loader: Callable[[], Optional[dict]]) -> dic
         try:
             loaded = None
             try:
-                loaded = loader()
+                if key.startswith("fund:"):
+                    # Bound simultaneous provider fan-out, including on cache misses.
+                    with _FUND_LOAD_SLOTS:
+                        loaded = loader()
+                else:
+                    loaded = loader()
             except Exception:
                 loaded = None
             if loaded and loaded.get("ok"):
