@@ -81,5 +81,31 @@ $('btn')?.addEventListener('click',()=>{$('ws-quick-controls').open=false;invali
 if(window.MutationObserver&&$('report')){let wasShown=$('report').classList.contains('show');document.addEventListener('celesys:report-ready',()=>{wasShown=$('report').classList.contains('show');$('ws-return-report').hidden=!wasShown;if(wasShown){$('ws-quick-controls').open=false;restoreReport();}});new MutationObserver(()=>{const shown=$('report').classList.contains('show');$('ws-return-report').hidden=!shown;if(shown&&!wasShown){$('ws-quick-controls').open=false;restoreReport();}wasShown=shown;}).observe($('report'),{attributes:true,attributeFilter:['class']});}
 const events=$('eventAlertArea');if(events){$('ws-event-mount').append(events);const updateEvents=()=>{$('ws-market-context').hidden=mode!=='trading'||$('tw-panel').hidden||!$('ws-event-mount').textContent.trim();};updateEvents();if(window.MutationObserver)new MutationObserver(updateEvents).observe($('ws-event-mount'),{childList:true,subtree:true,characterData:true});}
 
-const legacySearch=document.querySelector('.hero > .icard');if(legacySearch)$('ws-legacy-search').append(legacySearch);$('ws-tool-count').textContent=tools.length;for(const [group,name]of Object.entries(groupNames)){if(group==='overview')continue;const b=element('button',name,'ws-nav');b.addEventListener('click',()=>{$('ws-tool-search').value=name;showDirectory();});$('ws-group-links').append(b);}window._voiceEnabled=false;window.CelesysWorkspace={setMode,showDirectory,openTool,openAccount:account,tools};setMode('stock',true);const params=new URLSearchParams(location.search);if(params.get('sym')){$('ws-symbol').value=params.get('sym').slice(0,20).toUpperCase();if(['IN','US'].includes(params.get('region')))$('ws-region').value=params.get('region');examples();}
+const legacySearch=document.querySelector('.hero > .icard');if(legacySearch)$('ws-legacy-search').append(legacySearch);$('ws-tool-count').textContent=tools.length;// Group the existing catalog by user intent without removing any underlying tool.
+const navSections=[
+  {title:'Research & invest',groups:['research','decide','dream','moat','structural']},
+  {title:'Trade & monitor',groups:['trading','intradayopt','scanner360','markets','movers']},
+  {title:'Utilities',groups:['tools']}
+];
+for(const section of navSections){
+  const sectionEl=element('details',undefined,'ws-nav-section');
+  sectionEl.open=section.title==='Research & invest';
+  const summary=element('summary',section.title,'ws-nav-section-title');
+  sectionEl.append(summary);
+  for(const group of section.groups){
+    const name=groupNames[group];
+    const btn=element('button',name,'ws-nav ws-nav-sub');
+    btn.type='button';
+    btn.addEventListener('click',()=>{
+      $('ws-tool-search').value='';
+      showDirectory();
+      $('ws-tool-search').value=name;
+      renderDirectory();
+      document.body.classList.remove('ws-nav-open');
+      $('ws-menu-toggle').setAttribute('aria-expanded','false');
+    });
+    sectionEl.append(btn);
+  }
+  $('ws-group-links').append(sectionEl);
+}window._voiceEnabled=false;window.CelesysWorkspace={setMode,showDirectory,openTool,openAccount:account,tools};setMode('stock',true);const params=new URLSearchParams(location.search);if(params.get('sym')){$('ws-symbol').value=params.get('sym').slice(0,20).toUpperCase();if(['IN','US'].includes(params.get('region')))$('ws-region').value=params.get('region');examples();}
 })();

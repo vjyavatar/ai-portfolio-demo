@@ -215,3 +215,66 @@ body.ws-unified{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 [data-theme="dark"] .home-brief,[data-theme="dark"] .home-movers,[data-theme="dark"] .home-account button{background:#151f33;color:#f1f5f9;border-color:rgba(255,255,255,.12)}
 [data-theme="dark"] .home-tries button{color:#f1f5f9;border-color:rgba(255,255,255,.16)}
 [data-theme="dark"] .home-mover.up{color:#6ee7b7}[data-theme="dark"] .home-mover.dn{color:#fca5a5}
+
+/* Navigation clarity refresh — scoped to the unified workspace. */
+.ws-unified{--ws-sidebar:248px;--ws-bg:#f6f8fb;--ws-line:#e1e7ee;--ws-soft:#eaf6f2}
+.ws-unified .ws-sidebar{background:#0c1b2d;padding:22px 13px;gap:2px}
+.ws-unified .ws-brand{padding:8px 12px 20px;letter-spacing:.04em}
+.ws-unified .ws-nav{min-height:42px;border-radius:11px;transition:background-color .16s ease,border-color .16s ease}
+.ws-unified .ws-nav.active{background:#1c4b50;border-color:#39746d}
+.ws-unified .ws-nav-section{border-top:1px solid #26384b;margin-top:12px;padding-top:10px}
+.ws-unified .ws-nav-section-title{color:#a8bacb;cursor:pointer;list-style:none;font-size:11px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
+.ws-unified .ws-nav-section-title::-webkit-details-marker{display:none}
+.ws-unified .ws-nav-section-title::after{content:'+';font-size:17px;line-height:1}
+.ws-unified .ws-nav-section[open]>.ws-nav-section-title::after{content:'−'}
+.ws-unified .ws-nav-sub{padding:9px 14px!important;font-size:12px!important;color:#c3d3df!important}
+.ws-unified .ws-topbar{box-shadow:0 2px 12px #0c1b2d08}
+.ws-unified .ws-main{max-width:1640px;padding-top:28px}
+.ws-unified .ws-command,.ws-unified .ws-panel,.ws-unified .ws-start-card{border-radius:16px;box-shadow:0 8px 28px #0c1b2d08}
+.ws-unified .ws-main input:focus-visible,.ws-unified .ws-main select:focus-visible,.ws-unified button:focus-visible,.ws-unified a:focus-visible,.ws-unified summary:focus-visible{outline:3px solid #56bfa4;outline-offset:2px}
+@media(max-width:760px){.ws-unified .ws-main{padding:20px 14px}.ws-unified .ws-command,.ws-unified .ws-panel{padding:16px}}
+@media(prefers-reduced-motion:reduce){.ws-unified .ws-nav{transition:none}}
+
+
+/* Responsive QA hardening for trading and Decide on narrow viewports. */
+.ws-unified #bm-panel,.ws-unified #bm-chart{
+  display:block;min-width:0;max-width:100%;width:100%;box-sizing:border-box;
+}
+.ws-unified #bm-chart svg{
+  display:block;width:100%;height:auto;min-width:0;aspect-ratio:640/170;
+}
+.ws-unified #de-options-ticket,.ws-unified #de-option-chain{
+  width:100%;min-width:0;max-width:100%;box-sizing:border-box;
+}
+.ws-unified #de-options-ticket dl{display:grid;min-width:0;max-width:100%}
+.ws-unified #de-options-ticket dl>div{min-width:0;display:block}
+.ws-unified #de-options-ticket dl dd{display:block;visibility:visible}
+.ws-unified #de-option-chain{overflow-x:auto}
+@media(max-width:760px){
+  .ws-unified .ws-topbar{max-width:100%;min-width:0;gap:6px}
+  .ws-unified .ws-top-actions{
+    flex:1 1 auto;min-width:0;max-width:calc(100vw - 80px);
+    overflow-x:auto;scrollbar-width:none;justify-content:flex-end;
+  }
+  .ws-unified .ws-top-actions::-webkit-scrollbar{display:none}
+  .ws-unified .ws-top-actions button{flex:0 0 auto;white-space:nowrap;padding:7px;font-size:11px}
+  .ws-unified .ws-main,.ws-unified .home-brief,.ws-unified .home-movers{
+    box-sizing:border-box;min-width:0;max-width:100%;
+  }
+  .ws-unified #home-brief-line,.ws-unified #home-movers-meta{
+    min-width:0;max-width:100%;overflow-wrap:anywhere;
+  }
+  .ws-unified .home-movers-head{flex-wrap:wrap}
+  .ws-unified #de-options-ticket dl{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ws-unified #de-options-ticket .do-controls{max-width:100%;min-width:0}
+}
+
+/* Keep the responsive sidebar offset on the workspace itself, not only :root.
+   The desktop redesign sets --ws-sidebar on .ws-unified; it must be reset on
+   narrow viewports or the entire legacy research surface collapses to ~76px. */
+@media (min-width:761px) and (max-width:1100px){
+  body.ws-unified{--ws-sidebar:205px}
+}
+@media (max-width:760px){
+  body.ws-unified{--ws-sidebar:0px}
+}
