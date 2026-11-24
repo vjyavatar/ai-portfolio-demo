@@ -32,6 +32,7 @@ const lists = {
   IN: [
     ["NIFTY", "Nifty 50 reference index"],
     ["BANKNIFTY", "Bank Nifty reference index"],
+    ["SENSEX", "BSE Sensex reference index"],
     ["RELIANCE", "Reliance Industries"],
     ["HDFCBANK", "HDFC Bank"],
   ],
@@ -180,11 +181,61 @@ function renderReadiness() {
   const labels = {LOCAL_PACING:"Request pacing active",REQUEST_IN_PROGRESS:"Provider request in progress",NOT_CHECKED:"Not checked",RATE_LIMITED:"Provider rate-limited",ACCESS_DENIED:"Provider access denied",HTTP_ERROR:"Provider HTTP error",CONNECTION_FAILURE:"Connection failed",INVALID_RESPONSE:"Invalid provider response",PROVIDER_FAILURE:"Provider unavailable",RESPONSE_RECEIVED:"Response received"};
   $("connection-state").textContent = sample ? "Synthetic exercise" : status ? labels[status.code] || "Unverified" : report ? "Unverified" : "Not checked";
   $("connection-detail").textContent = sample ? "No market-data connection used" : status?.code === "RESPONSE_RECEIVED" ? "Source freshness is evaluated separately" : status?.retry_after ? "Retry after " + time(status.retry_after) : "Run research to test the provider";
-  $("coverage-state").textContent = $("auto-refresh").checked ? (document.hidden ? "Paused · hidden tab" : sample ? "Paused · sample mode" : "Every 5 min · one instrument") : "Manual · one instrument";
+  $("coverage-state").textContent = $("auto-refresh").checked ? (document.hidden ? "Paused · hidden tab" : sample ? "Paused · sample mode" : "Every 15 min · one instrument") : "Manual · one instrument";
   $("coverage-detail").textContent = "Selected: " + $("symbol").value.toUpperCase() + " · checks stop when this page closes";
+}
+function renderGuidance() {
+  const action = $("guided-action"), why = $("guided-why"), next = $("guided-next");
+  const source = $("guided-source"), clock = $("guided-clock"), checks = $("guided-confidence");
+  const stages = Array.isArray(report?.stages) ? report.stages : [];
+  const passed = stages.filter(s => s.status === "pass").length;
+  const isFresh = !sample && report && fresh(report);
+  const sessionOpen = report?.market_status === "OPEN";
+  const optionStatus = optionsResult?.status;
+  const verifiedOption = !sample && region === "US" && Boolean(optionView(optionsResult).valid) &&
+    ((report?.verdict === "LONG_RESEARCH" && optionStatus === "BUY_CALL_CANDIDATE") ||
+     (report?.verdict === "BEARISH_RESEARCH" && optionStatus === "BUY_PUT_CANDIDATE"));
+  let title = "WAIT — RUN RESEARCH";
+  let reason = "Choose an instrument, run research and verify data freshness before considering an entry.";
+  let step = "Run research on a selected instrument. No quote or contract is assumed.";
+  if (sample) {
+    title = "SAMPLE — NOT TRADEABLE";
+    reason = "Synthetic examples are for learning only, never live trade instructions.";
+    step = "Use the paper journal to practice. Select a live symbol to restart.";
+  } else if (report && (!isFresh || !sessionOpen)) {
+    title = "NO TRADE — SESSION / DATA";
+    reason = !isFresh ? "The price evidence is stale or unverified." : "The underlying regular session is closed or unverified.";
+    step = "Do not act on this snapshot. Recheck when the market is open and source timestamps are current.";
+  } else if (report?.verdict === "LONG_RESEARCH") {
+    title = verifiedOption ? "REVIEW CALL CONTRACT" : "BULLISH WATCH — NO OPTION ENTRY";
+    reason = verifiedOption
+      ? "Underlying research and the separate US contract check have qualifying evidence; confirm broker quotes and event risk before any action."
+      : "Bullish underlying research alone does not validate a call option or its expiry, strike and spread.";
+    step = verifiedOption
+      ? "Open the options panel below, verify current bid/ask, strike, expiry, spread and maximum premium risk."
+      : "Check the risk scenario; wait for independently verified option evidence before considering a call.";
+  } else if (report?.verdict === "BEARISH_RESEARCH") {
+    title = verifiedOption ? "REVIEW PUT CONTRACT" : "BEARISH WATCH — NO OPTION ENTRY";
+    reason = verifiedOption
+      ? "Underlying research and separate contract checks qualify for review; verify broker quotes before any action."
+      : "Bearish underlying research alone is not a verified put option entry.";
+    step = verifiedOption ? "Review the verified put contract and risk before deciding." : "No put entry: contract pricing, liquidity and expiry must be verified first.";
+  } else if (report) {
+    title = "NO TRADE — SETUP NOT READY";
+    reason = report.reason || "Required setup checks have not passed.";
+    step = "Wait for a fresh five-minute close and rerun research. Do not force an entry.";
+  }
+  action.textContent = title;
+  action.classList.toggle("action-review", verifiedOption && isFresh && sessionOpen);
+  why.textContent = reason;
+  next.textContent = step;
+  source.textContent = sample ? "SOURCE · SAMPLE" : "SOURCE · " + (report?.provider_status?.code || "UNVERIFIED");
+  clock.textContent = "BAR CLOSE · " + (report ? time(report.bar_close_time) : "UNKNOWN");
+  checks.textContent = "CHECKS · " + (stages.length ? passed + "/" + stages.length : "NOT RUN");
 }
 function render() {
   renderReadiness();
+  renderGuidance();
   const a = activeAccount();
   riskPct =
     Number.isFinite(a.riskPct) && a.riskPct >= 0.1 && a.riskPct <= 2
@@ -327,7 +378,6 @@ async function scan() {
     )
       throw Error("Unexpected research response; no signal issued.");
     report = d;
-    alerts.process(d);
     if ($("auto-paper").checked) {
       $("auto-paper-status").textContent = autoPaper(activeAccount(), report, riskPct);
       persist();
@@ -349,13 +399,44 @@ async function scan() {
         if (id !== scanId) return;
         optionsResult = {reason:'Options evidence unavailable; no buy signal.'};
       }
-    } else optionsResult = {reason:'Options candidates currently support SPY and QQQ only.'};
+    } else if (scanRegion === "IN") {
+      try {
+        const response = await fetch(`/api/private-options/chain?symbol=${encodeURIComponent(sym)}&region=IN`,
+          {signal:currentController.signal,cache:"no-store"});
+        if (!response.ok) throw Error("India chain unavailable");
+        const chain = await response.json();
+        if (id !== scanId) return;
+        // Chain snapshots are contextual evidence only. Without independently
+        // timestamped executable bid/ask and an option-specific risk gate,
+        // do not turn them into CE/PE buy recommendations.
+        const rows = Array.isArray(chain.rows) ? chain.rows : [];
+        const callOi = rows.reduce((sum,r) => sum + (Number(r.call?.oi)||0),0);
+        const putOi = rows.reduce((sum,r) => sum + (Number(r.put?.oi)||0),0);
+        const ceWall = rows.filter(r => Number.isFinite(Number(r.call?.oi)) && Number(r.call.oi)>0)
+          .sort((a,b)=>Number(b.call.oi)-Number(a.call.oi))[0];
+        const peWall = rows.filter(r => Number.isFinite(Number(r.put?.oi)) && Number(r.put.oi)>0)
+          .sort((a,b)=>Number(b.put.oi)-Number(a.put.oi))[0];
+        const ceChange = rows.reduce((sum,r)=>sum+(Number(r.call?.oi_change)||0),0);
+        const peChange = rows.reduce((sum,r)=>sum+(Number(r.put?.oi_change)||0),0);
+        optionsResult = {
+          status:"WAIT",
+          reason:chain.status === "SNAPSHOT" && rows.length
+            ? `India chain context (not a signal): expiry ${chain.expiry || "unknown"}; ${rows.length} strikes; PCR(OI) ${callOi ? (putOi/callOi).toFixed(2) : "N/A"}; highest CE OI at ${ceWall?.strike ?? "N/A"}; highest PE OI at ${peWall?.strike ?? "N/A"}; total CE/PE OI changes ${ceChange.toLocaleString()}/${peChange.toLocaleString()}. Walls are descriptive, NOT proven support/resistance. Fresh executable contract quotes, source timestamps, spreads and 360° risk gates remain unverified: NO CE/PE BUY alert.`
+            : chain.message || "India option-chain evidence unavailable; no CE/PE buy alert."
+        };
+      } catch {
+        if (id !== scanId) return;
+        optionsResult={status:"WAIT",reason:"India chain not verified; no CE/PE buy alert."};
+      }
+    } else optionsResult = {reason:'Contract-grade options alerts support verified SPY/QQQ quotes only. Other symbols remain underlying research.'};
+    alerts.process(report, optionsResult);
     renderOptions();
+    renderGuidance();
   } catch (e) {
     if (id !== scanId) return;
     report = null;
   optionsResult = null;
-    alerts.process({symbol:sym,region:scanRegion,verdict:"WAIT",reason:"Latest research request failed; evidence cannot be reconfirmed."});
+    alerts.process({symbol:sym,region:scanRegion,verdict:"WAIT",reason:"Latest research request failed; evidence cannot be reconfirmed."}, null);
     render();
     notify(
       e.name === "AbortError"
@@ -381,9 +462,9 @@ $("auto-refresh").addEventListener("change", () => {
   if ($("auto-refresh").checked) {
     timer = setInterval(() => {
       if (!document.hidden && !sample) scan();
-    }, 300000);
+    }, 900000);
     notify(
-      "Five-minute refresh enabled while this page is visible. This is not continuous trade monitoring.",
+      "Fifteen-minute refresh enabled while this page is visible. This is not continuous trade monitoring.",
     );
   } else notify("Automatic refresh paused.");
 });
@@ -495,6 +576,7 @@ setInterval(() => {
     });
   renderReadiness();
   renderOptions();
+  renderGuidance();
   if (report && !sample) {
     $("freshness").textContent = fresh(report) ? "Recent timestamp" : "Stale / unknown";
     if (!fresh(report)) {

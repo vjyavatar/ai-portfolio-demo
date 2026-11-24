@@ -65,6 +65,30 @@
           Ready when you are. Run research to check source data and setup
           conditions.
         </div>
+        <section class="decision-hub" aria-label="Your next action">
+          <div class="decision-main">
+            <span class="tiny-label">01 / YOUR NEXT ACTION · RESEARCH ONLY</span>
+            <strong id="guided-action" class="guided-action" role="status" aria-live="polite">WAIT — RUN RESEARCH</strong>
+            <p id="guided-why">Choose a market and instrument, then press Run research. No trade is suggested without current evidence.</p>
+            <div class="decision-tags"><span id="guided-source">SOURCE · UNVERIFIED</span><span id="guided-clock">CLOSE · UNKNOWN</span><span id="guided-confidence">CHECKS · NOT RUN</span></div>
+          </div>
+          <div class="decision-next">
+            <span class="tiny-label">02 / DO THIS NEXT</span>
+            <p id="guided-next">Run a scan. If evidence is incomplete, stay out.</p>
+            <a class="button primary" href="#scan-form">Scan an instrument ↓</a>
+            <a class="decision-link" href="#risk-section">Review risk plan →</a>
+          </div>
+        </section>
+        <details class="guided-help">
+          <summary>How to use this desk — 4 simple steps</summary>
+          <ol>
+            <li><strong>Choose:</strong> United States (SPY / QQQ) or India (NIFTY / BANKNIFTY), then select a symbol.</li>
+            <li><strong>Scan:</strong> Press Run research. Check the market session, provider time, closed bars and pass/fail evidence.</li>
+            <li><strong>Decide:</strong> WAIT means no entry. Bullish/bearish underlying research is not an option order. Only a separately validated contract can be reviewed in the Options panel.</li>
+            <li><strong>Protect:</strong> Read the invalidation, stop scenario and premium at risk; paper-practice first. Turn on five-minute refresh and browser alerts only while this tab stays open.</li>
+          </ol>
+          <p>Options buying is high-risk. No verified contract, stale data, closed session or missing risk evidence means NO TRADE. Scans do not execute broker orders.</p>
+        </details>
         <section class="readiness-strip" aria-label="Research readiness">
           <div><span class="tiny-label">DATA CONNECTION</span><strong id="connection-state">Not checked</strong><small id="connection-detail">Run research to test the provider</small></div>
           <div><span class="tiny-label">SCAN COVERAGE</span><strong id="coverage-state">Manual · one instrument</strong><small id="coverage-detail">Background monitoring is off</small></div>
@@ -96,7 +120,7 @@
           ><button class="button primary" id="scan-button" type="submit">
             <span>↗</span> Run research</button
           ><label class="auto-label"
-            ><input type="checkbox" id="auto-refresh" /> Refresh every 5
+            ><input type="checkbox" id="auto-refresh" /> Refresh every 15
             min</label
           >
         </form>
@@ -120,13 +144,13 @@
           </article>
         </section>
         <section class="panel" aria-label="Options buying desk">
-          <div class="panel-head"><div><span class="tiny-label">SPY / QQQ · LONG OPTIONS</span><h2>BUY CALL / BUY PUT</h2></div><span class="badge">NO BROKER ORDERS</span></div>
+          <div class="panel-head"><div><span class="tiny-label">VERIFIED US CONTRACTS / INDIA CHAIN CONTEXT</span><h2>BUY CALL / BUY PUT</h2></div><span class="badge">NO BROKER ORDERS</span></div>
           <div class="options-body" aria-live="polite">
             <h3 id="options-title">WAIT — no options trade</h3>
             <p id="options-direction">No confirmed direction</p>
             <p id="options-reason">Run research to check CALL / PUT readiness.</p>
             <div id="options-contract"></div>
-            <p class="help">Stock paper entries below are separate. This panel does not simulate option fills or send option-specific notifications. Candidate prices expire; verify in your broker. No guaranteed fill, stop protection or profit.</p>
+            <p class="help">Stock paper entries below are separate. Qualified SPY/QQQ contract evidence can produce a conditional review alert; India chains are contextual only unless executable contract verification is implemented. Candidate prices expire; verify in your broker. No guaranteed fill, stop protection or profit.</p>
           </div>
         </section>
         <div class="main-grid">
@@ -311,7 +335,7 @@
           </div>
           <div class="journal-summary" id="journal-summary"></div>
           <label class="auto-label journal-auto"><input type="checkbox" id="auto-paper" /> Start automatic paper trading</label>
-          <p id="auto-paper-status" class="help" role="status">Stopped. Enable to scan the selected instrument every five minutes and simulate qualifying entries and observed stop/target exits.</p>
+          <p id="auto-paper-status" class="help" role="status">Stopped. Enable to scan the selected instrument every fifteen minutes and simulate qualifying entries and observed stop/target exits.</p>
           <p class="help">Long stock/ETF shares only. Uses your paper risk settings, cash limit, three-position maximum and 1% daily realized-loss guard. At most one automatic entry per instrument per session. Keep this tab open and visible; closing it stops automation. Re-enable after reload. No real orders.</p>
           <label class="auto-label journal-auto"
             ><input type="checkbox" id="auto-exit" /> Apply paper stops/targets
@@ -326,7 +350,7 @@
         </section>
         <section id="notifications-section" class="panel journal-panel">
           <div class="panel-head"><div><div class="eyebrow">DELIVERY &amp; EVIDENCE</div>
-          <h2>Notification center</h2><p class="panel-sub">Fresh underlying research only. Every alert expires with its evidence.</p></div><span class="chip">THIS BROWSER</span></div>
+          <h2>15-minute decision alerts</h2><p class="panel-sub">Current evidence, options validation and meaningful changes. NO TRADE when confirmation is missing.</p></div><span class="chip">THIS BROWSER</span></div>
           <div class="notification-controls">
             <button id="enable-alerts" class="button secondary">Enable browser alerts</button>
             <button id="enable-sound" class="button secondary">Enable &amp; test sound</button>
@@ -334,7 +358,7 @@
             <button id="export-evidence" class="button secondary">Export research evidence</button>
           </div>
           <p id="delivery-status" class="help" role="status"></p>
-          <p class="help">Scans run for the selected instrument while this tab is visible. Closing or suspending it stops checks. Sound requires enabling each session; browser and OS settings can suppress delivery. Email scheduling is separate and is not verified by this page.</p>
+          <p class="help">15-minute scans cover only the selected instrument, while this tab is visible. A change can be detected at the next scan; this is not tick-by-tick monitoring. Closing or suspending the tab stops checks. Sound requires enabling each session; browser and OS settings can suppress delivery. Email scheduling is separate and is not verified by this page.</p>
           <div id="alert-inbox" class="trust-list" aria-live="polite"></div>
         </section>
         <footer>
