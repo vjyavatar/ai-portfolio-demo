@@ -45,6 +45,7 @@ let region = "US",
   timer = null,
   controller = null,
   scanId = 0;
+const refreshDelay = () => Number($("scan-cadence")?.value || 15) * 60000;
 const alerts = notificationCenter(() => report, () => sample);
 let accounts = {},
   riskPct = 0.5;
@@ -181,8 +182,25 @@ function renderReadiness() {
   const labels = {LOCAL_PACING:"Request pacing active",REQUEST_IN_PROGRESS:"Provider request in progress",NOT_CHECKED:"Not checked",RATE_LIMITED:"Provider rate-limited",ACCESS_DENIED:"Provider access denied",HTTP_ERROR:"Provider HTTP error",CONNECTION_FAILURE:"Connection failed",INVALID_RESPONSE:"Invalid provider response",PROVIDER_FAILURE:"Provider unavailable",RESPONSE_RECEIVED:"Response received"};
   $("connection-state").textContent = sample ? "Synthetic exercise" : status ? labels[status.code] || "Unverified" : report ? "Unverified" : "Not checked";
   $("connection-detail").textContent = sample ? "No market-data connection used" : status?.code === "RESPONSE_RECEIVED" ? "Source freshness is evaluated separately" : status?.retry_after ? "Retry after " + time(status.retry_after) : "Run research to test the provider";
-  $("coverage-state").textContent = $("auto-refresh").checked ? (document.hidden ? "Paused · hidden tab" : sample ? "Paused · sample mode" : "Every 15 min · one instrument") : "Manual · one instrument";
+  $("coverage-state").textContent = $("auto-refresh").checked ? (document.hidden ? "Paused · hidden tab" : sample ? "Paused · sample mode" : `Every ${$("scan-cadence").value} min · selected instrument`) : "Manual · one instrument";
   $("coverage-detail").textContent = "Selected: " + $("symbol").value.toUpperCase() + " · checks stop when this page closes";
+}
+// Present coverage without disclosing internal scoring thresholds.
+function showEvidence(checks) {
+  const holder = $("evidence-checks");
+  if (!holder) return;
+  holder.replaceChildren();
+  if (!checks.length) {
+    holder.textContent = "Scan a supported India index to see available evidence and missing safeguards.";
+    return;
+  }
+  for (const check of checks) {
+    const line=document.createElement("div"), name=document.createElement("strong"),
+      state=document.createElement("span"), detail=document.createElement("small");
+    name.textContent=check.label; state.textContent=check.state; detail.textContent=check.detail;
+    line.className="evidence-item";
+    line.append(name,state,detail); holder.append(line);
+  }
 }
 function renderGuidance() {
   const action = $("guided-action"), why = $("guided-why"), next = $("guided-next");
@@ -222,7 +240,7 @@ function renderGuidance() {
     step = verifiedOption ? "Review the verified put contract and risk before deciding." : "No put entry: contract pricing, liquidity and expiry must be verified first.";
   } else if (report) {
     title = "NO TRADE — SETUP NOT READY";
-    reason = report.reason || "Required setup checks have not passed.";
+    reason = "A market check is incomplete. See Market Checks below for its status.";
     step = "Wait for a fresh five-minute close and rerun research. Do not force an entry.";
   }
   action.textContent = title;
@@ -291,13 +309,11 @@ function render() {
     ? report.stages
         .map(
           (s, i) =>
-            `<article class="agent"><div class="agent-top"><h3>${i + 1}. ${esc(s.name)}</h3><span class="badge ${esc(s.status)}">${esc(s.status.toUpperCase())}</span></div><p>${esc(s.detail)}</p></article>`,
+            `<article class="agent"><div class="agent-top"><h3>${i + 1}. ${esc(s.name)}</h3><span class="badge ${esc(s.status)}">${esc(s.status.toUpperCase())}</span></div><p>${s.status==="pass"?"Check confirmed.":s.status==="blocked"?"Required evidence unavailable or invalid.":"Not confirmed yet."}</p></article>`,
         )
         .join("")
     : '<div class="empty-state">Data steward → session guard → trend analyst → setup analyst → risk critic → review</div>';
-  $("decision-note").textContent =
-    report?.reason ||
-    "Call/put contract selection needs verified options quotes and contract metadata. This desk evaluates the underlying only.";
+  $("decision-note").textContent = "Market research is not an option order. Check data freshness, contract evidence and risk before acting.";
   chart();
   renderOptions();
   renderRisk();
@@ -347,6 +363,8 @@ async function scan() {
   sample = false;
   report = null;
   optionsResult = null;
+  $("chain-summary").textContent = "Waiting for verified option-chain coverage.";
+  showEvidence([]);
   busy = true;
   const id = ++scanId,
     scanRegion = region;
@@ -399,34 +417,24 @@ async function scan() {
         if (id !== scanId) return;
         optionsResult = {reason:'Options evidence unavailable; no buy signal.'};
       }
-    } else if (scanRegion === "IN") {
+    } else if (scanRegion === "IN" && ["NIFTY","BANKNIFTY","SENSEX"].includes(sym)) {
       try {
-        const response = await fetch(`/api/private-options/chain?symbol=${encodeURIComponent(sym)}&region=IN`,
+        const response = await fetch(`/api/trading-desk/india-intelligence?symbol=${encodeURIComponent(sym)}`,
           {signal:currentController.signal,cache:"no-store"});
-        if (!response.ok) throw Error("India chain unavailable");
-        const chain = await response.json();
+        if (!response.ok) throw Error("Protected chain unavailable");
+        const intel = await response.json();
         if (id !== scanId) return;
-        // Chain snapshots are contextual evidence only. Without independently
-        // timestamped executable bid/ask and an option-specific risk gate,
-        // do not turn them into CE/PE buy recommendations.
-        const rows = Array.isArray(chain.rows) ? chain.rows : [];
-        const callOi = rows.reduce((sum,r) => sum + (Number(r.call?.oi)||0),0);
-        const putOi = rows.reduce((sum,r) => sum + (Number(r.put?.oi)||0),0);
-        const ceWall = rows.filter(r => Number.isFinite(Number(r.call?.oi)) && Number(r.call.oi)>0)
-          .sort((a,b)=>Number(b.call.oi)-Number(a.call.oi))[0];
-        const peWall = rows.filter(r => Number.isFinite(Number(r.put?.oi)) && Number(r.put.oi)>0)
-          .sort((a,b)=>Number(b.put.oi)-Number(a.put.oi))[0];
-        const ceChange = rows.reduce((sum,r)=>sum+(Number(r.call?.oi_change)||0),0);
-        const peChange = rows.reduce((sum,r)=>sum+(Number(r.put?.oi_change)||0),0);
-        optionsResult = {
-          status:"WAIT",
-          reason:chain.status === "SNAPSHOT" && rows.length
-            ? `India chain context (not a signal): expiry ${chain.expiry || "unknown"}; ${rows.length} strikes; PCR(OI) ${callOi ? (putOi/callOi).toFixed(2) : "N/A"}; highest CE OI at ${ceWall?.strike ?? "N/A"}; highest PE OI at ${peWall?.strike ?? "N/A"}; total CE/PE OI changes ${ceChange.toLocaleString()}/${peChange.toLocaleString()}. Walls are descriptive, NOT proven support/resistance. Fresh executable contract quotes, source timestamps, spreads and 360° risk gates remain unverified: NO CE/PE BUY alert.`
-            : chain.message || "India option-chain evidence unavailable; no CE/PE buy alert."
-        };
+        optionsResult = {status:"WAIT",reason:intel.reason};
+        const details = intel.chain || {};
+        $("chain-summary").textContent = details.available
+          ? `Expiry ${details.expiry || "—"} · PCR ${details.pcr_oi ?? "—"} · CE OI wall ${details.highest_call_oi_strike ?? "—"} · PE OI wall ${details.highest_put_oi_strike ?? "—"} · OI changes CE ${details.total_call_oi_change ?? "—"} / PE ${details.total_put_oi_change ?? "—"}`
+          : "Verified Indian option-chain snapshot unavailable.";
+        showEvidence(intel.checks || []);
       } catch {
         if (id !== scanId) return;
-        optionsResult={status:"WAIT",reason:"India chain not verified; no CE/PE buy alert."};
+        optionsResult={status:"WAIT",reason:"Indian contract evidence unavailable; no CE/PE buy alert."};
+        $("chain-summary").textContent = "India chain could not be verified.";
+        showEvidence([]);
       }
     } else optionsResult = {reason:'Contract-grade options alerts support verified SPY/QQQ quotes only. Other symbols remain underlying research.'};
     alerts.process(report, optionsResult);
@@ -462,11 +470,15 @@ $("auto-refresh").addEventListener("change", () => {
   if ($("auto-refresh").checked) {
     timer = setInterval(() => {
       if (!document.hidden && !sample) scan();
-    }, 900000);
+    }, refreshDelay());
     notify(
-      "Fifteen-minute refresh enabled while this page is visible. This is not continuous trade monitoring.",
+      `Research refresh enabled every ${$("scan-cadence").value} minutes while this page is visible. Not continuous monitoring.`,
     );
   } else notify("Automatic refresh paused.");
+});
+$("scan-cadence").addEventListener("change", () => {
+  if ($("auto-refresh").checked) $("auto-refresh").dispatchEvent(new Event("change"));
+  renderReadiness();
 });
 $("risk-form").addEventListener("submit", (e) => {
   e.preventDefault();
