@@ -95,10 +95,14 @@ attach_access(app,_account_roles,_protected)
 from private_options import router as _private_options_router
 app.include_router(_private_options_router)
 
-# One decision process, forked once after this import and kept for the life of the server.
-try:
-    from api import warm_decision_worker
-    warm_decision_worker()
-except Exception:
-    import logging
-    logging.getLogger(__name__).exception("Decision worker did not start; the first request will retry")
+# Heavy decision warm-up is opt-in on the 2 GiB service. The first Decide
+# request still starts the one-worker process and returns a bounded partial
+# result if computation exceeds its budget. No automatic broker orders.
+import os
+if os.getenv("CELESYS_WARM_DECISION", "0") == "1":
+    try:
+        from api import warm_decision_worker
+        warm_decision_worker()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Decision worker warm-up failed; on-demand requests remain available")
