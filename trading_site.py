@@ -204,6 +204,21 @@ def options(symbol: str='SPY', region: str='US'):
     data=option_research(report);data['next_refresh_at']=report.get('next_refresh_at')
     return JSONResponse(data, headers={'Cache-Control':'no-store','Retry-After':underlying.headers['Retry-After']})
 
+@router.get('/api/trading-desk/india-intelligence')
+def india_intelligence(symbol: str='NIFTY'):
+    """Account-protected, read-only summary. No public strategy internals."""
+    from secure_access import require_user
+    require_user()
+    if symbol not in ('NIFTY','BANKNIFTY','SENSEX'):
+        raise HTTPException(422,'Choose NIFTY, BANKNIFTY or SENSEX.')
+    from private_options import chain
+    from trading_chain_intel import evaluate
+    report_response=research(symbol,'IN')
+    report=json.loads(report_response.body)
+    snapshot=chain(symbol=symbol,region='IN')
+    data=evaluate(report,snapshot)
+    return JSONResponse(data,headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex'})
+
 class DeskFiles(StaticFiles):
     async def get_response(self,path,scope):
         r=await super().get_response(path,scope)
