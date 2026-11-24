@@ -190,7 +190,10 @@ function renderGuidance() {
   const passed = stages.filter(s => s.status === "pass").length;
   const isFresh = !sample && report && fresh(report);
   const sessionOpen = report?.market_status === "OPEN";
-  const verifiedOption = !sample && region === "US" && Boolean(optionView(optionsResult).valid);
+  const optionStatus = optionsResult?.status;
+  const verifiedOption = !sample && region === "US" && Boolean(optionView(optionsResult).valid) &&
+    ((report?.verdict === "LONG_RESEARCH" && optionStatus === "BUY_CALL_CANDIDATE") ||
+     (report?.verdict === "BEARISH_RESEARCH" && optionStatus === "BUY_PUT_CANDIDATE"));
   let title = "WAIT — RUN RESEARCH";
   let reason = "Choose an instrument, run research and verify data freshness before considering an entry.";
   let step = "Run research on a selected instrument. No quote or contract is assumed.";
