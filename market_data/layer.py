@@ -205,7 +205,7 @@ def _cache_put(key: str, value: dict) -> dict:
     stored["stale"] = False
     with _lock:
         _cache[key] = {"stored_at": _now(), "value": stored}
-        if len(_cache) > 800:
+        if len(_cache) > 256:
             oldest = min(_cache, key=lambda item: _cache[item]["stored_at"])
             _cache.pop(oldest, None)
     return deepcopy(stored)
