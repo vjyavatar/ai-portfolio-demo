@@ -32,6 +32,7 @@ const lists = {
   IN: [
     ["NIFTY", "Nifty 50 reference index"],
     ["BANKNIFTY", "Bank Nifty reference index"],
+    ["SENSEX", "BSE Sensex reference index"],
     ["RELIANCE", "Reliance Industries"],
     ["HDFCBANK", "HDFC Bank"],
   ],
@@ -180,7 +181,7 @@ function renderReadiness() {
   const labels = {LOCAL_PACING:"Request pacing active",REQUEST_IN_PROGRESS:"Provider request in progress",NOT_CHECKED:"Not checked",RATE_LIMITED:"Provider rate-limited",ACCESS_DENIED:"Provider access denied",HTTP_ERROR:"Provider HTTP error",CONNECTION_FAILURE:"Connection failed",INVALID_RESPONSE:"Invalid provider response",PROVIDER_FAILURE:"Provider unavailable",RESPONSE_RECEIVED:"Response received"};
   $("connection-state").textContent = sample ? "Synthetic exercise" : status ? labels[status.code] || "Unverified" : report ? "Unverified" : "Not checked";
   $("connection-detail").textContent = sample ? "No market-data connection used" : status?.code === "RESPONSE_RECEIVED" ? "Source freshness is evaluated separately" : status?.retry_after ? "Retry after " + time(status.retry_after) : "Run research to test the provider";
-  $("coverage-state").textContent = $("auto-refresh").checked ? (document.hidden ? "Paused · hidden tab" : sample ? "Paused · sample mode" : "Every 5 min · one instrument") : "Manual · one instrument";
+  $("coverage-state").textContent = $("auto-refresh").checked ? (document.hidden ? "Paused · hidden tab" : sample ? "Paused · sample mode" : "Every 15 min · one instrument") : "Manual · one instrument";
   $("coverage-detail").textContent = "Selected: " + $("symbol").value.toUpperCase() + " · checks stop when this page closes";
 }
 function renderGuidance() {
@@ -377,7 +378,6 @@ async function scan() {
     )
       throw Error("Unexpected research response; no signal issued.");
     report = d;
-    alerts.process(d);
     if ($("auto-paper").checked) {
       $("auto-paper-status").textContent = autoPaper(activeAccount(), report, riskPct);
       persist();
@@ -399,14 +399,38 @@ async function scan() {
         if (id !== scanId) return;
         optionsResult = {reason:'Options evidence unavailable; no buy signal.'};
       }
-    } else optionsResult = {reason:'Options candidates currently support SPY and QQQ only.'};
+    } else if (scanRegion === "IN") {
+      try {
+        const response = await fetch(`/api/private-options/chain?symbol=${encodeURIComponent(sym)}&region=IN`,
+          {signal:currentController.signal,cache:"no-store"});
+        if (!response.ok) throw Error("India chain unavailable");
+        const chain = await response.json();
+        if (id !== scanId) return;
+        // Chain snapshots are contextual evidence only. Without independently
+        // timestamped executable bid/ask and an option-specific risk gate,
+        // do not turn them into CE/PE buy recommendations.
+        const rows = Array.isArray(chain.rows) ? chain.rows : [];
+        const callOi = rows.reduce((sum,r) => sum + (Number(r.call?.oi)||0),0);
+        const putOi = rows.reduce((sum,r) => sum + (Number(r.put?.oi)||0),0);
+        optionsResult = {
+          status:"WAIT",
+          reason:chain.status === "SNAPSHOT" && rows.length
+            ? `India chain context: ${rows.length} strikes, put/call OI ratio ${callOi ? (putOi/callOi).toFixed(2) : "unavailable"}, expiry ${chain.expiry || "unknown"}. This is NOT a verified CE/PE entry. Confirm timestamped contract prices, liquidity and risk first.`
+            : chain.message || "India option-chain evidence unavailable; no CE/PE buy alert."
+        };
+      } catch {
+        if (id !== scanId) return;
+        optionsResult={status:"WAIT",reason:"India chain not verified; no CE/PE buy alert."};
+      }
+    } else optionsResult = {reason:'Contract-grade options alerts support verified SPY/QQQ quotes only. Other symbols remain underlying research.'};
+    alerts.process(report, optionsResult);
     renderOptions();
     renderGuidance();
   } catch (e) {
     if (id !== scanId) return;
     report = null;
   optionsResult = null;
-    alerts.process({symbol:sym,region:scanRegion,verdict:"WAIT",reason:"Latest research request failed; evidence cannot be reconfirmed."});
+    alerts.process({symbol:sym,region:scanRegion,verdict:"WAIT",reason:"Latest research request failed; evidence cannot be reconfirmed."}, null);
     render();
     notify(
       e.name === "AbortError"
@@ -432,9 +456,9 @@ $("auto-refresh").addEventListener("change", () => {
   if ($("auto-refresh").checked) {
     timer = setInterval(() => {
       if (!document.hidden && !sample) scan();
-    }, 300000);
+    }, 900000);
     notify(
-      "Five-minute refresh enabled while this page is visible. This is not continuous trade monitoring.",
+      "Fifteen-minute refresh enabled while this page is visible. This is not continuous trade monitoring.",
     );
   } else notify("Automatic refresh paused.");
 });
