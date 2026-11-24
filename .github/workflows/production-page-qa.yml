@@ -50,7 +50,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Menu inventory — public access and premium navigation
         if: matrix.lane == 'all-menus'
-        run: npx playwright test --config qa/playwright.config.cjs --grep "^menu "
+        run: npx playwright test --config qa/playwright.config.cjs --grep "menu "
       - name: Trading, Decide, options and failure recovery
         if: matrix.lane == 'trading-decide'
         run: npx playwright test --config qa/playwright.config.cjs --grep "Decide|trading brief|trade|chain|options|market notifications|Active Trading"
