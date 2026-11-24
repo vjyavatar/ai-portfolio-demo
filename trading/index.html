@@ -83,9 +83,9 @@
           <summary>How to use this desk — 4 simple steps</summary>
           <ol>
             <li><strong>Choose:</strong> United States (SPY / QQQ) or India (NIFTY / BANKNIFTY), then select a symbol.</li>
-            <li><strong>Scan:</strong> Press Run research. Check the market session, provider time, closed bars and pass/fail evidence.</li>
-            <li><strong>Decide:</strong> WAIT means no entry. Bullish/bearish underlying research is not an option order. Only a separately validated contract can be reviewed in the Options panel.</li>
-            <li><strong>Protect:</strong> Read the invalidation, stop scenario and premium at risk; paper-practice first. Turn on five-minute refresh and browser alerts only while this tab stays open.</li>
+            <li><strong>Scan:</strong> Click Run research; optionally enable automatic 5- or 15-minute scans while the page stays open.</li>
+            <li><strong>Decide:</strong> The top panel says WAIT, NO TRADE or REVIEW. Open Market Checks and Options Evidence to understand why. Neither a bullish view nor an OI wall is automatically a CE/PE buy.</li>
+            <li><strong>Protect:</strong> Read the invalidation, stop scenario and premium at risk; paper-practice first. Turn on auto-scan (every 5 or 15 minutes) and browser alerts while the tab stays visible.</li>
           </ol>
           <p>Options buying is high-risk. No verified contract, stale data, closed session or missing risk evidence means NO TRADE. Scans do not execute broker orders.</p>
         </details>
@@ -119,10 +119,7 @@
               aria-label="Ticker or index" /></label
           ><button class="button primary" id="scan-button" type="submit">
             <span>↗</span> Run research</button
-          ><label class="auto-label"
-            ><input type="checkbox" id="auto-refresh" /> Refresh every 15
-            min</label
-          >
+          ><label class="auto-label"><input type="checkbox" id="auto-refresh" /> Auto-scan</label><label class="auto-label">Every <select id="scan-cadence" aria-label="Scan interval"><option value="15" selected>15 min</option><option value="5">5 min</option></select></label>
         </form>
         <section class="metrics" aria-label="Research summary">
           <article class="metric">
@@ -149,7 +146,7 @@
             <h3 id="options-title">WAIT — no options trade</h3>
             <p id="options-direction">No confirmed direction</p>
             <p id="options-reason">Run research to check CALL / PUT readiness.</p>
-            <div id="options-contract"></div>
+            <div id="options-contract"></div><p id="chain-summary" class="help">Run an India index scan to view chain context.</p><details class="option-evidence"><summary>360° option evidence — what has been checked?</summary><div id="evidence-checks">Scan a supported India index to view evidence.</div></details>
             <p class="help">Stock paper entries below are separate. Qualified SPY/QQQ contract evidence can produce a conditional review alert; India chains are contextual only unless executable contract verification is implemented. Candidate prices expire; verify in your broker. No guaranteed fill, stop protection or profit.</p>
           </div>
         </section>
@@ -202,11 +199,10 @@
         <section id="agent-section" class="panel agent-panel">
           <div class="panel-head">
             <div>
-              <div class="eyebrow">RESEARCH ORCHESTRATOR</div>
-              <h2>Every conclusion has a trail.</h2>
+              <div class="eyebrow">EASY-TO-READ EVIDENCE</div>
+              <h2>Market checks — what is ready?</h2>
               <p class="panel-sub">
-                Deterministic rule checks, including a current-quote guard. Scores
-                are not win probabilities.
+                Automated checks of market information and risk. Green means verified; pending or blocked means wait. These are software checks, not independent human analysts.
               </p>
             </div>
             <span id="agent-count" class="chip">AWAITING RUN</span>
