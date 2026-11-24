@@ -65,6 +65,30 @@
           Ready when you are. Run research to check source data and setup
           conditions.
         </div>
+        <section class="decision-hub" aria-label="Your next action">
+          <div class="decision-main">
+            <span class="tiny-label">01 / YOUR NEXT ACTION · RESEARCH ONLY</span>
+            <strong id="guided-action" class="guided-action" role="status" aria-live="polite">WAIT — RUN RESEARCH</strong>
+            <p id="guided-why">Choose a market and instrument, then press Run research. No trade is suggested without current evidence.</p>
+            <div class="decision-tags"><span id="guided-source">SOURCE · UNVERIFIED</span><span id="guided-clock">CLOSE · UNKNOWN</span><span id="guided-confidence">CHECKS · NOT RUN</span></div>
+          </div>
+          <div class="decision-next">
+            <span class="tiny-label">02 / DO THIS NEXT</span>
+            <p id="guided-next">Run a scan. If evidence is incomplete, stay out.</p>
+            <a class="button primary" href="#scan-form">Scan an instrument ↓</a>
+            <a class="decision-link" href="#risk-section">Review risk plan →</a>
+          </div>
+        </section>
+        <details class="guided-help">
+          <summary>How to use this desk — 4 simple steps</summary>
+          <ol>
+            <li><strong>Choose:</strong> United States (SPY / QQQ) or India (NIFTY / BANKNIFTY), then select a symbol.</li>
+            <li><strong>Scan:</strong> Press Run research. Check the market session, provider time, closed bars and pass/fail evidence.</li>
+            <li><strong>Decide:</strong> WAIT means no entry. Bullish/bearish underlying research is not an option order. Only a separately validated contract can be reviewed in the Options panel.</li>
+            <li><strong>Protect:</strong> Read the invalidation, stop scenario and premium at risk; paper-practice first. Turn on five-minute refresh and browser alerts only while this tab stays open.</li>
+          </ol>
+          <p>Options buying is high-risk. No verified contract, stale data, closed session or missing risk evidence means NO TRADE. Scans do not execute broker orders.</p>
+        </details>
         <section class="readiness-strip" aria-label="Research readiness">
           <div><span class="tiny-label">DATA CONNECTION</span><strong id="connection-state">Not checked</strong><small id="connection-detail">Run research to test the provider</small></div>
           <div><span class="tiny-label">SCAN COVERAGE</span><strong id="coverage-state">Manual · one instrument</strong><small id="coverage-detail">Background monitoring is off</small></div>
