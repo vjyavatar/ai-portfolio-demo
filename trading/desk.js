@@ -412,10 +412,16 @@ async function scan() {
         const rows = Array.isArray(chain.rows) ? chain.rows : [];
         const callOi = rows.reduce((sum,r) => sum + (Number(r.call?.oi)||0),0);
         const putOi = rows.reduce((sum,r) => sum + (Number(r.put?.oi)||0),0);
+        const ceWall = rows.filter(r => Number.isFinite(Number(r.call?.oi)) && Number(r.call.oi)>0)
+          .sort((a,b)=>Number(b.call.oi)-Number(a.call.oi))[0];
+        const peWall = rows.filter(r => Number.isFinite(Number(r.put?.oi)) && Number(r.put.oi)>0)
+          .sort((a,b)=>Number(b.put.oi)-Number(a.put.oi))[0];
+        const ceChange = rows.reduce((sum,r)=>sum+(Number(r.call?.oi_change)||0),0);
+        const peChange = rows.reduce((sum,r)=>sum+(Number(r.put?.oi_change)||0),0);
         optionsResult = {
           status:"WAIT",
           reason:chain.status === "SNAPSHOT" && rows.length
-            ? `India chain context: ${rows.length} strikes, put/call OI ratio ${callOi ? (putOi/callOi).toFixed(2) : "unavailable"}, expiry ${chain.expiry || "unknown"}. This is NOT a verified CE/PE entry. Confirm timestamped contract prices, liquidity and risk first.`
+            ? `India chain context (not a signal): expiry ${chain.expiry || "unknown"}; ${rows.length} strikes; PCR(OI) ${callOi ? (putOi/callOi).toFixed(2) : "N/A"}; highest CE OI at ${ceWall?.strike ?? "N/A"}; highest PE OI at ${peWall?.strike ?? "N/A"}; total CE/PE OI changes ${ceChange.toLocaleString()}/${peChange.toLocaleString()}. Walls are descriptive, NOT proven support/resistance. Fresh executable contract quotes, source timestamps, spreads and 360° risk gates remain unverified: NO CE/PE BUY alert.`
             : chain.message || "India option-chain evidence unavailable; no CE/PE buy alert."
         };
       } catch {
