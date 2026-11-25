@@ -27,4 +27,32 @@ class IndiaEvidenceTests(unittest.TestCase):
         self.assertEqual(next(x for x in r['checks'] if x['label']=='Strike and expiry')['state'],'UNAVAILABLE')
         self.assertEqual(r['status'],'WAIT')
 
+class ContractReviewTests(unittest.TestCase):
+    def fixture(self):
+        from datetime import datetime, timezone
+        now=datetime(2026,11,25,7,0,tzinfo=timezone.utc).timestamp()
+        report={'symbol':'NIFTY','region':'IN','market_status':'OPEN','verdict':'LONG_RESEARCH','quote_time':now-5,'bar_close_time':now-30}
+        leg={'contract':'NIFTY26NOV2626000CE','bid':100,'ask':101,'bid_size':100,'ask_size':100,'lot_size':65,'oi':5000,'volume':2000,'feed_time':now-5,'feed_time_kind':'EXCHANGE_FEED_SNAPSHOT_IST_NOT_SIDE_SPECIFIC'}
+        chain={'symbol':'NIFTY','region':'IN','source':'Angel One SmartAPI','status':'SNAPSHOT','expiry':'2026-11-26','spot':26005,'spot_feed_time':now-6,'fetched_at':now-2,'rows':[{'strike':26000,'call':leg}]}
+        return now,report,chain,leg
+    def test_recent_snapshot_review_is_not_buy(self):
+        now,r,c,leg=self.fixture()
+        result=evaluate(r,c,now)
+        self.assertEqual(result['contract_review']['strike'],26000)
+        self.assertEqual(result['contract_review']['premium_per_lot'],6565)
+        self.assertEqual(result['status'],'WAIT')
+        self.assertFalse(result['eligible'])
+    def test_reject_stale_future_wide_missing_and_wrong_side(self):
+        for change in ('stale','future','wide','missing','side','closed','cache','identity'):
+            with self.subTest(change=change):
+                now,r,c,leg=self.fixture()
+                if change=='stale':leg['feed_time']=now-61
+                if change=='future':leg['feed_time']=now+1
+                if change=='wide':leg['ask']=120
+                if change=='missing':leg['ask_size']=None
+                if change=='side':r['verdict']='BEARISH_RESEARCH'
+                if change=='closed':r['market_status']='CLOSED_OR_UNVERIFIED'
+                if change=='cache':r['stale_cache']=True
+                if change=='identity':c['symbol']='BANKNIFTY'
+                self.assertIsNone(evaluate(r,c,now)['contract_review'])
 if __name__=='__main__':unittest.main()
