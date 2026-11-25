@@ -321,9 +321,23 @@ function render() {
 }
 function renderOptions() {
   const v = optionView(optionsResult);
-  $("options-title").textContent = v.title;
-  $("options-direction").textContent = v.direction;
-  $("options-reason").textContent = v.reason;
+  const indiaIndex = region === "IN" && ["NIFTY","BANKNIFTY","SENSEX"].includes($("symbol").value.trim().toUpperCase());
+  if (indiaIndex) {
+    const ready = !sample && report?.region === "IN" &&
+      report.symbol === $("symbol").value.trim().toUpperCase() &&
+      report.market_status === "OPEN" && fresh(report);
+    const bias = ready && report.verdict === "LONG_RESEARCH" ? "CE" :
+      ready && report.verdict === "BEARISH_RESEARCH" ? "PE" : null;
+    $("options-title").textContent = bias ? "LEAN " + bias + " — WAIT FOR ENTRY" : "NO TRADE — INDIA";
+    $("options-direction").textContent = bias ? "Underlying directional bias only" :
+      busy ? "Checking market data" : "No verified actionable setup";
+    $("options-reason").textContent = !ready ? "Market session or price freshness is not confirmed. No option entry." :
+      (optionsResult?.reason || "Checking Indian option-chain evidence.") + " Executable option contract must be independently verified.";
+  } else {
+    $("options-title").textContent = v.title;
+    $("options-direction").textContent = v.direction;
+    $("options-reason").textContent = v.reason;
+  }
   const c = optionsResult?.candidate;
   $("options-contract").textContent = v.valid ?
     `${c.contract} · Expiry ${c.expiry} · Strike $${c.strike} · Bid $${c.bid} / ask $${c.ask}. `+
@@ -436,7 +450,7 @@ async function scan() {
         $("chain-summary").textContent = "India chain could not be verified.";
         showEvidence([]);
       }
-    } else optionsResult = {reason:'Contract-grade options alerts support verified SPY/QQQ quotes only. Other symbols remain underlying research.'};
+    } else optionsResult = {status:"WAIT",reason:scanRegion === "IN" ? "Indian stock options are not supported by this contract scanner. Select NIFTY, BANKNIFTY or SENSEX for index evidence." : "Verified US option contracts are supported for SPY and QQQ only."};
     alerts.process(report, optionsResult);
     renderOptions();
     renderGuidance();
