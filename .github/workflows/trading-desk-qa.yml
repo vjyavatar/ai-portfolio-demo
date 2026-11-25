@@ -1,0 +1,20 @@
+name: Trading Desk regression QA
+on:
+  pull_request:
+    paths: ['trading/**', 'tests/trading-*.test.mjs', '.github/workflows/trading-desk-qa.yml']
+  push:
+    branches: [main]
+    paths: ['trading/**', 'tests/trading-*.test.mjs', '.github/workflows/trading-desk-qa.yml']
+permissions:
+  contents: read
+jobs:
+  decision-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/trading-decision.test.mjs
+      - run: node --input-type=module --check < trading/desk.js
+      - run: node --input-type=module --check < trading/notifications-ui.js
