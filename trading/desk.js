@@ -657,6 +657,19 @@ setInterval(() => {
   }
 }, 15000);
 document.addEventListener("visibilitychange", () => { renderReadiness(); renderGuidance(); if (!document.hidden && !sample && $("auto-refresh").checked && !busy && (lastScanAt===null || Date.now()-lastScanAt>=refreshDelay())) scan(); });
+function revealSection(hash) {
+  if (!hash || !/^#[a-z][a-z0-9-]*$/i.test(hash)) return;
+  const target=document.getElementById(hash.slice(1));
+  for(let node=target;node;node=node.parentElement) {
+    if(node.tagName==="DETAILS") node.open=true;
+  }
+}
+document.addEventListener("click", (event)=>{
+  const anchor=event.target.closest?.('a[href^="#"]');
+  if(anchor) revealSection(anchor.getAttribute("href"));
+});
+window.addEventListener("hashchange",()=>revealSection(location.hash));
+revealSection(location.hash);
 watchlist();
 render();
 $("scan-cadence").value = "5";
