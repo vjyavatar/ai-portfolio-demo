@@ -219,6 +219,7 @@ function regularSessionClosed(now = Date.now()/1000) {
   const start=report?.session_start, end=report?.session_end;
   return report?.region===region && Number.isFinite(start) && Number.isFinite(end) &&
     start<end && end-start<=86400 && now>=end && now-end<86400 &&
+    new Intl.DateTimeFormat("en-CA",{timeZone:region==="IN"?"Asia/Kolkata":"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(end*1000)) === new Intl.DateTimeFormat("en-CA",{timeZone:region==="IN"?"Asia/Kolkata":"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(now*1000)) &&
     (region!=="IN" || report?.market_status!=="OPEN");
 }
 function currentDecision(now=Date.now()/1000) {
@@ -282,7 +283,7 @@ function render() {
     : regularSessionClosed() ? "Market closed" : report?.market_status === "OPEN"
       ? "Regular hours"
       : report
-        ? "Closed / unknown"
+        ? "Session data unverified"
         : "—";
   $("source-label").textContent = sample
     ? "SYNTHETIC SAMPLE"
