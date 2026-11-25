@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import math
 
-VERSION = 'trading-desk-1.4'
+VERSION = 'trading-desk-1.5'
 
 def source_symbol(symbol, region):
     """Expected chart identity, including the adapter's supported index aliases."""
@@ -69,20 +69,31 @@ def analyze_chart(payload, symbol, region, now):
     timestamps=raw.get('timestamp') or []
     if not isinstance(timestamps,list) or len(timestamps)>2000 or not isinstance(quotes,dict):
         stage('Data steward','blocked','Malformed or oversized chart data.');return out
-    bars=[];invalid=False;previous=None
+    bars=[];history=[];invalid=False;previous=None
     for i,t in enumerate(timestamps):
         ts=number(t)
         if ts is None or (previous is not None and ts<=previous): invalid=True;break
         previous=ts
         # Provider timestamps are bar openings; exclude current forming bar.
-        if not session_known or ts<start or ts>=end or ts+300>now: continue
+        if not session_known or ts>=end or ts+300>now: continue
+        historical=ts<start
+        if historical:
+            from zoneinfo import ZoneInfo
+            local=datetime.fromtimestamp(ts,ZoneInfo('America/New_York' if region=='US' else 'Asia/Kolkata'))
+            minute=local.hour*60+local.minute
+            lo,hi=(570,960) if region=='US' else (555,930)
+            if local.weekday()>=5 or not lo<=minute<hi or ts+300>start: continue
         vals=[]
         for k in ('open','high','low','close','volume'):
             series=quotes.get(k)
             vals.append(number(series[i]) if isinstance(series,list) and i<len(series) else None)
         o,h,l,c,v=vals
         if any(x is None for x in vals) or min(o,h,l,c)<=0 or v<0 or not l<=min(o,c)<=max(o,c)<=h:
+            if historical:
+                history=[];continue
             invalid=True;break
+        if historical:
+            history.append(dict(time=ts,open=o,high=h,low=l,close=c,volume=v));continue
         if bars and ts-bars[-1]['time']!=300: invalid=True;break
         bars.append(dict(time=ts,open=o,high=h,low=l,close=c,volume=v))
     if invalid:
@@ -93,7 +104,8 @@ def analyze_chart(payload, symbol, region, now):
     # Do not reuse a signal after another complete five-minute candle is missing.
     freshness=bool(not out['quote_stale'] and not out['candle_stale'] and quote_time and price and price>0 and 0<=now-quote_time<=300 and bars
         and 0<=now-out['bar_close_time']<=300 and quote_time>=out['bar_close_time'])
-    enough=len(bars)>=21
+    indicator_bars=history[-100:]+bars
+    enough=len(bars)>=6 and len(indicator_bars)>=21
     full_session=bool(bars and bars[0]['time']==start)
     stage('Data steward','pass' if freshness and enough and full_session else 'blocked',
           f'{len(bars)} closed five-minute bars. '+('Recent source timestamps.' if freshness else 'Source timestamps missing, stale or quote predates the signal close.')+('' if full_session else ' Session opening bars unavailable.'))
@@ -102,13 +114,13 @@ def analyze_chart(payload, symbol, region, now):
         out['warming_up']=bool(market_open and not out['quote_stale'] and not out['candle_stale'] and quote_time and 0<=now-quote_time<=300 and ((not bars and now<start+300) or (freshness and full_session)))
         out['reason']='Collecting closed session candles.' if out['warming_up'] else 'Insufficient verified session candles.'
         stage('Trend analyst','blocked',out['reason']);return out
-    closes=[b['close'] for b in bars]
+    closes=[b['close'] for b in indicator_bars]
     e9,e20=ema(closes,9),ema(closes,20)
     total_volume=sum(b['volume'] for b in bars)
     vwap=sum((b['high']+b['low']+b['close'])/3*b['volume'] for b in bars)/total_volume if total_volume>0 else None
-    avgvol=sum(b['volume'] for b in bars[-21:-1])/20
+    avgvol=sum(b['volume'] for b in indicator_bars[-21:-1])/20
     relvol=bars[-1]['volume']/avgvol if avgvol>0 else None
-    trs=[max(b['high']-b['low'],abs(b['high']-bars[i-1]['close']),abs(b['low']-bars[i-1]['close'])) for i,b in enumerate(bars) if i>0]
+    trs=[max(b['high']-b['low'],abs(b['high']-indicator_bars[i-1]['close']),abs(b['low']-indicator_bars[i-1]['close'])) for i,b in enumerate(indicator_bars) if i>0]
     atr=sum(trs[-14:])/14
     direction='BULLISH' if vwap and closes[-1]>vwap and e9>e20 else ('BEARISH' if vwap and closes[-1]<vwap and e9<e20 else 'MIXED')
     out['bias']=direction

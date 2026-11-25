@@ -59,3 +59,26 @@ class SourceClockTests(unittest.TestCase):
         r=analyze_chart(normalize(p,"US",n),"SPY","US",n)
         self.assertNotEqual(r["market_status"],"OPEN")
         self.assertEqual(r["verdict"],"WAIT")
+
+    def test_prior_history_initializes_indicators_without_polluting_vwap(self):
+        for region in ("US","IN"):
+            with self.subTest(region=region):
+                p,n=fixture(region,count=6)
+                raw=p["chart"]["result"][0]
+                start=raw["timestamp"][2]
+                prior=[start-86400+i*300 for i in range(21)]
+                raw["timestamp"]=prior+raw["timestamp"][2:]
+                q=raw["indicators"]["quote"][0]
+                for k in ("open","high","low","close"):
+                    q[k]=[90.0]*21+[100.0]*6
+                q["volume"]=[1000]*27
+                r=analyze_chart(normalize(p,region,n),"SPY" if region=="US" else "NIFTY",region,n)
+                self.assertEqual(len(r["bars"]),6)
+                self.assertAlmostEqual(r["metrics"]["vwap"],100.0)
+                self.assertLess(r["metrics"]["ema20"],100.0)
+                self.assertEqual(r["verdict"],"WAIT")
+                self.assertFalse(r["paper_eligible"])
+                raw["meta"]["candleStale"]=True
+                r=analyze_chart(normalize(p,region,n),"SPY" if region=="US" else "NIFTY",region,n)
+                self.assertEqual(r["verdict"],"WAIT")
+                self.assertFalse(r["paper_eligible"])
