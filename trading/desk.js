@@ -202,6 +202,21 @@ function showEvidence(checks) {
     line.append(name,state,detail); holder.append(line);
   }
 }
+// Regular-hours display is separate from trade eligibility and provider freshness.
+function regularSessionClosed(now = Date.now()/1000) {
+  if (sample) return false;
+  if (region === "IN") {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+      timeZone:"Asia/Kolkata", weekday:"short", hour:"2-digit", minute:"2-digit", hourCycle:"h23"
+    }).formatToParts(new Date(now*1000)).map(p=>[p.type,p.value]));
+    const minutes = Number(parts.hour)*60+Number(parts.minute);
+    if (["Sat","Sun"].includes(parts.weekday) || minutes<555 || minutes>=930) return true;
+  }
+  const start=report?.session_start, end=report?.session_end;
+  return report?.region===region && Number.isFinite(start) && Number.isFinite(end) &&
+    start<end && end-start<=86400 && now>=end && now-end<86400 &&
+    (region!=="IN" || report?.market_status!=="OPEN");
+}
 function renderGuidance() {
   const action = $("guided-action"), why = $("guided-why"), next = $("guided-next");
   const source = $("guided-source"), clock = $("guided-clock"), checks = $("guided-confidence");
@@ -220,6 +235,10 @@ function renderGuidance() {
     title = "SAMPLE — NOT TRADEABLE";
     reason = "Synthetic examples are for learning only, never live trade instructions.";
     step = "Use the paper journal to practice. Select a live symbol to restart.";
+  } else if (regularSessionClosed()) {
+    title = "MARKET CLOSED — NO TRADE";
+    reason = "The regular trading session has ended or is outside normal hours. Last available market data is for research only.";
+    step = "Review the latest available option-chain snapshot and wait for the next verified open session.";
   } else if (report && (!isFresh || !sessionOpen)) {
     title = "NO TRADE — SESSION / DATA";
     reason = !isFresh ? "The price evidence is stale or unverified." : "The underlying regular session is closed or unverified.";
@@ -322,16 +341,17 @@ function render() {
 function renderOptions() {
   const v = optionView(optionsResult);
   const indiaIndex = region === "IN" && ["NIFTY","BANKNIFTY","SENSEX"].includes($("symbol").value.trim().toUpperCase());
+  const closed = regularSessionClosed();
   if (indiaIndex) {
-    const ready = !sample && report?.region === "IN" &&
+    const ready = !closed && !sample && report?.region === "IN" &&
       report.symbol === $("symbol").value.trim().toUpperCase() &&
       report.market_status === "OPEN" && fresh(report);
     const bias = ready && report.verdict === "LONG_RESEARCH" ? "CE" :
       ready && report.verdict === "BEARISH_RESEARCH" ? "PE" : null;
-    $("options-title").textContent = bias ? "LEAN " + bias + " — WAIT FOR ENTRY" : "NO TRADE — INDIA";
-    $("options-direction").textContent = bias ? "Underlying directional bias only" :
+    $("options-title").textContent = closed ? "MARKET CLOSED — NO TRADE" : bias ? "LEAN " + bias + " — WAIT FOR ENTRY" : "NO TRADE — INDIA";
+    $("options-direction").textContent = closed ? "Last available data only — not live" : bias ? "Underlying directional bias only" :
       busy ? "Checking market data" : "No verified actionable setup";
-    $("options-reason").textContent = !ready ? "Market session or price freshness is not confirmed. No option entry." :
+    $("options-reason").textContent = closed ? "Regular session closed. Review last available option-chain data below. " + (optionsResult?.reason || "") : !ready ? "Market session or price freshness is not confirmed. No option entry." :
       (optionsResult?.reason || "Checking Indian option-chain evidence.") + " Executable option contract must be independently verified.";
   } else {
     $("options-title").textContent = v.title;
@@ -341,7 +361,7 @@ function renderOptions() {
   const c = optionsResult?.candidate;
   const preview=optionsResult?.contractReview;
   if (indiaIndex) {
-    const validPreview = !sample && report?.market_status === "OPEN" && fresh(report) &&
+    const validPreview = !closed && !sample && report?.market_status === "OPEN" && fresh(report) &&
       preview && Number.isFinite(preview.expires_at) && Date.now()/1000 < preview.expires_at &&
       preview.side === (report.verdict === "LONG_RESEARCH" ? "CE" : report.verdict === "BEARISH_RESEARCH" ? "PE" : "");
     $("options-contract").textContent = validPreview ?
@@ -450,7 +470,7 @@ async function scan() {
         optionsResult = {status:"WAIT",reason:intel.reason,contractReview:intel.contract_review || null};
         const details = intel.chain || {};
         $("chain-summary").textContent = details.available
-          ? `Expiry ${details.expiry || "—"} · PCR ${details.pcr_oi ?? "—"} · CE OI wall ${details.highest_call_oi_strike ?? "—"} · PE OI wall ${details.highest_put_oi_strike ?? "—"} · OI changes CE ${details.total_call_oi_change ?? "—"} / PE ${details.total_put_oi_change ?? "—"}`
+          ? `${regularSessionClosed() ? "MARKET CLOSED · LAST AVAILABLE SNAPSHOT" : "OPTION-CHAIN SNAPSHOT (NOT EXECUTABLE QUOTES)"} · ${details.source || "Provider unknown"} · Latest exchange feed ${time(details.latest_exchange_time)} · Retrieved ${time(details.snapshot_fetched_at)} · Expiry ${details.expiry || "—"} · PCR ${details.pcr_oi ?? "—"} · CE OI wall ${details.highest_call_oi_strike ?? "—"} · PE OI wall ${details.highest_put_oi_strike ?? "—"} · OI changes CE ${details.total_call_oi_change ?? "—"} / PE ${details.total_put_oi_change ?? "—"}`
           : "Verified Indian option-chain snapshot unavailable.";
         showEvidence(intel.checks || []);
       } catch (error) {
