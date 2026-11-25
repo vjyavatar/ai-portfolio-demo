@@ -485,10 +485,9 @@ $("auto-refresh").addEventListener("change", () => {
   timer = null;
   nextScanAt = null;
   if ($("auto-refresh").checked) {
-    nextScanAt = Date.now()+refreshDelay();
+    nextScanAt = lastScanAt===null ? Date.now() : lastScanAt+refreshDelay();
     timer = setInterval(() => {
-      if (!document.hidden && !sample && !busy && (lastScanAt===null || Date.now()-lastScanAt>=refreshDelay())) scan();
-      if (document.hidden || sample) nextScanAt = Date.now()+refreshDelay();
+      if (!document.hidden && !sample && !busy && Date.now()>=nextScanAt) scan();
     }, 1000);
     notify(
       `Research refresh enabled every ${$("scan-cadence").value} minutes while this page is visible. Not continuous monitoring.`,
@@ -620,7 +619,7 @@ setInterval(() => {
     );
   }
 }, 15000);
-setInterval(renderScanStatus,1000);
+setInterval(() => {renderScanStatus(); if(!busy && !sample){renderGuidance();renderOptions();}},1000);
 document.addEventListener("visibilitychange", () => { renderReadiness(); renderGuidance(); if (!document.hidden && !sample && $("auto-refresh").checked && !busy && (lastScanAt===null || Date.now()-lastScanAt>=refreshDelay())) scan(); });
 function revealSection(hash) {
   if (!hash || !/^#[a-z][a-z0-9-]*$/i.test(hash)) return;
