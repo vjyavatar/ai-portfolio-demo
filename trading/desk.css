@@ -960,3 +960,21 @@ h2,.watch-item strong{font-size:18px}
 .chart-data svg polyline{stroke:#087b56}.chart-data svg circle{fill:#087b56}.chart-data svg text{fill:#46566b;font-size:12px}.chart-data svg line{stroke:#e0e7ef}
 .tiny-label,.eyebrow{font-size:12px;letter-spacing:.7px}
 @media(max-width:800px){.decision-hub{grid-template-columns:1fr}.decision-main,.decision-next{padding:18px}.decision-next{border-top:1px solid var(--line)}}
+
+/* Compact primary trading screen; all secondary tools remain available. */
+main{max-width:1240px;padding-top:22px}
+.intro{margin-bottom:12px}.intro .eyebrow{display:none}.intro h1{font-size:30px;margin-bottom:4px}.intro p{font-size:15px}
+.toolbar{margin:14px 0 10px}.toolbar .auto-label{margin-left:0}
+.decision-hub{margin:12px 0;grid-template-columns:minmax(0,1fr) minmax(170px,.46fr)}
+.decision-main,.decision-next{padding:18px 22px}.decision-tags{gap:6px;margin-top:10px}
+.decision-next .button{margin:7px 0;padding:7px 10px}.decision-next p{font-size:14px}
+.guided-action[data-state="wait"]{color:#925c08}
+.metrics{grid-template-columns:repeat(3,minmax(0,1fr));margin:12px 0}
+.metric{padding:12px 18px}.metric[hidden]{display:none!important}.metric strong{margin:4px 0}
+.compact-contract{margin:12px 0}.compact-contract .panel-head{padding:12px 18px}
+.compact-contract .options-body{padding:0 18px 12px}
+.compact-contract .option-evidence{padding:8px 12px;margin:8px 0}
+.compact-contract .options-body h3{font-size:17px}
+.guided-help{padding:11px 16px;margin:8px 0}.guided-help>summary{font-size:15px}.guided-help[open]>summary{margin-bottom:12px}
+.guided-help .main-grid,.guided-help .bottom-grid,.guided-help .agent-panel{margin-bottom:0}
+@media(max-width:800px){.decision-hub{grid-template-columns:1fr}.decision-next{border-left:0}.metrics{grid-template-columns:1fr 1fr}.metric{padding:10px 12px}}
