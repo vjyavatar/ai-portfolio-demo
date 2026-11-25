@@ -24,11 +24,12 @@ def normalize(payload,region,now):
     stamp=number(meta.get("exchangeQuoteTime"))
     qsource=meta.get("quoteSource")
     candle_source=meta.get("candleSource")
-    if meta.get("quoteStale") or not qsource or not stamp or not 0<stamp<=now or quote is None or quote<=0:
+    if not qsource or not stamp or not 0<stamp<=now or quote is None or quote<=0:
         stamp=None
     meta["regularMarketTime"]=stamp
     meta["regularMarketPrice"]=quote if quote and quote>0 else None
     meta["priceKind"]="SOURCE_QUOTE" if stamp else "UNVERIFIED_QUOTE_SNAPSHOT"
+    meta["priceAsOf"]=stamp
     meta["source"]=qsource or candle_source or "market-data"
     if not meta["regularMarketPrice"]:
         # Show a genuine *closed* bar price, never treat it as a current quote.
@@ -44,12 +45,9 @@ def normalize(payload,region,now):
                 meta["priceAsOf"]=t+300
                 meta["source"]=candle_source or "market-data"
                 break
-    if meta.get("candleStale"):
-        # Never derive an entry from a provider's stale candle cache.
-        meta["regularMarketTime"]=None
     if stamp is not None and not start<=stamp<=now<end:
         # An old or out-of-session quote may be shown but does not establish an open session.
         meta["sessionEvidence"]=False
     else:
-        meta["sessionEvidence"]=bool(stamp is not None and start<=stamp<=now<end and now-stamp<=300 and local.weekday()<5)
+        meta["sessionEvidence"]=bool(stamp is not None and start<=stamp<=now<end and now-stamp<=300 and local.weekday()<5 and not meta.get("quoteStale"))
     return payload
