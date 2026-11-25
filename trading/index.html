@@ -197,7 +197,7 @@
           </section>
         </div>
         
-        <section id="agent-section" class="panel agent-panel">
+        <details class="guided-help"><summary>Market checks &amp; evidence</summary><section id="agent-section" class="panel agent-panel">
           <div class="panel-head">
             <div>
               <div class="eyebrow">EASY-TO-READ EVIDENCE</div>
@@ -219,7 +219,8 @@
             contract metadata. This desk evaluates the underlying only.
           </div>
         </section>
-        <div class="bottom-grid">
+        </details>
+        <details class="guided-help"><summary>Paper trading &amp; risk planner (optional)</summary><div class="bottom-grid">
           <section id="risk-section" class="panel">
             <div class="panel-head">
               <div>
@@ -298,7 +299,7 @@
                 <div>
                   <strong>Public feed limitations</strong>
                   <p>
-                    Yahoo data is best-effort. Delivery latency and execution
+                    Provider data is best-effort. Delivery latency and execution
                     prices are not guaranteed.
                   </p>
                 </div>
@@ -308,7 +309,7 @@
                 <div>
                   <strong>Options & event risk</strong>
                   <p>
-                    No verified option chain or event calendar here. A bullish
+                    Contract and event-risk verification may be incomplete. A bullish
                     stock setup does not automatically mean buy a call.
                   </p>
                 </div>
@@ -332,7 +333,7 @@
           </div>
           <div class="journal-summary" id="journal-summary"></div>
           <label class="auto-label journal-auto"><input type="checkbox" id="auto-paper" /> Start automatic paper trading</label>
-          <p id="auto-paper-status" class="help" role="status">Stopped. Enable to scan the selected instrument every fifteen minutes and simulate qualifying entries and observed stop/target exits.</p>
+          <p id="auto-paper-status" class="help" role="status">Stopped. Enable to scan the selected instrument at the selected interval and simulate qualifying entries and observed stop/target exits.</p>
           <p class="help">Long stock/ETF shares only. Uses your paper risk settings, cash limit, three-position maximum and 1% daily realized-loss guard. At most one automatic entry per instrument per session. Keep this tab open and visible; closing it stops automation. Re-enable after reload. No real orders.</p>
           <label class="auto-label journal-auto"
             ><input type="checkbox" id="auto-exit" /> Apply paper stops/targets
@@ -344,7 +345,7 @@
             the stop.
           </p>
           <div id="journal" class="journal-wrap"></div>
-        </section>
+        </section></details>
         <section id="notifications-section" class="panel journal-panel">
           <div class="panel-head"><div><div class="eyebrow">DELIVERY &amp; EVIDENCE</div>
           <h2>Decision alerts</h2><p class="panel-sub">Current evidence, options validation and meaningful changes. NO TRADE when confirmation is missing.</p></div><span class="chip">THIS BROWSER</span></div>
