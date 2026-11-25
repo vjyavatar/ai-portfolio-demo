@@ -219,6 +219,18 @@ def india_intelligence(symbol: str='NIFTY'):
     data=evaluate(report,snapshot)
     return JSONResponse(data,headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex'})
 
+# Reuse the existing provider single-flight gate and cooldown; no separate credentials.
+from trading_opportunity_scan import RegionalScanner
+def _opportunity_report(symbol,region):
+    return json.loads(research(symbol,region).body)
+_regional_scanner=RegionalScanner(_opportunity_report,provider_snapshot)
+
+@router.get('/api/trading-desk/opportunities')
+def opportunities(region: str='US'):
+    if region not in ('US','IN'):
+        raise HTTPException(422,'Choose US or IN.')
+    return JSONResponse(_regional_scanner.snapshot(region),headers={'Cache-Control':'no-store'})
+
 class DeskFiles(StaticFiles):
     async def get_response(self,path,scope):
         r=await super().get_response(path,scope)
@@ -231,3 +243,15 @@ def attach_trading_desk(app):
     if any(getattr(r,'path',None)=='/trading' for r in app.routes): return
     app.include_router(router)
     app.mount('/trading',DeskFiles(directory=str(ROOT),html=True),name='trading-desk')
+    # Preserve the original lifespan, including any custom application startup.
+    from contextlib import asynccontextmanager
+    previous=app.router.lifespan_context
+    @asynccontextmanager
+    async def scanner_lifespan(application):
+        async with previous(application) as state:
+            _regional_scanner.start()
+            try:
+                yield state
+            finally:
+                _regional_scanner.close()
+    app.router.lifespan_context=scanner_lifespan
