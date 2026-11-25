@@ -72,3 +72,18 @@ test("regional shortlist is isolated and opens fresh single-symbol research", as
   await expect(page.locator("#symbol")).toHaveValue("RELIANCE");
   await expect.poll(()=>seen.includes("RELIANCE")).toBe(true);
 });
+
+test("US opening ignores previous exchange-date close", async ({page})=>{
+  const now=Date.parse("2026-11-25T14:32:00Z")/1000;
+  await page.clock.install({time:new Date(now*1000)});
+  await page.route("**/api/trading-desk/research?*",route=>{
+    const u=new URL(route.request().url());
+    return route.fulfill({json:{symbol:u.searchParams.get("symbol"),region:"US",market_status:"CLOSED",session_start:Date.parse("2026-11-24T14:30:00Z")/1000,session_end:Date.parse("2026-11-24T21:00:00Z")/1000,stale_cache:true,stages:[],bars:[],verdict:"WAIT",bias:"UNAVAILABLE"}});
+  });
+  await page.route("**/api/trading-desk/options?*",route=>route.fulfill({status:401,json:{detail:"Unauthorized"}}));
+  await page.route("**/api/trading-desk/opportunities?*",route=>route.fulfill({json:{region:"US",status:"WAIT",opportunities:[],last_shortlist:[]}}));
+  await page.goto("http://127.0.0.1:8765/trading/");
+  await expect(page.locator("#session")).toHaveText("Session data unverified");
+  await expect(page.locator("#guided-action")).not.toContainText("MARKET CLOSED");
+  await expect(page.locator("#options-contract")).toHaveText("");
+});
