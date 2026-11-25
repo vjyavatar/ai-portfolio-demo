@@ -49,7 +49,19 @@ class AngelOptionsTests(unittest.TestCase):
    with patch.dict(os.environ,env,clear=True):self.assertFalse(a.configured())
  def test_only_supported_indices(self):
   with patch.dict(os.environ,ENV,clear=True),patch('angel_options._request') as request:
-   self.assertEqual(a.chain('SENSEX')['status'],'UNAVAILABLE');request.assert_not_called()
+   self.assertEqual(a.chain('SPX')['status'],'UNAVAILABLE');request.assert_not_called()
+ def test_sensex_bse_bfo_identity(self):
+  master=[dict(name='SENSEX',symbol='SENSEX',token='99919000',instrumenttype='AMXIDX',exch_seg='BSE')]
+  for token,side in [('201','CE'),('202','PE')]:
+   master.append(dict(name='SENSEX',symbol='SENSEX13OCT2680000'+side,token=token,instrumenttype='OPTIDX',exch_seg='BFO',expiry='13OCT2026',strike='8000000.000000',lotsize='20'))
+  index=dict(exchange='BSE',tradingSymbol='SENSEX',symbolToken='99919000',ltp=80000,exchFeedTime='12-Oct-2026 10:59:59')
+  quotes=[dict(exchange='BFO',tradingSymbol=x['symbol'],symbolToken=x['token'],ltp=100,exchFeedTime='12-Oct-2026 10:59:59',opnInterest=100,tradeVolume=500,depth={'buy':[{'price':99,'quantity':20}],'sell':[{'price':100,'quantity':20}]}) for x in master[1:]]
+  with patch.dict(os.environ,ENV,clear=True),patch('angel_options.time.time',return_value=self.now),patch('angel_options.time.sleep'),patch('angel_options._request',side_effect=[master,self.response([index]),self.response(quotes)]):
+   result=a.chain('SENSEX')
+  self.assertEqual(result['status'],'SNAPSHOT')
+  self.assertEqual(result['symbol'],'SENSEX')
+  self.assertEqual(result['rows'][0]['strike'],80000)
+  self.assertEqual(result['rows'][0]['call']['lot_size'],20)
  def test_master_scales_nfo_paise_and_uses_actual_lot(self):
   index,contracts=a.instruments(self.master,'NIFTY',datetime.fromtimestamp(self.now,a.IST).date())
   self.assertEqual(index['token'],'99926000');self.assertEqual(len(contracts),2)
@@ -207,14 +219,14 @@ class AngelOptionsTests(unittest.TestCase):
    self.assertEqual(a.nse_quotes(['SENSEX.BO']),{})
    request.assert_not_called()
  def test_index_snapshot_maps_the_legacy_chain_shape(self):
-  snap=dict(status='SNAPSHOT',spot=25000,expiry='2026-11-26',message='bounded',rows=[
+  snap=dict(status='SNAPSHOT',symbol='NIFTY',spot=25000,expiry='2026-11-26',message='bounded',rows=[
     dict(strike=25000,call=dict(bid=10,ask=11,last=10.5,oi=100,volume=5,iv_pct=None,lot_size=65),
          put=dict(bid=9,ask=10,last=9.5,oi=80,volume=4,iv_pct=None,lot_size=65))])
   with patch.dict(os.environ,ENV,clear=True),patch('angel_options.chain',return_value=snap) as chain:
    out=a.index_snapshot('NIFTY')
    self.assertIsNone(a.index_snapshot('RELIANCE'))
    self.assertIsNone(a.index_snapshot('SENSEX'))
-  chain.assert_called_once_with('NIFTY')
+  self.assertEqual([x.args for x in chain.call_args_list],[('NIFTY',),('SENSEX',)])
   self.assertEqual(out['_chain_source'],'angel_one')
   self.assertEqual(out['chain_near_atm'][0]['ce_oi'],100)
   self.assertEqual(out['chain_near_atm'][0]['ce_volume'],5)
