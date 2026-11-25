@@ -121,7 +121,7 @@ $("watchlist").addEventListener("click", (e) => {
     $("symbol").value = b.dataset.symbol;
     resetResearch();
     watchlist();
-    notify("Instrument selected. Run research to load its data.");
+    scan();
   }
 });
 function resetResearch() {
@@ -145,7 +145,7 @@ for (const b of document.querySelectorAll("[data-region]"))
     }
     resetResearch();
     watchlist();
-    notify("Market changed. Run a fresh research check.");
+    scan();
   });
 $("symbol").addEventListener("input", () => {
   resetResearch();
@@ -225,7 +225,7 @@ function renderGuidance() {
     reason = !isFresh ? "The price evidence is stale or unverified." : "The underlying regular session is closed or unverified.";
     step = "Do not act on this snapshot. Recheck when the market is open and source timestamps are current.";
   } else if (report?.verdict === "LONG_RESEARCH") {
-    title = verifiedOption ? "REVIEW CALL CONTRACT" : "BULLISH WATCH — NO OPTION ENTRY";
+    title = verifiedOption ? "REVIEW CALL CONTRACT" : "LEAN CE — WAIT FOR ENTRY";
     reason = verifiedOption
       ? "Underlying research and the separate US contract check have qualifying evidence; confirm broker quotes and event risk before any action."
       : "Bullish underlying research alone does not validate a call option or its expiry, strike and spread.";
@@ -233,7 +233,7 @@ function renderGuidance() {
       ? "Open the options panel below, verify current bid/ask, strike, expiry, spread and maximum premium risk."
       : "Check the risk scenario; wait for independently verified option evidence before considering a call.";
   } else if (report?.verdict === "BEARISH_RESEARCH") {
-    title = verifiedOption ? "REVIEW PUT CONTRACT" : "BEARISH WATCH — NO OPTION ENTRY";
+    title = verifiedOption ? "REVIEW PUT CONTRACT" : "LEAN PE — WAIT FOR ENTRY";
     reason = verifiedOption
       ? "Underlying research and separate contract checks qualify for review; verify broker quotes before any action."
       : "Bearish underlying research alone is not a verified put option entry.";
@@ -603,6 +603,10 @@ setInterval(() => {
 document.addEventListener("visibilitychange", renderReadiness);
 watchlist();
 render();
+$("scan-cadence").value = "5";
+$("auto-refresh").checked = true;
+$("auto-refresh").dispatchEvent(new Event("change"));
+scan();
 
 $("auto-paper").addEventListener("change", () => {
   const enabled = $("auto-paper").checked;
