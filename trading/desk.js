@@ -1,3 +1,4 @@
+import { classify } from "./decision-state.mjs";
 import { optionView } from "./options.mjs";
 import { notificationCenter } from "./notifications-ui.js";
 import {
@@ -134,6 +135,8 @@ function resetResearch() {
   report = null;
   optionsResult = null;
   sample = false;
+  $("chain-summary").textContent = "No chain loaded for this instrument.";
+  showEvidence([]);
   render();
 }
 for (const b of document.querySelectorAll("[data-region]"))
@@ -218,66 +221,26 @@ function regularSessionClosed(now = Date.now()/1000) {
     start<end && end-start<=86400 && now>=end && now-end<86400 &&
     (region!=="IN" || report?.market_status!=="OPEN");
 }
+function currentDecision(now=Date.now()/1000) {
+  return classify({report,options:optionsResult,region,symbol:$("symbol").value.trim().toUpperCase(),busy,sample,closed:regularSessionClosed(now),now});
+}
 function renderGuidance() {
-  const action = $("guided-action"), why = $("guided-why"), next = $("guided-next");
-  const source = $("guided-source"), clock = $("guided-clock"), checks = $("guided-confidence");
-  const stages = Array.isArray(report?.stages) ? report.stages : [];
-  const passed = stages.filter(s => s.status === "pass").length;
-  const isFresh = !sample && report && !report.stale_cache && fresh(report);
-  const sessionOpen = report?.market_status === "OPEN";
-  const optionStatus = optionsResult?.status;
-  const verifiedOption = !sample && region === "US" && Boolean(optionView(optionsResult).valid) &&
-    ((report?.verdict === "LONG_RESEARCH" && optionStatus === "BUY_CALL_CANDIDATE") ||
-     (report?.verdict === "BEARISH_RESEARCH" && optionStatus === "BUY_PUT_CANDIDATE"));
-  let title = busy ? "WAIT — SCANNING" : "NO TRADE — DATA UNAVAILABLE";
-  let reason = busy ? "Retrieving price and market evidence." : "Waiting for verified market data.";
-  let step = "Auto-scan checks the selected instrument. No entry without verified evidence.";
-  if (sample) {
-    title = "SAMPLE — NOT TRADEABLE";
-    reason = "Synthetic examples are for learning only, never live trade instructions.";
-    step = "Use the paper journal to practice. Select a live symbol to restart.";
-  } else if (regularSessionClosed()) {
-    title = "MARKET CLOSED — NO TRADE";
-    reason = "The regular trading session has ended or is outside normal hours. Last available market data is for research only.";
-    step = "Review the latest available option-chain snapshot and wait for the next verified open session.";
-  } else if (report && (!isFresh || !sessionOpen)) {
-    title = "NO TRADE — DATA UNVERIFIED";
-    reason = !isFresh ? "The price evidence is stale or unverified." : "The underlying regular session is closed or unverified.";
-    step = "Do not act on this snapshot. Recheck when the market is open and source timestamps are current.";
-  } else if (report?.verdict === "LONG_RESEARCH") {
-    title = verifiedOption ? "WAIT — REVIEW CALL CONTRACT" : region==="IN" ? "WAIT — CE BIAS" : "WAIT — CALL BIAS";
-    reason = verifiedOption
-      ? "Underlying research and the separate US contract check have qualifying evidence; confirm broker quotes and event risk before any action."
-      : "Bullish underlying research alone does not validate a call option or its expiry, strike and spread.";
-    step = verifiedOption
-      ? "Open the options panel below, verify current bid/ask, strike, expiry, spread and maximum premium risk."
-      : "Check the risk scenario; wait for independently verified option evidence before considering a call.";
-  } else if (report?.verdict === "BEARISH_RESEARCH") {
-    title = verifiedOption ? "WAIT — REVIEW PUT CONTRACT" : region==="IN" ? "WAIT — PE BIAS" : "WAIT — PUT BIAS";
-    reason = verifiedOption
-      ? "Underlying research and separate contract checks qualify for review; verify broker quotes before any action."
-      : "Bearish underlying research alone is not a verified put option entry.";
-    step = verifiedOption ? "Review the verified put contract and risk before deciding." : "No put entry: contract pricing, liquidity and expiry must be verified first.";
-  } else if (report) {
-    title = "WAIT — NO ENTRY YET";
-    reason = "No qualifying entry yet. The next automatic scan will recheck conditions.";
-    step = "Wait for a fresh five-minute close and rerun research. Do not force an entry.";
-  }
-  action.textContent = title;
-  action.classList.toggle("action-review", false);
-  why.textContent = reason;
-  next.textContent = step;
-  source.textContent = sample ? "SOURCE · SAMPLE" : "SOURCE · " + (report?.source || "UNVERIFIED");
-  clock.textContent = "BAR CLOSE · " + (report ? time(report.bar_close_time) : "UNKNOWN");
-  const biasReady = !regularSessionClosed() && isFresh && sessionOpen && ["LONG_RESEARCH","BEARISH_RESEARCH"].includes(report?.verdict);
-  checks.textContent = "EVIDENCE CONFIDENCE · " + (sample || !isFresh || !sessionOpen || regularSessionClosed() ? "UNAVAILABLE" : biasReady ? "MODERATE (ENTRY UNCONFIRMED)" : "LOW");
-  action.dataset.state = title.startsWith("MARKET CLOSED") ? "closed" : title.startsWith("WAIT") ? "wait" : "neutral";
-  const scanStatus=$("scan-status");
-  if(scanStatus) {
-    const seconds=nextScanAt===null?null:Math.max(0,Math.ceil((nextScanAt-Date.now())/1000));
-    const countdown=seconds===null?"—":Math.floor(seconds/60)+":"+String(seconds%60).padStart(2,"0");
-    scanStatus.textContent = busy ? "Scanning…" : sample ? "Paused · sample" : !$("auto-refresh").checked ? "Auto-scan off" : document.hidden ? "Paused · hidden tab" : "Next scan "+countdown+" · Last scan "+(lastScanAt===null?"not yet":time(lastScanAt/1000));
-  }
+  const d=currentDecision();
+  const action=$("guided-action");
+  action.textContent=d.title;
+  action.dataset.state=d.state==="CLOSED"?"closed":d.state==="WAIT"||d.state==="BIAS"||d.state==="SCANNING"||d.state==="REVIEW"?"wait":"neutral";
+  action.classList.remove("action-review");
+  $("guided-why").textContent=d.reason;
+  $("guided-next").textContent=d.state==="REVIEW"?"Verify the contract and event risk with your broker.":d.state==="CLOSED"?"Review the last available chain.":d.state==="SAMPLE"?"Practice only.":"Wait for the next scan.";
+  $("guided-source").textContent="SOURCE · "+(sample?"SAMPLE":report?.source||"UNVERIFIED");
+  $("guided-clock").textContent="BAR CLOSE · "+time(report?.bar_close_time);
+  $("guided-confidence").textContent="EVIDENCE CONFIDENCE · "+d.confidence;
+  renderScanStatus();
+}
+function renderScanStatus(){
+  const seconds=nextScanAt===null?null:Math.max(0,Math.ceil((nextScanAt-Date.now())/1000));
+  const countdown=seconds===null?"—":Math.floor(seconds/60)+":"+String(seconds%60).padStart(2,"0");
+  $("scan-status").textContent=busy?"Scanning…":sample?"Paused · sample":!$("auto-refresh").checked?"Auto-scan off":document.hidden?"Paused · hidden tab":"Next scan "+countdown+" · Last scan "+(lastScanAt===null?"not yet":time(lastScanAt/1000));
 }
 function render() {
   renderReadiness();
@@ -351,33 +314,31 @@ function renderOptions() {
   const v = optionView(optionsResult);
   const indiaIndex = region === "IN" && ["NIFTY","BANKNIFTY","SENSEX"].includes($("symbol").value.trim().toUpperCase());
   const closed = regularSessionClosed();
+  const decision = currentDecision();
   if (indiaIndex) {
-    const ready = !closed && !sample && report?.region === "IN" &&
-      report.symbol === $("symbol").value.trim().toUpperCase() &&
-      report.market_status === "OPEN" && fresh(report);
-    const bias = ready && report.verdict === "LONG_RESEARCH" ? "CE" :
-      ready && report.verdict === "BEARISH_RESEARCH" ? "PE" : null;
+    const ready = ["BIAS","WAIT","REVIEW"].includes(decision.state);
+    const bias = decision.state==="BIAS" ? (report.verdict==="LONG_RESEARCH"?"CE":"PE") : null;
     $("options-title").textContent = closed ? "Last available chain" : bias ? "CE/PE contract not yet confirmed" : "No verified India contract";
     $("options-direction").textContent = closed ? "Last available data only — not live" : bias ? "Underlying directional bias only" :
       busy ? "Checking market data" : "No verified actionable setup";
     $("options-reason").textContent = closed ? "Regular session closed. Review last available option-chain data below. " + (optionsResult?.reason || "") : !ready ? "Market session or price freshness is not confirmed. No option entry." :
       (optionsResult?.reason || "Checking Indian option-chain evidence.") + " Executable option contract must be independently verified.";
   } else {
-    $("options-title").textContent = closed ? "Market closed — last available data only" : v.valid && report && fresh(report) && report.market_status==="OPEN" ? "Contract available for review" : "No verified option entry";
+    $("options-title").textContent = closed ? "Market closed — last available data only" : decision.state==="REVIEW" ? "Contract available for review" : "No verified option entry";
     $("options-direction").textContent = v.direction;
     $("options-reason").textContent = v.reason;
   }
   const c = optionsResult?.candidate;
   const preview=optionsResult?.contractReview;
   if (indiaIndex) {
-    const validPreview = !closed && !sample && report?.market_status === "OPEN" && fresh(report) &&
+    const validPreview = decision.state==="BIAS" &&
       preview && Number.isFinite(preview.expires_at) && Date.now()/1000 < preview.expires_at &&
       preview.side === (report.verdict === "LONG_RESEARCH" ? "CE" : report.verdict === "BEARISH_RESEARCH" ? "PE" : "");
     $("options-contract").textContent = validPreview ?
       `${preview.contract} · Expiry ${preview.expiry} · Strike ₹${preview.strike} · Bid ₹${preview.bid} / Ask ₹${preview.ask} · Lot ${preview.lot_size} · Indicative premium ₹${preview.premium_per_lot} per lot · Exchange snapshot ${time(preview.feed_time)} · Broker verification required; no buy alert.` : "";
     return;
   }
-  $("options-contract").textContent = v.valid ?
+  $("options-contract").textContent = decision.state==="REVIEW" && v.valid ?
     `${c.contract} · Expiry ${c.expiry} · Strike $${c.strike} · Bid $${c.bid} / ask $${c.ask}. `+
     `Bid time ${time(c.bid_time)}; ask time ${time(c.ask_time)}. `+
     `Maximum premium $${c.maximum_premium} per share; $${c.premium_at_risk} premium at risk per standard contract, plus costs. `+
@@ -413,6 +374,7 @@ async function scan() {
   if (busy || !$("scan-form").reportValidity()) return;
   const sym = $("symbol").value.trim().toUpperCase();
   lastScanAt = Date.now();
+  if ($("auto-refresh").checked) nextScanAt = lastScanAt + refreshDelay();
   sample = false;
   report = null;
   optionsResult = null;
@@ -490,14 +452,13 @@ async function scan() {
         showEvidence([]);
       }
     } else optionsResult = {status:"WAIT",reason:scanRegion === "IN" ? "Indian stock options are not supported by this contract scanner. Select NIFTY, BANKNIFTY or SENSEX for index evidence." : "Verified US option contracts are supported for SPY and QQQ only."};
-    alerts.process(report, optionsResult);
-    renderOptions();
-    renderGuidance();
+    // Final state is rendered after busy is cleared; alert uses the same classifier.
+    alerts.process(report, optionsResult, regularSessionClosed());
   } catch (e) {
     if (id !== scanId) return;
     report = null;
   optionsResult = null;
-    alerts.process({symbol:sym,region:scanRegion,verdict:"WAIT",reason:"Latest research request failed; evidence cannot be reconfirmed."}, null);
+    alerts.process({symbol:sym,region:scanRegion,verdict:"WAIT",reason:"Latest research request failed; evidence cannot be reconfirmed."}, null, regularSessionClosed());
     render();
     notify(
       e.name === "AbortError"
@@ -510,6 +471,8 @@ async function scan() {
       busy = false;
       $("scan-button").disabled = false;
       $("scan-button").textContent = "↗ Run research";
+      renderOptions();
+      renderGuidance();
     }
   }
 }
@@ -522,15 +485,15 @@ $("auto-refresh").addEventListener("change", () => {
   timer = null;
   nextScanAt = null;
   if ($("auto-refresh").checked) {
-    nextScanAt = Date.now()+refreshDelay();
+    nextScanAt = lastScanAt===null ? Date.now() : lastScanAt+refreshDelay();
     timer = setInterval(() => {
-      nextScanAt = Date.now()+refreshDelay();
-      if (!document.hidden && !sample) scan();
-    }, refreshDelay());
+      if (!document.hidden && !sample && !busy && Date.now()>=nextScanAt) scan();
+    }, 1000);
     notify(
       `Research refresh enabled every ${$("scan-cadence").value} minutes while this page is visible. Not continuous monitoring.`,
     );
   } else notify("Automatic refresh paused.");
+  renderReadiness(); renderScanStatus();
 });
 $("scan-cadence").addEventListener("change", () => {
   if ($("auto-refresh").checked) $("auto-refresh").dispatchEvent(new Event("change"));
@@ -656,6 +619,7 @@ setInterval(() => {
     );
   }
 }, 15000);
+setInterval(() => {renderScanStatus(); if(!busy && !sample){renderGuidance();renderOptions();}},1000);
 document.addEventListener("visibilitychange", () => { renderReadiness(); renderGuidance(); if (!document.hidden && !sample && $("auto-refresh").checked && !busy && (lastScanAt===null || Date.now()-lastScanAt>=refreshDelay())) scan(); });
 function revealSection(hash) {
   if (!hash || !/^#[a-z][a-z0-9-]*$/i.test(hash)) return;

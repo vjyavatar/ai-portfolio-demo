@@ -457,7 +457,7 @@ def index_snapshot(symbol):
     sym=str(symbol or '').upper().strip()
     if sym not in INDEX_NAMES or not configured():return None
     snap=chain(sym)
-    if not isinstance(snap,dict) or snap.get('status')!='SNAPSHOT' or not snap.get('rows'):return None
+    if not isinstance(snap,dict) or snap.get('status')!='SNAPSHOT' or snap.get('symbol')!=sym or not snap.get('rows'):return None
     spot=_num(snap.get('spot'))
     if not spot:return None
     chain_rows=[]
