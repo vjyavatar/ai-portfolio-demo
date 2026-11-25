@@ -45,3 +45,30 @@ test("decision, five-minute refresh, instrument isolation and market closure", a
   await expect(page.locator("#guided-action")).toHaveText("MARKET CLOSED — NO TRADE");
   await expect(page.locator("#options-contract")).toHaveText("");
 });
+
+test("regional shortlist is isolated and opens fresh single-symbol research", async ({page})=>{
+  const now=Date.parse("2026-11-25T15:30:00Z")/1000;
+  await page.clock.install({time:new Date(now*1000)});
+  const seen=[];
+  await page.route("**/api/trading-desk/opportunities?*",route=>{
+    const region=new URL(route.request().url()).searchParams.get("region");
+    return route.fulfill({json:{region,status:"RESEARCH_CANDIDATES",coverage:{attempted:10,universe_size:10},
+      cycle_completed_at:now,next_cycle_at:now+3600,
+      opportunities:[{rank:1,region,symbol:region==="US"?"AAPL":"RELIANCE",direction:"BULLISH",expires_at:now+100,status:"RESEARCH_ONLY"}],last_shortlist:[]}});
+  });
+  await page.route("**/api/trading-desk/research?*",route=>{
+    const url=new URL(route.request().url());
+    seen.push(url.searchParams.get("symbol"));
+    return route.fulfill({json:{symbol:url.searchParams.get("symbol"),region:url.searchParams.get("region"),stages:[],bars:[],verdict:"WAIT",bias:"UNAVAILABLE",reason:"QA only"}});
+  });
+  await page.route("**/api/trading-desk/options?*",route=>route.fulfill({json:{status:"WAIT"}}));
+  await page.route("**/api/trading-desk/india-intelligence?*",route=>route.fulfill({json:{status:"WAIT",checks:[]}}));
+  await page.goto("http://127.0.0.1:8765/trading/");
+  await expect(page.locator("#opportunity-list")).toContainText("AAPL");
+  await page.locator('[data-region="IN"]').click();
+  await expect(page.locator("#opportunity-list")).toContainText("RELIANCE");
+  await expect(page.locator("#opportunity-list")).not.toContainText("AAPL");
+  await page.locator('[data-opportunity-symbol="RELIANCE"]').click();
+  await expect(page.locator("#symbol")).toHaveValue("RELIANCE");
+  await expect.poll(()=>seen.includes("RELIANCE")).toBe(true);
+});

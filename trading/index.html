@@ -10,8 +10,9 @@
       content="A focused Celesys workspace for market research, transparent signal checks, risk planning and paper trading."
     />
     <link rel="canonical" href="https://celesys.ai/trading/" />
-    <link rel="stylesheet" href="/trading/desk.css?v=20261125-compact1" />
-    <script type="module" src="/trading/desk.js?v=20261125-compact1"></script>
+    <link rel="stylesheet" href="/trading/desk.css?v=20261125-opportunities1" />
+    <script type="module" src="/trading/desk.js?v=20261125-opportunities1"></script>
+    <script type="module" src="/trading/opportunities.mjs"></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to research</a>
@@ -89,6 +90,12 @@
             <span>↗</span> Run research</button
           ><label class="auto-label"><input type="checkbox" id="auto-refresh" /> Auto-scan</label><label class="auto-label">Every <select id="scan-cadence" aria-label="Scan interval"><option value="5" selected>5 min</option><option value="15">15 min</option></select></label>
         </form>
+        <section class="panel opportunity-panel" aria-labelledby="opportunity-heading">
+          <div class="panel-head"><div><h2 id="opportunity-heading">Top 5 Opportunities</h2><p class="panel-sub" id="opportunity-scope">Hourly regional watchlist · research only</p></div><span id="opportunity-state" class="chip" role="status">Checking</span></div>
+          <p id="opportunity-meta" class="opportunity-meta">Checking scanner coverage…</p>
+          <div id="opportunity-list" class="opportunity-list" aria-live="polite"></div>
+          <p id="opportunity-note" class="opportunity-meta">Select an instrument for a current entry check. Not verified option trades.</p>
+        </section>
         <section class="decision-hub" aria-label="Your next action">
           <div class="decision-main">
             <span class="tiny-label">TRADING DECISION</span>

@@ -978,3 +978,14 @@ main{max-width:1240px;padding-top:22px}
 .guided-help{padding:11px 16px;margin:8px 0}.guided-help>summary{font-size:15px}.guided-help[open]>summary{margin-bottom:12px}
 .guided-help .main-grid,.guided-help .bottom-grid,.guided-help .agent-panel{margin-bottom:0}
 @media(max-width:800px){.decision-hub{grid-template-columns:1fr}.decision-next{border-left:0}.metrics{grid-template-columns:1fr 1fr}.metric{padding:10px 12px}}
+
+/* Compact, region-specific research leaderboard. No implied execution. */
+.opportunity-panel{margin:12px 0;background:#fff;border-color:#d9e1e9}
+.opportunity-panel .panel-head{padding:12px 18px}
+.opportunity-meta{padding:0 18px 10px;font-size:13px;color:var(--muted)}
+.opportunity-list{padding:0 18px 6px;display:grid;gap:3px}
+.opportunity-row{display:grid;grid-template-columns:30px minmax(90px,1fr) minmax(80px,.8fr) minmax(140px,1fr);align-items:center;gap:10px;text-align:left;background:#f5f7fa;border:1px solid var(--line);border-radius:7px;padding:9px 12px;color:var(--text);font:inherit}
+.opportunity-row:hover{background:#eaf1f8}.opportunity-rank{color:var(--muted);font-variant-numeric:tabular-nums}
+.opportunity-up{color:#087b56}.opportunity-down{color:#b52d38}.opportunity-entry{color:#925c08;font-size:13px}
+.opportunity-empty{padding:8px 0;font-size:14px}
+@media(max-width:600px){.opportunity-row{grid-template-columns:22px 1fr 1fr;gap:6px;padding:8px}.opportunity-entry{grid-column:2/-1}.opportunity-panel .panel-head{gap:5px}.opportunity-panel .chip{white-space:normal;text-align:right}}
