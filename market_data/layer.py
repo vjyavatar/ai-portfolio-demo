@@ -1139,7 +1139,7 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
             prev = _num(fh.get("pc")) or price
             return {
                 "ok": True,
-                "data": {"price": price, "prev_close": prev, "currency": meta["currency"], "symbol": meta["root"]},
+                "data": {"price": price, "prev_close": prev, "currency": meta["currency"], "symbol": meta["root"], "exchange_quote_time": _num(fh.get("t"))},
                 "source": "finnhub",
                 "as_of": as_of,
                 "stale": False,
@@ -1150,12 +1150,14 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
         price = row["price"]
         prev = price - change if change is not None else price
         source = "finnhub" if meta["finnhub"] and os.getenv("FINNHUB_API_KEY", "").strip() else "tradingview"
+        exchange_quote_time = None
         if source == "finnhub":
             fh = _finnhub("/quote", {"symbol": meta["root"]})
             fh_price = _num((fh or {}).get("c")) if isinstance(fh, dict) else None
             if fh_price and fh_price > 0:
                 price = fh_price
                 prev = _num(fh.get("pc")) or prev
+                exchange_quote_time = _num(fh.get("t"))
             else:
                 source = "tradingview"
         return {
@@ -1170,6 +1172,7 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
                 "name": fields.get("description") or meta["root"],
                 "symbol": meta["root"],
                 "tv_symbol": row.get("tv_symbol"),
+                "exchange_quote_time": exchange_quote_time,
             },
             "source": source,
             "as_of": as_of,
