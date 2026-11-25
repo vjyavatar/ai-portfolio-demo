@@ -33,6 +33,7 @@ def analyze_chart(payload, symbol, region, now):
         verdict='WAIT',bias='UNAVAILABLE',reason='Insufficient verified data',paper_eligible=False,
         stages=stages,bars=[],metrics={},quote_time=None,bar_close_time=None,
         limitations=['Rule-based research stages; no LLM or calibrated win probability',
+          'Regular-hours schedule is an estimate unless provider session metadata exists; holidays and early closes need independent verification.',
           'No option chain, Greeks, event-calendar or broker execution in this workspace',
           'Targets and stops are illustrative underlying-price levels, not option premiums'])
     result=(payload.get('chart') or {}).get('result') if isinstance(payload,dict) else None
@@ -50,8 +51,13 @@ def analyze_chart(payload, symbol, region, now):
     regular=((meta.get('currentTradingPeriod') or {}).get('regular') or {})
     start,end=number(regular.get('start')),number(regular.get('end'))
     session_known=bool(start and end and start<end and end-start<=86400)
-    market_open=bool(session_known and start<=now<end)
+    market_open=bool(session_known and start<=now<end and meta.get('sessionEvidence',True))
     out['market_status']='OPEN' if market_open else 'CLOSED_OR_UNVERIFIED'
+    out['session_basis']=meta.get('sessionBasis','PROVIDER_REPORTED')
+    out['price_kind']=meta.get('priceKind','SOURCE_QUOTE')
+    out['price_as_of']=number(meta.get('priceAsOf'))
+    out['quote_source']=meta.get('quoteSource')
+    out['candle_source']=meta.get('candleSource')
     out['session_start']=start;out['session_end']=end
     quote_time=number(meta.get('regularMarketTime'))
     price=number(meta.get('regularMarketPrice'))
