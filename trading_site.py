@@ -85,7 +85,7 @@ def cached_report(key,now,stale=False,details=None):
     if not hit or not 0<=now-hit[0]<(STALE_TTL if stale else CACHE_TTL): return None
     try:
         data=analyze_chart(hit[1],key[0],key[1],now)
-        if not data.get('bars'): return None
+        if not data.get('bars') and not data.get('price'): return None
         data['fetched_at']=hit[0]
         data['stale_cache']=stale
         data['provider_status']=dict(details or {},cached=True,checked_at=(details or {}).get('checked_at',hit[0]))
@@ -126,7 +126,11 @@ class _ChartResponse:
 def open_chart(provider_symbol: str):
     """Five-minute chart payload from the provider layer. Raises on an empty read."""
     from market_data.layer import chart_payload
-    payload = chart_payload(provider_symbol, range="5d", interval="5m")
+    from market_data.layer import classify
+    from trading_source_clock import normalize
+    region=classify(provider_symbol)["region"]
+    payload=chart_payload(provider_symbol, range="5d", interval="5m",region=region)
+    payload=normalize(payload,region,time.time())
     raw = json.dumps(payload).encode()
     if len(raw) > 2_000_000:
         raise ValueError("Oversized source response")
@@ -167,7 +171,7 @@ def research(symbol: str='SPY',region: str='US'):
             data['verdict']='WAIT'
             data['paper_eligible']=False
             data.pop('scenario', None)
-            data['reason']='Market is closed or intraday bars are unavailable. Last close is shown. No trade signal.'
+            data['reason']='No verified session candles yet. Available price is for research only. No trade signal.'
         data.update(fetched_at=fetched,stale_cache=False)
         data['provider_status']=dict(code='RESPONSE_RECEIVED',cached=False,checked_at=fetched)
         with _lock:
