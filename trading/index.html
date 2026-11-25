@@ -10,8 +10,8 @@
       content="A focused Celesys workspace for market research, transparent signal checks, risk planning and paper trading."
     />
     <link rel="canonical" href="https://celesys.ai/trading/" />
-    <link rel="stylesheet" href="/trading/desk.css" />
-    <script type="module" src="/trading/desk.js"></script>
+    <link rel="stylesheet" href="/trading/desk.css?v=20261125-compact1" />
+    <script type="module" src="/trading/desk.js?v=20261125-compact1"></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to research</a>
@@ -61,40 +61,7 @@
             Explore a sample ↗
           </button>
         </section>
-        <div id="notice" class="notice" role="status" aria-live="polite">
-          Ready when you are. Run research to check source data and setup
-          conditions.
-        </div>
-        <section class="decision-hub" aria-label="Your next action">
-          <div class="decision-main">
-            <span class="tiny-label">TRADING DECISION</span>
-            <strong id="guided-action" class="guided-action" role="status" aria-live="polite">WAIT — RUN RESEARCH</strong>
-            <p id="guided-why">Choose a market and instrument, then press Run research. No trade is suggested without current evidence.</p>
-            <div class="decision-tags"><span id="guided-source">SOURCE · UNVERIFIED</span><span id="guided-clock">CLOSE · UNKNOWN</span><span id="guided-confidence">CONFIDENCE · UNAVAILABLE</span></div>
-            <p id="scan-status" class="scan-status">Auto-scan starting…</p>
-          </div>
-          <div class="decision-next">
-            <span class="tiny-label">NEXT STEP</span>
-            <p id="guided-next">Run a scan. If evidence is incomplete, stay out.</p>
-            <a class="button primary" href="#scan-form">Change instrument ↓</a>
-            <a class="decision-link" href="#risk-section">Review risk plan →</a>
-          </div>
-        </section>
-        <details class="guided-help">
-          <summary>How to use this desk — 4 simple steps</summary>
-          <ol>
-            <li><strong>Choose:</strong> United States (SPY / QQQ) or India (NIFTY / BANKNIFTY), then select a symbol.</li>
-            <li><strong>Scan:</strong> Research starts automatically and repeats every five minutes by default while the tab stays visible.</li>
-            <li><strong>Decide:</strong> The top panel says WAIT, NO TRADE or REVIEW. Open Market Checks and Options Evidence to understand why. Neither a bullish view nor an OI wall is automatically a CE/PE buy.</li>
-            <li><strong>Protect:</strong> Read the invalidation, stop scenario and premium at risk; paper-practice first. Turn on auto-scan (every 5 or 15 minutes) and browser alerts while the tab stays visible.</li>
-          </ol>
-          <p>Options buying is high-risk. No verified contract, stale data, closed session or missing risk evidence means NO TRADE. Scans do not execute broker orders.</p>
-        </details>
-        <details class="readiness-details"><summary>Data connection and validation</summary><section class="readiness-strip" aria-label="Research readiness">
-          <div><span class="tiny-label">DATA CONNECTION</span><strong id="connection-state">Not checked</strong><small id="connection-detail">Run research to test the provider</small></div>
-          <div><span class="tiny-label">SCAN COVERAGE</span><strong id="coverage-state">Manual · one instrument</strong><small id="coverage-detail">Background monitoring is off</small></div>
-          <div><span class="tiny-label">STRATEGY VALIDATION</span><strong>Unproven</strong><small>No audited out-of-sample performance</small></div>
-        </section></details>
+        
         <form id="scan-form" class="toolbar">
           <div class="market-switch" role="group" aria-label="Market">
             <button
@@ -122,12 +89,27 @@
             <span>↗</span> Run research</button
           ><label class="auto-label"><input type="checkbox" id="auto-refresh" /> Auto-scan</label><label class="auto-label">Every <select id="scan-cadence" aria-label="Scan interval"><option value="5" selected>5 min</option><option value="15">15 min</option></select></label>
         </form>
+        <section class="decision-hub" aria-label="Your next action">
+          <div class="decision-main">
+            <span class="tiny-label">TRADING DECISION</span>
+            <strong id="guided-action" class="guided-action" role="status" aria-live="polite">WAIT — CHECKING MARKET</strong>
+            <p id="guided-why">Automatic scan is starting. No entry until current evidence is confirmed.</p>
+            <div class="decision-tags"><span id="guided-source">SOURCE · UNVERIFIED</span><span id="guided-clock">CLOSE · UNKNOWN</span><span id="guided-confidence">CONFIDENCE · UNAVAILABLE</span></div>
+            <p id="scan-status" class="scan-status">Auto-scan starting…</p>
+          </div>
+          <div class="decision-next">
+            <span class="tiny-label">NEXT STEP</span>
+            <p id="guided-next">Wait for the next verified scan.</p>
+            <a class="button primary" href="#scan-form">Change instrument ↑</a>
+            <a class="decision-link" href="#risk-section">Review risk plan →</a>
+          </div>
+        </section>
         <section class="metrics" aria-label="Research summary">
           <article class="metric">
             <span>UNDERLYING PRICE</span><strong id="price">—</strong
             ><small id="price-note">No quote loaded</small>
           </article>
-          <article class="metric">
+          <article class="metric duplicate-verdict" hidden>
             <span>RESEARCH VERDICT</span
             ><strong id="verdict">Not scanned</strong
             ><small id="verdict-note">Evidence comes first</small>
@@ -141,7 +123,7 @@
             ><small id="session-note">Provider-reported regular hours</small>
           </article>
         </section>
-        <section class="panel" aria-label="Options buying desk">
+        <section class="panel compact-contract" aria-label="Options buying desk">
           <div class="panel-head"><div><span class="tiny-label">OPTION CHAIN &amp; CONTRACT</span><h2>Contract details</h2></div><span class="badge">NO BROKER ORDERS</span></div>
           <div class="options-body" aria-live="polite">
             <h3 id="options-title">No verified option entry</h3>
@@ -151,7 +133,7 @@
             <p class="help">Verify the contract with your broker. Snapshot prices are not executable quotes.</p>
           </div>
         </section>
-        <div class="main-grid">
+        <details class="guided-help"><summary>Price chart &amp; watchlist</summary><div class="main-grid">
           <section class="panel watch-panel">
             <div class="panel-head">
               <h2>Focus list</h2>
@@ -195,7 +177,31 @@
               ><span id="source-label">Source not loaded</span>
             </div>
           </section>
-        </div>
+        </div></details>
+        <details class="guided-help"><summary>Scan activity &amp; data status</summary><div id="notice" class="notice" role="status" aria-live="polite">
+          Ready when you are. Run research to check source data and setup
+          conditions.
+        </div><details class="readiness-details"><summary>Data connection and validation</summary><section class="readiness-strip" aria-label="Research readiness">
+          <div><span class="tiny-label">DATA CONNECTION</span><strong id="connection-state">Not checked</strong><small id="connection-detail">Run research to test the provider</small></div>
+          <div><span class="tiny-label">SCAN COVERAGE</span><strong id="coverage-state">Manual · one instrument</strong><small id="coverage-detail">Background monitoring is off</small></div>
+          <div><span class="tiny-label">STRATEGY VALIDATION</span><strong>Unproven</strong><small>No audited out-of-sample performance</small></div>
+        </section></details></details>
+        <details class="guided-help">
+          <summary>How to use this desk — 4 simple steps</summary>
+          <ol>
+            <li><strong>Choose:</strong> United States (SPY / QQQ) or India (NIFTY / BANKNIFTY), then select a symbol.</li>
+            <li><strong>Scan:</strong> Research starts automatically and repeats every five minutes by default while the tab stays visible.</li>
+            <li><strong>Decide:</strong> The top panel says WAIT, NO TRADE or REVIEW. Open Market Checks and Options Evidence to understand why. Neither a bullish view nor an OI wall is automatically a CE/PE buy.</li>
+            <li><strong>Protect:</strong> Read the invalidation, stop scenario and premium at risk; paper-practice first. Turn on auto-scan (every 5 or 15 minutes) and browser alerts while the tab stays visible.</li>
+          </ol>
+          <p>Options buying is high-risk. No verified contract, stale data, closed session or missing risk evidence means NO TRADE. Scans do not execute broker orders.</p>
+        </details>
+        
+        
+        
+        
+        
+        
         
         <details class="guided-help"><summary>Market checks &amp; evidence</summary><section id="agent-section" class="panel agent-panel">
           <div class="panel-head">
