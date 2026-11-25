@@ -30,7 +30,8 @@ import angel_session
 MASTER_URL='https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json'
 QUOTE_URL='https://apiconnect.angelone.in/rest/secure/angelbroking/market/v1/quote/'
 IST=ZoneInfo('Asia/Kolkata')
-INDEX_NAMES={'NIFTY':'Nifty 50','BANKNIFTY':'Nifty Bank'}
+INDEX_NAMES={'NIFTY':'Nifty 50','BANKNIFTY':'Nifty Bank','SENSEX':'SENSEX'}
+INDEX_EXCHANGES={'NIFTY':('NSE','NFO'),'BANKNIFTY':('NSE','NFO'),'SENSEX':('BSE','BFO')}
 # Exact master symbols. "Nifty 50" must not match "Nifty 500" or the leveraged twins.
 INDEX_QUOTES={'NIFTY':'Nifty 50','BANKNIFTY':'Nifty Bank','INDIAVIX':'India VIX'}
 _QUOTE_ALIASES={'NIFTY50':'NIFTY','^NSEI':'NIFTY','NIFTYBANK':'BANKNIFTY','^NSEBANK':'BANKNIFTY','^INDIAVIX':'INDIAVIX'}
@@ -65,7 +66,7 @@ def _headers():
 
 _INDEX_MASTER_SCRIPT = r"""
 import json, sys
-names = {"NIFTY", "BANKNIFTY"}
+names = {"NIFTY", "BANKNIFTY", "SENSEX"}
 master = json.load(sys.stdin)
 if not isinstance(master, list) or len(master) > 400000:
     raise SystemExit(2)
@@ -74,7 +75,7 @@ for row in master:
     if not isinstance(row, dict) or row.get("name") not in names:
         continue
     seg, kind = row.get("exch_seg"), row.get("instrumenttype")
-    if (seg == "NFO" and kind == "OPTIDX") or (seg == "NSE" and kind == "AMXIDX"):
+    if (seg in ("NFO", "BFO") and kind == "OPTIDX") or (seg in ("NSE", "BSE") and kind == "AMXIDX"):
         kept.append(row)
 json.dump(kept, sys.stdout)
 """
@@ -128,13 +129,14 @@ def feed_time(value,now):
 def instruments(master,symbol,today):
     if not isinstance(master,list) or len(master)>400000:raise ValueError('Invalid instrument master')
     options=[];indices=[];tokens=set();contracts=set()
+    cash_exchange, derivative_exchange=INDEX_EXCHANGES[symbol]
     for raw in master:
         if not isinstance(raw,dict) or raw.get('name')!=symbol:continue
         token=str(raw.get('token',''))
         if not re.fullmatch(r'[1-9][0-9]{0,11}',token):continue
-        if raw.get('exch_seg')=='NSE' and raw.get('instrumenttype')=='AMXIDX' and raw.get('symbol')==INDEX_NAMES[symbol]:
+        if raw.get('exch_seg')==cash_exchange and raw.get('instrumenttype')=='AMXIDX' and raw.get('symbol')==INDEX_NAMES[symbol]:
             indices.append(dict(token=token,symbol=raw['symbol']));continue
-        if raw.get('exch_seg')!='NFO' or raw.get('instrumenttype')!='OPTIDX':continue
+        if raw.get('exch_seg')!=derivative_exchange or raw.get('instrumenttype')!='OPTIDX':continue
         try:
             expiry=datetime.strptime(raw['expiry'],'%d%b%Y').date()
             strike=Decimal(str(raw['strike']))/100
@@ -145,7 +147,12 @@ def instruments(master,symbol,today):
             if suffix not in ('CE','PE'):continue
             strike_text=format(strike,'f').rstrip('0').rstrip('.') if '.' in format(strike,'f') else format(strike,'f')
             expected=symbol+expiry.strftime('%d%b%y').upper()+strike_text+suffix
-            if raw['symbol']!=expected:continue
+            if symbol=='SENSEX':
+                # BFO contract naming differs from NFO; trust exact master identity,
+                # validated expiry/strike fields and exact token+symbol quote match.
+                expected=raw['symbol']
+                if not re.fullmatch(r'SENSEX[A-Z0-9]+(?:CE|PE)',expected) or not expected.endswith(strike_text+suffix):continue
+            elif raw['symbol']!=expected:continue
             identity=(expiry.isoformat(),float(strike),suffix)
             if token in tokens or identity in contracts:raise RuntimeError('Ambiguous instrument identity')
             tokens.add(token);contracts.add(identity)
@@ -158,7 +165,7 @@ def instruments(master,symbol,today):
 def _quotes(exchange,tokens,mode='FULL'):
     global _quote_next
     if mode not in ('LTP','OHLC','FULL'):raise ValueError('Invalid quote mode')
-    if exchange not in ('NSE','NFO') or not 1<=len(tokens)<=50 or len(set(tokens))!=len(tokens):raise ValueError('Invalid token batch')
+    if exchange not in ('NSE','NFO','BSE','BFO') or not 1<=len(tokens)<=50 or len(set(tokens))!=len(tokens):raise ValueError('Invalid token batch')
     wait=_quote_next-time.monotonic()
     if wait>1.2:raise ValueError('Quote pacing busy')
     if wait>0:time.sleep(wait)
@@ -218,7 +225,7 @@ def chain(symbol,expiry=''):
     base=dict(symbol=symbol,region='IN',currency='INR',source='Angel One SmartAPI',rows=[],expiry=None,
         expiries=[],status='UNAVAILABLE',freshness='UNVERIFIED_OR_STALE',execution_enabled=False,
         message='Account-backed read-only feed requires authorized server configuration.')
-    if symbol not in INDEX_NAMES:return dict(base,message='SmartAPI coverage currently supports NIFTY and BANKNIFTY only.')
+    if symbol not in INDEX_NAMES:return dict(base,message='SmartAPI coverage currently supports NIFTY, BANKNIFTY and SENSEX only.')
     import web_background
     if web_background.budget_hit():return dict(base,message='Decision budget elapsed before the index chain.')
     if expiry and (not isinstance(expiry,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',expiry)):
@@ -238,15 +245,16 @@ def chain(symbol,expiry=''):
             if not isinstance(master,list) or len(master)>400000:raise ValueError('Invalid instrument master')
             # Retain only the supported indices/options; discard the much larger all-market dump.
             master=[row for row in master if isinstance(row,dict) and row.get('name') in INDEX_NAMES
-                and ((row.get('exch_seg')=='NFO' and row.get('instrumenttype')=='OPTIDX')
-                     or (row.get('exch_seg')=='NSE' and row.get('instrumenttype')=='AMXIDX'))]
+                and ((row.get('exch_seg') in ('NFO','BFO') and row.get('instrumenttype')=='OPTIDX')
+                     or (row.get('exch_seg') in ('NSE','BSE') and row.get('instrumenttype')=='AMXIDX'))]
             _master=master;_master_at=now
             index,options=instruments(master,symbol,today)
         else:index,options=instruments(_master,symbol,today)
         if web_background.budget_hit():return dict(base,message='Decision budget elapsed before option quotes.')
         dates=sorted({item['expiry'] for item in options});selected=expiry or (dates[0] if dates else '')
         if not selected or selected not in dates:return dict(base,expiries=dates,message='No matching available expiry in the current instrument master.')
-        indexq=_identify(_quotes('NSE',[index['token']]),{index['token']:index},'NSE').get(index['token'])
+        cash_exchange, derivative_exchange=INDEX_EXCHANGES[symbol]
+        indexq=_identify(_quotes(cash_exchange,[index['token']]),{index['token']:index},cash_exchange).get(index['token'])
         spot=_num(indexq.get('ltp')) if indexq else None
         stamp=feed_time(indexq.get('exchFeedTime'),time.time()) if indexq else None
         if not spot or stamp is None:return dict(base,expiries=dates,message='Underlying index quote identity or timestamp unavailable; no arbitrary strike window selected.')
@@ -257,7 +265,7 @@ def chain(symbol,expiry=''):
         strikes=sorted(sorted(paired,key=lambda strike:(abs(strike-spot),strike))[:25])
         contracts=[grouped[strike][side] for strike in strikes for side in ('call','put')]
         if not contracts:return dict(base,expiries=dates,message='No complete call/put pairs in the instrument master.')
-        expected={item['token']:item for item in contracts};quotes=_identify(_quotes('NFO',list(expected)),expected,'NFO')
+        expected={item['token']:item for item in contracts};quotes=_identify(_quotes(derivative_exchange,list(expected)),expected,derivative_exchange)
         rows=[];fetched=time.time()
         for strike in strikes:
             row={'strike':strike}
