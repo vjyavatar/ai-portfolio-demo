@@ -90,11 +90,18 @@ def evaluate(report, chain, now=None):
       dict(label='Event / volatility regime',state='UNAVAILABLE',detail='Validated exchange calendar and event feed are not connected here'),
       dict(label='Historical calibration',state='UNAVAILABLE',detail='No audited out-of-sample signal performance is available'),
     ]
+    stamps=[number(s.get('feed_time')) for s in sides]
+    stamps=[t for t in stamps if t is not None and 0<t<=now]
+    fetched=number(chain.get('fetched_at'))
     preview=contract_review(report,chain,rows,now)
     return dict(status='WAIT',eligible=False,contract_review=preview,
       reason='Recent contract snapshot available for broker review only; executable quote timestamps and risk evidence are still unverified.' if preview else 'No verified India CE/PE contract ticket. '+str(chain.get('message') or 'Do not enter based on a snapshot.'),
       summary='Underlying trend and chain context are separate from an executable options signal.',
       chain=dict(available=actual,expiry=expiry if valid_expiry else None,strikes=len(rows),
+        source=chain.get('source'),freshness=chain.get('freshness'),
+        oldest_exchange_time=min(stamps) if stamps else None,
+        latest_exchange_time=max(stamps) if stamps else None,
+        snapshot_fetched_at=fetched if fetched is not None and 0<fetched<=now else None,
         pcr_oi=round(put_oi/call_oi,2) if call_oi else None,
         highest_call_oi_strike=_wall(rows,'call') if actual else None,
         highest_put_oi_strike=_wall(rows,'put') if actual else None,
