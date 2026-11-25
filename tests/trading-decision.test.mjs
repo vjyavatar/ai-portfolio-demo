@@ -33,3 +33,6 @@ function fixtures(){
  ["US quote predates signal",{...us,options:{...options,candidate:{...options.candidate,bid_time:now-21}}},"BIAS"]];
 }
 for (const [name,input,expected] of fixtures()) test(name,()=>assert.equal(classify(input).state,expected));
+
+test("fresh warm-up is not an entry",()=>{const [,base]=fixtures().find(x=>x[0]==="India CE");const d=classify({...base,report:{...base.report,verdict:"WAIT",warming_up:true}});assert.equal(d.title,"WAIT — SESSION WARM-UP");assert.equal(d.contract,null);});
+test("stale candles block even a fresh quote",()=>{const [,base]=fixtures().find(x=>x[0]==="India CE");assert.equal(classify({...base,report:{...base.report,candle_stale:true}}).state,"UNAVAILABLE");});

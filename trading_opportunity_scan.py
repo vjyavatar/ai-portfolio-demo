@@ -126,7 +126,7 @@ class RegionalScanner:
         result=dict(region=region,enabled=enabled,scope="BOUNDED_LIQUID_WATCHLIST",
             market_status="REGULAR_HOURS_UNVERIFIED" if in_window else "OUTSIDE_REGULAR_HOURS",
             status="SCANNING" if active else "AWAITING_FIRST_CYCLE" if enabled else "SCANNER_DISABLED",
-            coverage=dict(universe_size=len(UNIVERSE[region]),observed=0,attempted=0),
+            coverage=dict(universe_size=len(UNIVERSE[region]),observed=0,attempted=0,fresh_inputs=0),
             universe=list(UNIVERSE[region]),opportunities=[],last_shortlist=[],cycle_completed_at=None,
             next_cycle_at=due if enabled and in_window and due>now else None,generated_at=now,
             note="Hourly shortlist is research only. Open any symbol for a fresh five-minute entry check.")

@@ -17,10 +17,10 @@ function render(data){
   const historical=!fresh.length&&Array.isArray(data.last_shortlist)?data.last_shortlist.filter(x=>/^[A-Z][A-Z0-9.-]{0,19}$/.test(x.symbol)&&["BULLISH","BEARISH"].includes(x.direction)).slice(0,5):[];
   $("opportunity-state").textContent=label[data.status]||"Unverified";
   $("opportunity-scope").textContent=(region==="US"?"USA":"India")+" · hourly liquid watchlist · research only";
-  $("opportunity-meta").textContent="Scanned "+(data.coverage?.attempted??0)+"/"+(data.coverage?.universe_size??"—")+" · Last cycle "+stamp(data.cycle_completed_at)+" · Next "+stamp(data.next_cycle_at);
+  $("opportunity-meta").textContent="Attempted "+(data.coverage?.attempted??0)+"/"+(data.coverage?.universe_size??"—")+" · Verified fresh inputs "+(data.coverage?.fresh_inputs??"—")+" · Last cycle "+stamp(data.cycle_completed_at)+" · Next "+stamp(data.next_cycle_at);
   const list=$("opportunity-list");
   list.replaceChildren();
-  if(!fresh.length&&!historical.length){list.append(cell("p",data.status==="MARKET_CLOSED_REGULAR_HOURS"?"No current entries outside regular hours.":"No verified qualifying setup to display.","opportunity-empty"));return;}
+  if(!fresh.length&&!historical.length){list.append(cell("p",data.status==="MARKET_CLOSED_REGULAR_HOURS"?"No current entries outside regular hours.":data.coverage?.fresh_inputs===0&&data.coverage?.attempted>0?"No fresh market inputs verified in the last scan.":"No verified qualifying setup to display.","opportunity-empty"));return;}
   if(historical.length)list.append(cell("p","Previous shortlist · expired, not a current signal","opportunity-empty"));
   for(const row of fresh.length?fresh:historical){
     const button=cell("button","","opportunity-row");

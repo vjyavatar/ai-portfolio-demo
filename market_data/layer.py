@@ -1113,6 +1113,10 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
                 price = _num((data or {}).get("ltp") if isinstance(data, dict) else None)
                 if price and price > 0:
                     close = _num(data.get("close")) if isinstance(data, dict) else None
+                    exchange_quote_time = None
+                    if isinstance(data, dict) and str(data.get("symboltoken") or data.get("symbolToken")) == str(token) and data.get("exchange") == "NSE" and data.get("tradingsymbol", data.get("tradingSymbol")) == tradingsymbol:
+                        from angel_options import feed_time
+                        exchange_quote_time = feed_time(data.get("exchFeedTime"), _now())
                     change_pct = None
                     if close and close > 0 and abs(close - price) / price > 0.0001:
                         change_pct = (price - close) / close * 100.0
@@ -1124,6 +1128,7 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
                             "change_pct": change_pct,
                             "currency": "INR",
                             "symbol": meta["root"],
+                            "exchange_quote_time": exchange_quote_time,
                         },
                         "source": "angel",
                         "as_of": as_of,
@@ -1139,7 +1144,7 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
             prev = _num(fh.get("pc")) or price
             return {
                 "ok": True,
-                "data": {"price": price, "prev_close": prev, "currency": meta["currency"], "symbol": meta["root"]},
+                "data": {"price": price, "prev_close": prev, "currency": meta["currency"], "symbol": meta["root"], "exchange_quote_time": _num(fh.get("t"))},
                 "source": "finnhub",
                 "as_of": as_of,
                 "stale": False,
@@ -1150,12 +1155,14 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
         price = row["price"]
         prev = price - change if change is not None else price
         source = "finnhub" if meta["finnhub"] and os.getenv("FINNHUB_API_KEY", "").strip() else "tradingview"
+        exchange_quote_time = None
         if source == "finnhub":
             fh = _finnhub("/quote", {"symbol": meta["root"]})
             fh_price = _num((fh or {}).get("c")) if isinstance(fh, dict) else None
             if fh_price and fh_price > 0:
                 price = fh_price
                 prev = _num(fh.get("pc")) or prev
+                exchange_quote_time = _num(fh.get("t"))
             else:
                 source = "tradingview"
         return {
@@ -1170,6 +1177,7 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
                 "name": fields.get("description") or meta["root"],
                 "symbol": meta["root"],
                 "tv_symbol": row.get("tv_symbol"),
+                "exchange_quote_time": exchange_quote_time,
             },
             "source": source,
             "as_of": as_of,
@@ -2191,6 +2199,12 @@ def chart_payload(symbol: str, range: str = "5d", interval: str = "1d", period1:
                     "currentTradingPeriod": {"regular": {"start": session_start, "end": session_end}},
                     "source": candle_env.get("source") or quote_env.get("source"),
                     "sourceAsOf": as_of,
+                    "quoteSource": quote_env.get("source"),
+                    "candleSource": candle_env.get("source"),
+                    "exchangeQuoteTime": quote_data.get("exchange_quote_time"),
+                    "providerQuotePrice": _num(quote_data.get("price")) if quote_env.get("ok") else None,
+                    "quoteStale": bool(quote_env.get("stale")),
+                    "candleStale": bool(candle_env.get("stale")),
                     "stale": bool(candle_env.get("stale") or quote_env.get("stale")),
                 },
                 "timestamp": timestamps,

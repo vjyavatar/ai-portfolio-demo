@@ -25,7 +25,7 @@ class OpportunityTests(unittest.TestCase):
     def test_no_padding_and_region_isolation(self):
         result=rank_reports([fixture(),fixture("NIFTY","IN")],"IN",NOW,["NIFTY","SENSEX"])
         self.assertEqual([x["symbol"] for x in result["opportunities"]],["NIFTY"])
-        self.assertEqual(result["coverage"],dict(universe_size=2,observed=1))
+        self.assertEqual(result["coverage"],dict(universe_size=2,observed=1,fresh_inputs=1))
     def test_expiry_and_duplicates(self):
         first=fixture()
         second=deepcopy(first);second["quote_time"]=NOW-1

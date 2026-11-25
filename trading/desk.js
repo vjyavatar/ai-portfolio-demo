@@ -91,7 +91,7 @@ function fmt(x) {
 function time(t) {
   return Number.isFinite(t)
     ? new Date(t * 1000).toLocaleString("en-US", {
-        timeZone: region === "US" ? "America/Chicago" : "Asia/Kolkata",
+        timeZone: region === "US" ? "America/New_York" : "Asia/Kolkata",
         month: "short",
         day: "numeric",
         hour: "2-digit",
@@ -232,7 +232,7 @@ function renderGuidance() {
   action.classList.remove("action-review");
   $("guided-why").textContent=d.reason;
   $("guided-next").textContent=d.state==="REVIEW"?"Verify the contract and event risk with your broker.":d.state==="CLOSED"?"Review the last available chain.":d.state==="SAMPLE"?"Practice only.":"Wait for the next scan.";
-  $("guided-source").textContent="SOURCE · "+(sample?"SAMPLE":report?.source||"UNVERIFIED");
+  $("guided-source").textContent="SOURCE · "+(sample?"SAMPLE":report?.source==="market-data"?"UNAVAILABLE":report?.source||"UNVERIFIED");
   $("guided-clock").textContent="BAR CLOSE · "+time(report?.bar_close_time);
   $("guided-confidence").textContent="EVIDENCE CONFIDENCE · "+d.confidence;
   renderScanStatus();
@@ -254,9 +254,7 @@ function render() {
   $("currency").textContent = region === "US" ? "USD" : "INR";
   $("capital").value = a.initial;
   $("price").textContent = fmt(report?.price);
-  $("price-note").textContent = report
-    ? "Quote: " + time(report.quote_time)
-    : "No quote loaded";
+  $("price-note").textContent = Number.isFinite(report?.price) ? (report.price_kind==="LAST_CLOSED_BAR" ? "Last closed candle: "+time(report.price_as_of) : report.price_kind==="UNVERIFIED_QUOTE_SNAPSHOT" ? "Snapshot · exchange time unknown" : "Exchange quote: "+time(report.quote_time)) : "No quote loaded";
   $("verdict").textContent = report
     ? {
         LONG_RESEARCH: "Long candidate",
@@ -282,8 +280,9 @@ function render() {
     : regularSessionClosed() ? "Market closed" : report?.market_status === "OPEN"
       ? "Regular hours"
       : report
-        ? "Closed / unknown"
+        ? "Session unverified"
         : "—";
+  $("session-note").textContent = report?.session_basis==="REGULAR_HOURS_ESTIMATE"?"Regular-hours estimate · source evidence required":"Provider-reported regular hours";
   $("source-label").textContent = sample
     ? "SYNTHETIC SAMPLE"
     : report

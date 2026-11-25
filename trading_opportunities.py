@@ -10,6 +10,7 @@ def rank_reports(reports, region, now, universe):
     allowed=set(universe)
     valid={}
     observed=set()
+    fresh_inputs=set()
     for report in reports:
         if not isinstance(report,dict) or report.get("region")!=region:
             continue
@@ -17,7 +18,7 @@ def rank_reports(reports, region, now, universe):
         if not isinstance(symbol,str) or symbol not in allowed:
             continue
         observed.add(symbol)
-        if report.get("stale_cache") or report.get("mode")!="RESEARCH_ONLY" or report.get("market_status")!="OPEN":
+        if report.get("stale_cache") or report.get("quote_stale") or report.get("candle_stale") or report.get("mode")!="RESEARCH_ONLY" or report.get("market_status")!="OPEN":
             continue
         source=report.get("source")
         if not isinstance(source,str) or source.strip().lower() in ("","market-data","unknown","sample","unverified"):
@@ -25,6 +26,7 @@ def rank_reports(reports, region, now, universe):
         q,b,start,end,price=(report.get(k) for k in ("quote_time","bar_close_time","session_start","session_end","price"))
         if not all(_num(x) for x in (q,b,start,end,price)) or not (0<price and 0<end-start<=86400 and start<=b<=q<=now<end and now-b<=300 and now-q<=300):
             continue
+        fresh_inputs.add(symbol)
         verdict=report.get("verdict")
         if verdict not in ("LONG_RESEARCH","BEARISH_RESEARCH"):
             continue
@@ -54,7 +56,7 @@ def rank_reports(reports, region, now, universe):
         if symbol not in valid or q>valid[symbol][1]["quote_time"]:
             valid[symbol]=(sort_key,item)
     ordered=sorted(valid.values(),key=lambda x:x[0])[:5]
-    return dict(region=region,generated_at=now,coverage=dict(universe_size=len(allowed),observed=len(observed)),
+    return dict(region=region,generated_at=now,coverage=dict(universe_size=len(allowed),observed=len(observed),fresh_inputs=len(fresh_inputs)),
         status="RESEARCH_CANDIDATES" if ordered else "NO_QUALIFYING_CANDIDATES",
         opportunities=[dict(item,rank=i) for i,(_,item) in enumerate(ordered,1)],
         note="Fresh underlying research only; not verified options entry or probability of profit.")

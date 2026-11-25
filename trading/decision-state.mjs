@@ -5,8 +5,14 @@ export function classify({report=null,options=null,region,symbol,busy=false,samp
   if(busy)return result("SCANNING","WAIT — SCANNING","Checking current market data and contract evidence.");
   if(!report||report.region!==region||report.symbol!==symbol)return result("UNAVAILABLE","NO TRADE — DATA UNAVAILABLE","No verified report for the selected instrument.");
   const validTime=t=>Number.isFinite(t)&&now>=t&&now-t<=300;
-  const fresh=!report.stale_cache&&report.market_status==="OPEN"&&Number.isFinite(report.session_start)&&Number.isFinite(report.session_end)&&report.session_start<=now&&now<report.session_end&&report.session_end-report.session_start<=86400&&validTime(report.quote_time)&&validTime(report.bar_close_time)&&report.session_start<=report.bar_close_time&&report.bar_close_time<=report.quote_time&&Number.isFinite(report.price)&&report.price>0&&Array.isArray(report.bars)&&report.bars.length>0;
-  if(!fresh)return result("UNAVAILABLE","NO TRADE — DATA UNVERIFIED","Price, session or timestamp evidence is missing or expired.");
+  const freshQuote=!report.stale_cache&&!report.quote_stale&&report.market_status==="OPEN"&&Number.isFinite(report.session_start)&&Number.isFinite(report.session_end)&&report.session_start<=now&&now<report.session_end&&validTime(report.quote_time)&&report.quote_time>=report.session_start&&Number.isFinite(report.price)&&report.price>0;
+  if(freshQuote&&!report.candle_stale&&report.warming_up===true&&report.verdict==="WAIT")return result("WAIT","WAIT — SESSION WARM-UP","Fresh quote received. Waiting for sufficient closed session candles.","LOW");
+  const fresh=!report.stale_cache&&!report.quote_stale&&!report.candle_stale&&report.market_status==="OPEN"&&Number.isFinite(report.session_start)&&Number.isFinite(report.session_end)&&report.session_start<=now&&now<report.session_end&&report.session_end-report.session_start<=86400&&validTime(report.quote_time)&&validTime(report.bar_close_time)&&report.session_start<=report.bar_close_time&&report.bar_close_time<=report.quote_time&&Number.isFinite(report.price)&&report.price>0&&Array.isArray(report.bars)&&report.bars.length>0;
+  if(!fresh){
+    const code=report.provider_status?.code;
+    const reasons={RATE_LIMITED:"Provider rate limit; retry scheduled.",ACCESS_DENIED:"Market-data access denied.",REQUEST_IN_PROGRESS:"Provider busy; waiting for a new source response.",LOCAL_PACING:"Provider request pacing active.",CONNECTION_FAILURE:"Market-data connection unavailable.",INVALID_RESPONSE:"Provider returned invalid or incomplete market data."};
+    return result("UNAVAILABLE","NO TRADE — DATA UNVERIFIED",reasons[code]||(report.price_kind==="LAST_CLOSED_BAR"?"Last closed candle shown; no verified current quote.":report.price_kind==="UNVERIFIED_QUOTE_SNAPSHOT"?"Price snapshot available; exchange quote timestamp is unverified.":"Price, session or timestamp evidence is missing or expired."));
+  }
   const side=report.verdict==="LONG_RESEARCH"?"CALL":report.verdict==="BEARISH_RESEARCH"?"PUT":null;
   const gates=Array.isArray(report.stages)?report.stages:[];
   const names=["Data steward","Session guard","Trend analyst","Setup analyst","Risk critic","Quote guard"];
