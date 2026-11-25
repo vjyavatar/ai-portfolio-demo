@@ -1113,6 +1113,10 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
                 price = _num((data or {}).get("ltp") if isinstance(data, dict) else None)
                 if price and price > 0:
                     close = _num(data.get("close")) if isinstance(data, dict) else None
+                    exchange_quote_time = None
+                    if isinstance(data, dict) and str(data.get("symboltoken") or data.get("symbolToken")) == str(token) and data.get("exchange") == "NSE" and data.get("tradingsymbol", data.get("tradingSymbol")) == tradingsymbol:
+                        from angel_options import feed_time
+                        exchange_quote_time = feed_time(data.get("exchFeedTime"), _now())
                     change_pct = None
                     if close and close > 0 and abs(close - price) / price > 0.0001:
                         change_pct = (price - close) / close * 100.0
@@ -1124,6 +1128,7 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
                             "change_pct": change_pct,
                             "currency": "INR",
                             "symbol": meta["root"],
+                            "exchange_quote_time": exchange_quote_time,
                         },
                         "source": "angel",
                         "as_of": as_of,
