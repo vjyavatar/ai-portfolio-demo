@@ -339,6 +339,15 @@ function renderOptions() {
     $("options-reason").textContent = v.reason;
   }
   const c = optionsResult?.candidate;
+  const preview=optionsResult?.contractReview;
+  if (indiaIndex) {
+    const validPreview = !sample && report?.market_status === "OPEN" && fresh(report) &&
+      preview && Number.isFinite(preview.expires_at) && Date.now()/1000 < preview.expires_at &&
+      preview.side === (report.verdict === "LONG_RESEARCH" ? "CE" : report.verdict === "BEARISH_RESEARCH" ? "PE" : "");
+    $("options-contract").textContent = validPreview ?
+      `${preview.contract} · Expiry ${preview.expiry} · Strike ₹${preview.strike} · Bid ₹${preview.bid} / Ask ₹${preview.ask} · Lot ${preview.lot_size} · Indicative premium ₹${preview.premium_per_lot} per lot · Exchange snapshot ${time(preview.feed_time)} · Broker verification required; no buy alert.` : "";
+    return;
+  }
   $("options-contract").textContent = v.valid ?
     `${c.contract} · Expiry ${c.expiry} · Strike $${c.strike} · Bid $${c.bid} / ask $${c.ask}. `+
     `Bid time ${time(c.bid_time)}; ask time ${time(c.ask_time)}. `+
@@ -435,18 +444,18 @@ async function scan() {
       try {
         const response = await fetch(`/api/trading-desk/india-intelligence?symbol=${encodeURIComponent(sym)}`,
           {signal:currentController.signal,cache:"no-store"});
-        if (!response.ok) throw Error("Protected chain unavailable");
+        if (!response.ok) throw Error(response.status === 401 || response.status === 403 ? "Sign in with verified full access to view Indian contracts." : "Indian option-chain provider unavailable.");
         const intel = await response.json();
         if (id !== scanId) return;
-        optionsResult = {status:"WAIT",reason:intel.reason};
+        optionsResult = {status:"WAIT",reason:intel.reason,contractReview:intel.contract_review || null};
         const details = intel.chain || {};
         $("chain-summary").textContent = details.available
           ? `Expiry ${details.expiry || "—"} · PCR ${details.pcr_oi ?? "—"} · CE OI wall ${details.highest_call_oi_strike ?? "—"} · PE OI wall ${details.highest_put_oi_strike ?? "—"} · OI changes CE ${details.total_call_oi_change ?? "—"} / PE ${details.total_put_oi_change ?? "—"}`
           : "Verified Indian option-chain snapshot unavailable.";
         showEvidence(intel.checks || []);
-      } catch {
+      } catch (error) {
         if (id !== scanId) return;
-        optionsResult={status:"WAIT",reason:"Indian contract evidence unavailable; no CE/PE buy alert."};
+        optionsResult={status:"WAIT",reason:error?.message || "Indian contract evidence unavailable; no CE/PE buy alert."};
         $("chain-summary").textContent = "India chain could not be verified.";
         showEvidence([]);
       }
