@@ -223,13 +223,13 @@ function renderGuidance() {
   const source = $("guided-source"), clock = $("guided-clock"), checks = $("guided-confidence");
   const stages = Array.isArray(report?.stages) ? report.stages : [];
   const passed = stages.filter(s => s.status === "pass").length;
-  const isFresh = !sample && report && fresh(report);
+  const isFresh = !sample && report && !report.stale_cache && fresh(report);
   const sessionOpen = report?.market_status === "OPEN";
   const optionStatus = optionsResult?.status;
   const verifiedOption = !sample && region === "US" && Boolean(optionView(optionsResult).valid) &&
     ((report?.verdict === "LONG_RESEARCH" && optionStatus === "BUY_CALL_CANDIDATE") ||
      (report?.verdict === "BEARISH_RESEARCH" && optionStatus === "BUY_PUT_CANDIDATE"));
-  let title = busy ? "CHECKING MARKET…" : "NO TRADE — DATA UNAVAILABLE";
+  let title = busy ? "WAIT — SCANNING" : "NO TRADE — DATA UNAVAILABLE";
   let reason = busy ? "Retrieving price and market evidence." : "Waiting for verified market data.";
   let step = "Auto-scan checks the selected instrument. No entry without verified evidence.";
   if (sample) {
@@ -259,18 +259,18 @@ function renderGuidance() {
       : "Bearish underlying research alone is not a verified put option entry.";
     step = verifiedOption ? "Review the verified put contract and risk before deciding." : "No put entry: contract pricing, liquidity and expiry must be verified first.";
   } else if (report) {
-    title = "NO TRADE — SETUP NOT READY";
-    reason = "A market check is incomplete. See Market Checks below for its status.";
+    title = "WAIT — NO ENTRY YET";
+    reason = "No qualifying entry yet. The next automatic scan will recheck conditions.";
     step = "Wait for a fresh five-minute close and rerun research. Do not force an entry.";
   }
   action.textContent = title;
-  action.classList.toggle("action-review", verifiedOption && isFresh && sessionOpen);
+  action.classList.toggle("action-review", false);
   why.textContent = reason;
   next.textContent = step;
-  source.textContent = sample ? "SOURCE · SAMPLE" : "SOURCE · " + (report?.provider_status?.code || "UNVERIFIED");
+  source.textContent = sample ? "SOURCE · SAMPLE" : "SOURCE · " + (report?.source || "UNVERIFIED");
   clock.textContent = "BAR CLOSE · " + (report ? time(report.bar_close_time) : "UNKNOWN");
   const biasReady = !regularSessionClosed() && isFresh && sessionOpen && ["LONG_RESEARCH","BEARISH_RESEARCH"].includes(report?.verdict);
-  checks.textContent = "CONFIDENCE · " + (sample || !isFresh || !sessionOpen || regularSessionClosed() ? "UNAVAILABLE" : biasReady ? "MODERATE (ENTRY UNCONFIRMED)" : "LOW");
+  checks.textContent = "EVIDENCE CONFIDENCE · " + (sample || !isFresh || !sessionOpen || regularSessionClosed() ? "UNAVAILABLE" : biasReady ? "MODERATE (ENTRY UNCONFIRMED)" : "LOW");
   action.dataset.state = title.startsWith("MARKET CLOSED") ? "closed" : title.startsWith("WAIT") ? "wait" : "neutral";
   const scanStatus=$("scan-status");
   if(scanStatus) {
