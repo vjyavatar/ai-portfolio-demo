@@ -1099,11 +1099,13 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
 
     def load():
         as_of = _iso()
-        if meta["region"] == "IN" and (meta["kind"] == "equity" or meta["root"] in {"NIFTY", "BANKNIFTY", "SENSEX"}):
+        # The Trading Desk uses chart aliases; resolve to broker identity before routing.
+        broker_root = {"^NSEI": "NIFTY", "^NSEBANK": "BANKNIFTY", "^BSESN": "SENSEX"}.get(meta["root"], meta["root"])
+        if meta["region"] == "IN" and (meta["kind"] == "equity" or broker_root in {"NIFTY", "BANKNIFTY", "SENSEX"}):
             # Reuse the authenticated, proxy-aware market quote adapter.
             try:
                 import angel_options
-                q = angel_options.nse_quotes([meta["root"]], verified=True).get(meta["root"], {})
+                q = angel_options.nse_quotes([broker_root], verified=True).get(broker_root, {})
             except Exception:
                 q = {}
             price = _num(q.get("price"))
