@@ -29,6 +29,29 @@ except Exception as e:
     
     print(f"[START] ⚠️ Running fallback app — check logs for the real error", flush=True)
 
+# Do not expose an unhandled 500 when a slow market-data source exceeds the
+# Market Pulse aggregation deadline. Never substitute fabricated live prices.
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(TimeoutError)
+async def _market_data_timeout_handler(request: Request, exc: TimeoutError):
+    if request.url.path == "/api/market-pulse":
+        import logging
+        logging.getLogger(__name__).warning("Market Pulse provider deadline exceeded: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unavailable",
+                "error": "market_data_timeout",
+                "message": "Market Pulse providers did not respond before the deadline; retry shortly.",
+                "data_freshness": "unverified",
+                "trade_eligible": False,
+            },
+            headers={"Retry-After": "10", "Cache-Control": "no-store"},
+        )
+    raise exc
+
 # Retire the removed Saathi app and its offline cache.
 from retired_site import attach_retired_routes
 attach_retired_routes(app)
