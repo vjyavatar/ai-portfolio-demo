@@ -313,7 +313,14 @@ if not isinstance(master, list) or len(master) > 400000:
     raise SystemExit(2)
 book = {}
 for raw in master:
-    if not isinstance(raw, dict) or raw.get("exch_seg") != "NSE":
+    if not isinstance(raw, dict):
+        continue
+    if raw.get("exch_seg") == "BSE" and raw.get("instrumenttype") == "AMXIDX" and raw.get("symbol") == "SENSEX":
+        token = str(raw.get("token", ""))
+        if re.fullmatch(r"[1-9][0-9]{0,11}", token):
+            book["SENSEX"] = {"token": token, "symbol": "SENSEX", "exchange": "BSE"}
+        continue
+    if raw.get("exch_seg") != "NSE":
         continue
     token = str(raw.get("token", ""))
     if not re.fullmatch(r"[1-9][0-9]{0,11}", token):
@@ -394,7 +401,7 @@ def _ltp_row(key,inst,quote,fetched):
         trading_symbol=inst['symbol'],fetched_at=fetched)
 
 
-def nse_quotes(symbols):
+def nse_quotes(symbols, verified=False):
     """LTP plus OHLC for NSE names. Empty when Angel is not configured or the call fails.
 
     Uses the market quote API (mode OHLC) through angel_session, so the static-IP
@@ -411,22 +418,24 @@ def nse_quotes(symbols):
     try:
         now=time.time();missing=[]
         for key in keys:
-            hit=_ltp_cache.get(key)
+            hit=_ltp_cache.get((key, 'FULL') if verified else key)
             if hit and 0<=now-hit['fetched_at']<60:out[key]=dict(hit)
             else:missing.append(key)
         if not missing:return out
         book=_load_nse_book(now)
-        wanted=[key for key in missing if key in book]
-        for offset in range(0,len(wanted),50):
-            chunk=wanted[offset:offset+50]
+        wanted=[key for key in missing if key in book and (verified or key != 'SENSEX')]
+        batches=[(exchange, group[offset:offset+50]) for exchange in ('NSE','BSE')
+                 for group in [[key for key in wanted if book[key].get('exchange','NSE')==exchange]]
+                 for offset in range(0,len(group),50)]
+        for exchange, chunk in batches:
             expected={book[key]['token']:book[key] for key in chunk}
-            fetched=_quotes('NSE',[book[key]['token'] for key in chunk],mode='OHLC')
+            fetched=_quotes(exchange,[book[key]['token'] for key in chunk],mode='FULL' if verified else 'OHLC')
             by_token={}
             for quote in fetched:
                 if not isinstance(quote,dict):continue
                 token=str(quote.get('symbolToken',''))
                 inst=expected.get(token)
-                if not inst or quote.get('exchange')!='NSE' or token in by_token:continue
+                if not inst or quote.get('exchange')!=exchange or token in by_token:continue
                 if quote.get('tradingSymbol') and quote.get('tradingSymbol')!=inst['symbol']:continue
                 by_token[token]=quote
             fetched_at=time.time()
@@ -434,9 +443,10 @@ def nse_quotes(symbols):
                 quote=by_token.get(book[key]['token'])
                 if not quote:continue
                 row=_ltp_row(key,book[key],quote,fetched_at)
-                if not row:continue
+                if not row or (verified and (quote.get('tradingSymbol')!=book[key]['symbol'] or not row.get('as_of_epoch') or not 0<=fetched_at-row['as_of_epoch']<=120)):continue
+                if verified:row['provider_mode']='FULL'
                 if len(_ltp_cache)>=256:_ltp_cache.pop(next(iter(_ltp_cache)))
-                _ltp_cache[key]=row
+                _ltp_cache[(key, 'FULL') if verified else key]=row
                 out[key]=dict(row)
         return out
     except Exception as error:
