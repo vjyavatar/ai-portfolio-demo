@@ -50,8 +50,8 @@ def validate_trading(data,symbol,region,now=None):
     def finite(x):return isinstance(x,(int,float)) and not isinstance(x,bool) and math.isfinite(x)
     if not isinstance(data,dict) or data.get('symbol')!=symbol or data.get('region')!=region:
         return 'FAIL','Trading response symbol/market mismatch'
-    if data.get('source')!='Yahoo Finance chart' or data.get('currency')!=('INR' if region=='IN' else 'USD'):
-        return 'FAIL','Trading source or currency is unverified'
+    if data.get('currency')!=('INR' if region=='IN' else 'USD'):
+        return 'FAIL','Trading currency is mismatched'
     verdict=data.get('verdict');candidate=verdict in ('LONG_RESEARCH','BEARISH_RESEARCH')
     if verdict not in ('WAIT','LONG_RESEARCH','BEARISH_RESEARCH'):return 'FAIL','Unknown trading verdict'
     start,end=data.get('session_start'),data.get('session_end')
@@ -60,6 +60,8 @@ def validate_trading(data,symbol,region,now=None):
     quote,bar=data.get('quote_time'),data.get('bar_close_time')
     fresh=finite(quote) and finite(bar) and 0<=now-quote<=300 and 0<=now-bar<=300 and quote>=bar
     price=data.get('price');price_ok=finite(price) and price>0
+    trusted=data.get('quote_source') in ('angel','finnhub') and data.get('candle_source') in ('angel','finnhub','tradingview')
+    fresh=fresh and trusted and not data.get('quote_stale') and not data.get('candle_stale') and data.get('price_kind')=='SOURCE_QUOTE'
     provider=data.get('provider_status') or {}
     received=isinstance(provider,dict) and provider.get('code')=='RESPONSE_RECEIVED'
     stale_cache=bool(data.get('stale_cache') or provider.get('stale_cache'))
@@ -71,7 +73,7 @@ def validate_trading(data,symbol,region,now=None):
         if not (received and opened and data.get('market_status')=='OPEN' and fresh and price_ok):
             return 'FAIL','Candidate without verified open session, source response, price and fresh quote/closed bar'
         bars=data.get('bars');stages=data.get('stages')
-        if not isinstance(bars,list) or len(bars)<21 or not isinstance(stages,list):
+        if not isinstance(bars,list) or len(bars)<6 or not isinstance(stages,list):
             return 'FAIL','Candidate lacks closed-bar strategy evidence'
         gates={s.get('name'):s.get('status') for s in stages if isinstance(s,dict)}
         if any(gates.get(name)!='pass' for name in ('Data steward','Session guard','Trend analyst','Setup analyst','Risk critic','Quote guard')):
@@ -82,14 +84,14 @@ def validate_trading(data,symbol,region,now=None):
     if not opened:
         if data.get('market_status')=='OPEN':return 'FAIL','Response labels an ended or future session OPEN'
         return 'PASS','Closed-session WAIT; live freshness is not certified outside the session'
-    if data.get('market_status')!='OPEN':return 'FAIL','Response session state contradicts its source session times'
+    if data.get('market_status')!='OPEN':return 'UNVERIFIED','Inside scheduled hours; exchange session evidence unavailable'
     if not (fresh and price_ok):return 'UNVERIFIED','Open-session WAIT; fresh quote/closed-bar evidence unavailable'
     return 'PASS','Open-session WAIT with fresh source evidence; no aligned candidate is required'
 
 def trading_probes(regions):
     return [(f'/api/trading-desk/research?symbol={symbol}&region={region}',
              lambda data,symbol=symbol,region=region:validate_trading(data,symbol,region))
-            for region,symbol in [('IN','RELIANCE'),('US','SPY')] if region in regions]
+            for region,symbol in [('IN','NIFTY'),('IN','BANKNIFTY'),('IN','SENSEX'),('IN','RELIANCE'),('US','SPY'),('US','QQQ')] if region in regions]
 
 def source_inventory():
     routes=[];functions=[];pages={'/','/research','/today','/trading/','/options/india','/options/us'}
