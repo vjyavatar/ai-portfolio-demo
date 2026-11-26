@@ -1,10 +1,8 @@
 name: Trading Desk regression QA
 on:
   pull_request:
-    paths: ['trading/**', 'trading_research.py', 'tests/trading-*.test.mjs', 'tests/trading-*.spec.mjs', 'tests/test_trading*.py', '.github/workflows/trading-desk-qa.yml']
   push:
     branches: [main]
-    paths: ['trading/**', 'trading_research.py', 'tests/trading-*.test.mjs', 'tests/trading-*.spec.mjs', 'tests/test_trading*.py', '.github/workflows/trading-desk-qa.yml']
 permissions:
   contents: read
 jobs:
