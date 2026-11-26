@@ -1099,11 +1099,11 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
 
     def load():
         as_of = _iso()
-        if meta["region"] == "IN" and (meta["kind"] == "equity" or meta["root"] in {"NIFTY", "BANKNIFTY"}):
+        if meta["region"] == "IN" and (meta["kind"] == "equity" or meta["root"] in {"NIFTY", "BANKNIFTY", "SENSEX"}):
             # Reuse the authenticated, proxy-aware market quote adapter.
             try:
                 import angel_options
-                q = angel_options.nse_quotes([meta["root"]]).get(meta["root"], {})
+                q = angel_options.nse_quotes([meta["root"]], verified=True).get(meta["root"], {})
             except Exception:
                 q = {}
             price = _num(q.get("price"))
@@ -1402,12 +1402,14 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
     except Exception:
         return None
     interval_name = {"1d": "ONE_DAY", "5m": "FIVE_MINUTE", "15m": "FIFTEEN_MINUTE", "60m": "ONE_HOUR", "1m": "ONE_MINUTE"}.get(interval, "ONE_DAY")
-    end = datetime.now().strftime("%Y-%m-%d %H:%M")
-    start = (datetime.now() - timedelta(days=10 if interval != "1d" else 400)).strftime("%Y-%m-%d %H:%M")
+    # SmartAPI historical date parameters are exchange-local (IST), not host UTC.
+    local_now = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    end = local_now.strftime("%Y-%m-%d %H:%M")
+    start = (local_now - timedelta(days=10 if interval != "1d" else 400)).strftime("%Y-%m-%d %H:%M")
     try:
         payload = angel_session.request_json(
             _ANGEL_CANDLE,
-            payload={"exchange": "NSE", "symboltoken": str(token), "interval": interval_name, "fromdate": start, "todate": end},
+            payload={"exchange": inst.get("exchange", "NSE"), "symboltoken": str(token), "interval": interval_name, "fromdate": start, "todate": end},
             headers=headers,
             timeout=ANGEL_CANDLE_TIMEOUT,
         )
