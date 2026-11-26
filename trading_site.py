@@ -246,6 +246,8 @@ class DeskFiles(StaticFiles):
 def attach_trading_desk(app):
     if any(getattr(r,'path',None)=='/trading' for r in app.routes): return
     app.include_router(router)
+    from openalgo_site import router as openalgo_router
+    app.include_router(openalgo_router)
     app.mount('/trading',DeskFiles(directory=str(ROOT),html=True),name='trading-desk')
     # Preserve the original lifespan, including any custom application startup.
     from contextlib import asynccontextmanager
