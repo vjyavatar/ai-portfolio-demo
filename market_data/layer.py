@@ -1099,42 +1099,24 @@ def quote(symbol: str, region: Optional[str] = None) -> dict:
 
     def load():
         as_of = _iso()
-        if meta["region"] == "IN" and (meta["kind"] == "equity" or meta["root"] in {"NIFTY", "BANKNIFTY"}):
-            token = _angel_token(symbol)
-            headers = _angel_headers()
-            if token and headers:
-                tradingsymbol = "Nifty 50" if meta["root"] == "NIFTY" else "Nifty Bank" if meta["root"] == "BANKNIFTY" else meta["root"] + "-EQ"
-                payload = _json(
-                    _ANGEL_LTP,
-                    data=json.dumps({"exchange": "NSE", "tradingsymbol": tradingsymbol, "symboltoken": token}).encode(),
-                    headers=headers,
-                )
-                data = payload.get("data") if isinstance(payload, dict) else None
-                price = _num((data or {}).get("ltp") if isinstance(data, dict) else None)
-                if price and price > 0:
-                    close = _num(data.get("close")) if isinstance(data, dict) else None
-                    exchange_quote_time = None
-                    if isinstance(data, dict) and str(data.get("symboltoken") or data.get("symbolToken")) == str(token) and data.get("exchange") == "NSE" and data.get("tradingsymbol", data.get("tradingSymbol")) == tradingsymbol:
-                        from angel_options import feed_time
-                        exchange_quote_time = feed_time(data.get("exchFeedTime"), _now())
-                    change_pct = None
-                    if close and close > 0 and abs(close - price) / price > 0.0001:
-                        change_pct = (price - close) / close * 100.0
-                    return {
-                        "ok": True,
-                        "data": {
-                            "price": price,
-                            "prev_close": close or price,
-                            "change_pct": change_pct,
-                            "currency": "INR",
-                            "symbol": meta["root"],
-                            "exchange_quote_time": exchange_quote_time,
-                        },
-                        "source": "angel",
-                        "as_of": as_of,
-                        "stale": False,
-                        "metric_sources": {"price": {"source": "angel", "as_of": as_of, "value": price}},
-                    }
+        if meta["region"] == "IN" and (meta["kind"] == "equity" or meta["root"] in {"NIFTY", "BANKNIFTY", "SENSEX"}):
+            # Reuse the authenticated, proxy-aware market quote adapter.
+            try:
+                import angel_options
+                q = angel_options.nse_quotes([meta["root"]], verified=True).get(meta["root"], {})
+            except Exception:
+                q = {}
+            price = _num(q.get("price"))
+            stamp = _num(q.get("as_of_epoch"))
+            if price and stamp and 0 <= _now() - stamp <= 120:
+                return {
+                    "ok": True,
+                    "data": {"price": price, "prev_close": _num(q.get("prev_close")) or price,
+                             "change_pct": q.get("change_pct"), "currency": "INR",
+                             "symbol": meta["root"], "exchange_quote_time": stamp},
+                    "source": "angel", "as_of": as_of, "stale": False,
+                    "metric_sources": {"price": {"source": "angel", "as_of": as_of, "value": price}},
+                }
         row = _tv_row(symbol, meta["region"])
         if not row:
             fh = _finnhub("/quote", {"symbol": meta["root"]}) if meta["finnhub"] else None
@@ -1420,12 +1402,14 @@ def _angel_bars(symbol: str, interval: str) -> Optional[dict]:
     except Exception:
         return None
     interval_name = {"1d": "ONE_DAY", "5m": "FIVE_MINUTE", "15m": "FIFTEEN_MINUTE", "60m": "ONE_HOUR", "1m": "ONE_MINUTE"}.get(interval, "ONE_DAY")
-    end = datetime.now().strftime("%Y-%m-%d %H:%M")
-    start = (datetime.now() - timedelta(days=10 if interval != "1d" else 400)).strftime("%Y-%m-%d %H:%M")
+    # SmartAPI historical date parameters are exchange-local (IST), not host UTC.
+    local_now = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    end = local_now.strftime("%Y-%m-%d %H:%M")
+    start = (local_now - timedelta(days=10 if interval != "1d" else 400)).strftime("%Y-%m-%d %H:%M")
     try:
         payload = angel_session.request_json(
             _ANGEL_CANDLE,
-            payload={"exchange": "NSE", "symboltoken": str(token), "interval": interval_name, "fromdate": start, "todate": end},
+            payload={"exchange": inst.get("exchange", "NSE"), "symboltoken": str(token), "interval": interval_name, "fromdate": start, "todate": end},
             headers=headers,
             timeout=ANGEL_CANDLE_TIMEOUT,
         )

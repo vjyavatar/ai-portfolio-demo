@@ -1,10 +1,8 @@
 name: Trading Desk regression QA
 on:
   pull_request:
-    paths: ['trading/**', 'trading_research.py', 'tests/trading-*.test.mjs', 'tests/trading-*.spec.mjs', 'tests/test_trading*.py', '.github/workflows/trading-desk-qa.yml']
   push:
     branches: [main]
-    paths: ['trading/**', 'trading_research.py', 'tests/trading-*.test.mjs', 'tests/trading-*.spec.mjs', 'tests/test_trading*.py', '.github/workflows/trading-desk-qa.yml']
 permissions:
   contents: read
 jobs:
@@ -15,6 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python3 -m pip install requests pyotp
+      - run: python3 -m unittest discover -s tests -p test_trading_verified_gateway.py
       - run: node --test tests/trading-decision.test.mjs
       - run: node --input-type=module --check < trading/desk.js
       - run: node --input-type=module --check < trading/notifications-ui.js
