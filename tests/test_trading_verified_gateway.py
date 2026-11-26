@@ -38,6 +38,18 @@ class VerifiedGatewayTests(unittest.TestCase):
         with patch.object(ao, "configured", return_value=True), patch.object(ao, "_load_nse_book", return_value=self.book), patch.object(ao, "_ltp_cache", {"NIFTY": {"fetched_at": self.now, "price": 999}}), patch.object(ao.time, "time", return_value=self.now), patch.object(ao, "_quotes", side_effect=self.quote):
             self.assertEqual(ao.nse_quotes(["NIFTY"], verified=True)["NIFTY"]["price"], 100)
 
+    def test_actual_desk_alias_routes_to_verified_provider(self):
+        from trading_site import market_symbol
+        from market_data import layer
+        for key in ("NIFTY", "BANKNIFTY", "SENSEX"):
+            _, alias = market_symbol(key, "IN")
+            with self.subTest(key=key), patch.object(layer, "_remember", side_effect=lambda k, ttl, load: load()), patch.object(layer, "_now", return_value=self.now), patch.object(ao, "nse_quotes", return_value={key: {"price": 100, "as_of_epoch": self.now}}) as request, patch.object(layer, "_tv_row", side_effect=AssertionError("Unexpected fallback")):
+                result = layer.quote(alias, "IN")
+                request.assert_called_once_with([key], verified=True)
+                self.assertEqual(result["source"], "angel")
+                self.assertEqual(result["data"]["exchange_quote_time"], self.now)
+                self.assertEqual(ao._nse_key(alias), key)
+
 
 if __name__ == "__main__":
     unittest.main()
