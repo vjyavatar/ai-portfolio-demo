@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: python3 -m pip install requests pyotp
+      - run: python3 -m unittest discover -s tests -p test_trading_verified_gateway.py
       - run: node --test tests/trading-decision.test.mjs
       - run: node --input-type=module --check < trading/desk.js
       - run: node --input-type=module --check < trading/notifications-ui.js
