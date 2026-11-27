@@ -26,3 +26,16 @@ class AuditTests(unittest.TestCase):
   self.assertEqual(validate_trading(data,'SPY','US')[0],'UNVERIFIED')
   for extra in ({'verdict':'LONG_RESEARCH'},{'paper_eligible':True},{'scenario':{'entry':10}}):
    self.assertEqual(validate_trading(dict(data,**extra),'SPY','US')[0],'FAIL')
+
+ def test_live_probes_include_all_indian_indices(self):
+  from qa.audit import trading_probes
+  paths=[p for p,_ in trading_probes(['IN'])]
+  for symbol in ('NIFTY','BANKNIFTY','SENSEX','RELIANCE'):
+   self.assertIn('/api/trading-desk/research?symbol='+symbol+'&region=IN',paths)
+ def test_live_audit_requires_provenance_and_does_not_confuse_closed_with_unverified(self):
+  from qa.audit import validate_trading
+  d=dict(symbol='NIFTY',region='IN',currency='INR',source='angel',verdict='WAIT',market_status='OPEN',session_start=1000,session_end=9000,quote_time=2000,bar_close_time=1990,price=100,quote_source='angel',candle_source='angel',price_kind='SOURCE_QUOTE',provider_status={'code':'RESPONSE_RECEIVED'})
+  self.assertEqual(validate_trading(d,'NIFTY','IN',now=2010)[0],'PASS')
+  self.assertEqual(validate_trading(dict(d,quote_source='tradingview'),'NIFTY','IN',now=2010)[0],'UNVERIFIED')
+  self.assertEqual(validate_trading(dict(d,market_status='CLOSED_OR_UNVERIFIED'),'NIFTY','IN',now=2010)[0],'UNVERIFIED')
+  self.assertEqual(validate_trading(dict(d,market_status='CLOSED_OR_UNVERIFIED'),'NIFTY','IN',now=9010)[0],'PASS')
